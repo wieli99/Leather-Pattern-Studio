@@ -1,7 +1,12 @@
 import { isCurve, cubicSegments } from "../model/curves";
 import { snappedAxes } from "./snapping";
 import type { Controller } from "./controller";
-import { shapeMatrix, applyMatrix } from "../model/geometry";
+import {
+  shapeMatrix,
+  applyMatrix,
+  isPolygon,
+  polygonFillets,
+} from "../model/geometry";
 import type { Shape } from "../model/project";
 export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
   const a = s.points[0],
@@ -11,6 +16,22 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
     ctx.moveTo(a.x, a.y);
     for (const [, c1, c2, end] of cubicSegments(s))
       ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+  } else if (isPolygon(s) && s.radius > 0) {
+    const corners = polygonFillets(s).corners;
+    ctx.moveTo(corners.at(-1)!.end.x, corners.at(-1)!.end.y);
+    for (const c of corners) {
+      ctx.lineTo(c.start.x, c.start.y);
+      if (c.radius)
+        ctx.arc(
+          c.center.x,
+          c.center.y,
+          c.radius,
+          c.angle,
+          c.angle + c.span,
+          c.span < 0,
+        );
+    }
+    ctx.closePath();
   } else if (s.kind === "arc") {
     const angle = Math.atan2(b.y - a.y, b.x - a.x);
     ctx.arc(

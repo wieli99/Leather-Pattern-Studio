@@ -1,5 +1,7 @@
 import { test, expect } from "vitest";
 import {
+  contains,
+  polygonFillets,
   distance,
   distanceToSegment,
   hitTest,
@@ -148,4 +150,84 @@ test("sheared rounded rectangles and arcs participate in exact bounds and marque
   const b = bounds([c]);
   expect(b.width).toBeGreaterThan(50);
   expect(contains(c, { x: 50 + 2 * 20, y: 20 + 0.5 * 10 })).toBe(true);
+});
+
+test("polygon fillets clamp and remove sharp corners from selection", () => {
+  const s: Shape = {
+    ...circle,
+    kind: "polyline",
+    radius: 2,
+    points: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+      { x: 0, y: 0 },
+    ],
+  };
+  expect(polygonFillets(s).max).toBeCloseTo(5);
+  expect(hitTest(s, { x: 0, y: 0 }, 0.1)).toBe(false);
+  expect(contains(s, { x: 0.1, y: 0.1 })).toBe(false);
+  expect(contains(s, { x: 5, y: 5 })).toBe(true);
+  expect(polygonFillets({ ...s, radius: 100 }).corners[0].radius).toBeCloseTo(
+    5,
+  );
+  expect(
+    polygonFillets({ ...s, points: [...s.points].reverse() }).max,
+  ).toBeCloseTo(5);
+});
+
+test("polygon arcs meet both edges tangentially in either winding", () => {
+  const polygons = [
+    [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 5, y: 8 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 5, y: 5 },
+      { x: 0, y: 10 },
+    ],
+  ];
+  for (const polygon of polygons)
+    for (const pts of [polygon, [...polygon].reverse()]) {
+      for (const radius of [1, 100]) {
+        const shape: Shape = {
+          ...circle,
+          kind: "polyline",
+          radius,
+          points: [...pts, pts[0]],
+        };
+        polygonFillets(shape).corners.forEach((c, i) => {
+          expect(distance(c.center, c.start)).toBeCloseTo(c.radius, 10);
+          expect(distance(c.center, c.end)).toBeCloseTo(c.radius, 10);
+          const prev = pts[(i + pts.length - 1) % pts.length],
+            next = pts[(i + 1) % pts.length];
+          for (const [tangent, edge] of [
+            [c.start, prev],
+            [c.end, next],
+          ]) {
+            expect(
+              (tangent.x - c.center.x) * (edge.x - pts[i].x) +
+                (tangent.y - c.center.y) * (edge.y - pts[i].y),
+            ).toBeCloseTo(0, 9);
+          }
+          expect(
+            c.center.x + c.radius * Math.cos(c.angle + c.span),
+          ).toBeCloseTo(c.end.x, 10);
+          expect(
+            c.center.y + c.radius * Math.sin(c.angle + c.span),
+          ).toBeCloseTo(c.end.y, 10);
+        });
+      }
+    }
 });

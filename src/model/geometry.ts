@@ -110,6 +110,53 @@ export function bounds(shapes: Shape[]): Bounds {
     y = Math.min(...ys);
   return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
 }
+export function isPolygon(s: Shape): boolean {
+  return (
+    s.kind === "polyline" &&
+    s.points.length >= 4 &&
+    distance(s.points[0], s.points.at(-1)!) < 1e-9
+  );
+}
+export function polygonFillets(s: Shape) {
+  const pts = s.points.slice(0, -1);
+  const corners = pts.map((p, i) => {
+    const prev = pts[(i + pts.length - 1) % pts.length],
+      next = pts[(i + 1) % pts.length];
+    const l = distance(p, prev),
+      n = distance(p, next);
+    const u = { x: (prev.x - p.x) / (l || 1), y: (prev.y - p.y) / (l || 1) };
+    const v = { x: (next.x - p.x) / (n || 1), y: (next.y - p.y) / (n || 1) };
+    const angle = Math.acos(Math.max(-1, Math.min(1, u.x * v.x + u.y * v.y)));
+    const k =
+      l > 1e-9 && n > 1e-9 && angle > 1e-9 && Math.PI - angle > 1e-9
+        ? 1 / Math.tan(angle / 2)
+        : 0;
+    return { p, u, v, k, n };
+  });
+  let max = Infinity;
+  corners.forEach((c, i) => {
+    const k = c.k + corners[(i + 1) % corners.length].k;
+    if (k > 0) max = Math.min(max, c.n / k);
+  });
+  const radius = Math.min(s.radius, Number.isFinite(max) ? max : 0);
+  return {
+    max: Number.isFinite(max) ? max : 0,
+    corners: corners.map((c) => {
+      const d = radius * c.k;
+      const start = { x: c.p.x + c.u.x * d, y: c.p.y + c.u.y * d };
+      const end = { x: c.p.x + c.v.x * d, y: c.p.y + c.v.y * d };
+      const cross = c.u.x * c.v.y - c.u.y * c.v.x;
+      const center = {
+        x: start.x - c.u.y * radius * Math.sign(cross),
+        y: start.y + c.u.x * radius * Math.sign(cross),
+      };
+      const angle = Math.atan2(start.y - center.y, start.x - center.x);
+      let span = Math.atan2(end.y - center.y, end.x - center.x) - angle;
+      span = ((span + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      return { start, end, center, angle, span, radius: c.k ? radius : 0 };
+    }),
+  };
+}
 export function distanceToSegment(p: Point, a: Point, b: Point): number {
   const dx = b.x - a.x,
     dy = b.y - a.y,
@@ -123,7 +170,12 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
-  if (s.transform || s.kind === "arc" || isCurve(s))
+  if (
+    s.transform ||
+    s.kind === "arc" ||
+    isCurve(s) ||
+    (isPolygon(s) && s.radius > 0)
+  )
     return (
       distance(nearestOutline(s, point, tolerance / 32), point) <= tolerance
     );
@@ -242,6 +294,13 @@ export function anchors(s: Shape): Point[] {
     );
   if (s.kind === "arc")
     return [localCenter(s), arcPoint(s, 0), arcPoint(s, 0.5), arcPoint(s, 1)];
+  if (isPolygon(s) && s.radius > 0)
+    return [
+      center(s),
+      ...polygonFillets(s)
+        .corners.flatMap((q) => [q.start, q.end])
+        .map((p) => applyMatrix(shapeMatrix(s), p)),
+    ];
   if (isCurve(s))
     return [...worldPoints(s), ...worldCubics(s).map((c) => cubicAt(c, 0.5))];
   const pts = worldPoints(s),
@@ -363,10 +422,25 @@ export function contains(s: Shape, p: Point): boolean {
     s.kind === "polyline" &&
     distance(a, s.points[s.points.length - 1]) < 1e-9
   ) {
+    const polygon =
+      s.radius > 0
+        ? polygonFillets(s).corners.flatMap((c) =>
+            c.radius
+              ? Array.from({ length: 65 }, (_, i) => ({
+                  x:
+                    c.center.x +
+                    c.radius * Math.cos(c.angle + (c.span * i) / 64),
+                  y:
+                    c.center.y +
+                    c.radius * Math.sin(c.angle + (c.span * i) / 64),
+                }))
+              : [c.start],
+          )
+        : s.points;
     let inside = false;
-    for (let i = 0, j = s.points.length - 1; i < s.points.length; j = i++) {
-      const u = s.points[i],
-        v = s.points[j];
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const u = polygon[i],
+        v = polygon[j];
       if (
         u.y > q.y !== v.y > q.y &&
         q.x < ((v.x - u.x) * (q.y - u.y)) / (v.y - u.y) + u.x
@@ -453,6 +527,15 @@ function boundary(s: Shape): { lines: [Point, Point][]; curves: Curve[] } {
         world({ x: next.x + r * Math.cos(end), y: next.y + r * Math.sin(end) }),
       ]);
     }
+  } else if (isPolygon(s) && s.radius > 0) {
+    const corners = polygonFillets(s).corners;
+    corners.forEach((q, i) => {
+      lines.push([
+        world(corners[(i + corners.length - 1) % corners.length].end),
+        world(q.start),
+      ]);
+      if (q.radius > 0) curve(q.center, q.radius, q.radius, q.angle, q.span);
+    });
   } else
     worldPoints(s)
       .slice(1)

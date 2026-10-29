@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import {
+  isPolygon,
+  polygonFillets,
   center,
   bounds,
   stretchShape,
@@ -44,7 +46,12 @@ const e = useEditor(),
   ),
   vertices = computed(() => worldPoints(s.value!));
 const edit = (changes: Partial<Shape>) => {
-  if (s.value) void editor.edit(s.value.id, changes);
+  if (s.value) {
+    const next = { ...s.value, ...changes };
+    if (isPolygon(next))
+      changes.radius = Math.min(next.radius, polygonFillets(next).max);
+    void editor.edit(s.value.id, changes);
+  }
 };
 function position(axis: "x" | "y", v: string) {
   edit(
@@ -186,11 +193,15 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       />
     </div>
     <Field
-      v-if="s.kind === 'rectangle'"
+      v-if="s.kind === 'rectangle' || isPolygon(s)"
       :label="s.transform ? 'Corner radius (local)' : 'Corner radius'"
       :value="s.radius"
       :min="0"
-      :max="Math.min(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / 2"
+      :max="
+        isPolygon(s)
+          ? polygonFillets(s).max
+          : Math.min(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / 2
+      "
       @commit="edit({ radius: +$event })"
     />
     <Field
