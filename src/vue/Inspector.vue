@@ -161,6 +161,18 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     Apply or cancel the transform to edit properties or change selection.
   </p>
   <template v-if="s">
+    <template v-if="s.kind === 'text'">
+      <Field
+        label="Text"
+        :value="s.text ?? ''"
+        @commit="edit({ text: $event })"
+      />
+      <Field
+        label="Font size"
+        :value="s.fontSize ?? 5"
+        @commit="edit({ fontSize: +$event })"
+      />
+    </template>
     <p class="units-hint">Dimensions in mm</p>
     <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <div class="field-row">

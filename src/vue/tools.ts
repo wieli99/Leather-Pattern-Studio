@@ -6,4 +6,5 @@ export const tools: { id: Mode; key: string; label: string }[] = [
   { id: "rectangle", key: "R", label: "Rectangle" },
   { id: "circle", key: "C", label: "Circle" },
   { id: "polygon", key: "", label: "Shapes" },
+  { id: "text", key: "T", label: "Text" },
 ];

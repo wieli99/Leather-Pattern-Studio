@@ -130,7 +130,11 @@ onMounted(() => {
         ?.focus();
       return;
     }
-    if (editor.mode.startsWith("polygon") && !mod && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    if (
+      editor.mode.startsWith("polygon") &&
+      !mod &&
+      (e.key === "ArrowUp" || e.key === "ArrowDown")
+    ) {
       e.preventDefault();
       editor.adjustPolygonSides(e.key === "ArrowUp" ? 1 : -1);
       return;
@@ -232,7 +236,15 @@ onMounted(() => {
     </header>
     <section class="workspace">
       <nav v-if="left" aria-label="Drawing tools">
-        <ToolButton v-for="tool in tools" :key="tool.id" :tool="tool" />
+        <template v-for="tool in tools" :key="tool.id">
+          <div
+            v-if="tool.id === 'text'"
+            class="rail-divider"
+            role="separator"
+            aria-label="Indicator tools"
+          />
+          <ToolButton :tool="tool" />
+        </template>
         <div class="rail-divider" />
         <button
           title="Undo (Ctrl/⌘ Z)"

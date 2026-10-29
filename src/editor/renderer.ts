@@ -137,6 +137,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     ctx.translate(pan.x, pan.y);
     ctx.scale(z, z);
     function shape(s: Shape, preview = false) {
+      if (s.id === editor.editingTextId) return;
       ctx.save();
       const primitive = new Path2D();
       shapePath(primitive, s);
@@ -159,7 +160,21 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.fill(path);
         ctx.restore();
       }
-      ctx.stroke(path);
+      if (s.kind === "text") {
+        ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+        ctx.font = `${s.fontSize ?? 5}px sans-serif`;
+        ctx.textBaseline = "top";
+        ctx.fillStyle = ctx.strokeStyle;
+        (s.text ?? "")
+          .split("\n")
+          .forEach((line, i) =>
+            ctx.fillText(
+              line,
+              s.points[0].x,
+              s.points[0].y + i * (s.fontSize ?? 5) * 1.2,
+            ),
+          );
+      } else ctx.stroke(path);
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.forEach((s) => shape(s));
@@ -342,17 +357,24 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.strokeStyle = color("preview");
       ctx.lineWidth = 1 / z;
       ctx.beginPath();
-      ctx.moveTo(p.x - 6 / z, p.y);
-      ctx.lineTo(p.x - 2 / z, p.y);
-      ctx.moveTo(p.x + 2 / z, p.y);
-      ctx.lineTo(p.x + 6 / z, p.y);
-      ctx.moveTo(p.x, p.y - 6 / z);
-      ctx.lineTo(p.x, p.y - 2 / z);
-      ctx.moveTo(p.x, p.y + 2 / z);
-      ctx.lineTo(p.x, p.y + 6 / z);
-      ctx.stroke();
-      ctx.fillStyle = color("preview");
-      ctx.fillRect(p.x - 0.5 / z, p.y - 0.5 / z, 1 / z, 1 / z);
+      if (drawingCursor && editor.tool === "text") {
+        // Match the initial 5 mm text line (1.2 line height), centered on placement.
+        ctx.moveTo(p.x, p.y - 3);
+        ctx.lineTo(p.x, p.y + 3);
+        ctx.stroke();
+      } else {
+        ctx.moveTo(p.x - 6 / z, p.y);
+        ctx.lineTo(p.x - 2 / z, p.y);
+        ctx.moveTo(p.x + 2 / z, p.y);
+        ctx.lineTo(p.x + 6 / z, p.y);
+        ctx.moveTo(p.x, p.y - 6 / z);
+        ctx.lineTo(p.x, p.y - 2 / z);
+        ctx.moveTo(p.x, p.y + 2 / z);
+        ctx.lineTo(p.x, p.y + 6 / z);
+        ctx.stroke();
+        ctx.fillStyle = color("preview");
+        ctx.fillRect(p.x - 0.5 / z, p.y - 0.5 / z, 1 / z, 1 / z);
+      }
     }
     ctx.restore();
     if (target && editor.snapTarget && editor.snapKind) {

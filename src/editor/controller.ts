@@ -488,19 +488,21 @@ export class Controller {
     this.cancel();
     this.mode = mode;
     this.tool =
-      mode === "select"
-        ? "select"
-        : isCurveMode(mode)
-          ? (mode as "curve" | "control-curve")
-          : mode === "polyline" || mode.startsWith("polygon")
-            ? "polyline"
-            : mode.startsWith("rectangle")
-              ? "rectangle"
-              : mode.startsWith("ellipse")
-                ? "ellipse"
-                : mode.startsWith("arc")
-                  ? "arc"
-                  : "circle";
+      mode === "text"
+        ? "text"
+        : mode === "select"
+          ? "select"
+          : isCurveMode(mode)
+            ? (mode as "curve" | "control-curve")
+            : mode === "polyline" || mode.startsWith("polygon")
+              ? "polyline"
+              : mode.startsWith("rectangle")
+                ? "rectangle"
+                : mode.startsWith("ellipse")
+                  ? "ellipse"
+                  : mode.startsWith("arc")
+                    ? "arc"
+                    : "circle";
     if ((variants.polygon as readonly string[]).includes(mode))
       this.lastPolygon = mode;
     if (isCurveMode(mode)) this.lastCurve = mode;
@@ -528,9 +530,14 @@ export class Controller {
     if (this.mode === "select")
       return "Click an edge; Ctrl selects interiors/crossings; Shift adds";
     if (this.mode.startsWith("polygon")) {
-      const nextPoint = this.mode === "polygon-box"
-        ? (this.pending.length ? "opposite corner" : "first corner or drag")
-        : (this.pending.length ? "radius and rotation" : "center or drag");
+      const nextPoint =
+        this.mode === "polygon-box"
+          ? this.pending.length
+            ? "opposite corner"
+            : "first corner or drag"
+          : this.pending.length
+            ? "radius and rotation"
+            : "center or drag";
       return `${labels[this.mode]} · ${this.polygonSides} corners · Choose ${nextPoint} · Up/Down or Shift + wheel: corners`;
     }
     const n = this.pending.length;
@@ -874,6 +881,15 @@ export class Controller {
         distanceToSegment(raw, this.transformPivot, h.point) < 8 / this.zoom,
     );
   }
+  private textEditingId?: string;
+  get editingTextId() {
+    return this.textEditingId;
+  }
+  set editingTextId(id: string | undefined) {
+    this.textEditingId = id;
+    this.notify();
+  }
+  onTextRequested?: (point: Point) => void;
   pointerDown(
     pixel: Point,
     button: number,
@@ -906,6 +922,10 @@ export class Controller {
     if (button !== 0) return;
     if (this.placingPivot) {
       this.setPivot(this.snap(raw, alt));
+      return;
+    }
+    if (this.tool === "text") {
+      this.onTextRequested?.(this.snap(raw, alt));
       return;
     }
     if (this.tool !== "select") {

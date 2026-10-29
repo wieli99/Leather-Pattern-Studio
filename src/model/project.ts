@@ -53,6 +53,7 @@ export function parseProject(text: string): Doc {
       typeof s.name !== "string" ||
       s.name.length > 200 ||
       ![
+        "text",
         "line",
         "polyline",
         "curve",
@@ -81,6 +82,15 @@ export function parseProject(text: string): Doc {
       s.radius < 0
     )
       throw Error("Invalid shape");
+    if (
+      s.kind === "text" &&
+      (typeof s.text !== "string" ||
+        !s.text.trim() ||
+        [...s.text].length > 10000 ||
+        !Number.isFinite(s.fontSize) ||
+        s.fontSize <= 0)
+    )
+      throw Error("Invalid text");
     if (s.kind === "control-curve") {
       if (!Array.isArray(s.handles) || s.handles.length !== s.points.length)
         throw Error("Invalid curve handle count");
@@ -161,6 +171,7 @@ export function parseProject(text: string): Doc {
       name: s.name,
       kind: s.kind,
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
+      ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize } : {}),
       radius: s.radius,
       ...(s.handles
         ? {

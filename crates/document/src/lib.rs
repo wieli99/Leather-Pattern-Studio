@@ -30,6 +30,7 @@ pub enum Kind {
     Circle,
     Ellipse,
     Arc,
+    Text,
 }
 // Handle vectors are relative to their anchor, in local millimetres.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
@@ -48,6 +49,12 @@ pub struct Shape {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub handles: Option<Vec<CurveHandles>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub text: Option<String>,
+    #[serde(default, rename = "fontSize", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub font_size: Option<f64>,
     pub radius: f64,
     pub rotation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,6 +96,15 @@ impl Document {
                 || !s.rotation.is_finite()
             {
                 return Err("Invalid shape".into());
+            }
+            if s.kind == Kind::Text
+                && (s
+                    .text
+                    .as_ref()
+                    .is_none_or(|t| t.trim().is_empty() || t.chars().count() > 10000)
+                    || s.font_size.is_none_or(|n| !n.is_finite() || n <= 0.0))
+            {
+                return Err("Invalid text".into());
             }
             if s.kind == Kind::ControlCurve {
                 let handles = s.handles.as_ref().ok_or("Missing curve handles")?;

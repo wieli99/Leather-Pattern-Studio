@@ -17,6 +17,7 @@ export const variants = {
 } as const;
 export type Mode =
   | (typeof variants.polygon)[number]
+  | "text"
   | "select"
   | "polyline"
   | (typeof variants.curve)[number]
@@ -28,6 +29,7 @@ export const labels: Record<Mode, string> = {
   curve: "Curve",
   "control-curve": "Control point curve",
   select: "Select",
+  text: "Text",
   polyline: "Polyline",
   rectangle: "Corner rectangle",
   "rectangle-center": "Center rectangle",
@@ -90,7 +92,8 @@ export function construct(
     if (mode === "polygon-box") {
       const width = Math.abs(b.x - a.x),
         height = Math.abs(b.y - a.y);
-      if (width < 1e-9 || height < 1e-9) throw Error("Shape must have positive size");
+      if (width < 1e-9 || height < 1e-9)
+        throw Error("Shape must have positive size");
       const unit = Array.from({ length: count }, (_, i) => ({
         x: Math.cos(-Math.PI / 2 + (i * 2 * Math.PI) / count),
         y: Math.sin(-Math.PI / 2 + (i * 2 * Math.PI) / count),
@@ -100,8 +103,8 @@ export function construct(
         minY = Math.min(...unit.map((p) => p.y)),
         maxY = Math.max(...unit.map((p) => p.y));
       out = unit.map((p) => ({
-        x: Math.min(a.x, b.x) + (p.x - minX) / (maxX - minX) * width,
-        y: Math.min(a.y, b.y) + (p.y - minY) / (maxY - minY) * height,
+        x: Math.min(a.x, b.x) + ((p.x - minX) / (maxX - minX)) * width,
+        y: Math.min(a.y, b.y) + ((p.y - minY) / (maxY - minY)) * height,
       }));
     }
     out.push({ ...out[0] });

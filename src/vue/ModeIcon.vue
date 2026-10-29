@@ -11,8 +11,18 @@ const center = computed(
   three = computed(() => props.mode.includes("three"));
 const points = computed(() => {
   const m = props.mode;
-  if (m === "select" || m === "ellipse" || m.startsWith("polygon")) return [];
-  if (m === "control-curve") return [[3, 19], [21, 19]];
+  if (
+    m === "text" ||
+    m === "select" ||
+    m === "ellipse" ||
+    m.startsWith("polygon")
+  )
+    return [];
+  if (m === "control-curve")
+    return [
+      [3, 19],
+      [21, 19],
+    ];
   if (m === "curve")
     return [
       [3, 18],
@@ -94,7 +104,14 @@ const points = computed(() => {
     stroke-linejoin="round"
     aria-hidden="true"
   >
-    <path v-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
+    <path
+      v-if="mode === 'text'"
+      d="M4 4H20V9H18L17 6H14V18L17 19V21H7V19L10 18V6H7L6 9H4Z"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.2"
+    />
+    <path v-else-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
     <path v-else-if="mode === 'curve'" d="M3 18C8 18 16 6 21 6" />
     <template v-else-if="mode === 'control-curve'">
       <path d="M3 16V7M21 16V7" stroke-width="1" />
