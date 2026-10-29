@@ -1,0 +1,43 @@
+import {test,expect} from '@playwright/test';
+async function ready(page:any){await page.goto('/');await expect(page.getByRole('button',{name:'Rectangle (R)',exact:true})).toBeEnabled()}
+async function rect(page:any){await page.getByRole('button',{name:'Rectangle (R)',exact:true}).click();const c=page.getByLabel('Pattern drawing canvas');await c.click({position:{x:150,y:180}});await c.click({position:{x:450,y:390}});await expect(page.getByLabel('Width',{exact:true})).toBeVisible()}
+test('precise rectangle, rounded corners, undo, redo and download',async({page})=>{
+ await ready(page);await rect(page);const width=page.getByLabel('Width',{exact:true});await width.fill('100');await width.press('Enter');await page.getByLabel('Corner radius',{exact:true}).fill('10');await page.getByLabel('Corner radius',{exact:true}).press('Enter');await expect(page.getByLabel('Corner radius',{exact:true})).toHaveValue('10');await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByLabel('Corner radius',{exact:true})).toHaveValue('0');await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByLabel('Corner radius',{exact:true})).toHaveValue('10');
+ // Force the portable download path even in Chromium.
+ await page.evaluate(()=>{Object.defineProperty(window,'showSaveFilePicker',{value:undefined,configurable:true});delete (window as any).showSaveFilePicker});
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save',exact:true}).click();expect((await download).suggestedFilename()).toContain('.json');
+});
+test('draw every primitive, multi-select and delete',async({page})=>{
+ await ready(page);const canvas=page.getByLabel('Pattern drawing canvas');
+ for(const tool of ['Line (L)','Rectangle (R)','Circle (C)','Ellipse (E)']){await page.getByRole('button',{name:tool,exact:true}).click();await canvas.click({position:{x:150,y:180}});await canvas.click({position:{x:350,y:300}});await expect(page.getByLabel('Name',{exact:true})).toBeVisible()}
+ await page.getByRole('button',{name:'Polyline (P)',exact:true}).click();for(const p of [{x:100,y:150},{x:200,y:150},{x:200,y:250}])await canvas.click({position:p});await page.keyboard.press('Enter');await expect(page.locator('.objects button')).toHaveCount(5);await canvas.focus();await page.keyboard.press('Control+a');await page.keyboard.press('Delete');await expect(page.locator('.objects button')).toHaveCount(0);await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.locator('.objects button')).toHaveCount(5);
+});
+test('cancellation creates no shape and recovery restores after reload',async({page})=>{
+ await ready(page);await page.getByRole('button',{name:'Rectangle (R)',exact:true}).click();await page.getByLabel('Pattern drawing canvas').click({position:{x:150,y:180}});await page.keyboard.press('Escape');await expect(page.locator('.objects button')).toHaveCount(0);await rect(page);await page.waitForTimeout(600);await page.reload();await page.getByRole('button',{name:'Restore',exact:true}).click();await expect(page.locator('.objects button')).toHaveCount(1);
+});
+test('offline reload loads application and Wasm engine',async({page,context})=>{
+ await ready(page);await rect(page);await page.evaluate(async()=>{await navigator.serviceWorker.ready});await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);await context.setOffline(true);await page.reload();await expect(page.getByRole('button',{name:'Rectangle (R)',exact:true})).toBeEnabled();await context.setOffline(false);
+});
+test('move, cancel, scale, rotate and duplicate through the viewport',async({page})=>{
+ await ready(page);await rect(page);const c=page.getByLabel('Pattern drawing canvas'),box=(await c.boundingBox())!;
+ const value=async(label:string)=>Number(await page.getByLabel(label,{exact:true}).inputValue());
+ const geometry=async()=>{const x=await value('Position X'),y=await value('Position Y'),w=await value('Width'),h=await value('Height');return {x:box.x+80+x*3,y:box.y+100+y*3,w:w*3,h:h*3}};
+ const beforeX=await value('Position X');let g=await geometry();await page.mouse.move(g.x-g.w/2,g.y);await page.mouse.down();await page.mouse.move(g.x-g.w/2+60,g.y+30);await page.keyboard.press('Escape');await page.mouse.up();await expect(page.getByLabel('Position X',{exact:true})).toHaveValue(String(beforeX));
+ await page.mouse.move(g.x-g.w/2,g.y);await page.mouse.down();await page.mouse.move(g.x-g.w/2+60,g.y+30);await page.mouse.up();await expect.poll(()=>value('Position X')).toBeGreaterThan(beforeX);
+ g=await geometry();await page.mouse.move(g.x+g.w/2+12,g.y+g.h/2+12);await page.mouse.down();await page.mouse.move(g.x+g.w/2+60,g.y+g.h/2+50);await page.mouse.up();await expect.poll(()=>value('Width')).toBeGreaterThan(100);
+ g=await geometry();await page.mouse.move(g.x,g.y-g.h/2-28);await page.mouse.down();await page.mouse.move(g.x+60,g.y-g.h/2-10);await page.mouse.up();await expect.poll(async()=>Math.abs(await value('Rotation (degrees)'))).toBeGreaterThan(1);
+ await page.getByRole('button',{name:'Duplicate',exact:true}).click();await expect(page.locator('.objects button')).toHaveCount(2);
+});
+test('saved project opens and invalid file preserves current work',async({page},info)=>{
+ await ready(page);await rect(page);await page.getByLabel('Corner radius',{exact:true}).fill('8');await page.getByLabel('Corner radius',{exact:true}).press('Enter');
+ await page.evaluate(()=>{delete (window as any).showSaveFilePicker;delete (window as any).showOpenFilePicker});const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Save',exact:true}).click();const download=await downloadPromise,path=info.outputPath('roundtrip.json');await download.saveAs(path);
+ page.on('dialog',dialog=>void dialog.accept());let chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Open',exact:true}).click();await (await chooser).setFiles(path);await page.locator('.objects button').first().click();await expect(page.getByLabel('Corner radius',{exact:true})).toHaveValue('8');
+ chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Open',exact:true}).click();await (await chooser).setFiles({name:'broken.json',mimeType:'application/json',buffer:Buffer.from('{"version":3,"shapes":[null]}')});await expect(page.getByRole('status').first()).toContainText('Invalid shape');await expect(page.locator('.objects button')).toHaveCount(1);
+ await page.screenshot({path:info.outputPath('workspace.png')});
+});
+test('native save writes editable project and cancelled save preserves dirty state',async({page,browserName})=>{
+ test.skip(browserName!=='chromium','Native file picker path is supported by Chromium');await ready(page);await rect(page);
+ await page.evaluate(()=>{(window as any).savedProject='';Object.defineProperty(window,'showSaveFilePicker',{configurable:true,value:async()=>({name:'example.leather.json',createWritable:async()=>({write:async(text:string)=>{(window as any).savedProject=text},close:async()=>{}})})})});
+ await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.locator('.document-name')).toHaveText('example.leather.json');expect(await page.evaluate(()=>JSON.parse((window as any).savedProject).version)).toBe(3);
+ await page.getByLabel('Width',{exact:true}).fill('120');await page.getByLabel('Width',{exact:true}).press('Enter');await expect(page.locator('.document-name')).toContainText('•');await page.evaluate(()=>{(window as any).showSaveFilePicker=async()=>{throw new DOMException('Cancelled','AbortError')}});await page.getByRole('button',{name:'Save as',exact:true}).click();await expect(page.locator('.document-name')).toContainText('•');
+});
