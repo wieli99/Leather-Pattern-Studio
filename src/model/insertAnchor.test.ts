@@ -44,3 +44,24 @@ test("splitting a line preserves its outline and rejects duplicate anchors", () 
   expect(result.points[1].y).toBe(0);
   expect(insertAnchor(result, { x: 50, y: 0 }, 8)).toBeNull();
 });
+
+test("sharp and rounded rectangles accept anchors without changing their outline", () => {
+  for (const radius of [0, 5, 20]) {
+    const rectangle: Shape = {
+      ...circle,
+      kind: "rectangle",
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 40 },
+      ],
+      radius,
+    };
+    const result = insertAnchor(rectangle, { x: 50, y: 0 }, 2);
+    expect(result).not.toBeNull();
+    expect(result!.points[0]).toEqual(result!.points.at(-1));
+    expect(
+      result!.points.some((p) => distance(p, { x: 50, y: 0 }) < 0.001),
+    ).toBe(true);
+    expect(insertAnchor(result!, { x: 50, y: 0 }, 2)).toBeNull();
+  }
+});

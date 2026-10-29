@@ -22,6 +22,7 @@ export function insertAnchor(
       .map(([a, z]) => [a, lerp(a, z, 1 / 3), lerp(a, z, 2 / 3), z]);
     for (const q of b.curves) {
       const radius = Math.hypot(q.u.x, q.u.y) + Math.hypot(q.v.x, q.v.y);
+      if (radius < 1e-9 || Math.abs(q.span) < 1e-9) continue;
       const n = Math.max(
         1,
         Math.ceil(

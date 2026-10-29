@@ -166,6 +166,7 @@ const pixel = (event: MouseEvent) => {
   return { x: event.clientX - r.left, y: event.clientY - r.top };
 };
 function down(event: PointerEvent) {
+  editor.setMeasurementModifier(event.ctrlKey);
   if (draft.value) return;
   if (editor.tool === "text") {
     event.preventDefault();
@@ -195,27 +196,29 @@ function wheel(event: WheelEvent) {
     event.ctrlKey || event.metaKey,
   );
 }
-function anchorModifier(event: KeyboardEvent) {
+function updateModifiers(event: KeyboardEvent) {
   editor.setAnchorModifier(event.altKey);
+  editor.setMeasurementModifier(event.ctrlKey);
 }
-function clearAnchorModifier() {
+function clearModifiers() {
   editor.setAnchorModifier(false);
+  editor.setMeasurementModifier(false);
 }
 let detach: (() => void) | undefined;
 onMounted(() => {
   document.addEventListener("pointerdown", outside, true);
-  window.addEventListener("keydown", anchorModifier);
-  window.addEventListener("keyup", anchorModifier);
-  window.addEventListener("blur", clearAnchorModifier);
+  window.addEventListener("keydown", updateModifiers);
+  window.addEventListener("keyup", updateModifiers);
+  window.addEventListener("blur", clearModifiers);
   editor.onTextRequested = beginText;
   detach = attachRenderer(canvas.value!, editor);
   canvas.value!.addEventListener("wheel", wheel, { passive: false });
 });
 onUnmounted(() => {
   document.removeEventListener("pointerdown", outside, true);
-  window.removeEventListener("keydown", anchorModifier);
-  window.removeEventListener("keyup", anchorModifier);
-  window.removeEventListener("blur", clearAnchorModifier);
+  window.removeEventListener("keydown", updateModifiers);
+  window.removeEventListener("keyup", updateModifiers);
+  window.removeEventListener("blur", clearModifiers);
   editor.editingTextId = undefined;
   editor.onTextRequested = undefined;
   detach?.();
@@ -231,6 +234,7 @@ onUnmounted(() => {
     @pointerdown="down"
     @dblclick="editText"
     @pointermove="
+      editor.setMeasurementModifier($event.ctrlKey);
       editor.pointerMove(
         pixel($event),
         $event.altKey,

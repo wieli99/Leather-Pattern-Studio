@@ -797,3 +797,14 @@ test("moving a closed curve seam keeps both endpoints linked", async () => {
     e.document.shapes[0].points.at(-1),
   );
 });
+
+test("measurement modifier changes do not create document history", () => {
+  const e = new Controller();
+  const document = e.document;
+  expect(e.measurementsVisible).toBe(false);
+  e.setMeasurementModifier(true);
+  expect(e.measurementsVisible).toBe(true);
+  e.setMeasurementModifier(false);
+  expect(e.measurementsVisible).toBe(false);
+  expect(e.document).toBe(document);
+});

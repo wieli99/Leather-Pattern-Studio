@@ -64,6 +64,12 @@ export type Gesture = {
   factor?: number;
 };
 export class Controller {
+  measurementsVisible = false;
+  setMeasurementModifier(ctrl: boolean) {
+    if (this.measurementsVisible === ctrl) return;
+    this.measurementsVisible = ctrl;
+    this.notify();
+  }
   core = new Core();
   files = new ProjectFiles();
   document = emptyDocument();
