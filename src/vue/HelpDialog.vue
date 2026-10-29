@@ -29,10 +29,10 @@ const emit = defineEmits<{ "update:open": [open: boolean] }>();
           </p>
           <p>
             Ctrl-click selects interiors; Ctrl-drag selects intersecting
-            outlines. Shift adds to selection. Choose Move (G), Rotate (R), or
-            Resize (S) in the floating toolbox. Drag the gizmo, then Apply or
-            press Enter. Escape cancels. Rotation: 1° normally, Ctrl 10°, Shift
-            5°, Alt free.
+            outlines. Shift adds to selection. Alt-click an edge in Select to
+            add an anchor. Choose Move (G), Rotate (R), or Resize (S) in the
+            floating toolbox. Drag the gizmo, then Apply or press Enter. Escape
+            cancels. Rotation: 1° normally, Ctrl 10°, Shift 5°, Alt free.
           </p>
           <p>
             Click points to draw, or drag a two-point shape. Polyline: Shift

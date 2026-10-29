@@ -195,15 +195,27 @@ function wheel(event: WheelEvent) {
     event.ctrlKey || event.metaKey,
   );
 }
+function anchorModifier(event: KeyboardEvent) {
+  editor.setAnchorModifier(event.altKey);
+}
+function clearAnchorModifier() {
+  editor.setAnchorModifier(false);
+}
 let detach: (() => void) | undefined;
 onMounted(() => {
   document.addEventListener("pointerdown", outside, true);
+  window.addEventListener("keydown", anchorModifier);
+  window.addEventListener("keyup", anchorModifier);
+  window.addEventListener("blur", clearAnchorModifier);
   editor.onTextRequested = beginText;
   detach = attachRenderer(canvas.value!, editor);
   canvas.value!.addEventListener("wheel", wheel, { passive: false });
 });
 onUnmounted(() => {
   document.removeEventListener("pointerdown", outside, true);
+  window.removeEventListener("keydown", anchorModifier);
+  window.removeEventListener("keyup", anchorModifier);
+  window.removeEventListener("blur", clearAnchorModifier);
   editor.editingTextId = undefined;
   editor.onTextRequested = undefined;
   detach?.();

@@ -1,3 +1,4 @@
+import { insertAnchor } from "../model/insertAnchor";
 import { isCurve, zeroHandles, mirroredHandles } from "../model/curves";
 import type { CurveHandles } from "../generated/CurveHandles";
 import { snapCandidates, type SnapKind } from "./snapping";
@@ -310,6 +311,36 @@ export class Controller {
     `${this.cursor.x.toFixed(1)}, ${this.cursor.y.toFixed(1)} mm|${this.message}|${this.zoom}`;
   hoverSnapshot = () =>
     `${this.tool}|${this.placingPivot}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
+  private anchorAlt = false;
+  private anchorPointer: Point = { x: 0, y: 0 };
+  setAnchorModifier(alt: boolean) {
+    this.anchorAlt = alt;
+    this.notify();
+  }
+  get anchorIndicator(): Point | null {
+    if (
+      !this.anchorAlt ||
+      !this.pointerInside ||
+      this.space ||
+      this.tool !== "select" ||
+      this.transformTool ||
+      this.placingPivot ||
+      this.gesture ||
+      !this.ready ||
+      this.busy
+    )
+      return null;
+    const raw = this.anchorPointer;
+    const hit = [...this.document.shapes]
+      .reverse()
+      .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
+    let point: Point | null = null;
+    if (hit)
+      insertAnchor(hit, raw, 8 / this.zoom, (p) => {
+        point = p;
+      });
+    return point;
+  }
   leavePointer() {
     this.pointerInside = false;
     this.snapTarget = null;
@@ -528,7 +559,7 @@ export class Controller {
     if (isCurveMode(this.mode))
       return `${labels[this.mode]} · ${this.mode === "control-curve" ? "Click anchors; drag for smooth handles" : "Click points on the curve"} · Enter/right-click/double-click: finish · Esc: cancel`;
     if (this.mode === "select")
-      return "Click an edge; Ctrl selects interiors/crossings; Shift adds";
+      return "Click an edge; Alt-click adds an anchor; Ctrl selects interiors/crossings; Shift adds";
     if (this.mode.startsWith("polygon")) {
       const nextPoint =
         this.mode === "polygon-box"
@@ -834,7 +865,16 @@ export class Controller {
           }
       });
     }
-    if (!this.transformTool) return curveHandles;
+    if (!this.transformTool) {
+      if (
+        this.active.length === 1 &&
+        ["line", "polyline"].includes(this.active[0].kind)
+      )
+        worldPoints(this.active[0]).forEach((point, vertex) =>
+          curveHandles.push({ kind: "vertex", point, vertex }),
+        );
+      return curveHandles;
+    }
     const p = this.transformPivot,
       t = (this.gizmoAngle * Math.PI) / 180,
       z = this.zoom;
@@ -937,6 +977,24 @@ export class Controller {
       this.notify();
       return;
     }
+    if (alt && !this.transformTool) {
+      const hit = [...this.document.shapes]
+        .reverse()
+        .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
+      if (hit) {
+        const shape = insertAnchor(hit, raw, 8 / this.zoom);
+        if (shape) {
+          this.selected = [hit.id];
+          void this.commit({
+            ...this.document,
+            shapes: this.document.shapes.map((s) =>
+              s.id === hit.id ? shape : s,
+            ),
+          });
+        }
+      }
+      return;
+    }
     const handle = this.handleAt(raw);
     if (handle) {
       this.gesture = {
@@ -999,6 +1057,8 @@ export class Controller {
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
     this.pointerInside = true;
+    this.anchorAlt = alt;
+    this.anchorPointer = this.world(pixel);
     const raw = this.world(pixel),
       g = this.gesture;
     this.cursor =
@@ -1169,7 +1229,7 @@ export class Controller {
         const original = g.original.shapes.find((s) => selected(s))!;
         const local = applyMatrix(inverse(shapeMatrix(original)), g.end);
         const closed =
-          original.kind === "polyline" &&
+          (original.kind === "polyline" || isCurve(original)) &&
           original.points.length > 2 &&
           distance(
             original.points[0],

@@ -660,7 +660,7 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
   const h = e
     .handles()
     .find((h) => h.vertex === 0 && h.handleSide === "outgoing")!;
-  e.pointerDown(e.screen(h.point), 0, false, true);
+  e.pointerDown(e.screen(h.point), 0, false, false);
   e.pointerMove(e.screen({ x: 20, y: 30 }), true);
   expect(e.preview!.shapes[0].handles![0]).toEqual({
     incoming: { x: -20, y: -30 },
@@ -669,7 +669,7 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
   e.cancel();
   expect(JSON.stringify(e.document)).toBe(original);
   expect(e.revision).toBe(1);
-  e.pointerDown(e.screen(h.point), 0, false, true);
+  e.pointerDown(e.screen(h.point), 0, false, false);
   e.pointerMove(e.screen({ x: 20, y: 30 }), true);
   e.pointerUp();
   await vi.waitFor(() => expect(e.revision).toBe(2));
@@ -689,7 +689,7 @@ test("curve anchor editing preserves attached handle vectors and commits once", 
   e.finish();
   await vi.waitFor(() => expect(e.revision).toBe(1));
   e.setMode("select");
-  e.pointerDown(e.screen({ x: 0, y: 0 }), 0, false, true);
+  e.pointerDown(e.screen({ x: 0, y: 0 }), 0, false, false);
   e.pointerMove(e.screen({ x: 15, y: 10 }), true);
   e.pointerUp();
   await vi.waitFor(() => expect(e.revision).toBe(2));
@@ -728,3 +728,72 @@ test.each(["curve", "control-curve"] as const)(
     expect(e.revision).toBe(2);
   },
 );
+
+test("Alt-click inserts once in Select and ignores empty space and existing anchors", async () => {
+  const e = editor();
+  e.setMode("polyline");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 100, y: 0 });
+  e.finish();
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  const id = e.document.shapes[0].id;
+  e.selected = [];
+  e.pointerDown(e.screen({ x: 50, y: 0 }), 0, false, true);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.mode).toBe("select");
+  expect(e.selected).toEqual([id]);
+  expect(e.document.shapes[0].points).toHaveLength(3);
+  e.pointerDown(e.screen({ x: 50, y: 0 }), 0, false, true);
+  e.pointerDown(e.screen({ x: 50, y: 100 }), 0, false, true);
+  expect(e.gesture).toBeNull();
+  expect(e.revision).toBe(2);
+  expect(e.selected).toEqual([id]);
+});
+
+test("anchor indicator follows Alt eligibility without committing", async () => {
+  const e = editor();
+  e.setMode("polyline");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 100, y: 0 });
+  e.finish();
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  e.pointerMove(e.screen({ x: 50, y: 2 }), false);
+  expect(e.anchorIndicator).toBeNull();
+  e.setAnchorModifier(true);
+  expect(e.anchorIndicator!.x).toBeCloseTo(50, 4);
+  expect(e.anchorIndicator!.y).toBeCloseTo(0);
+  expect(e.revision).toBe(1);
+  e.setAnchorModifier(false);
+  expect(e.anchorIndicator).toBeNull();
+  e.pointerMove(e.screen({ x: 0, y: 0 }), true);
+  expect(e.anchorIndicator).toBeNull();
+  e.pointerMove(e.screen({ x: 50, y: 0 }), true);
+  e.leavePointer();
+  expect(e.anchorIndicator).toBeNull();
+});
+
+test("moving a closed curve seam keeps both endpoints linked", async () => {
+  const e = editor();
+  e.setMode("control-curve");
+  for (const p of [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+    { x: 0, y: 0 },
+  ])
+    e.addPoint(p);
+  e.finish();
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  e.selected = [e.document.shapes[0].id];
+  e.pointerDown(e.screen({ x: 0, y: 0 }), 0, false, false);
+  e.pointerMove(e.screen({ x: 10, y: 10 }), true);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.document.shapes[0].points[0]).toEqual(
+    e.document.shapes[0].points.at(-1),
+  );
+});

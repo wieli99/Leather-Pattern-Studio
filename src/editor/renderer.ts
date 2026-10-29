@@ -211,6 +211,23 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         }
       });
     }
+    const anchorIndicator = editor.anchorIndicator;
+    if (anchorIndicator) {
+      const p = anchorIndicator;
+      ctx.strokeStyle = color("accent");
+      ctx.fillStyle = color("canvas");
+      ctx.lineWidth = 1.5 / z;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6 / z, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p.x - 3 / z, p.y);
+      ctx.lineTo(p.x + 3 / z, p.y);
+      ctx.moveTo(p.x, p.y - 3 / z);
+      ctx.lineTo(p.x, p.y + 3 / z);
+      ctx.stroke();
+    }
     if (construction) handleGuides(construction);
     if (editor.tool === "select" && editor.active.length === 1)
       handleGuides(editor.active[0]);

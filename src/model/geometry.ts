@@ -453,7 +453,7 @@ export function contains(s: Shape, p: Point): boolean {
 }
 // Parametric boundary pieces retain exact circular and elliptical geometry.
 type Curve = { c: Point; u: Point; v: Point; start: number; span: number };
-function boundary(s: Shape): { lines: [Point, Point][]; curves: Curve[] } {
+export function boundary(s: Shape): { lines: [Point, Point][]; curves: Curve[] } {
   if (s.transform) {
     const m = s.transform,
       q = boundary({ ...s, transform: undefined }),
