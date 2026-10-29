@@ -6,6 +6,7 @@ const center = computed(
     () =>
       props.mode.includes("center") ||
       props.mode === "circle" ||
+      props.mode === "polygon" ||
       props.mode === "arc",
   ),
   three = computed(() => props.mode.includes("three"));

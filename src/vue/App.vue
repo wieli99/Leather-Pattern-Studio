@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import TransformToolbox from "./TransformToolbox.vue";
 import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { editor } from "../editor/instance";
@@ -62,6 +63,16 @@ onMounted(() => {
       (e.target as HTMLElement).closest("[role=menu]")
     )
       return;
+    if (
+      e.key === "Tab" &&
+      (editor.measurementFields.length || editor.measurementsVisible)
+    ) {
+      e.preventDefault();
+      document
+        .querySelector<HTMLInputElement>(".construction-measurements input")
+        ?.focus();
+      return;
+    }
     const mod = e.ctrlKey || e.metaKey;
     if (e.code === "Space") {
       e.preventDefault();
@@ -265,6 +276,7 @@ onMounted(() => {
       </nav>
       <div :class="`viewport tool-${e.tool}`">
         <TransformToolbox />
+        <ConstructionMeasurements />
         <button
           class="edge-tab edge-left"
           :aria-label="left ? 'Hide tools' : 'Show tools'"

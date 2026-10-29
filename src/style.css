@@ -962,3 +962,63 @@ footer {
 .transform-inputs input[aria-invalid="true"] {
   border-color: #ed907f;
 }
+
+.construction-measurements {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.construction-measurements label {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  pointer-events: auto;
+  background: var(--canvas, #20252c);
+  color: #ffc58e;
+  padding: 2px 4px;
+  gap: 2px;
+  font-size: 11px;
+}
+.construction-measurements input {
+  width: 64px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
+/* Keep numeric validation and keyboard controls without browser spinner buttons. */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.anchor-toggle {
+  display: inline-flex;
+  align-self: center;
+  flex-shrink: 0;
+  border: 1px solid #454e59;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.anchor-toggle button {
+  padding: 3px 5px;
+  font-size: 11px;
+  line-height: 1.2;
+  border-radius: 0;
+  background: transparent;
+}
+.anchor-toggle button[aria-pressed="true"] {
+  background: #e5ad7921;
+  color: #ffc58e;
+}
+.anchor-toggle button:focus-visible {
+  outline: 2px solid #ffc58e;
+  outline-offset: -2px;
+}

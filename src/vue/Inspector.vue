@@ -45,6 +45,13 @@ const e = useEditor(),
         Math.hypot(matrix.value.c, matrix.value.d),
   ),
   vertices = computed(() => worldPoints(s.value!));
+function isSharp(shape: Shape, index: number) {
+  const handles = shape.handles?.[index];
+  return (
+    !!handles &&
+    [handles.incoming, handles.outgoing].every((v) => v.x === 0 && v.y === 0)
+  );
+}
 const edit = (changes: Partial<Shape>) => {
   if (s.value) {
     const next = { ...s.value, ...changes };
@@ -241,6 +248,27 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     >
       <summary>Vertex coordinates</summary>
       <div v-for="(point, i) in vertices" :key="i" class="field-row">
+        <div
+          v-if="s.kind === 'control-curve' && s.handles"
+          class="anchor-toggle"
+          role="group"
+          :aria-label="`Vertex ${i + 1} corner type`"
+        >
+          <button
+            type="button"
+            :aria-pressed="isSharp(s, i)"
+            @click="!isSharp(s, i) && editor.makeAnchorSharp(s.id, i)"
+          >
+            Sharp
+          </button>
+          <button
+            type="button"
+            :aria-pressed="!isSharp(s, i)"
+            @click="isSharp(s, i) && editor.toggleAnchorSmooth(s.id, i)"
+          >
+            Smooth
+          </button>
+        </div>
         <Field
           :label="`Vertex ${i + 1} X`"
           :value="point.x"

@@ -38,6 +38,7 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   await expect(x).toHaveValue(String(before + 10));
   // The anchor moved 10 mm (30 pixels); drag its outgoing handle.
   await page.mouse.move(box.x + 230, box.y + 350);
+  await expect(canvas).toHaveCSS("cursor", "move");
   await page.mouse.down();
   await page.keyboard.down("Alt");
   await page.mouse.move(box.x + 250, box.y + 320, { steps: 5 });

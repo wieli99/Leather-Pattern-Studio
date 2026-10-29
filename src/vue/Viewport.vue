@@ -130,6 +130,28 @@ function outside(event: PointerEvent) {
   }
   void saveText();
 }
+function doubleClick(event: MouseEvent) {
+  if (
+    editor.tool === "select" &&
+    !editor.gesture &&
+    !editor.transformTool &&
+    editor.active.length === 1
+  ) {
+    const shape = editor.active[0];
+    if (shape.kind === "control-curve") {
+      const handle = editor.handleAt(editor.world(pixel(event)));
+      if (
+        handle?.kind === "vertex" &&
+        !handle.handleSide &&
+        handle.vertex !== undefined
+      ) {
+        void editor.toggleAnchorSmooth(shape.id, handle.vertex);
+        return;
+      }
+    }
+  }
+  editText(event);
+}
 function editText(event: MouseEvent) {
   const world = editor.world(pixel(event));
   const hit = [...editor.document.shapes].reverse().find((s) => {
@@ -232,7 +254,7 @@ onUnmounted(() => {
     aria-label="Pattern drawing canvas"
     tabindex="0"
     @pointerdown="down"
-    @dblclick="editText"
+    @dblclick="doubleClick"
     @pointermove="
       editor.setMeasurementModifier($event.ctrlKey);
       editor.pointerMove(
@@ -240,7 +262,7 @@ onUnmounted(() => {
         $event.altKey,
         $event.ctrlKey,
         $event.shiftKey,
-      )
+      );
     "
     @pointerup="
       editor.pointerUp(

@@ -1,3 +1,4 @@
+import { sharpAnchor, toggleAnchor } from "../model/sharpAnchor";
 import { insertAnchor } from "../model/insertAnchor";
 import { isCurve, zeroHandles, mirroredHandles } from "../model/curves";
 import type { CurveHandles } from "../generated/CurveHandles";
@@ -620,6 +621,102 @@ export class Controller {
     }
     this.finish([...this.pending, this.pending[0]]);
   }
+  measurementLocks: Record<string, number> = {};
+  get measurementFields() {
+    if (!this.pending.length || this.mode === "select" || this.mode === "text")
+      return [];
+    if (
+      ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
+        this.mode,
+      )
+    )
+      return ["Width", "Height"];
+    if (this.mode === "arc" && this.pending.length === 2) return ["Sweep"];
+    if (
+      ["rectangle-three", "ellipse-center"].includes(this.mode) &&
+      this.pending.length === 2
+    )
+      return ["Height"];
+    return [
+      this.mode === "circle" || this.mode === "polygon" || this.mode === "arc"
+        ? "Radius"
+        : this.mode === "circle-two"
+          ? "Diameter"
+          : this.mode === "ellipse-center"
+            ? "Width"
+            : "Length",
+      "Angle",
+    ];
+  }
+  measurementValue(key: string) {
+    const a = this.pending.at(-1)!;
+    const dx = this.cursor.x - a.x,
+      dy = this.cursor.y - a.y;
+    if (key === "Sweep") return this.arcSweep;
+    if (key === "Angle") return (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (this.measurementFields.length === 1) {
+      const [a, b] = this.pending;
+      const length = distance(a, b);
+      return (
+        (((this.cursor.x - a.x) * -(b.y - a.y) +
+          (this.cursor.y - a.y) * (b.x - a.x)) /
+          length) *
+        (this.mode === "ellipse-center" ? 2 : 1)
+      );
+    }
+    const factor = this.mode === "rectangle-center" ? 2 : 1;
+    return key === "Width" && this.mode !== "ellipse-center"
+      ? Math.abs(dx) * factor
+      : key === "Height"
+        ? Math.abs(dy) * factor
+        : Math.hypot(dx, dy) * (this.mode === "ellipse-center" ? 2 : 1);
+  }
+  constrainMeasurement(p: Point): Point {
+    if (!this.pending.length) return p;
+    const locks = this.measurementLocks;
+    const a = this.pending.at(-1)!;
+    if (this.measurementFields.includes("Sweep")) {
+      if (locks.Sweep !== undefined) this.arcSweep = locks.Sweep;
+      return p;
+    }
+    if (this.measurementFields.length === 1) {
+      if (locks.Height === undefined) return p;
+      const [a, b] = this.pending,
+        len = distance(a, b);
+      const h = locks.Height / (this.mode === "ellipse-center" ? 2 : 1);
+      return {
+        x: a.x - ((b.y - a.y) / len) * h,
+        y: a.y + ((b.x - a.x) / len) * h,
+      };
+    }
+    let dx = p.x - a.x,
+      dy = p.y - a.y;
+    if (this.measurementFields.includes("Height")) {
+      const factor = this.mode === "rectangle-center" ? 2 : 1;
+      if (locks.Width !== undefined)
+        dx = (Math.sign((locks._x ?? dx) || 1) * locks.Width) / factor;
+      if (locks.Height !== undefined)
+        dy = (Math.sign((locks._y ?? dy) || 1) * locks.Height) / factor;
+    } else {
+      const key = this.measurementFields[0];
+      const r =
+        locks[key] !== undefined
+          ? locks[key] / (this.mode === "ellipse-center" ? 2 : 1)
+          : Math.hypot(dx, dy);
+      const angle =
+        locks.Angle !== undefined
+          ? (locks.Angle * Math.PI) / 180
+          : Math.atan2(dy, dx);
+      dx = r * Math.cos(angle);
+      dy = r * Math.sin(angle);
+    }
+    return { x: a.x + dx, y: a.y + dy };
+  }
+  confirmMeasurement() {
+    if (Object.values(this.measurementLocks).some((v) => !Number.isFinite(v)))
+      return;
+    this.addPoint(this.constrainMeasurement(this.cursor));
+  }
   drawingPoint(raw: Point, alt: boolean, shift: boolean): Point {
     if (this.mode === "polyline" && shift && this.pending.length) {
       const a = this.pending[this.pending.length - 1],
@@ -642,6 +739,8 @@ export class Controller {
     return this.snap(raw, alt);
   }
   addPoint(p: Point) {
+    p = this.constrainMeasurement(p);
+    this.measurementLocks = {};
     if (isCurveMode(this.mode)) {
       if (!this.pending.length || distance(p, this.pending.at(-1)!) > 1e-9) {
         this.pending.push(p);
@@ -674,7 +773,7 @@ export class Controller {
     try {
       if (isCurveMode(this.mode)) {
         const d = this.drawingDown;
-        const p = d?.point ?? this.cursor;
+        const p = d?.point ?? this.constrainMeasurement(this.cursor);
         const points = this.pending.length ? [...this.pending, p] : [p, p];
         const shape = construct(this.mode, points);
         if (this.mode === "control-curve") {
@@ -690,7 +789,7 @@ export class Controller {
       }
       return construct(
         this.mode,
-        [...this.pending, this.cursor],
+        [...this.pending, this.constrainMeasurement(this.cursor)],
         this.mode === "arc" ? this.arcSweep : undefined,
         this.polygonSides,
       );
@@ -736,6 +835,7 @@ export class Controller {
       await this.commit(next);
   }
   cancel() {
+    this.measurementLocks = {};
     this.transformGeneration++;
     this.transformDraft = null;
     this.transformError = "";
@@ -850,18 +950,8 @@ export class Controller {
         if (s.handles)
           for (const side of ["incoming", "outgoing"] as const) {
             const v = s.handles[vertex][side];
-            // Collapsed handles sit slightly away from the anchor for discoverable editing.
-            const q =
-              Math.hypot(v.x, v.y) < 1e-9
-                ? {
-                    x:
-                      p.x +
-                      (side === "incoming" ? -20 : 20) /
-                        this.zoom /
-                        Math.hypot(m.a, m.b),
-                    y: p.y,
-                  }
-                : { x: p.x + v.x, y: p.y + v.y };
+            if (Math.hypot(v.x, v.y) < 1e-9) continue;
+            const q = { x: p.x + v.x, y: p.y + v.y };
             curveHandles.push({
               kind: "vertex",
               point: applyMatrix(m, q),
@@ -1088,6 +1178,8 @@ export class Controller {
         Math.min(360, this.arcSweep + (delta * 180) / Math.PI),
       );
       this.arcLast = theta;
+      if (this.measurementLocks.Sweep !== undefined)
+        this.arcSweep = this.measurementLocks.Sweep;
     }
     if (
       this.drawingDown?.initial &&
@@ -1417,6 +1509,20 @@ export class Controller {
     } catch (e) {
       this.fail(e);
     }
+  }
+  async toggleAnchorSmooth(id: string, index: number) {
+    if (this.gesture || this.transformTool || this.busy) return;
+    const shape = this.document.shapes.find((s) => s.id === id);
+    if (!shape) return;
+    const next = toggleAnchor(shape, index);
+    if (next !== shape) await this.edit(id, { handles: next.handles });
+  }
+  async makeAnchorSharp(id: string, index: number) {
+    if (this.gesture || this.transformTool || this.busy) return;
+    const shape = this.document.shapes.find((s) => s.id === id);
+    if (!shape) return;
+    const next = sharpAnchor(shape, index);
+    if (next !== shape) await this.edit(id, { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
     const source =

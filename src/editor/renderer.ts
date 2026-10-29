@@ -1,4 +1,3 @@
-import { edgeMeasurements, formatEdgeLength } from "../model/edgeMeasurements";
 import { isCurve, cubicSegments } from "../model/curves";
 import { snappedAxes } from "./snapping";
 import type { Controller } from "./controller";
@@ -179,28 +178,6 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.forEach((s) => shape(s));
-    for (const s of (editor.preview ?? editor.document).shapes) {
-      if (!editor.measurementsVisible || !editor.selected.includes(s.id)) continue;
-      for (const edge of edgeMeasurements(s)) {
-        ctx.save();
-        ctx.translate(edge.point.x, edge.point.y);
-        let angle = edge.angle;
-        if (angle > Math.PI / 2) angle -= Math.PI;
-        if (angle < -Math.PI / 2) angle += Math.PI;
-        ctx.rotate(angle);
-        ctx.scale(1 / z, 1 / z);
-        ctx.font = "11px system-ui";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        const text = formatEdgeLength(edge.length);
-        const width = ctx.measureText(text).width;
-        ctx.fillStyle = color("canvas");
-        ctx.fillRect(-width / 2 - 3, -23, width + 6, 16);
-        ctx.fillStyle = color("accent");
-        ctx.fillText(text, 0, -8);
-        ctx.restore();
-      }
-    }
     const construction = editor.constructionPreview;
     if (construction) shape(construction, true);
     else if (editor.mode === "arc-three" && editor.pending.length)
@@ -223,6 +200,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       s.points.forEach((p, i) => {
         const a = applyMatrix(m, p);
         for (const v of [s.handles![i].incoming, s.handles![i].outgoing]) {
+          if (Math.hypot(v.x, v.y) < 1e-9) continue;
           const b = applyMatrix(m, { x: p.x + v.x, y: p.y + v.y });
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);

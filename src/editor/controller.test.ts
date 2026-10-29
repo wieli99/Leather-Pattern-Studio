@@ -653,6 +653,10 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
   e.setMode("control-curve");
   e.addPoint({ x: 0, y: 0 });
   e.addPoint({ x: 100, y: 0 });
+  e.pendingHandles[0] = {
+    incoming: { x: -10, y: 0 },
+    outgoing: { x: 10, y: 0 },
+  };
   e.finish();
   await vi.waitFor(() => expect(e.revision).toBe(1));
   e.setMode("select");
