@@ -16,14 +16,19 @@ import {
 } from "../model/project";
 import {
   anchors,
+  stretchShape,
+  shapeMatrix,
+  applyMatrix,
+  inverse,
+  localCenter,
   bounds,
   center,
   distance,
+  distanceToSegment,
   hitTest,
   moveShape,
   rotatePoint,
   rotateShape,
-  scaleShape,
   worldPoints,
   contains,
   intersectsBox,
@@ -41,6 +46,11 @@ export type Gesture = {
   original: Doc;
   selection: string[];
   pivot: Point;
+  snapAnchor?: Point;
+  displacement?: Point;
+  axis?: "x" | "y";
+  orientation?: number;
+  baseValues?: { x: number; y: number; angle: number; sx: number; sy: number };
   vertex?: number;
   pan?: Point;
   crossing?: boolean;
@@ -60,6 +70,128 @@ export class Controller {
   busy = false;
   dirty = false;
   savedBaseline = JSON.stringify(emptyDocument());
+  transformTool: "move" | "rotate" | "scale" | null = null;
+  transformOriginal: Doc | null = null;
+  transformPivot: Point = { x: 0, y: 0 };
+  placingPivot = false;
+  transformOrientation: "world" | "local" = "local";
+  transformAxis: "x" | "y" | undefined;
+  transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
+  transformError = "";
+  transformGeneration = 0;
+  transformDraft: Doc | null = null;
+  get transformAngle() {
+    const s = (this.transformOriginal?.shapes.filter((s) =>
+      this.selected.includes(s.id),
+    ) ?? this.active)[0];
+    if (this.transformOrientation !== "local" || this.active.length !== 1)
+      return 0;
+    const m = shapeMatrix(s);
+    return (Math.atan2(m.b, m.a) * 180) / Math.PI;
+  }
+  get gizmoAngle() {
+    if (this.transformOrientation !== "local" || this.active.length !== 1)
+      return 0;
+    const m = shapeMatrix(this.active[0]);
+    return (Math.atan2(m.b, m.a) * 180) / Math.PI;
+  }
+  pauseGesture() {
+    if (this.transformTool) {
+      this.gesture = null;
+      this.previewId++;
+      this.notify();
+    } else this.cancel();
+  }
+  get transformValid() {
+    if (!this.preview) return !this.transformError;
+    try {
+      parseProject(JSON.stringify(this.preview));
+      return !this.transformError;
+    } catch {
+      return false;
+    }
+  }
+  rebaseTransform() {
+    if (this.transformTool && this.preview && !this.transformError)
+      this.transformOriginal = this.preview;
+    this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
+  }
+  setPivot(point: Point) {
+    this.rebaseTransform();
+    this.transformPivot = point;
+    this.placingPivot = false;
+    this.notify();
+  }
+  setOrientation(value: "world" | "local") {
+    this.rebaseTransform();
+    this.transformOrientation = value;
+    this.preferences();
+    this.notify();
+  }
+  resetPivot() {
+    this.rebaseTransform();
+    const b = this.selectionBounds;
+    this.transformPivot = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    this.notify();
+  }
+  setTransformValues(values: Partial<typeof this.transformValues>) {
+    if (!this.transformOriginal) return;
+    const previous = { ...this.transformValues };
+    this.transformValues = { ...this.transformValues, ...values };
+    const v = this.transformValues,
+      p = this.transformPivot;
+    if (
+      ![v.x, v.y, v.angle, v.sx, v.sy].every(Number.isFinite) ||
+      v.sx <= 0 ||
+      v.sy <= 0
+    ) {
+      this.transformError = "Enter finite values and positive scale factors.";
+      this.notify();
+      return;
+    }
+    const t = (this.transformAngle * Math.PI) / 180;
+    if (
+      this.transformTool === "move" &&
+      Number.isFinite(previous.x) &&
+      Number.isFinite(previous.y)
+    ) {
+      const dx = v.x - previous.x,
+        dy = v.y - previous.y;
+      this.transformPivot = {
+        x: this.transformPivot.x + dx * Math.cos(t) - dy * Math.sin(t),
+        y: this.transformPivot.y + dx * Math.sin(t) + dy * Math.cos(t),
+      };
+    }
+    const next = {
+      ...this.transformOriginal,
+      shapes: this.transformOriginal.shapes.map((s) =>
+        !this.selected.includes(s.id)
+          ? s
+          : this.transformTool === "move"
+            ? moveShape(
+                s,
+                v.x * Math.cos(t) - v.y * Math.sin(t),
+                v.x * Math.sin(t) + v.y * Math.cos(t),
+              )
+            : this.transformTool === "rotate"
+              ? rotateShape(s, v.angle, p)
+              : stretchShape(s, v.sx, v.sy, p, this.transformAngle),
+      ),
+    };
+    this.updateTransformPreview(next);
+  }
+  updateTransformPreview(next: Doc) {
+    this.transformDraft = next;
+    try {
+      parseProject(JSON.stringify(next));
+      this.transformError = "";
+      this.preview = next;
+      void this.validatePreview(next);
+    } catch (e) {
+      this.transformError = String(e);
+    }
+    this.notify();
+  }
   tool: Tool = "select";
   mode: Mode = "select";
   lastRectangle: Mode = "rectangle";
@@ -107,6 +239,8 @@ export class Controller {
       const p = JSON.parse(localStorage.getItem("leather-ui") ?? "{}");
       for (const key of ["grid", "objects", "rulers"] as const)
         if (typeof p[key] === "boolean") this[key] = p[key];
+      if (["world", "local"].includes(p.transformOrientation))
+        this.transformOrientation = p.transformOrientation;
       if (Number.isFinite(p.gridSize) && p.gridSize > 0)
         this.gridSize = p.gridSize;
       if (["dots", "lines"].includes(p.gridStyle)) this.gridStyle = p.gridStyle;
@@ -119,6 +253,7 @@ export class Controller {
       localStorage.setItem(
         "leather-ui",
         JSON.stringify({
+          transformOrientation: this.transformOrientation,
           grid: this.grid,
           objects: this.objects,
           gridSize: this.gridSize,
@@ -141,6 +276,8 @@ export class Controller {
   private dirtyBaseline = "";
   uiSnapshot = () =>
     [
+      this.transformTool,
+      this.transformTool ? this.version : 0,
       this.revision,
       this.ready,
       this.busy,
@@ -163,7 +300,7 @@ export class Controller {
   cursorSnapshot = () =>
     `${this.cursor.x.toFixed(1)}, ${this.cursor.y.toFixed(1)} mm|${this.message}|${this.zoom}`;
   hoverSnapshot = () =>
-    `${this.tool}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
+    `${this.tool}|${this.placingPivot}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
   leavePointer() {
     this.pointerInside = false;
     this.snapTarget = null;
@@ -252,6 +389,7 @@ export class Controller {
     }, 300);
   }
   async transact(operation: string, document?: Doc) {
+    if (this.transformTool) this.cancel();
     const run = async () => {
       if (!this.ready) return;
       this.busy = true;
@@ -293,22 +431,34 @@ export class Controller {
     if (this.previewRunning) return;
     this.previewRunning = true;
     try {
-      while (this.queuedPreview && this.gesture) {
+      while (this.queuedPreview && (this.gesture || this.transformTool)) {
         const next = this.queuedPreview;
         this.queuedPreview = null;
         const id = ++this.previewId;
+        const generation = this.transformGeneration;
         try {
           const s = await this.core.request("preview", this.revision, next);
           if (
             id === this.previewId &&
             s.revision === this.revision &&
-            this.gesture &&
+            (this.gesture || this.transformTool) &&
+            generation === this.transformGeneration &&
             !this.queuedPreview
           ) {
             this.preview = s.document;
             this.notify();
           }
-        } catch {}
+        } catch (e) {
+          if (
+            id === this.previewId &&
+            !this.queuedPreview &&
+            generation === this.transformGeneration &&
+            this.transformTool
+          ) {
+            this.transformError = String(e);
+            this.notify();
+          }
+        }
       }
     } finally {
       this.previewRunning = false;
@@ -443,6 +593,7 @@ export class Controller {
     }
   }
   beginProperty() {
+    if (this.transformTool) return;
     if (!this.propertySession)
       this.propertySession = {
         original: this.pendingDocument ?? this.document,
@@ -459,7 +610,34 @@ export class Controller {
     else this.notify();
   }
 
+  async activateTransform(tool: "move" | "rotate" | "scale") {
+    if (!this.ready || this.busy || !this.selected.length) return;
+    if (this.propertySession) await this.finishProperty();
+    this.cancel();
+    this.tool = "select";
+    this.mode = "select";
+    this.transformTool = tool;
+    this.transformOriginal = this.document;
+    this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
+    this.resetPivot();
+    this.notify();
+  }
+  async applyTransform() {
+    if (!this.transformValid || !this.transformTool || this.busy) return;
+    const next = this.transformDraft ?? this.preview;
+    this.cancel();
+    if (next && fingerprint(next) !== fingerprint(this.document))
+      await this.commit(next);
+  }
   cancel() {
+    this.transformGeneration++;
+    this.transformDraft = null;
+    this.transformError = "";
+    this.placingPivot = false;
+    this.transformAxis = undefined;
+    this.hoverHandle = "";
+    this.transformTool = null;
+    this.transformOriginal = null;
     this.drawingDown = null;
     this.arcSweep = 0;
     this.arcLast = undefined;
@@ -545,30 +723,32 @@ export class Controller {
     return bounds(this.active);
   }
   handles(): {
-    kind: "scale" | "rotate" | "vertex";
+    kind: "move" | "scale" | "rotate" | "vertex";
     point: Point;
     vertex?: number;
+    axis?: "x" | "y";
   }[] {
-    if (!this.selected.length) return [];
-    const b = this.selectionBounds;
-    const result: {
-      kind: "scale" | "rotate" | "vertex";
-      point: Point;
-      vertex?: number;
-    }[] = [
-      {
-        kind: "scale",
-        point: {
-          x: b.x + b.width + 12 / this.zoom,
-          y: b.y + b.height + 12 / this.zoom,
-        },
-      },
-      {
-        kind: "rotate",
-        point: { x: b.x + b.width / 2, y: b.y - 28 / this.zoom },
-      },
-    ];
+    if (!this.selected.length || !this.transformTool) return [];
+    const p = this.transformPivot,
+      t = (this.gizmoAngle * Math.PI) / 180,
+      z = this.zoom;
+    const point = (x: number, y: number) => ({
+      x: p.x + (x * Math.cos(t) - y * Math.sin(t)) / z,
+      y: p.y + (x * Math.sin(t) + y * Math.cos(t)) / z,
+    });
+    const result: ReturnType<Controller["handles"]> =
+      this.transformTool === "rotate"
+        ? [{ kind: "rotate", point: point(60, 0) }]
+        : [
+            { kind: this.transformTool, point: point(72, 0), axis: "x" },
+            { kind: this.transformTool, point: point(0, -72), axis: "y" },
+            {
+              kind: this.transformTool,
+              point: this.transformTool === "move" ? p : point(42, -42),
+            },
+          ];
     if (
+      this.transformTool === "move" &&
       this.active.length === 1 &&
       ["line", "polyline"].includes(this.active[0].kind)
     )
@@ -576,6 +756,21 @@ export class Controller {
         result.push({ kind: "vertex", point, vertex }),
       );
     return result;
+  }
+  handleAt(raw: Point) {
+    if (
+      this.transformTool === "rotate" &&
+      Math.abs(distance(raw, this.transformPivot) * this.zoom - 60) < 9
+    )
+      return this.handles()[0];
+    const handles = this.handles();
+    const direct = handles.find((h) => distance(h.point, raw) < 10 / this.zoom);
+    if (direct) return direct;
+    return handles.find(
+      (h) =>
+        h.axis &&
+        distanceToSegment(raw, this.transformPivot, h.point) < 8 / this.zoom,
+    );
   }
   pointerDown(
     pixel: Point,
@@ -602,7 +797,15 @@ export class Controller {
       this.finish();
       return;
     }
+    if (button === 2 && this.transformTool) {
+      void this.applyTransform();
+      return;
+    }
     if (button !== 0) return;
+    if (this.placingPivot) {
+      this.setPivot(this.snap(raw, alt));
+      return;
+    }
     if (this.tool !== "select") {
       this.drawingDown = {
         pixel,
@@ -612,44 +815,49 @@ export class Controller {
       this.notify();
       return;
     }
-    const handle = this.handles().find(
-      (h) => distance(h.point, raw) < 9 / this.zoom,
-    );
+    const handle = this.handleAt(raw);
     if (handle) {
-      const b = this.selectionBounds;
       this.gesture = {
         kind: handle.kind,
         start: raw,
         end: raw,
-        original: this.document,
+        original: this.preview ?? this.document,
         selection: [...this.selected],
-        pivot:
-          handle.kind === "scale"
-            ? { x: b.x, y: b.y }
-            : { x: b.x + b.width / 2, y: b.y + b.height / 2 },
+        pivot: { ...this.transformPivot },
+        axis: handle.axis ?? this.transformAxis,
+        orientation: this.transformAngle,
+        baseValues: { ...this.transformValues },
         vertex: handle.vertex,
       };
       return;
     }
-    const hit = [...this.document.shapes]
+    const hit = [...(this.preview ?? this.document).shapes]
       .reverse()
       .find(
         (s) => hitTest(s, raw, 8 / this.zoom) || (ctrl && contains(s, raw)),
       );
+    if (
+      this.transformTool &&
+      (shift || !hit || !this.selected.includes(hit.id))
+    )
+      return;
     if (hit) {
       if (shift) {
         this.selected = this.selected.includes(hit.id)
           ? this.selected.filter((id) => id !== hit.id)
           : [...this.selected, hit.id];
       } else if (!this.selected.includes(hit.id)) this.selected = [hit.id];
-      if (this.selected.includes(hit.id))
+      if (this.transformTool === "move" && this.selected.includes(hit.id))
         this.gesture = {
           kind: "move",
           start: raw,
           end: raw,
-          original: this.document,
+          original: this.preview ?? this.document,
           selection: [...this.selected],
           pivot: raw,
+          axis: this.transformAxis,
+          orientation: this.transformAngle,
+          baseValues: { ...this.transformValues },
         };
     } else {
       const selection = shift ? [...this.selected] : [];
@@ -671,7 +879,10 @@ export class Controller {
     const raw = this.world(pixel),
       g = this.gesture;
     this.cursor =
-      g?.kind === "pan" || g?.kind === "rotate" || g?.kind === "marquee"
+      g?.kind === "pan" ||
+      g?.kind === "rotate" ||
+      g?.kind === "move" ||
+      g?.kind === "marquee"
         ? raw
         : this.drawingPoint(raw, alt, shift);
     if (this.mode === "arc" && this.pending.length === 2) {
@@ -719,23 +930,57 @@ export class Controller {
           best = Infinity,
           adjust = { x: 0, y: 0 },
           target: Point | null = null;
+        let source: Point | undefined;
         let targetKind: SnapKind | null = null;
         for (const s of g.original.shapes.filter(selected))
-          for (const a of anchors(s)) {
+          for (const a of g.snapAnchor ? [] : anchors(s)) {
             const p = { x: a.x + dx, y: a.y + dy },
               q = this.snap(p, alt),
               d = distance(p, q);
             if (this.snapTarget && d < best) {
               best = d;
+              source = a;
               adjust = { x: q.x - p.x, y: q.y - p.y };
               target = this.snapTarget;
               targetKind = this.snapKind;
             }
           }
+        if (source) g.snapAnchor = source;
+        if (g.snapAnchor && !target) {
+          const p = { x: g.snapAnchor.x + dx, y: g.snapAnchor.y + dy },
+            q = this.snap(p, alt);
+          adjust = { x: q.x - p.x, y: q.y - p.y };
+          target = this.snapTarget;
+          targetKind = this.snapKind;
+        }
         dx += adjust.x;
         dy += adjust.y;
-        this.snapTarget = target;
-        this.snapKind = targetKind;
+        if (g.axis) {
+          const t = ((g.orientation ?? 0) * Math.PI) / 180,
+            u =
+              g.axis === "x"
+                ? { x: Math.cos(t), y: Math.sin(t) }
+                : { x: -Math.sin(t), y: Math.cos(t) },
+            d = dx * u.x + dy * u.y;
+          dx = d * u.x;
+          dy = d * u.y;
+        }
+        g.displacement = { x: dx, y: dy };
+        const orientation = ((g.orientation ?? 0) * Math.PI) / 180;
+        this.transformValues = {
+          ...this.transformValues,
+          x:
+            (g.baseValues?.x ?? 0) +
+            dx * Math.cos(orientation) +
+            dy * Math.sin(orientation),
+          y:
+            (g.baseValues?.y ?? 0) -
+            dx * Math.sin(orientation) +
+            dy * Math.cos(orientation),
+        };
+        this.message = `Move ${this.transformValues.x.toFixed(1)}, ${this.transformValues.y.toFixed(1)} mm`;
+        this.snapTarget = g.axis ? null : target;
+        this.snapKind = g.axis ? null : targetKind;
         document = {
           ...g.original,
           shapes: g.original.shapes.map((s) =>
@@ -744,14 +989,31 @@ export class Controller {
         };
       }
       if (g.kind === "scale") {
+        const t = ((g.orientation ?? 0) * Math.PI) / 180;
+        const component = (p: Point, axis: "x" | "y") => {
+          const x = p.x - g.pivot.x,
+            y = p.y - g.pivot.y;
+          return axis === "x"
+            ? x * Math.cos(t) + y * Math.sin(t)
+            : -x * Math.sin(t) + y * Math.cos(t);
+        };
         const factor = (g.factor = Math.max(
           0.001,
-          distance(g.end, g.pivot) / (distance(g.start, g.pivot) || 1),
+          g.axis
+            ? component(raw, g.axis) / (component(g.start, g.axis) || 1)
+            : distance(raw, g.pivot) / (distance(g.start, g.pivot) || 1),
         ));
+        const sx = g.axis === "y" ? 1 : factor,
+          sy = g.axis === "x" ? 1 : factor;
+        this.transformValues = {
+          ...this.transformValues,
+          sx: sx * (g.baseValues?.sx ?? 1),
+          sy: sy * (g.baseValues?.sy ?? 1),
+        };
         document = {
           ...g.original,
           shapes: g.original.shapes.map((s) =>
-            selected(s) ? scaleShape(s, factor, g.pivot) : s,
+            selected(s) ? stretchShape(s, sx, sy, g.pivot, g.orientation) : s,
           ),
         };
       }
@@ -768,6 +1030,10 @@ export class Controller {
         const rawAngle = g.angle;
         const step = ctrl ? 10 : shift ? 5 : 1;
         const angle = alt ? rawAngle : Math.round(rawAngle / step) * step;
+        this.transformValues = {
+          ...this.transformValues,
+          angle: angle + (g.baseValues?.angle ?? 0),
+        };
         this.message = `Rotation ${angle.toFixed(1)}°`;
         document = {
           ...g.original,
@@ -778,7 +1044,7 @@ export class Controller {
       }
       if (g.kind === "vertex") {
         const original = g.original.shapes.find((s) => selected(s))!;
-        const local = rotatePoint(g.end, center(original), -original.rotation);
+        const local = applyMatrix(inverse(shapeMatrix(original)), g.end);
         const closed =
           original.points.length > 2 &&
           distance(
@@ -793,15 +1059,18 @@ export class Controller {
             ? local
             : p,
         );
-        const oldCenter = center(original),
+        const oldCenter = localCenter(original),
           newShape = { ...original, points },
-          newCenter = center(newShape),
+          newCenter = localCenter(newShape),
           rotatedNew = rotatePoint(newCenter, oldCenter, original.rotation);
-        const corrected = moveShape(
-          newShape,
-          rotatedNew.x - newCenter.x,
-          rotatedNew.y - newCenter.y,
-        );
+        const corrected = {
+          ...newShape,
+          points: newShape.points.map((p) => ({
+            x: p.x + rotatedNew.x - newCenter.x,
+            y: p.y + rotatedNew.y - newCenter.y,
+          })),
+        };
+
         document = {
           ...g.original,
           shapes: g.original.shapes.map((s) =>
@@ -809,14 +1078,14 @@ export class Controller {
           ),
         };
       }
-      this.preview = document;
-      void this.validatePreview(document);
+      if (this.transformTool) this.updateTransformPreview(document);
+      else {
+        this.preview = document;
+        void this.validatePreview(document);
+      }
     } else {
       this.hoverHandle =
-        this.tool === "select"
-          ? (this.handles().find((h) => distance(h.point, raw) < 9 / this.zoom)
-              ?.kind ?? "")
-          : "";
+        this.tool === "select" ? (this.handleAt(raw)?.kind ?? "") : "";
       this.hover =
         [...this.document.shapes]
           .reverse()
@@ -849,6 +1118,12 @@ export class Controller {
     if (!g) return;
     this.previewId++;
     this.gesture = null;
+    if (g.kind === "move" && this.transformTool) {
+      this.transformPivot = {
+        x: this.transformPivot.x + (g.displacement?.x ?? 0),
+        y: this.transformPivot.y + (g.displacement?.y ?? 0),
+      };
+    }
     if (g.kind === "marquee") {
       const x = Math.min(g.start.x, g.end.x),
         y = Math.min(g.start.y, g.end.y),
@@ -878,7 +1153,7 @@ export class Controller {
       this.notify();
       return;
     }
-    if (this.preview) {
+    if (this.preview && !this.transformTool) {
       const next = this.preview;
       this.preview = null;
       void this.commit(next);
@@ -948,6 +1223,7 @@ export class Controller {
     }
   }
   delete() {
+    this.cancel();
     if (this.selected.length)
       void this.commit({
         ...this.document,
@@ -957,6 +1233,7 @@ export class Controller {
       });
   }
   duplicate() {
+    this.cancel();
     const copies = this.active.map((s) => ({
       ...moveShape(s, 10, 10),
       id: crypto.randomUUID(),
@@ -1033,6 +1310,7 @@ export class Controller {
     }
   }
   async save(saveAs = false) {
+    if (this.transformTool) this.cancel();
     await this.finishProperty();
     await this.transactionQueue;
     try {

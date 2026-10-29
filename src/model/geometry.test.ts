@@ -1,5 +1,6 @@
 import { test, expect } from "vitest";
 import {
+  distance,
   distanceToSegment,
   hitTest,
   rotateShape,
@@ -63,4 +64,88 @@ test("eccentric ellipse hit testing", () => {
   };
   expect(hitTest(s, { x: 100, y: 2 }, 0.1)).toBe(true);
   expect(hitTest(s, { x: 50, y: 2 }, 0.1)).toBe(false);
+});
+
+test("affine curves retain exact extrema, containment and screen-space picking", async () => {
+  const {
+    stretchShape,
+    rotateShape,
+    arcPoint,
+    contains,
+    nearestOutline,
+    hitTest,
+    outlineBounds,
+    center,
+    inverse,
+    shapeMatrix,
+    applyMatrix,
+  } = await import("./geometry");
+  const circle: Shape = {
+    id: "c",
+    name: "c",
+    kind: "circle",
+    points: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ],
+    radius: 0,
+    rotation: 0,
+  };
+  const ellipse = stretchShape(circle, 3, 0.5, { x: 0, y: 0 });
+  expect(bounds([ellipse])).toEqual({ x: -30, y: -5, width: 60, height: 10 });
+  expect(contains(ellipse, { x: 29, y: 0 })).toBe(true);
+  expect(contains(ellipse, { x: 0, y: 6 })).toBe(false);
+  expect(hitTest(ellipse, { x: 30.5, y: 0 }, 0.6)).toBe(true);
+  expect(hitTest(ellipse, { x: 0, y: 5.5 }, 0.4)).toBe(false);
+  const arc = stretchShape({ ...circle, kind: "arc", sweep: 90 }, 3, 0.5, {
+    x: 0,
+    y: 0,
+  });
+  expect(arcPoint(arc, 0.5).x).toBeCloseTo(30 / Math.sqrt(2));
+  expect(arcPoint(arc, 0.5).y).toBeCloseTo(5 / Math.sqrt(2));
+  const rotated = rotateShape(ellipse, 35, { x: 10, y: 20 });
+  const point = arcPoint({ ...rotated, kind: "arc", sweep: 360 }, 0.2);
+  expect(distance(nearestOutline(rotated, point), point)).toBeLessThan(1e-6);
+  const local = applyMatrix(inverse(shapeMatrix(rotated)), point);
+  expect(Math.hypot(local.x, local.y)).toBeCloseTo(10);
+  expect(outlineBounds(rotated).length).toBeGreaterThan(3);
+  expect(center(rotated)).not.toEqual({ x: 0, y: 0 });
+});
+
+test("sheared rounded rectangles and arcs participate in exact bounds and marquee queries", async () => {
+  const {
+    stretchShape,
+    rotateShape,
+    transformShape,
+    contains,
+    nearestOutline,
+    intersectsBox,
+  } = await import("./geometry");
+  const rounded: Shape = {
+    id: "r",
+    name: "r",
+    kind: "rectangle",
+    points: [
+      { x: 0, y: 0 },
+      { x: 40, y: 20 },
+    ],
+    radius: 5,
+    rotation: 40,
+  };
+  const sheared = stretchShape(rounded, 2, 0.5, { x: 0, y: 0 });
+  const c = transformShape(sheared, { a: 1, b: 0, c: 0, d: 1, e: 50, f: 20 });
+  const p = worldPoints(c)[0];
+  const nearest = nearestOutline(c, p);
+  expect(hitTest(c, nearest, 0.01)).toBe(true);
+  expect(
+    intersectsBox(c, {
+      x: nearest.x - 0.1,
+      y: nearest.y - 0.1,
+      width: 0.2,
+      height: 0.2,
+    }),
+  ).toBe(true);
+  const b = bounds([c]);
+  expect(b.width).toBeGreaterThan(50);
+  expect(contains(c, { x: 50 + 2 * 20, y: 20 + 0.5 * 10 })).toBe(true);
 });

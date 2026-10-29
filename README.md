@@ -21,11 +21,13 @@ Runs Rust tests, generated TypeScript contracts, production build, unit tests, a
 - **V/P/R/C**: select, polyline, rectangle variants, and circle/ellipse/arc variants. Repeat R/C to cycle; right-click or hold the tool to open its menu.
 - Click points or drag to draw. Polylines accept more anchors; Enter or right-click finishes, and double-click closes. Refine exact dimensions in Properties.
 - Inspector edits exact dimensions, position, corner radius, rotation, and vertices. Enter or blur accepts a field; Escape cancels the field. Coordinates use millimetres.
-- Select outlines or use the object list. Shift toggles selection; dragging an empty area selects fully enclosed objects. Square handle scales uniformly; round handle rotates. Vertex handles edit lines/polylines.
+- Select outlines or use the object list. Shift toggles selection; dragging an empty area selects fully enclosed objects. Choose Move (G), Rotate (R), or Resize (S) in the floating bottom toolbox before manipulating shapes. Drag the active gizmo or enter numeric values, then Apply/Enter/right-click to commit; Escape cancels the whole preview. Resize supports proportional or independent X/Y factors. Move exposes vertex handles for lines/polylines.
 - Space+drag or middle-drag pans. Scroll pans; Ctrl/Command+scroll zooms at the cursor. **F** fits all; **Shift+F** fits selected objects.
 - **Ctrl/Command+Z**, **Ctrl/Command+Shift+Z**, **Ctrl/Command+D**, and Delete undo, redo, duplicate, and delete. Alt bypasses snapping; Escape cancels an active gesture.
 
 ## Project files and recovery
+
+Projects save as version 5. Per-shape affine transforms preserve exact stretched arcs, rounded corners, and sheared shapes. Versions 1–4 open through migration; older application builds cannot open version-5 files. Inspector dimensions follow transformed local axes; stretched primitive radii are labeled as local dimensions.
 
 Save/Save As use native browser file pickers where supported. Other browsers download a JSON copy; the application reports that a download started rather than claiming a successful disk write. Unsaved work is protected before New/Open and by the browser's navigation prompt. IndexedDB recovery is offered at startup and is separate from a saved project file. Browser storage can be cleared or denied; retain downloaded/saved files.
 

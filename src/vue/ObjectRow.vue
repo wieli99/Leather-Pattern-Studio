@@ -9,6 +9,7 @@ const renaming = ref(false),
   input = ref<HTMLInputElement | null>(null);
 let settled = false;
 async function rename() {
+  if (editor.transformTool) return;
   settled = false;
   draft.value = props.shape.name;
   renaming.value = true;
@@ -25,6 +26,8 @@ function finish(cancel = false) {
     void editor.edit(props.shape.id, { name });
 }
 function select(event: MouseEvent) {
+  if (editor.transformTool) return;
+  editor.cancel();
   editor.selected = event.shiftKey
     ? editor.selected.includes(props.shape.id)
       ? editor.selected.filter((id) => id !== props.shape.id)

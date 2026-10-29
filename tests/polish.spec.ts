@@ -204,10 +204,13 @@ test("Ctrl selects interiors and crossing outlines; transform handles change cur
   await expect(page.locator(".objects button.selected")).toHaveCount(0);
   await canvas.click({ position: { x: 250, y: 250 }, modifiers: ["Control"] });
   await expect(page.locator(".objects button.selected")).toHaveCount(1);
-  await canvas.hover({ position: { x: 255, y: 192 } });
+  await page.getByRole("button", { name: "Rotate", exact: true }).click();
+  await canvas.hover({ position: { x: 315, y: 250 } });
   await expect(canvas).toHaveCSS("cursor", "grab");
-  await canvas.hover({ position: { x: 342, y: 292 } });
+  await page.getByRole("button", { name: "Resize", exact: true }).click();
+  await canvas.hover({ position: { x: 297, y: 208 } });
   await expect(canvas).toHaveCSS("cursor", "nwse-resize");
+  await page.getByRole("button", {name:"Cancel",exact:true}).click();
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + 140, box.y + 200);
   await page.mouse.down();
@@ -221,7 +224,8 @@ test("Ctrl selects interiors and crossing outlines; transform handles change cur
   await page.mouse.up();
   await page.keyboard.up("Control");
   await expect(page.locator(".objects button.selected")).toHaveCount(1);
-  await canvas.hover({ position: { x: 255, y: 192 } });
+  await page.getByRole("button", { name: "Rotate", exact: true }).click();
+  await canvas.hover({ position: { x: 315, y: 250 } });
   await page.mouse.down();
   await page.keyboard.down("Shift");
   await page.mouse.move(box.x + 300, box.y + 200);

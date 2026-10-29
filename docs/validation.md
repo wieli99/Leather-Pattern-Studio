@@ -9,8 +9,8 @@ Bluefin Linux x86_64 host, AMD Ryzen 5 3600X (6 cores / 12 threads). Node 22 and
 ## Coverage
 
 - Rust: document validation, duplicate IDs, degenerate shapes, history, no-op transactions, preview isolation, stale revisions, generated contracts.
-- Unit: migrations from versions 1/2, malformed input, geometry hit testing, rotated bounds/transforms, circle scaling, controller cancellation, numeric geometry rejection, screen-space snapping and cursor-anchored zoom.
-- Browser: all drawing tools, exact dimensions, rounded corners, undo/redo, multi-selection/delete, cancellation, move/scale/rotate/duplicate handles, JSON download/open, malformed-file preservation, recovery, and offline cold reload with Wasm.
+- Unit: migrations from versions 1–4, malformed input, geometry hit testing, rotated bounds/transforms, circle scaling, controller cancellation, numeric geometry rejection, screen-space snapping and cursor-anchored zoom.
+- Browser: all drawing tools, exact dimensions, rounded corners, undo/redo, multi-selection/delete, cancellation, transform tool activation, full-arrow dragging, stable snapping, numeric precision, affine resize/rotate/move previews, cancellation, duplication, JSON download/open, malformed-file preservation, recovery, and offline cold reload with Wasm.
 - Chromium additionally exercises the native save API via a controlled picker/writable stub, including user cancellation. Real OS file dialogs still require manual validation. Firefox/WebKit use the tested download fallback.
 
 ## Performance
@@ -19,4 +19,4 @@ A 1,000-rounded-rectangle document at 1280 × 800, headless Chromium in Podman, 
 
 ## Manual follow-up
 
-Open the running Podman preview on localhost port 5174. Verify mouse/trackpad feel, keyboard focus, native file picker behavior and offline reload in your preferred browser. Recovery uses browser-managed storage and is separate from a project saved to disk. Curves, export, printing and leather tools remain outside the agreed MVP scope.
+Open the running Podman preview on localhost port 5174. Verify mouse/trackpad feel, keyboard focus, native file picker behavior and offline reload in your preferred browser. Recovery uses browser-managed storage and is separate from a project saved to disk. Export, printing and leather tools remain outside the agreed MVP scope.

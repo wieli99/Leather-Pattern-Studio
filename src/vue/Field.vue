@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useEditor } from "./useEditor";
 import { editor } from "../editor/instance";
+const e = useEditor();
 const props = withDefaults(
   defineProps<{
     label: string;
@@ -73,7 +75,7 @@ function key(event: KeyboardEvent) {
     <span>{{ label }}</span>
     <input
       :aria-label="label"
-      :disabled="!editor.ready"
+      :disabled="!e.ready || !!e.transformTool"
       :aria-invalid="invalid"
       :type="typeof value === 'number' ? 'number' : 'text'"
       :min="min"

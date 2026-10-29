@@ -3,6 +3,16 @@ use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
+pub struct Affine {
+    pub a: f64,
+    pub b: f64,
+    pub c: f64,
+    pub d: f64,
+    pub e: f64,
+    pub f: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -29,6 +39,9 @@ pub struct Shape {
     pub rotation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub transform: Option<Affine>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub sweep: Option<f64>,
     #[serde(
         rename = "legacyStitch",
@@ -46,7 +59,7 @@ pub struct Document {
 }
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 4 || self.shapes.len() > 10000 {
+        if self.version != 5 || self.shapes.len() > 10000 {
             return Err("Unsupported or oversized project".into());
         }
         let mut ids = HashSet::new();
@@ -76,6 +89,42 @@ impl Document {
             {
                 return Err("Invalid arc sweep".into());
             }
+            if let Some(m) = &s.transform {
+                let values = [m.a, m.b, m.c, m.d, m.e, m.f];
+                if values.iter().any(|v| !v.is_finite()) || (m.a * m.d - m.b * m.c).abs() < 1e-12 {
+                    return Err("Invalid affine transform".into());
+                }
+                let cx = if matches!(s.kind, Kind::Circle | Kind::Arc) {
+                    s.points[0].x
+                } else {
+                    (s.points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min)
+                        + s.points
+                            .iter()
+                            .map(|p| p.x)
+                            .fold(f64::NEG_INFINITY, f64::max))
+                        / 2.0
+                };
+                let cy = if matches!(s.kind, Kind::Circle | Kind::Arc) {
+                    s.points[0].y
+                } else {
+                    (s.points.iter().map(|p| p.y).fold(f64::INFINITY, f64::min)
+                        + s.points
+                            .iter()
+                            .map(|p| p.y)
+                            .fold(f64::NEG_INFINITY, f64::max))
+                        / 2.0
+                };
+                let radius = s
+                    .points
+                    .iter()
+                    .map(|p| (p.x - cx).hypot(p.y - cy))
+                    .fold(0.0, f64::max);
+                if (m.a * cx + m.c * cy + m.e).abs() + radius * m.a.hypot(m.c) > 1e7
+                    || (m.b * cx + m.d * cy + m.f).abs() + radius * m.b.hypot(m.d) > 1e7
+                {
+                    return Err("Transformed coordinate exceeds limit".into());
+                }
+            }
             let a = &s.points[0];
             let b = s.points.last().unwrap();
             if s.points.iter().all(|p| p == a) {
@@ -104,7 +153,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 4,
+                version: 5,
                 shapes: vec![],
             },
             past: vec![],
@@ -185,12 +234,12 @@ impl Editor {
 mod tests {
     use super::*;
     fn sample() -> String {
-        r#"{"version":4,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
+        r#"{"version":5,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
     }
     #[test]
     fn arc_roundtrip_validation_and_history() {
         let mut e = Editor::new();
-        let arc = r#"{"version":4,"shapes":[{"id":"arc","name":"Arc","kind":"arc","points":[{"x":0,"y":0},{"x":10,"y":0}],"radius":0,"rotation":30,"sweep":-270}]}"#;
+        let arc = r#"{"version":5,"shapes":[{"id":"arc","name":"Arc","kind":"arc","points":[{"x":0,"y":0},{"x":10,"y":0}],"radius":0,"rotation":30,"sweep":-270}]}"#;
         e.execute("commit", arc, 0).unwrap();
         assert_eq!(e.document.shapes[0].sweep, Some(-270.0));
         let encoded = serde_json::to_string(&e.document).unwrap();
@@ -237,9 +286,37 @@ mod tests {
         assert!(d.validate().is_err());
     }
     #[test]
+    fn affine_roundtrip_history_and_validation() {
+        let mut doc: Document = serde_json::from_str(&sample()).unwrap();
+        doc.shapes[0].transform = Some(Affine {
+            a: 2.0,
+            b: 0.3,
+            c: 0.4,
+            d: 0.5,
+            e: 12.0,
+            f: -5.0,
+        });
+        let json = serde_json::to_string(&doc).unwrap();
+        let mut editor = Editor::new();
+        editor.execute("preview", &json, 0).unwrap();
+        assert!(editor.document.shapes.is_empty());
+        editor.execute("commit", &json, 0).unwrap();
+        assert_eq!(editor.document, doc);
+        editor.execute("undo", "", 1).unwrap();
+        editor.execute("redo", "", 2).unwrap();
+        assert_eq!(editor.document, doc);
+        doc.shapes[0].transform.as_mut().unwrap().e = 1e8;
+        assert!(doc.validate().is_err());
+        let m = doc.shapes[0].transform.as_mut().unwrap();
+        m.e = 0.0;
+        m.a = 0.0;
+        m.b = 0.0;
+        assert!(doc.validate().is_err());
+    }
+    #[test]
     fn no_op_has_no_history() {
         let mut e = Editor::new();
-        e.execute("commit", r#"{"version":4,"shapes":[]}"#, 0)
+        e.execute("commit", r#"{"version":5,"shapes":[]}"#, 0)
             .unwrap();
         assert!(e.past.is_empty());
     }

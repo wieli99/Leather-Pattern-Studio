@@ -1,8 +1,78 @@
 import type { Point, Shape } from "./project.ts";
+import type { Affine } from "../generated/Affine";
+export const identity = (): Affine => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+export function applyMatrix(m: Affine, p: Point): Point {
+  return { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f };
+}
+export function multiply(l: Affine, r: Affine): Affine {
+  return {
+    a: l.a * r.a + l.c * r.b,
+    b: l.b * r.a + l.d * r.b,
+    c: l.a * r.c + l.c * r.d,
+    d: l.b * r.c + l.d * r.d,
+    e: l.a * r.e + l.c * r.f + l.e,
+    f: l.b * r.e + l.d * r.f + l.f,
+  };
+}
+export function inverse(m: Affine): Affine {
+  const det = m.a * m.d - m.b * m.c;
+  return {
+    a: m.d / det,
+    b: -m.b / det,
+    c: -m.c / det,
+    d: m.a / det,
+    e: (m.c * m.f - m.d * m.e) / det,
+    f: (m.b * m.e - m.a * m.f) / det,
+  };
+}
+export const transformShape = (s: Shape, m: Affine): Shape => ({
+  ...s,
+  transform: multiply(m, s.transform ?? identity()),
+});
+export const center = (s: Shape): Point =>
+  applyMatrix(s.transform ?? identity(), localCenter(s));
+// Primitive rotation is applied first; the stored affine matrix maps that result to world millimetres.
+export function shapeMatrix(s: Shape): Affine {
+  const c = localCenter(s),
+    t = (s.rotation * Math.PI) / 180,
+    a = Math.cos(t),
+    b = Math.sin(t);
+  return multiply(s.transform ?? identity(), {
+    a,
+    b,
+    c: -b,
+    d: a,
+    e: c.x - a * c.x + b * c.y,
+    f: c.y - b * c.x - a * c.y,
+  });
+}
+export function stretchShape(
+  s: Shape,
+  x: number,
+  y: number,
+  pivot: Point,
+  angle = 0,
+): Shape {
+  if (x === 1 && y === 1) return s;
+  const t = (angle * Math.PI) / 180,
+    c = Math.cos(t),
+    b = Math.sin(t),
+    a = x * c * c + y * b * b,
+    d = x * b * b + y * c * c,
+    k = (x - y) * b * c;
+  return transformShape(s, {
+    a,
+    b: k,
+    c: k,
+    d,
+    e: pivot.x - a * pivot.x - k * pivot.y,
+    f: pivot.y - k * pivot.x - d * pivot.y,
+  });
+}
 export type Bounds = { x: number; y: number; width: number; height: number };
 export const distance = (a: Point, b: Point) =>
   Math.hypot(a.x - b.x, a.y - b.y);
-export function center(s: Shape): Point {
+export function localCenter(s: Shape): Point {
   if (s.kind === "circle" || s.kind === "arc") return s.points[0];
   const xs = s.points.map((p) => p.x),
     ys = s.points.map((p) => p.y);
@@ -21,7 +91,7 @@ export function rotatePoint(p: Point, c: Point, degrees: number): Point {
   };
 }
 export function worldPoints(s: Shape): Point[] {
-  return s.points.map((p) => rotatePoint(p, center(s), s.rotation));
+  return s.points.map((p) => applyMatrix(shapeMatrix(s), p));
 }
 export function bounds(shapes: Shape[]): Bounds {
   const points = shapes.flatMap(outlineBounds);
@@ -45,9 +115,9 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
-  if (s.kind === "arc")
+  if (s.transform || s.kind === "arc")
     return distance(nearestOutline(s, point), point) <= tolerance;
-  const p = rotatePoint(point, center(s), -s.rotation),
+  const p = rotatePoint(point, localCenter(s), -s.rotation),
     a = s.points[0],
     b = s.points[s.points.length - 1];
   if (s.kind === "circle")
@@ -55,7 +125,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
   if (s.kind === "ellipse") {
     const rx = Math.abs(b.x - a.x) / 2,
       ry = Math.abs(b.y - a.y) / 2,
-      c = center(s);
+      c = localCenter(s);
     let best = Infinity;
     // Sample then refine the closest ellipse parameter; robust even for eccentric ellipses.
     let angle = 0;
@@ -87,7 +157,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
     return best <= tolerance;
   }
   if (s.kind === "rectangle") {
-    const c = center(s),
+    const c = localCenter(s),
       r = s.radius,
       qx = Math.abs(p.x - c.x) - Math.abs(b.x - a.x) / 2 + r,
       qy = Math.abs(p.y - c.y) - Math.abs(b.y - a.y) / 2 + r;
@@ -103,23 +173,41 @@ export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
     .slice(1)
     .some((b, i) => distanceToSegment(p, s.points[i], b) <= tolerance);
 }
-export const moveShape = (s: Shape, dx: number, dy: number): Shape => ({
-  ...s,
-  points: s.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
-});
+export const moveShape = (s: Shape, dx: number, dy: number): Shape =>
+  s.transform
+    ? transformShape(s, { ...identity(), e: dx, f: dy })
+    : {
+        ...s,
+        points: s.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+      };
 export function rotateShape(
   s: Shape,
   degrees: number,
   pivot = center(s),
 ): Shape {
-  const next = rotatePoint(center(s), pivot, degrees),
-    old = center(s);
+  if (degrees === 0) return s;
+  if (s.transform) {
+    const t = (degrees * Math.PI) / 180,
+      a = Math.cos(t),
+      b = Math.sin(t);
+    return transformShape(s, {
+      a,
+      b,
+      c: -b,
+      d: a,
+      e: pivot.x - a * pivot.x + b * pivot.y,
+      f: pivot.y - b * pivot.x - a * pivot.y,
+    });
+  }
+  const next = rotatePoint(localCenter(s), pivot, degrees),
+    old = localCenter(s);
   return {
     ...moveShape(s, next.x - old.x, next.y - old.y),
     rotation: s.rotation + degrees,
   };
 }
 export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
+  if (s.transform) return stretchShape(s, factor, factor, pivot);
   return {
     ...s,
     points: s.points.map((p) => ({
@@ -130,12 +218,16 @@ export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
   };
 }
 export function anchors(s: Shape): Point[] {
+  if (s.transform)
+    return anchors({ ...s, transform: undefined }).map((p) =>
+      applyMatrix(s.transform!, p),
+    );
   if (s.kind === "arc")
-    return [center(s), arcPoint(s, 0), arcPoint(s, 0.5), arcPoint(s, 1)];
+    return [localCenter(s), arcPoint(s, 0), arcPoint(s, 0.5), arcPoint(s, 1)];
   const pts = worldPoints(s),
     a = s.points[0],
     b = s.points[s.points.length - 1],
-    c = center(s);
+    c = localCenter(s);
   if (s.kind === "circle") {
     const r = distance(a, b);
     return [
@@ -149,7 +241,7 @@ export function anchors(s: Shape): Point[] {
   if (s.kind === "rectangle" && s.radius > 0)
     return [
       c,
-      ...curves(s).lines.flat(),
+      ...boundary(s).lines.flat(),
       ...[
         { x: a.x, y: c.y },
         { x: b.x, y: c.y },
@@ -191,6 +283,11 @@ export function anchors(s: Shape): Point[] {
 }
 
 export function arcPoint(s: Shape, t: number): Point {
+  if (s.transform)
+    return applyMatrix(
+      s.transform,
+      arcPoint({ ...s, transform: undefined }, t),
+    );
   const c = s.points[0],
     start = worldPoints(s)[1],
     angle =
@@ -200,6 +297,11 @@ export function arcPoint(s: Shape, t: number): Point {
   return { x: c.x + r * Math.cos(angle), y: c.y + r * Math.sin(angle) };
 }
 export function onArc(s: Shape, p: Point): boolean {
+  if (s.transform)
+    return onArc(
+      { ...s, transform: undefined },
+      applyMatrix(inverse(s.transform), p),
+    );
   const c = s.points[0],
     a = arcPoint(s, 0),
     span = s.sweep ?? 0;
@@ -211,10 +313,15 @@ export function onArc(s: Shape, p: Point): boolean {
   return directed <= Math.abs(span) + 1e-8;
 }
 export function contains(s: Shape, p: Point): boolean {
-  const q = rotatePoint(p, center(s), -s.rotation),
+  if (s.transform)
+    return contains(
+      { ...s, transform: undefined },
+      applyMatrix(inverse(s.transform), p),
+    );
+  const q = rotatePoint(p, localCenter(s), -s.rotation),
     a = s.points[0],
     b = s.points[1],
-    c = center(s);
+    c = localCenter(s);
   if (s.kind === "circle") return distance(q, a) <= distance(a, b);
   if (s.kind === "ellipse")
     return (
@@ -252,10 +359,27 @@ export function contains(s: Shape, p: Point): boolean {
 }
 // Parametric boundary pieces retain exact circular and elliptical geometry.
 type Curve = { c: Point; u: Point; v: Point; start: number; span: number };
-function curves(s: Shape): { lines: [Point, Point][]; curves: Curve[] } {
+function boundary(s: Shape): { lines: [Point, Point][]; curves: Curve[] } {
+  if (s.transform) {
+    const m = s.transform,
+      q = boundary({ ...s, transform: undefined }),
+      vector = (p: Point) => ({
+        x: m.a * p.x + m.c * p.y,
+        y: m.b * p.x + m.d * p.y,
+      });
+    return {
+      lines: q.lines.map(([a, b]) => [applyMatrix(m, a), applyMatrix(m, b)]),
+      curves: q.curves.map((c) => ({
+        ...c,
+        c: applyMatrix(m, c.c),
+        u: vector(c.u),
+        v: vector(c.v),
+      })),
+    };
+  }
   const a = s.points[0],
     b = s.points[s.points.length - 1],
-    c = center(s),
+    c = localCenter(s),
     r = s.radius,
     lines: [Point, Point][] = [],
     curves: Curve[] = [];
@@ -324,7 +448,7 @@ const within = (q: Curve, t: number) =>
     (Math.PI * 2) <=
   Math.abs(q.span) + 1e-9;
 export function outlineBounds(s: Shape): Point[] {
-  const q = curves(s);
+  const q = boundary(s);
   return [
     ...q.lines.flat(),
     ...q.curves.flatMap((c) =>
@@ -339,7 +463,7 @@ export function outlineBounds(s: Shape): Point[] {
   ];
 }
 export function nearestOutline(s: Shape, p: Point): Point {
-  const q = curves(s);
+  const q = boundary(s);
   let best: Point = s.points[0],
     d = Infinity;
   const consider = (v: Point) => {
@@ -398,7 +522,7 @@ export function intersectsBox(s: Shape, b: Bounds): boolean {
     p.x <= b.x + b.width + 1e-9 &&
     p.y >= b.y - 1e-9 &&
     p.y <= b.y + b.height + 1e-9;
-  const q = curves(s);
+  const q = boundary(s);
   for (const [a, c] of q.lines) {
     if (inside(a) || inside(c)) return true;
     for (const [axis, value] of [

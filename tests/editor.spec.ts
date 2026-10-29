@@ -151,30 +151,35 @@ test("move, cancel, scale, rotate and duplicate through the viewport", async ({
   };
   const beforeX = await value("Position X");
   let g = await geometry();
-  await page.mouse.move(g.x - g.w / 2, g.y);
-  await page.mouse.down();
-  await page.mouse.move(g.x - g.w / 2 + 60, g.y + 30);
-  await page.keyboard.press("Escape");
-  await page.mouse.up();
+  const drag = async (x: number, y: number, dx: number, dy: number) => {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 5 });
+    await page.mouse.up();
+  };
+  await drag(g.x - g.w / 2, g.y, 60, 30);
   await expect(page.getByLabel("Position X", { exact: true })).toHaveValue(
     String(beforeX),
   );
-  await page.mouse.move(g.x - g.w / 2, g.y);
-  await page.mouse.down();
-  await page.mouse.move(g.x - g.w / 2 + 60, g.y + 30);
-  await page.mouse.up();
+  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await drag(g.x, g.y, 60, 30);
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("Position X", { exact: true })).toHaveValue(
+    String(beforeX),
+  );
+  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await drag(g.x, g.y, 60, 30);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect.poll(() => value("Position X")).toBeGreaterThan(beforeX);
   g = await geometry();
-  await page.mouse.move(g.x + g.w / 2 + 12, g.y + g.h / 2 + 12);
-  await page.mouse.down();
-  await page.mouse.move(g.x + g.w / 2 + 60, g.y + g.h / 2 + 50);
-  await page.mouse.up();
+  await page.getByRole("button", { name: "Resize", exact: true }).click();
+  await drag(g.x + 42, g.y - 42, 35, -35);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect.poll(() => value("Width")).toBeGreaterThan(100);
   g = await geometry();
-  await page.mouse.move(g.x, g.y - g.h / 2 - 28);
-  await page.mouse.down();
-  await page.mouse.move(g.x + 60, g.y - g.h / 2 - 10);
-  await page.mouse.up();
+  await page.getByRole("button", { name: "Rotate", exact: true }).click();
+  await drag(g.x + 60, g.y, -60, 60);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect
     .poll(async () => Math.abs(await value("Rotation (degrees)")))
     .toBeGreaterThan(1);
@@ -249,7 +254,7 @@ test("native save writes editable project and cancelled save preserves dirty sta
   );
   expect(
     await page.evaluate(() => JSON.parse((window as any).savedProject).version),
-  ).toBe(4);
+  ).toBe(5);
   await page.getByLabel("Width", { exact: true }).fill("120");
   await page.getByLabel("Width", { exact: true }).press("Enter");
   await expect(page.locator(".document-name")).toContainText("•");

@@ -7,6 +7,8 @@ const canvas = ref<HTMLCanvasElement | null>(null),
   hover = useEditorSelector(editor, editor.hoverSnapshot);
 const cursor = computed(() => {
   hover.value;
+  if (editor.placingPivot) return "crosshair";
+  if (editor.hoverHandle === "move") return "move";
   return editor.tool !== "select"
     ? "none"
     : editor.gesture?.kind === "rotate" || editor.hoverHandle === "rotate"
@@ -76,8 +78,8 @@ onUnmounted(() => {
     "
     @click="editor.polylineClick($event.detail)"
     @pointerleave="editor.leavePointer()"
-    @pointercancel="editor.cancel()"
-    @lostpointercapture="editor.gesture && editor.cancel()"
+    @pointercancel="editor.pauseGesture()"
+    @lostpointercapture="editor.gesture && editor.pauseGesture()"
     @contextmenu.prevent
   />
 </template>

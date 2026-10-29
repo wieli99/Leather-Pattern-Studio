@@ -1,11 +1,11 @@
 import { snappedAxes } from "./snapping";
 import type { Controller } from "./controller";
-import { center } from "../model/geometry";
+import { shapeMatrix } from "../model/geometry";
 import type { Shape } from "../model/project";
-export function shapePath(ctx: CanvasRenderingContext2D, s: Shape) {
+export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
   const a = s.points[0],
     b = s.points[s.points.length - 1];
-  ctx.beginPath();
+  if ("beginPath" in ctx) ctx.beginPath();
   if (s.kind === "arc") {
     const angle = Math.atan2(b.y - a.y, b.x - a.x);
     ctx.arc(
@@ -112,11 +112,11 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     ctx.scale(z, z);
     function shape(s: Shape, preview = false) {
       ctx.save();
-      const c = center(s);
-      ctx.translate(c.x, c.y);
-      ctx.rotate((s.rotation * Math.PI) / 180);
-      ctx.translate(-c.x, -c.y);
-      shapePath(ctx, s);
+      const primitive = new Path2D();
+      shapePath(primitive, s);
+      const path = new Path2D(),
+        m = shapeMatrix(s);
+      path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
       const selected = editor.selected.includes(s.id);
       ctx.lineWidth = (selected ? 1.7 : 1.2) / z;
       ctx.strokeStyle = preview
@@ -130,10 +130,10 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.save();
         ctx.globalAlpha = selected ? 0.07 : 0.02;
         ctx.fillStyle = selected ? color("accent") : color("shape");
-        ctx.fill();
+        ctx.fill(path);
         ctx.restore();
       }
-      ctx.stroke();
+      ctx.stroke(path);
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.forEach((s) => shape(s));
@@ -164,20 +164,87 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.setLineDash([4 / z, 4 / z]);
       ctx.strokeRect(b.x, b.y, b.width, b.height);
       ctx.setLineDash([]);
-      for (const handle of editor.handles()) {
-        ctx.fillStyle =
-          handle.kind === "rotate" ? color("preview") : color("accent");
+      const pivot = editor.transformPivot;
+      const hovered = editor.pointerInside
+        ? editor.handleAt(editor.cursor)
+        : undefined;
+      if (editor.transformTool === "rotate") {
+        ctx.strokeStyle = color(hovered?.kind === "rotate" ? "text" : "accent");
+        ctx.lineWidth = (hovered?.kind === "rotate" ? 3 : 2) / z;
         ctx.beginPath();
-        if (handle.kind === "rotate")
-          ctx.arc(handle.point.x, handle.point.y, 4 / z, 0, Math.PI * 2);
-        else
+        ctx.arc(pivot.x, pivot.y, 60 / z, 0, Math.PI * 2);
+        ctx.stroke();
+        if (editor.transformValues.angle) {
+          ctx.save();
+          ctx.globalAlpha = 0.18;
+          ctx.fillStyle = color("accent");
+          ctx.beginPath();
+          ctx.moveTo(pivot.x, pivot.y);
+          ctx.arc(
+            pivot.x,
+            pivot.y,
+            60 / z,
+            0,
+            (editor.transformValues.angle * Math.PI) / 180,
+            editor.transformValues.angle < 0,
+          );
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+      for (const handle of editor.handles()) {
+        ctx.strokeStyle = ctx.fillStyle =
+          handle.axis === "x"
+            ? "#e87474"
+            : handle.axis === "y"
+              ? "#79c990"
+              : color("accent");
+        if (
+          hovered &&
+          hovered.kind === handle.kind &&
+          hovered.axis === handle.axis &&
+          hovered.vertex === handle.vertex
+        )
+          ctx.strokeStyle = ctx.fillStyle = color("text");
+        ctx.lineWidth = 2 / z;
+        if (handle.axis) {
+          ctx.beginPath();
+          ctx.moveTo(pivot.x, pivot.y);
+          ctx.lineTo(handle.point.x, handle.point.y);
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        if (handle.kind === "rotate") continue;
+        if (handle.kind === "move" && handle.axis) {
+          const t = Math.atan2(
+            handle.point.y - pivot.y,
+            handle.point.x - pivot.x,
+          );
+          ctx.moveTo(handle.point.x, handle.point.y);
+          ctx.lineTo(
+            handle.point.x - (12 * Math.cos(t - 0.45)) / z,
+            handle.point.y - (12 * Math.sin(t - 0.45)) / z,
+          );
+          ctx.lineTo(
+            handle.point.x - (12 * Math.cos(t + 0.45)) / z,
+            handle.point.y - (12 * Math.sin(t + 0.45)) / z,
+          );
+          ctx.closePath();
+        } else
           ctx.rect(
-            handle.point.x - 3 / z,
-            handle.point.y - 3 / z,
-            6 / z,
-            6 / z,
+            handle.point.x - 5 / z,
+            handle.point.y - 5 / z,
+            10 / z,
+            10 / z,
           );
         ctx.fill();
+      }
+      if (editor.transformTool) {
+        ctx.strokeStyle = color("accent");
+        ctx.beginPath();
+        ctx.arc(pivot.x, pivot.y, 3 / z, 0, Math.PI * 2);
+        ctx.stroke();
       }
     }
     const g = editor.gesture;

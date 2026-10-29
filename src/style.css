@@ -565,6 +565,7 @@ footer,
   color: var(--text);
 }
 .field input,
+.transform-inputs input,
 select,
 .settings input[type="number"] {
   background: var(--input);
@@ -898,4 +899,66 @@ footer {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
+}
+
+.transform-toolbox {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--panel, #252830);
+  box-shadow: 0 4px 20px #0005;
+}
+.transform-toolbox button {
+  min-width: 40px;
+  min-height: 40px;
+}
+.transform-toolbox button[aria-pressed="true"] {
+  outline: 2px solid var(--accent, #67b7ff);
+}
+.transform-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+}
+.transform-options {
+  background: var(--panel, #252830);
+  color: var(--text);
+  border: 1px solid var(--border, #555);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 280px;
+  max-width: 100%;
+  max-height: 55vh;
+  overflow: auto;
+  box-shadow: 0 4px 20px #0005;
+}
+.transform-inputs {
+  display: flex;
+  gap: 10px;
+}
+.transform-inputs label {
+  min-width: 0;
+  flex: 1;
+}
+.transform-inputs input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.transform-options small {
+  color: var(--muted);
+}
+
+.transform-inputs input[aria-invalid="true"] {
+  border-color: #ed907f;
 }

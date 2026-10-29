@@ -3,13 +3,13 @@ import type { Point as CorePoint } from "../generated/Point";
 export type Point = CorePoint;
 export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
-export type Doc = { version: 4; shapes: Shape[] };
-export const emptyDocument = (): Doc => ({ version: 4, shapes: [] });
+export type Doc = { version: 5; shapes: Shape[] };
+export const emptyDocument = (): Doc => ({ version: 5, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -97,6 +97,34 @@ export function parseProject(text: string): Doc {
         Math.abs(s.sweep) > 360)
     )
       throw Error("Invalid arc sweep");
+    if (s.transform !== undefined) {
+      const m = s.transform;
+      if (
+        input.version !== 5 ||
+        !m ||
+        !["a", "b", "c", "d", "e", "f"].every((k) => Number.isFinite(m[k])) ||
+        Math.abs(m.a * m.d - m.b * m.c) < 1e-12
+      )
+        throw Error("Invalid affine transform");
+      const cx = ["circle", "arc"].includes(s.kind)
+        ? a.x
+        : (Math.min(...s.points.map((p: Point) => p.x)) +
+            Math.max(...s.points.map((p: Point) => p.x))) /
+          2;
+      const cy = ["circle", "arc"].includes(s.kind)
+        ? a.y
+        : (Math.min(...s.points.map((p: Point) => p.y)) +
+            Math.max(...s.points.map((p: Point) => p.y))) /
+          2;
+      const r = Math.max(
+        ...s.points.map((p: Point) => Math.hypot(p.x - cx, p.y - cy)),
+      );
+      if (
+        Math.abs(m.a * cx + m.c * cy + m.e) + r * Math.hypot(m.a, m.c) > 1e7 ||
+        Math.abs(m.b * cx + m.d * cy + m.f) + r * Math.hypot(m.b, m.d) > 1e7
+      )
+        throw Error("Transformed coordinate exceeds limit");
+    }
     ids.add(s.id);
     result.push({
       id: s.id,
@@ -104,10 +132,11 @@ export function parseProject(text: string): Doc {
       kind: s.kind,
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       radius: s.radius,
+      ...(s.transform ? { transform: { ...s.transform } } : {}),
       ...(s.kind === "arc" ? { sweep: s.sweep } : {}),
       rotation: ((rotation % 360) + 360) % 360,
       ...(s.legacyStitch ? { legacyStitch: s.legacyStitch } : {}),
     });
   }
-  return { version: 4, shapes: result };
+  return { version: 5, shapes: result };
 }

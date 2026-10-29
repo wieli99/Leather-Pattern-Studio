@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TransformToolbox from "./TransformToolbox.vue";
 import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
@@ -83,16 +84,58 @@ onMounted(() => {
       return;
     }
     if (mod && e.key.toLowerCase() === "a") {
+      if (editor.transformTool) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
+      editor.cancel();
       editor.selected = editor.document.shapes.map((s) => s.id);
       editor.notify();
+      return;
+    }
+    if (
+      !mod &&
+      !e.repeat &&
+      editor.tool === "select" &&
+      editor.selected.length
+    ) {
+      const k = e.key.toLowerCase();
+      if (["g", "r", "s"].includes(k)) {
+        e.preventDefault();
+        editor.activateTransform(
+          k === "g" ? "move" : k === "r" ? "rotate" : "scale",
+        );
+        return;
+      }
+      if (editor.transformTool && k === "v") {
+        editor.placingPivot = true;
+        editor.notify();
+        return;
+      }
+      if (editor.transformTool && (k === "x" || k === "y")) {
+        editor.transformAxis = k;
+        editor.notify();
+        return;
+      }
+    }
+    if (
+      e.key === "Tab" &&
+      editor.transformTool &&
+      (e.target as HTMLElement).tagName === "CANVAS"
+    ) {
+      e.preventDefault();
+      document
+        .querySelector<HTMLInputElement>(".transform-inputs input")
+        ?.focus();
       return;
     }
     if (e.key === "Escape") {
       editor.setMode("select");
     }
     if (e.key === "Enter") {
-      editor.finish();
+      if (editor.transformTool) void editor.applyTransform();
+      else editor.finish();
     }
     if (e.key === "Backspace" && editor.pending.length) {
       e.preventDefault();
@@ -119,7 +162,7 @@ onMounted(() => {
   };
   const blur = () => {
     editor.space = false;
-    editor.cancel();
+    editor.pauseGesture();
   };
   const leave = (e: BeforeUnloadEvent) => {
     if (editor.dirty) {
@@ -203,6 +246,7 @@ onMounted(() => {
         </button>
       </nav>
       <div :class="`viewport tool-${e.tool}`">
+        <TransformToolbox />
         <button
           class="edge-tab edge-left"
           :aria-label="left ? 'Hide tools' : 'Show tools'"
@@ -285,9 +329,9 @@ onMounted(() => {
         <h2>Properties</h2>
         <Inspector />
         <div class="inspector-hint">
-          Square handle · Scale uniformly
+          Choose a transform in the floating toolbox
           <br />
-          Round handle · Rotate
+          Enter · Apply Esc · Cancel
           <br />
           Shift + click · Multiple selection
         </div>

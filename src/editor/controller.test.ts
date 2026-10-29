@@ -89,7 +89,7 @@ test("snapping uses screen-space tolerance and alt override", () => {
   e.grid = false;
   e.objects = true;
   e.document = {
-    version: 4,
+    version: 5,
     shapes: [
       {
         id: "a",
@@ -203,7 +203,7 @@ test("Shift polyline constraint survives grid snapping", () => {
 });
 test("Ctrl interior selection and geometric crossing marquee", () => {
   const e = editor();
-  e.document = { version: 4, shapes: [shape] };
+  e.document = { version: 5, shapes: [shape] };
   const p = e.screen({ x: 20, y: 15 });
   e.pointerDown(p, 0, false, false);
   e.pointerUp();
@@ -226,8 +226,9 @@ test.each([
   "rotation quantization and one commit",
   async (alt, ctrl, shift, expected) => {
     const e = editor();
-    e.document = { version: 4, shapes: [shape] };
+    e.document = { version: 5, shapes: [shape] };
     e.selected = ["a"];
+    e.activateTransform("rotate");
     const handle = e.handles().find((h) => h.kind === "rotate")!,
       pivot = { x: 20, y: 15 },
       startAngle = Math.atan2(
@@ -245,13 +246,15 @@ test.each([
     );
     expect(e.preview!.shapes[0].rotation).toBeCloseTo(expected);
     e.pointerUp();
+    expect(e.revision).toBe(0);
+    await e.applyTransform();
     await e.transactionQueue;
     expect(e.revision).toBe(1);
   },
 );
 test("live property changes commit once, cancel restores, queued fields retain latest changes", async () => {
   const e = editor();
-  await e.commit({ version: 4, shapes: [shape] });
+  await e.commit({ version: 5, shapes: [shape] });
   e.beginProperty();
   await e.edit("a", { rotation: 10 });
   await e.edit("a", { rotation: 20 });
@@ -283,7 +286,7 @@ test("configured grid and outline snap use actual geometry", () => {
   expect(e.snap({ x: 9, y: 11 })).toEqual({ x: 10, y: 10 });
   e.grid = false;
   e.objects = true;
-  e.document = { version: 4, shapes: [shape] };
+  e.document = { version: 5, shapes: [shape] };
   expect(e.snap({ x: 7, y: 0.5 }).y).toBeCloseTo(0);
   e.gesture = {
     kind: "move",
@@ -297,7 +300,7 @@ test("configured grid and outline snap use actual geometry", () => {
 });
 test("late property validation cannot resurrect a finished or cancelled preview", async () => {
   const e = editor();
-  await e.commit({ version: 4, shapes: [shape] });
+  await e.commit({ version: 5, shapes: [shape] });
   const original = e.core.request.bind(e.core);
   let resolve!: (value: any) => void;
   vi.spyOn(e.core, "request").mockImplementation((op, revision, next) =>
@@ -323,7 +326,7 @@ test("late property validation cannot resurrect a finished or cancelled preview"
 });
 test("invalid property geometry keeps last valid live state", async () => {
   const e = editor();
-  await e.commit({ version: 4, shapes: [shape] });
+  await e.commit({ version: 5, shapes: [shape] });
   e.beginProperty();
   await e.edit("a", { rotation: 12 });
   await e.edit("a", {
@@ -340,7 +343,7 @@ test("invalid property geometry keeps last valid live state", async () => {
 test("move snapping aligns shape anchor instead of pointer grab offset", async () => {
   const e = editor();
   e.document = {
-    version: 4,
+    version: 5,
     shapes: [
       shape,
       {
@@ -355,6 +358,7 @@ test("move snapping aligns shape anchor instead of pointer grab offset", async (
   };
   e.objects = true;
   e.selected = ["a"];
+  e.activateTransform("move");
   e.pointerDown(e.screen({ x: 10, y: 0 }), 0, false, false);
   e.pointerMove(e.screen({ x: 69, y: 0 }), false);
   expect(e.preview!.shapes[0].points[1].x).toBeCloseTo(100);
@@ -363,7 +367,7 @@ test("move snapping aligns shape anchor instead of pointer grab offset", async (
 });
 test("saved baseline follows undo and cancelled/failed saves", async () => {
   const e = editor();
-  await e.commit({ version: 4, shapes: [shape] });
+  await e.commit({ version: 5, shapes: [shape] });
   Object.assign(e.files, { save: vi.fn(async () => "downloaded") });
   await e.save();
   expect(e.dirty).toBe(false);
@@ -385,7 +389,7 @@ test("saved baseline follows undo and cancelled/failed saves", async () => {
 });
 test("save completing after new edits does not mark them saved", async () => {
   const e = editor();
-  await e.commit({ version: 4, shapes: [shape] });
+  await e.commit({ version: 5, shapes: [shape] });
   let finish!: (v: string) => void;
   Object.assign(e.files, {
     save: vi.fn(
@@ -419,7 +423,178 @@ test("cursor movement preserves the UI snapshot and clears snap feedback on leav
 });
 test("baseline comparison ignores worker JSON key ordering", async () => {
   const e = editor();
-  e.document = { shapes: [], version: 4 };
+  e.document = { shapes: [], version: 5 };
   e.notify();
   expect(e.dirty).toBe(false);
+});
+
+test("selection is inert and transform previews apply once or cancel completely", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [shape] });
+  e.selected = ["a"];
+  e.pointerDown(e.screen({ x: 0, y: 15 }), 0, false, false);
+  e.pointerMove(e.screen({ x: 10, y: 15 }), true);
+  e.pointerUp();
+  expect(e.preview).toBeNull();
+  expect(e.handles()).toEqual([]);
+  const revision = e.revision;
+  e.activateTransform("scale");
+  e.setTransformValues({ sx: 2, sy: 0.5 });
+  expect(e.document.shapes[0].transform).toBeUndefined();
+  expect(e.preview!.shapes[0].transform!.a).toBe(2);
+  e.setTransformValues({ sx: 3 });
+  expect(e.revision).toBe(revision);
+  await e.applyTransform();
+  expect(e.revision).toBe(revision + 1);
+  expect(e.document.shapes[0].transform!.a).toBe(3);
+  e.activateTransform("move");
+  e.setTransformValues({ x: 12 });
+  e.cancel();
+  expect(e.preview).toBeNull();
+  expect(e.revision).toBe(revision + 1);
+  await e.transact("undo");
+  expect(e.document.shapes[0].transform).toBeUndefined();
+});
+test("invalid factors prevent apply and switching tools discards previews", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [shape] });
+  e.selected = ["a"];
+  e.activateTransform("scale");
+  e.setTransformValues({ sx: 0 });
+  expect(e.transformValid).toBe(false);
+  await e.applyTransform();
+  expect(e.revision).toBe(1);
+  e.setTransformValues({ sx: 2 });
+  e.activateTransform("rotate");
+  expect(e.preview).toBeNull();
+  expect(e.transformValues.angle).toBe(0);
+  e.setTransformValues({ angle: 20 });
+  e.beginProperty();
+  expect(e.transformTool).toBe("rotate");
+  expect(e.preview).not.toBeNull();
+});
+test("late transform validation cannot restore a cancelled session", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [shape] });
+  e.selected = ["a"];
+  const request = e.core.request.bind(e.core);
+  let resolve!: (v: any) => void;
+  e.core.request = vi.fn((op, rev, doc) =>
+    op === "preview"
+      ? new Promise((r) => (resolve = r))
+      : request(op, rev, doc),
+  );
+  e.activateTransform("move");
+  e.setTransformValues({ x: 10 });
+  const next = e.preview!;
+  e.cancel();
+  resolve({ document: next, revision: e.revision });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(e.preview).toBeNull();
+  expect(e.document.shapes[0].points).toEqual(shape.points);
+});
+
+test("repeated move drags accumulate and constrained local motion survives snapping", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [{ ...shape, rotation: 30 }] });
+  e.selected = ["a"];
+  e.activateTransform("move");
+  e.setOrientation("local");
+  for (let i = 0; i < 2; i++) {
+    const h = e.handles().find((h) => h.axis === "x")!;
+    e.pointerDown(e.screen(h.point), 0, false, true);
+    e.pointerMove(
+      e.screen({
+        x: h.point.x + 10 * Math.cos(Math.PI / 6),
+        y: h.point.y + 10 * Math.sin(Math.PI / 6),
+      }),
+      true,
+    );
+    e.pointerUp();
+  }
+  expect(e.transformValues.x).toBeCloseTo(20);
+  expect(e.transformValues.y).toBeCloseTo(0);
+  expect(e.revision).toBe(1);
+  await e.applyTransform();
+  expect(e.revision).toBe(2);
+});
+test("multi-selection stretching uses one world pivot and pivot changes preserve the preview", async () => {
+  const e = editor();
+  await e.commit({
+    version: 5,
+    shapes: [shape, { ...shape, id: "b", rotation: 45 }],
+  });
+  e.selected = ["a", "b"];
+  e.activateTransform("scale");
+  e.setTransformValues({ sx: 2, sy: 0.5 });
+  const before = JSON.stringify(e.preview);
+  e.setPivot({ x: 0, y: 0 });
+  expect(JSON.stringify(e.preview)).toBe(before);
+  e.setTransformValues({ sx: 1.5, sy: 1 });
+  expect(e.preview!.shapes.every((s) => s.transform)).toBe(true);
+  e.cancel();
+  expect(e.document.shapes.every((s) => !s.transform)).toBe(true);
+});
+
+test("outside clicks and interrupted drags keep transform sessions active", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [shape] });
+  e.selected = ["a"];
+  e.activateTransform("rotate");
+  e.setTransformValues({ angle: 30 });
+  expect(e.gizmoAngle).toBeCloseTo(30);
+  const preview = e.preview;
+  e.pointerDown(e.screen({ x: 500, y: 500 }), 0, false, false);
+  e.pointerUp();
+  expect(e.preview).toBe(preview);
+  expect(e.transformTool).toBe("rotate");
+  e.pauseGesture();
+  expect(e.preview).toBe(preview);
+  e.beginProperty();
+  expect(e.transformTool).toBe("rotate");
+  await e.applyTransform();
+  e.activateTransform("move");
+  expect(e.transformOrientation).toBe("local");
+  expect(e.gizmoAngle).toBeCloseTo(30);
+  e.setOrientation("world");
+  expect(e.gizmoAngle).toBe(0);
+});
+
+test("arrow shafts are draggable at different zoom levels and local orientations", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [{ ...shape, rotation: 35 }] });
+  e.selected = ["a"];
+  e.activateTransform("move");
+  for (const zoom of [1, 8]) {
+    e.zoom = zoom;
+    for (const axis of ["x", "y"]) {
+      const h = e.handles().find((h) => h.axis === axis)!;
+      const p = {
+        x: e.transformPivot.x + (h.point.x - e.transformPivot.x) * 0.5,
+        y: e.transformPivot.y + (h.point.y - e.transformPivot.y) * 0.5,
+      };
+      expect(e.handleAt(p)?.axis).toBe(axis);
+    }
+  }
+});
+test("move snap feedback keeps a stable source anchor and respects axis constraints", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [shape] });
+  e.selected = ["a"];
+  e.grid = true;
+  e.activateTransform("move");
+  const h = e.handles().find((h) => !h.axis)!;
+  e.pointerDown(e.screen(h.point), 0, false, false);
+  e.pointerMove(e.screen({ x: h.point.x + 1, y: h.point.y + 1 }), false);
+  const source = e.gesture!.snapAnchor;
+  expect(source).toBeDefined();
+  e.pointerMove(e.screen({ x: h.point.x + 1.1, y: h.point.y + 1.1 }), false);
+  expect(e.gesture!.snapAnchor).toBe(source);
+  e.cancel();
+  e.activateTransform("move");
+  const x = e.handles().find((h) => h.axis === "x")!;
+  e.pointerDown(e.screen(x.point), 0, false, false);
+  e.pointerMove(e.screen({ x: x.point.x + 2, y: x.point.y + 1 }), false);
+  expect(e.snapTarget).toBeNull();
 });

@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { center, distance } from "../model/geometry";
+import {
+  center,
+  distance,
+  moveShape,
+  rotateShape,
+  shapeMatrix,
+  multiply,
+  inverse,
+  transformShape,
+  worldPoints,
+  applyMatrix,
+  localCenter,
+  rotatePoint,
+} from "../model/geometry";
 import type { Shape } from "../model/project";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
@@ -10,19 +23,55 @@ const e = useEditor(),
   s = computed(() => (selected.value.length === 1 ? selected.value[0] : null)),
   a = computed(() => s.value!.points[0]),
   b = computed(() => s.value!.points.at(-1)!),
-  c = computed(() => center(s.value!));
+  c = computed(() => center(s.value!)),
+  matrix = computed(() => shapeMatrix(s.value!)),
+  angle = computed(
+    () => (Math.atan2(matrix.value.b, matrix.value.a) * 180) / Math.PI,
+  ),
+  width = computed(
+    () =>
+      Math.abs(b.value.x - a.value.x) *
+      Math.hypot(matrix.value.a, matrix.value.b),
+  ),
+  height = computed(
+    () =>
+      Math.abs(b.value.y - a.value.y) *
+      Math.hypot(matrix.value.c, matrix.value.d),
+  ),
+  vertices = computed(() => worldPoints(s.value!));
 const edit = (changes: Partial<Shape>) => {
   if (s.value) void editor.edit(s.value.id, changes);
 };
 function position(axis: "x" | "y", v: string) {
-  edit({
-    points: s.value!.points.map((p) => ({
-      ...p,
-      [axis]: p[axis] + Number(v) - c.value[axis],
-    })),
-  });
+  edit(
+    moveShape(
+      s.value!,
+      axis === "x" ? +v - c.value.x : 0,
+      axis === "y" ? +v - c.value.y : 0,
+    ),
+  );
 }
 function size(axis: "x" | "y", v: string) {
+  if (s.value!.transform) {
+    const f = +v / (axis === "x" ? width.value : height.value),
+      m = matrix.value,
+      local = {
+        a: axis === "x" ? f : 1,
+        b: 0,
+        c: 0,
+        d: axis === "y" ? f : 1,
+        e: 0,
+        f: 0,
+      };
+    const origin = {
+      x: (a.value.x + b.value.x) / 2,
+      y: (a.value.y + b.value.y) / 2,
+    };
+    local.e = origin.x * (1 - local.a);
+    local.f = origin.y * (1 - local.d);
+    edit(transformShape(s.value!, multiply(multiply(m, local), inverse(m))));
+    return;
+  }
   const length = Math.abs(b.value[axis] - a.value[axis]);
   if (!length) return;
   const factor = +v / length,
@@ -55,12 +104,36 @@ function radius(v: string) {
   });
 }
 function vertex(i: number, axis: "x" | "y", v: string) {
+  const original = s.value!,
+    point = { ...vertices.value[i], [axis]: +v };
+  const local = applyMatrix(inverse(matrix.value), point);
+  const closed = distance(original.points[0], original.points.at(-1)!) < 1e-9;
+  const next = {
+    ...original,
+    points: original.points.map((p, j) =>
+      j === i ||
+      (closed &&
+        (i === 0 || i === original.points.length - 1) &&
+        (j === 0 || j === original.points.length - 1))
+        ? local
+        : p,
+    ),
+  };
+  const c = localCenter(next),
+    rotated = rotatePoint(c, localCenter(original), original.rotation);
   edit({
-    points: s.value!.points.map((p, j) => (i === j ? { ...p, [axis]: +v } : p)),
+    ...next,
+    points: next.points.map((p) => ({
+      x: p.x + rotated.x - c.x,
+      y: p.y + rotated.y - c.y,
+    })),
   });
 }
 </script>
 <template>
+  <p v-if="e.transformTool">
+    Apply or cancel the transform to edit properties or change selection.
+  </p>
   <template v-if="s">
     <p class="units-hint">Dimensions in mm</p>
     <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
@@ -79,20 +152,20 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     <div v-if="['rectangle', 'ellipse'].includes(s.kind)" class="field-row">
       <Field
         label="Width"
-        :value="+Math.abs(b.x - a.x).toFixed(1)"
+        :value="+width.toFixed(1)"
         :min="0.001"
         @commit="size('x', $event)"
       />
       <Field
         label="Height"
-        :value="+Math.abs(b.y - a.y).toFixed(1)"
+        :value="+height.toFixed(1)"
         :min="0.001"
         @commit="size('y', $event)"
       />
     </div>
     <Field
       v-if="s.kind === 'rectangle'"
-      label="Corner radius"
+      :label="s.transform ? 'Corner radius (local)' : 'Corner radius'"
       :value="s.radius"
       :min="0"
       :max="Math.min(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / 2"
@@ -100,7 +173,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     />
     <Field
       v-if="s.kind === 'circle' || s.kind === 'arc'"
-      label="Radius"
+      :label="s.transform ? 'Radius (local)' : 'Radius'"
       :value="+distance(a, b).toFixed(1)"
       :min="0.001"
       @commit="radius"
@@ -115,12 +188,12 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     />
     <Field
       label="Rotation (degrees)"
-      :value="+s.rotation.toFixed(1)"
-      @commit="edit({ rotation: +$event })"
+      :value="+angle.toFixed(1)"
+      @commit="edit(rotateShape(s, +$event - angle, c))"
     />
     <details v-if="['line', 'polyline'].includes(s.kind)">
       <summary>Vertex coordinates</summary>
-      <div v-for="(point, i) in s.points" :key="i" class="field-row">
+      <div v-for="(point, i) in vertices" :key="i" class="field-row">
         <Field
           :label="`Vertex ${i + 1} X`"
           :value="point.x"
@@ -139,7 +212,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     <p>
       {{
         selected.length
-          ? `${selected.length} objects selected. Drag to move; use the square handle to scale uniformly and the round handle to rotate.`
+          ? `${selected.length} objects selected. Choose Move, Rotate or Resize in the floating toolbox.`
           : "Click an edge or drag a box. Ctrl selects interiors or crossing outlines; Shift adds to selection."
       }}
     </p>

@@ -1,19 +1,15 @@
 import type { Point, Shape } from "../model/project";
 import {
   anchors,
+  shapeMatrix,
+  applyMatrix,
   arcPoint,
   center,
   distance,
-  rotatePoint,
   worldPoints,
 } from "../model/geometry";
 export type SnapKind =
-  | "grid"
-  | "vertex"
-  | "midpoint"
-  | "center"
-  | "quadrant"
-  | "edge";
+  "grid" | "vertex" | "midpoint" | "center" | "quadrant" | "edge";
 export type SnapCandidate = { point: Point; kind: SnapKind; objectId?: string };
 export function snapCandidates(shape: Shape): SnapCandidate[] {
   const c = center(shape),
@@ -24,7 +20,7 @@ export function snapCandidates(shape: Shape): SnapCandidate[] {
       ? [arcPoint(shape, 0), arcPoint(shape, 1)]
       : shape.kind === "rectangle" && shape.radius === 0
         ? [a, b, { x: a.x, y: b.y }, { x: b.x, y: a.y }].map((p) =>
-            rotatePoint(p, c, shape.rotation),
+            applyMatrix(shapeMatrix(shape), p),
           )
         : worldPoints(shape);
   return anchors(shape).map((point) => ({
