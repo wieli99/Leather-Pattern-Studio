@@ -1,12 +1,17 @@
+import { isCurve, cubicSegments } from "../model/curves";
 import { snappedAxes } from "./snapping";
 import type { Controller } from "./controller";
-import { shapeMatrix } from "../model/geometry";
+import { shapeMatrix, applyMatrix } from "../model/geometry";
 import type { Shape } from "../model/project";
 export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
   const a = s.points[0],
     b = s.points[s.points.length - 1];
   if ("beginPath" in ctx) ctx.beginPath();
-  if (s.kind === "arc") {
+  if (isCurve(s)) {
+    ctx.moveTo(a.x, a.y);
+    for (const [, c1, c2, end] of cubicSegments(s))
+      ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+  } else if (s.kind === "arc") {
     const angle = Math.atan2(b.y - a.y, b.x - a.x);
     ctx.arc(
       a.x,
@@ -151,6 +156,28 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         },
         true,
       );
+    function handleGuides(s: Shape) {
+      if (!s.handles) return;
+      const m = shapeMatrix(s);
+      ctx.strokeStyle = color("accent");
+      ctx.lineWidth = 1 / z;
+      s.points.forEach((p, i) => {
+        const a = applyMatrix(m, p);
+        for (const v of [s.handles![i].incoming, s.handles![i].outgoing]) {
+          const b = applyMatrix(m, { x: p.x + v.x, y: p.y + v.y });
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, 3 / z, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      });
+    }
+    if (construction) handleGuides(construction);
+    if (editor.tool === "select" && editor.active.length === 1)
+      handleGuides(editor.active[0]);
     for (const p of editor.pending) {
       ctx.fillStyle = color("preview");
       ctx.beginPath();
@@ -204,10 +231,20 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           hovered &&
           hovered.kind === handle.kind &&
           hovered.axis === handle.axis &&
-          hovered.vertex === handle.vertex
+          hovered.vertex === handle.vertex &&
+          hovered.handleSide === handle.handleSide
         )
           ctx.strokeStyle = ctx.fillStyle = color("text");
         ctx.lineWidth = 2 / z;
+        if (handle.handleSide && editor.active.length === 1) {
+          const s = editor.active[0];
+          const a = applyMatrix(shapeMatrix(s), s.points[handle.vertex!]);
+          ctx.lineWidth = 1 / z;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(handle.point.x, handle.point.y);
+          ctx.stroke();
+        }
         if (handle.axis) {
           ctx.beginPath();
           ctx.moveTo(pivot.x, pivot.y);
@@ -231,7 +268,9 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
             handle.point.y - (12 * Math.sin(t + 0.45)) / z,
           );
           ctx.closePath();
-        } else
+        } else if (handle.handleSide)
+          ctx.arc(handle.point.x, handle.point.y, 4 / z, 0, Math.PI * 2);
+        else
           ctx.rect(
             handle.point.x - 5 / z,
             handle.point.y - 5 / z,

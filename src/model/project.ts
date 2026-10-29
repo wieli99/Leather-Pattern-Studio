@@ -52,13 +52,21 @@ export function parseProject(text: string): Doc {
       ids.has(s.id) ||
       typeof s.name !== "string" ||
       s.name.length > 200 ||
-      !["line", "polyline", "rectangle", "circle", "ellipse", "arc"].includes(
-        s.kind,
-      ) ||
+      ![
+        "line",
+        "polyline",
+        "curve",
+        "control-curve",
+        "rectangle",
+        "circle",
+        "ellipse",
+        "arc",
+      ].includes(s.kind) ||
       !Array.isArray(s.points) ||
       s.points.length < 2 ||
       s.points.length > 10000 ||
-      (s.kind !== "polyline" && s.points.length !== 2) ||
+      (!["polyline", "curve", "control-curve"].includes(s.kind) &&
+        s.points.length !== 2) ||
       !s.points.every(
         (p: Point) =>
           p &&
@@ -73,6 +81,28 @@ export function parseProject(text: string): Doc {
       s.radius < 0
     )
       throw Error("Invalid shape");
+    if (s.kind === "control-curve") {
+      if (!Array.isArray(s.handles) || s.handles.length !== s.points.length)
+        throw Error("Invalid curve handle count");
+      s.handles.forEach((h: any, i: number) => {
+        for (const v of [h?.incoming, h?.outgoing]) {
+          if (
+            !v ||
+            !Number.isFinite(v.x) ||
+            !Number.isFinite(v.y) ||
+            Math.abs(s.points[i].x + v.x) > 1e7 ||
+            Math.abs(s.points[i].y + v.y) > 1e7
+          )
+            throw Error("Invalid curve handle");
+        }
+      });
+    } else if (s.handles !== undefined)
+      throw Error("Handles require a control point curve");
+    const geometry: Point[] = [...s.points];
+    s.handles?.forEach((h: any, i: number) => {
+      for (const v of [h.incoming, h.outgoing])
+        geometry.push({ x: s.points[i].x + v.x, y: s.points[i].y + v.y });
+    });
     const rotation = input.version >= 3 ? s.rotation : 0;
     if (!Number.isFinite(rotation)) throw Error("Invalid rotation");
     const a = s.points[0],
@@ -117,7 +147,7 @@ export function parseProject(text: string): Doc {
             Math.max(...s.points.map((p: Point) => p.y))) /
           2;
       const r = Math.max(
-        ...s.points.map((p: Point) => Math.hypot(p.x - cx, p.y - cy)),
+        ...geometry.map((p: Point) => Math.hypot(p.x - cx, p.y - cy)),
       );
       if (
         Math.abs(m.a * cx + m.c * cy + m.e) + r * Math.hypot(m.a, m.c) > 1e7 ||
@@ -132,6 +162,14 @@ export function parseProject(text: string): Doc {
       kind: s.kind,
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       radius: s.radius,
+      ...(s.handles
+        ? {
+            handles: s.handles.map((h: any) => ({
+              incoming: { ...h.incoming },
+              outgoing: { ...h.outgoing },
+            })),
+          }
+        : {}),
       ...(s.transform ? { transform: { ...s.transform } } : {}),
       ...(s.kind === "arc" ? { sweep: s.sweep } : {}),
       rotation: ((rotation % 360) + 360) % 360,

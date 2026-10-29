@@ -19,7 +19,9 @@ const props = defineProps<{ tool: (typeof tools)[number] }>(),
   open = ref(false),
   trigger = ref<HTMLButtonElement | null>(null);
 const group = computed(() =>
-    props.tool.id === "rectangle" || props.tool.id === "circle"
+    props.tool.id === "rectangle" ||
+    props.tool.id === "circle" ||
+    props.tool.id === "curve"
       ? props.tool.id
       : null,
   ),
@@ -28,7 +30,9 @@ const group = computed(() =>
       ? e.value.lastRectangle
       : group.value === "circle"
         ? e.value.lastCircle
-        : props.tool.id,
+        : group.value === "curve"
+          ? e.value.lastCurve
+          : props.tool.id,
   ),
   active = computed(() =>
     group.value
@@ -69,8 +73,8 @@ onUnmounted(release);
         <button
           ref="trigger"
           :disabled="!e.ready"
-          :title="`${tool.label} (${tool.key})`"
-          :aria-label="`${tool.label} (${tool.key})`"
+          :title="tool.key ? `${tool.label} (${tool.key})` : tool.label"
+          :aria-label="tool.key ? `${tool.label} (${tool.key})` : tool.label"
           :aria-pressed="active"
           @pointerdown.capture.prevent="down"
           @pointerup="release"

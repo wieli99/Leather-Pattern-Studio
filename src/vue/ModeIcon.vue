@@ -12,6 +12,11 @@ const center = computed(
 const points = computed(() => {
   const m = props.mode;
   if (m === "select") return [];
+  if (m === "curve" || m === "control-curve")
+    return [
+      [3, 18],
+      [21, 6],
+    ];
   if (m === "polyline")
     return [
       [3, 18],
@@ -89,6 +94,13 @@ const points = computed(() => {
     aria-hidden="true"
   >
     <path v-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
+    <template v-else-if="mode === 'curve' || mode === 'control-curve'">
+      <path d="M3 18C8 18 16 6 21 6" />
+      <path
+        v-if="mode === 'control-curve'"
+        d="M3 18L8 18M16 6L21 6M8 16V20M16 4V8"
+      />
+    </template>
     <path v-else-if="mode === 'polyline'" d="M3 18L9 6L16 15L21 5" />
     <path v-else-if="mode.startsWith('rectangle')" d="M4 5H20V19H4Z" />
     <template v-else-if="mode.startsWith('ellipse')">

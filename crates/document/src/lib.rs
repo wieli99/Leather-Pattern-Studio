@@ -23,10 +23,20 @@ pub struct Point {
 pub enum Kind {
     Line,
     Polyline,
+    Curve,
+    #[serde(rename = "control-curve")]
+    ControlCurve,
     Rectangle,
     Circle,
     Ellipse,
     Arc,
+}
+// Handle vectors are relative to their anchor, in local millimetres.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+pub struct CurveHandles {
+    pub incoming: Point,
+    pub outgoing: Point,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
@@ -35,6 +45,9 @@ pub struct Shape {
     pub name: String,
     pub kind: Kind,
     pub points: Vec<Point>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub handles: Option<Vec<CurveHandles>>,
     pub radius: f64,
     pub rotation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,14 +82,37 @@ impl Document {
                 || s.name.len() > 800
                 || s.points.len() < 2
                 || s.points.len() > 10000
-                || (s.kind != Kind::Polyline && s.points.len() != 2)
+                || (!matches!(s.kind, Kind::Polyline | Kind::Curve | Kind::ControlCurve)
+                    && s.points.len() != 2)
                 || !s.radius.is_finite()
                 || s.radius < 0.0
                 || !s.rotation.is_finite()
             {
                 return Err("Invalid shape".into());
             }
-            if s.points
+            if s.kind == Kind::ControlCurve {
+                let handles = s.handles.as_ref().ok_or("Missing curve handles")?;
+                if handles.len() != s.points.len() {
+                    return Err("Invalid curve handle count".into());
+                }
+            } else if s.handles.is_some() {
+                return Err("Handles require a control point curve".into());
+            }
+            let mut geometry = s.points.clone();
+            if let Some(handles) = &s.handles {
+                for (p, h) in s.points.iter().zip(handles) {
+                    for v in [&h.incoming, &h.outgoing] {
+                        if !v.x.is_finite() || !v.y.is_finite() {
+                            return Err("Invalid curve handle".into());
+                        }
+                        geometry.push(Point {
+                            x: p.x + v.x,
+                            y: p.y + v.y,
+                        });
+                    }
+                }
+            }
+            if geometry
                 .iter()
                 .any(|p| !p.x.is_finite() || !p.y.is_finite() || p.x.abs() > 1e7 || p.y.abs() > 1e7)
             {
@@ -114,8 +150,7 @@ impl Document {
                             .fold(f64::NEG_INFINITY, f64::max))
                         / 2.0
                 };
-                let radius = s
-                    .points
+                let radius = geometry
                     .iter()
                     .map(|p| (p.x - cx).hypot(p.y - cy))
                     .fold(0.0, f64::max);
@@ -253,6 +288,43 @@ mod tests {
             invalid.shapes[0].sweep = sweep;
             assert!(invalid.validate().is_err());
         }
+    }
+    #[test]
+    fn curves_roundtrip_validation_and_history() {
+        let mut d: Document = serde_json::from_str(&sample()).unwrap();
+        d.shapes[0].kind = Kind::ControlCurve;
+        d.shapes[0].handles = Some(vec![
+            CurveHandles {
+                incoming: Point { x: -5.0, y: -10.0 },
+                outgoing: Point { x: 5.0, y: 10.0 },
+            };
+            2
+        ]);
+        let json = serde_json::to_string(&d).unwrap();
+        let mut e = Editor::new();
+        e.execute("preview", &json, 0).unwrap();
+        assert!(e.past.is_empty());
+        e.execute("commit", &json, 0).unwrap();
+        assert_eq!(e.document, d);
+        e.execute("undo", "", 1).unwrap();
+        assert!(e.document.shapes.is_empty());
+        e.execute("redo", "", 2).unwrap();
+        assert_eq!(e.document, d);
+        let mut bad = d.clone();
+        bad.shapes[0].handles = None;
+        assert!(bad.validate().is_err());
+        bad.shapes[0].handles = Some(vec![]);
+        assert!(bad.validate().is_err());
+        for x in [f64::NAN, f64::INFINITY, 1e8] {
+            let mut bad = d.clone();
+            bad.shapes[0].handles.as_mut().unwrap()[0].incoming.x = x;
+            assert!(bad.validate().is_err());
+        }
+        d.shapes[0].kind = Kind::Curve;
+        assert!(d.validate().is_err());
+        d.shapes[0].handles = None;
+        d.shapes[0].points.push(Point { x: 30.0, y: 0.0 });
+        assert!(d.validate().is_ok());
     }
     #[test]
     fn history() {

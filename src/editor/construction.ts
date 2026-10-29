@@ -1,6 +1,8 @@
 import type { Point, Shape } from "../model/project";
+import { zeroHandles } from "../model/curves";
 import { distance } from "../model/geometry";
 export const variants = {
+  curve: ["curve", "control-curve"],
   rectangle: ["rectangle", "rectangle-center", "rectangle-three"],
   circle: [
     "circle",
@@ -15,9 +17,12 @@ export const variants = {
 export type Mode =
   | "select"
   | "polyline"
+  | (typeof variants.curve)[number]
   | (typeof variants.rectangle)[number]
   | (typeof variants.circle)[number];
 export const labels: Record<Mode, string> = {
+  curve: "Curve",
+  "control-curve": "Control point curve",
   select: "Select",
   polyline: "Polyline",
   rectangle: "Corner rectangle",
@@ -31,16 +36,20 @@ export const labels: Record<Mode, string> = {
   arc: "Center arc",
   "arc-three": "Three-point arc",
 };
+export const isCurveMode = (mode: string) =>
+  mode === "curve" || mode === "control-curve";
 export const pointCount = (mode: Mode) =>
-  [
-    "rectangle-three",
-    "circle-three",
-    "ellipse-center",
-    "arc",
-    "arc-three",
-  ].includes(mode)
-    ? 3
-    : 2;
+  isCurveMode(mode)
+    ? Infinity
+    : [
+          "rectangle-three",
+          "circle-three",
+          "ellipse-center",
+          "arc",
+          "arc-three",
+        ].includes(mode)
+      ? 3
+      : 2;
 export function circumcenter(a: Point, b: Point, c: Point): Point {
   const x = b.x - a.x,
     y = b.y - a.y,
@@ -60,6 +69,7 @@ export function construct(mode: Mode, points: Point[], sweep?: number): Shape {
     out = points,
     rotation = 0;
   if (!a || !b) throw Error("Place another point");
+  if (isCurveMode(mode)) kind = mode as "curve" | "control-curve";
   if (mode === "rectangle" || mode === "ellipse") {
     kind = mode;
     out = [a, b];
@@ -126,5 +136,13 @@ export function construct(mode: Mode, points: Point[], sweep?: number): Shape {
       sweep: span,
     };
   }
-  return { id: "", name: "", kind, points: out, rotation, radius: 0 };
+  return {
+    id: "",
+    name: "",
+    kind,
+    points: out,
+    rotation,
+    radius: 0,
+    ...(kind === "control-curve" ? { handles: out.map(zeroHandles) } : {}),
+  };
 }

@@ -1,3 +1,11 @@
+import {
+  isCurve,
+  cubicSegments,
+  cubicExtrema,
+  cubicAt,
+  flattenCubic,
+  type Cubic,
+} from "./curves";
 import type { Point, Shape } from "./project.ts";
 import type { Affine } from "../generated/Affine";
 export const identity = (): Affine => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
@@ -115,8 +123,10 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
-  if (s.transform || s.kind === "arc")
-    return distance(nearestOutline(s, point), point) <= tolerance;
+  if (s.transform || s.kind === "arc" || isCurve(s))
+    return (
+      distance(nearestOutline(s, point, tolerance / 32), point) <= tolerance
+    );
   const p = rotatePoint(point, localCenter(s), -s.rotation),
     a = s.points[0],
     b = s.points[s.points.length - 1];
@@ -214,6 +224,14 @@ export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
       x: pivot.x + (p.x - pivot.x) * factor,
       y: pivot.y + (p.y - pivot.y) * factor,
     })),
+    ...(s.handles
+      ? {
+          handles: s.handles.map((h) => ({
+            incoming: { x: h.incoming.x * factor, y: h.incoming.y * factor },
+            outgoing: { x: h.outgoing.x * factor, y: h.outgoing.y * factor },
+          })),
+        }
+      : {}),
     radius: s.radius * factor,
   };
 }
@@ -224,6 +242,8 @@ export function anchors(s: Shape): Point[] {
     );
   if (s.kind === "arc")
     return [localCenter(s), arcPoint(s, 0), arcPoint(s, 0.5), arcPoint(s, 1)];
+  if (isCurve(s))
+    return [...worldPoints(s), ...worldCubics(s).map((c) => cubicAt(c, 0.5))];
   const pts = worldPoints(s),
     a = s.points[0],
     b = s.points[s.points.length - 1],
@@ -447,7 +467,20 @@ const within = (q: Curve, t: number) =>
   ((((t - q.start) * Math.sign(q.span)) % (Math.PI * 2)) + Math.PI * 2) %
     (Math.PI * 2) <=
   Math.abs(q.span) + 1e-9;
+function curveBoundary(s: Shape, tolerance: number) {
+  const lines: [Point, Point][] = [];
+  for (const c of worldCubics(s)) {
+    const pts = flattenCubic(c, tolerance);
+    pts.slice(1).forEach((p, i) => lines.push([pts[i], p]));
+  }
+  return { lines, curves: [] as Curve[] };
+}
+export function worldCubics(s: Shape): Cubic[] {
+  const m = shapeMatrix(s);
+  return cubicSegments(s).map((c) => c.map((p) => applyMatrix(m, p)) as Cubic);
+}
 export function outlineBounds(s: Shape): Point[] {
+  if (isCurve(s)) return worldCubics(s).flatMap(cubicExtrema);
   const q = boundary(s);
   return [
     ...q.lines.flat(),
@@ -462,8 +495,8 @@ export function outlineBounds(s: Shape): Point[] {
     ),
   ];
 }
-export function nearestOutline(s: Shape, p: Point): Point {
-  const q = boundary(s);
+export function nearestOutline(s: Shape, p: Point, tolerance = 0.001): Point {
+  const q = isCurve(s) ? curveBoundary(s, tolerance) : boundary(s);
   let best: Point = s.points[0],
     d = Infinity;
   const consider = (v: Point) => {
@@ -516,13 +549,13 @@ export function nearestOutline(s: Shape, p: Point): Point {
   }
   return best;
 }
-export function intersectsBox(s: Shape, b: Bounds): boolean {
+export function intersectsBox(s: Shape, b: Bounds, tolerance = 0.001): boolean {
   const inside = (p: Point) =>
     p.x >= b.x - 1e-9 &&
     p.x <= b.x + b.width + 1e-9 &&
     p.y >= b.y - 1e-9 &&
     p.y <= b.y + b.height + 1e-9;
-  const q = boundary(s);
+  const q = isCurve(s) ? curveBoundary(s, tolerance) : boundary(s);
   for (const [a, c] of q.lines) {
     if (inside(a) || inside(c)) return true;
     for (const [axis, value] of [

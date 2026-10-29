@@ -22,9 +22,10 @@ const emit = defineEmits<{ "update:open": [open: boolean] }>();
           </DialogDescription>
 
           <p>
-            V Select · P Polyline · R Rectangle variants · C Circle/ellipse/arc
-            variants. Repeat R/C to cycle. Right-click or hold a grouped tool
-            for its menu.
+            Curve: click points · Control point curve: drag anchors for handles
+            · Enter or double-click finishes. V Select · P Polyline · R
+            Rectangle variants · C Circle/ellipse/arc variants. Repeat R/C to
+            cycle. Right-click or hold a grouped tool for its menu.
           </p>
           <p>
             Ctrl-click selects interiors; Ctrl-drag selects intersecting

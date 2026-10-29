@@ -2,6 +2,8 @@
 import { computed } from "vue";
 import {
   center,
+  bounds,
+  stretchShape,
   distance,
   moveShape,
   rotateShape,
@@ -28,15 +30,17 @@ const e = useEditor(),
   angle = computed(
     () => (Math.atan2(matrix.value.b, matrix.value.a) * 180) / Math.PI,
   ),
-  width = computed(
-    () =>
-      Math.abs(b.value.x - a.value.x) *
-      Math.hypot(matrix.value.a, matrix.value.b),
+  width = computed(() =>
+    ["curve", "control-curve"].includes(s.value!.kind)
+      ? bounds([s.value!]).width
+      : Math.abs(b.value.x - a.value.x) *
+        Math.hypot(matrix.value.a, matrix.value.b),
   ),
-  height = computed(
-    () =>
-      Math.abs(b.value.y - a.value.y) *
-      Math.hypot(matrix.value.c, matrix.value.d),
+  height = computed(() =>
+    ["curve", "control-curve"].includes(s.value!.kind)
+      ? bounds([s.value!]).height
+      : Math.abs(b.value.y - a.value.y) *
+        Math.hypot(matrix.value.c, matrix.value.d),
   ),
   vertices = computed(() => worldPoints(s.value!));
 const edit = (changes: Partial<Shape>) => {
@@ -52,6 +56,19 @@ function position(axis: "x" | "y", v: string) {
   );
 }
 function size(axis: "x" | "y", v: string) {
+  if (["curve", "control-curve"].includes(s.value!.kind)) {
+    const length = axis === "x" ? width.value : height.value;
+    if (length > 0)
+      edit(
+        stretchShape(
+          s.value!,
+          axis === "x" ? +v / length : 1,
+          axis === "y" ? +v / length : 1,
+          c.value,
+        ),
+      );
+    return;
+  }
   if (s.value!.transform) {
     const f = +v / (axis === "x" ? width.value : height.value),
       m = matrix.value,
@@ -107,7 +124,9 @@ function vertex(i: number, axis: "x" | "y", v: string) {
   const original = s.value!,
     point = { ...vertices.value[i], [axis]: +v };
   const local = applyMatrix(inverse(matrix.value), point);
-  const closed = distance(original.points[0], original.points.at(-1)!) < 1e-9;
+  const closed =
+    original.kind === "polyline" &&
+    distance(original.points[0], original.points.at(-1)!) < 1e-9;
   const next = {
     ...original,
     points: original.points.map((p, j) =>
@@ -149,7 +168,10 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         @commit="position('y', $event)"
       />
     </div>
-    <div v-if="['rectangle', 'ellipse'].includes(s.kind)" class="field-row">
+    <div
+      v-if="['rectangle', 'ellipse', 'curve', 'control-curve'].includes(s.kind)"
+      class="field-row"
+    >
       <Field
         label="Width"
         :value="+width.toFixed(1)"
@@ -191,7 +213,9 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       :value="+angle.toFixed(1)"
       @commit="edit(rotateShape(s, +$event - angle, c))"
     />
-    <details v-if="['line', 'polyline'].includes(s.kind)">
+    <details
+      v-if="['line', 'polyline', 'curve', 'control-curve'].includes(s.kind)"
+    >
       <summary>Vertex coordinates</summary>
       <div v-for="(point, i) in vertices" :key="i" class="field-row">
         <Field

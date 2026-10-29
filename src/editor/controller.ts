@@ -1,6 +1,9 @@
+import { isCurve, zeroHandles, mirroredHandles } from "../model/curves";
+import type { CurveHandles } from "../generated/CurveHandles";
 import { snapCandidates, type SnapKind } from "./snapping";
 import {
   construct,
+  isCurveMode,
   pointCount,
   labels,
   variants,
@@ -52,6 +55,7 @@ export type Gesture = {
   orientation?: number;
   baseValues?: { x: number; y: number; angle: number; sx: number; sy: number };
   vertex?: number;
+  handleSide?: "incoming" | "outgoing";
   pan?: Point;
   crossing?: boolean;
   angle?: number;
@@ -196,6 +200,8 @@ export class Controller {
   mode: Mode = "select";
   lastRectangle: Mode = "rectangle";
   lastCircle: Mode = "circle";
+  lastCurve: Mode = "curve";
+  pendingHandles: CurveHandles[] = [];
   hoverHandle = "";
   drawingDown: { pixel: Point; point: Point; initial: boolean } | null = null;
   beforeClick: Point[] = [];
@@ -286,6 +292,7 @@ export class Controller {
       this.mode,
       this.lastRectangle,
       this.lastCircle,
+      this.lastCurve,
       this.selected.join(","),
       this.pending.length,
       this.grid,
@@ -475,15 +482,18 @@ export class Controller {
     this.tool =
       mode === "select"
         ? "select"
-        : mode === "polyline"
-          ? "polyline"
-          : mode.startsWith("rectangle")
-            ? "rectangle"
-            : mode.startsWith("ellipse")
-              ? "ellipse"
-              : mode.startsWith("arc")
-                ? "arc"
-                : "circle";
+        : isCurveMode(mode)
+          ? (mode as "curve" | "control-curve")
+          : mode === "polyline"
+            ? "polyline"
+            : mode.startsWith("rectangle")
+              ? "rectangle"
+              : mode.startsWith("ellipse")
+                ? "ellipse"
+                : mode.startsWith("arc")
+                  ? "arc"
+                  : "circle";
+    if (isCurveMode(mode)) this.lastCurve = mode;
     if ((variants.rectangle as readonly string[]).includes(mode))
       this.lastRectangle = mode;
     if ((variants.circle as readonly string[]).includes(mode))
@@ -503,6 +513,8 @@ export class Controller {
     );
   }
   get instruction() {
+    if (isCurveMode(this.mode))
+      return `${labels[this.mode]} · ${this.mode === "control-curve" ? "Click anchors; drag for smooth handles" : "Click points on the curve"} · Enter/right-click/double-click: finish · Esc: cancel`;
     if (this.mode === "select")
       return "Click an edge; Ctrl selects interiors/crossings; Shift adds";
     const n = this.pending.length;
@@ -521,6 +533,10 @@ export class Controller {
     return `${labels[this.mode]} · ${n === 1 ? "Choose second point" : this.mode === "arc" ? "Move to set sweep, click to finish" : "Choose third point"}`;
   }
   polylineClick(count: number) {
+    if (isCurveMode(this.mode)) {
+      if (count === 2) this.finish();
+      return;
+    }
     if (this.mode !== "polyline") return;
     if (count === 1) {
       this.doubleClickBase = [...this.beforeClick];
@@ -566,6 +582,15 @@ export class Controller {
     return this.snap(raw, alt);
   }
   addPoint(p: Point) {
+    if (isCurveMode(this.mode)) {
+      if (!this.pending.length || distance(p, this.pending.at(-1)!) > 1e-9) {
+        this.pending.push(p);
+        this.pendingHandles.push(zeroHandles());
+      }
+      this.message = this.instruction;
+      this.notify();
+      return;
+    }
     if (!this.pending.length) this.pending = [p];
     else if (this.mode === "polyline") {
       if (
@@ -581,8 +606,28 @@ export class Controller {
     this.notify();
   }
   get constructionPreview(): Shape | null {
-    if (!this.pending.length || this.mode === "select") return null;
+    if (
+      (!this.pending.length && !(isCurveMode(this.mode) && this.drawingDown)) ||
+      this.mode === "select"
+    )
+      return null;
     try {
+      if (isCurveMode(this.mode)) {
+        const d = this.drawingDown;
+        const p = d?.point ?? this.cursor;
+        const points = this.pending.length ? [...this.pending, p] : [p, p];
+        const shape = construct(this.mode, points);
+        if (this.mode === "control-curve") {
+          const v = d
+            ? { x: this.cursor.x - p.x, y: this.cursor.y - p.y }
+            : { x: 0, y: 0 };
+          const h = mirroredHandles(v);
+          shape.handles = this.pending.length
+            ? [...this.pendingHandles, h]
+            : [h, h];
+        }
+        return shape;
+      }
       return construct(
         this.mode,
         [...this.pending, this.cursor],
@@ -643,6 +688,7 @@ export class Controller {
     this.arcLast = undefined;
     this.previewId++;
     this.pending = [];
+    this.pendingHandles = [];
     this.preview = null;
     this.gesture = null;
     this.snapTarget = null;
@@ -688,7 +734,7 @@ export class Controller {
           p.y > box.y + box.height + tolerance
         )
           continue;
-        const q = nearestOutline(s, p),
+        const q = nearestOutline(s, p, 0.25 / this.zoom),
           d = distance(q, p);
         if (d < best) {
           best = d;
@@ -726,9 +772,45 @@ export class Controller {
     kind: "move" | "scale" | "rotate" | "vertex";
     point: Point;
     vertex?: number;
+    handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
-    if (!this.selected.length || !this.transformTool) return [];
+    if (!this.selected.length) return [];
+    const curveHandles: ReturnType<Controller["handles"]> = [];
+    if (
+      this.active.length === 1 &&
+      isCurve(this.active[0]) &&
+      (!this.transformTool || this.transformTool === "move")
+    ) {
+      const s = this.active[0],
+        m = shapeMatrix(s);
+      s.points.forEach((p, vertex) => {
+        curveHandles.push({ kind: "vertex", point: applyMatrix(m, p), vertex });
+        if (s.handles)
+          for (const side of ["incoming", "outgoing"] as const) {
+            const v = s.handles[vertex][side];
+            // Collapsed handles sit slightly away from the anchor for discoverable editing.
+            const q =
+              Math.hypot(v.x, v.y) < 1e-9
+                ? {
+                    x:
+                      p.x +
+                      (side === "incoming" ? -20 : 20) /
+                        this.zoom /
+                        Math.hypot(m.a, m.b),
+                    y: p.y,
+                  }
+                : { x: p.x + v.x, y: p.y + v.y };
+            curveHandles.push({
+              kind: "vertex",
+              point: applyMatrix(m, q),
+              vertex,
+              handleSide: side,
+            });
+          }
+      });
+    }
+    if (!this.transformTool) return curveHandles;
     const p = this.transformPivot,
       t = (this.gizmoAngle * Math.PI) / 180,
       z = this.zoom;
@@ -755,7 +837,7 @@ export class Controller {
       worldPoints(this.active[0]).forEach((point, vertex) =>
         result.push({ kind: "vertex", point, vertex }),
       );
-    return result;
+    return [...result, ...curveHandles];
   }
   handleAt(raw: Point) {
     if (
@@ -764,7 +846,10 @@ export class Controller {
     )
       return this.handles()[0];
     const handles = this.handles();
-    const direct = handles.find((h) => distance(h.point, raw) < 10 / this.zoom);
+    const direct =
+      handles.find(
+        (h) => !h.handleSide && distance(h.point, raw) < 10 / this.zoom,
+      ) ?? handles.find((h) => distance(h.point, raw) < 10 / this.zoom);
     if (direct) return direct;
     return handles.find(
       (h) =>
@@ -793,7 +878,7 @@ export class Controller {
       };
       return;
     }
-    if (button === 2 && this.tool === "polyline") {
+    if (button === 2 && (this.tool === "polyline" || isCurveMode(this.mode))) {
       this.finish();
       return;
     }
@@ -828,6 +913,7 @@ export class Controller {
         orientation: this.transformAngle,
         baseValues: { ...this.transformValues },
         vertex: handle.vertex,
+        handleSide: handle.handleSide,
       };
       return;
     }
@@ -1046,13 +1132,14 @@ export class Controller {
         const original = g.original.shapes.find((s) => selected(s))!;
         const local = applyMatrix(inverse(shapeMatrix(original)), g.end);
         const closed =
+          original.kind === "polyline" &&
           original.points.length > 2 &&
           distance(
             original.points[0],
             original.points[original.points.length - 1],
           ) < 1e-9;
         const points = original.points.map((p, i) =>
-          i === g.vertex ||
+          (!g.handleSide && i === g.vertex) ||
           (closed &&
             (g.vertex === 0 || g.vertex === original.points.length - 1) &&
             (i === 0 || i === original.points.length - 1))
@@ -1060,7 +1147,24 @@ export class Controller {
             : p,
         );
         const oldCenter = localCenter(original),
-          newShape = { ...original, points },
+          newShape = {
+            ...original,
+            points,
+            ...(g.handleSide && original.handles
+              ? {
+                  handles: original.handles.map((h, i) => {
+                    if (i !== g.vertex) return h;
+                    const v = {
+                      x: local.x - original.points[i].x,
+                      y: local.y - original.points[i].y,
+                    };
+                    return mirroredHandles(
+                      g.handleSide === "incoming" ? { x: -v.x, y: -v.y } : v,
+                    );
+                  }),
+                }
+              : {}),
+          },
           newCenter = localCenter(newShape),
           rotatedNew = rotatePoint(newCenter, oldCenter, original.rotation);
         const corrected = {
@@ -1110,6 +1214,20 @@ export class Controller {
         this.finish([d.point, p]);
         return;
       }
+      if (isCurveMode(this.mode)) {
+        const anchor = this.mode === "control-curve" ? d.point : p;
+        const count = this.pending.length;
+        this.addPoint(anchor);
+        if (this.mode === "control-curve" && this.pending.length > count) {
+          const v =
+            pixel && distance(pixel, d.pixel) >= 4
+              ? { x: p.x - anchor.x, y: p.y - anchor.y }
+              : { x: 0, y: 0 };
+          this.pendingHandles[this.pending.length - 1] = mirroredHandles(v);
+        }
+        this.notify();
+        return;
+      }
       this.beforeClick = [...this.pending];
       this.addPoint(p);
       return;
@@ -1136,12 +1254,16 @@ export class Controller {
             .filter((s) => {
               const b = bounds([s]);
               return g.crossing || ctrl
-                ? intersectsBox(s, {
-                    x,
-                    y,
-                    width: right - x,
-                    height: bottom - y,
-                  })
+                ? intersectsBox(
+                    s,
+                    {
+                      x,
+                      y,
+                      width: right - x,
+                      height: bottom - y,
+                    },
+                    0.25 / this.zoom,
+                  )
                 : b.x >= x &&
                     b.y >= y &&
                     b.x + b.width <= right &&
@@ -1169,14 +1291,17 @@ export class Controller {
         points,
         this.mode === "arc" ? this.arcSweep : undefined,
       );
+      if (this.mode === "control-curve")
+        shape.handles = this.pendingHandles.slice(0, points.length);
       shape.id = crypto.randomUUID();
-      shape.name = `${shape.kind[0].toUpperCase() + shape.kind.slice(1)} ${this.document.shapes.length + 1}`;
+      shape.name = `${isCurveMode(this.mode) ? labels[this.mode] : shape.kind[0].toUpperCase() + shape.kind.slice(1)} ${this.document.shapes.length + 1}`;
       const next = {
         ...this.document,
         shapes: [...this.document.shapes, shape],
       };
       parseProject(JSON.stringify(next));
       this.pending = [];
+      this.pendingHandles = [];
       this.arcSweep = 0;
       this.arcLast = undefined;
       void this.commit(next).then(() => {

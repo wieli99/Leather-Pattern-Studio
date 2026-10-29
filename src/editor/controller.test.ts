@@ -598,3 +598,133 @@ test("move snap feedback keeps a stable source anchor and respects axis constrai
   e.pointerMove(e.screen({ x: x.point.x + 2, y: x.point.y + 1 }), false);
   expect(e.snapTarget).toBeNull();
 });
+
+test("curve drawing previews stay outside history and completion is one transaction", async () => {
+  const e = editor();
+  e.setMode("curve");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 10, y: 20 });
+  e.addPoint({ x: 30, y: 0 });
+  expect(e.document.shapes).toHaveLength(0);
+  expect(e.constructionPreview?.kind).toBe("curve");
+  e.polylineClick(2);
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  expect(e.document.shapes[0].points).toHaveLength(3);
+  await e.transact("undo");
+  expect(e.document.shapes).toHaveLength(0);
+});
+test("control curve drag creates mirrored handles, click creates corners, switching cancels", async () => {
+  const e = editor();
+  e.setMode("control-curve");
+  const a = { x: 100, y: 100 },
+    b = { x: 160, y: 150 },
+    end = { x: 300, y: 200 };
+  e.pointerDown(a, 0, false, false);
+  e.pointerMove(b, true);
+  e.pointerUp(b, true);
+  expect(e.pendingHandles[0].incoming.x).toBe(-e.pendingHandles[0].outgoing.x);
+  expect(e.pendingHandles[0].outgoing.x).not.toBe(0);
+  e.pointerDown(end, 0, false, true);
+  e.pointerUp(end, true);
+  expect(e.pendingHandles[1].outgoing).toEqual({ x: 0, y: 0 });
+  e.pointerDown(end, 2, false, true);
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  expect(e.document.shapes[0].kind).toBe("control-curve");
+  e.addPoint({ x: 10, y: 20 });
+  e.setMode("rectangle");
+  expect(e.pending).toHaveLength(0);
+  expect(e.pendingHandles).toHaveLength(0);
+  expect(e.revision).toBe(1);
+});
+test("curve duplicate clicks and invalid short paths do not create extra anchors or commits", async () => {
+  const e = editor();
+  e.setMode("curve");
+  e.addPoint({ x: 0, y: 0 });
+  e.finish();
+  expect(e.revision).toBe(0);
+  e.addPoint({ x: 10, y: 10 });
+  e.addPoint({ x: 10, y: 10 });
+  e.polylineClick(2);
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  expect(e.document.shapes[0].points).toHaveLength(2);
+});
+test("selected Bézier handles mirror when edited and cancellation restores original", async () => {
+  const e = editor();
+  e.setMode("control-curve");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 100, y: 0 });
+  e.finish();
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  const original = JSON.stringify(e.document);
+  const h = e
+    .handles()
+    .find((h) => h.vertex === 0 && h.handleSide === "outgoing")!;
+  e.pointerDown(e.screen(h.point), 0, false, true);
+  e.pointerMove(e.screen({ x: 20, y: 30 }), true);
+  expect(e.preview!.shapes[0].handles![0]).toEqual({
+    incoming: { x: -20, y: -30 },
+    outgoing: { x: 20, y: 30 },
+  });
+  e.cancel();
+  expect(JSON.stringify(e.document)).toBe(original);
+  expect(e.revision).toBe(1);
+  e.pointerDown(e.screen(h.point), 0, false, true);
+  e.pointerMove(e.screen({ x: 20, y: 30 }), true);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  await e.transact("undo");
+  expect(JSON.stringify(e.document)).toBe(original);
+});
+
+test("curve anchor editing preserves attached handle vectors and commits once", async () => {
+  const e = editor();
+  e.setMode("control-curve");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 100, y: 0 });
+  e.pendingHandles[0] = {
+    incoming: { x: -10, y: -20 },
+    outgoing: { x: 10, y: 20 },
+  };
+  e.finish();
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  e.pointerDown(e.screen({ x: 0, y: 0 }), 0, false, true);
+  e.pointerMove(e.screen({ x: 15, y: 10 }), true);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.document.shapes[0].points[0]).toEqual({ x: 15, y: 10 });
+  expect(e.document.shapes[0].handles![0]).toEqual({
+    incoming: { x: -10, y: -20 },
+    outgoing: { x: 10, y: 20 },
+  });
+});
+
+test.each(["curve", "control-curve"] as const)(
+  "%s retains the Move gizmo alongside editable points",
+  async (mode) => {
+    const e = editor();
+    e.setMode(mode);
+    e.addPoint({ x: 0, y: 0 });
+    e.addPoint({ x: 100, y: 40 });
+    e.finish();
+    await vi.waitFor(() => expect(e.revision).toBe(1));
+    e.activateTransform("move");
+    const handles = e.handles();
+    expect(handles.filter((h) => h.kind === "move")).toHaveLength(3);
+    expect(handles.some((h) => h.kind === "move" && h.axis === "x")).toBe(true);
+    expect(handles.some((h) => h.kind === "move" && h.axis === "y")).toBe(true);
+    expect(
+      handles.filter((h) => h.kind === "vertex" && !h.handleSide),
+    ).toHaveLength(2);
+    const x = handles.find((h) => h.kind === "move" && h.axis === "x")!;
+    e.pointerDown(e.screen(x.point), 0, false, true);
+    e.pointerMove(e.screen({ x: x.point.x + 10, y: x.point.y + 20 }), true);
+    e.pointerUp();
+    expect(e.transformValues.x).toBeCloseTo(10);
+    expect(e.transformValues.y).toBeCloseTo(0);
+    await e.applyTransform();
+    expect(e.document.shapes[0].points[0]).toEqual({ x: 10, y: 0 });
+    expect(e.revision).toBe(2);
+  },
+);
