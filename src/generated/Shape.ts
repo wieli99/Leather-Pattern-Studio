@@ -2,4 +2,4 @@
 import type { Kind } from "./Kind";
 import type { Point } from "./Point";
 
-export type Shape = { id: string, name: string, kind: Kind, points: Array<Point>, radius: number, rotation: number, legacyStitch?: unknown, };
+export type Shape = { id: string, name: string, kind: Kind, points: Array<Point>, radius: number, rotation: number, sweep?: number, legacyStitch?: unknown, };

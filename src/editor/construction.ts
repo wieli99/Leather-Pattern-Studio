@@ -1,0 +1,130 @@
+import type { Point, Shape } from "../model/project";
+import { distance } from "../model/geometry";
+export const variants = {
+  rectangle: ["rectangle", "rectangle-center", "rectangle-three"],
+  circle: [
+    "circle",
+    "circle-two",
+    "circle-three",
+    "ellipse",
+    "ellipse-center",
+    "arc",
+    "arc-three",
+  ],
+} as const;
+export type Mode =
+  | "select"
+  | "polyline"
+  | (typeof variants.rectangle)[number]
+  | (typeof variants.circle)[number];
+export const labels: Record<Mode, string> = {
+  select: "Select",
+  polyline: "Polyline",
+  rectangle: "Corner rectangle",
+  "rectangle-center": "Center rectangle",
+  "rectangle-three": "Three-point rectangle",
+  circle: "Center circle",
+  "circle-two": "Diameter circle",
+  "circle-three": "Three-point circle",
+  ellipse: "Bounding-box ellipse",
+  "ellipse-center": "Center ellipse",
+  arc: "Center arc",
+  "arc-three": "Three-point arc",
+};
+export const pointCount = (mode: Mode) =>
+  [
+    "rectangle-three",
+    "circle-three",
+    "ellipse-center",
+    "arc",
+    "arc-three",
+  ].includes(mode)
+    ? 3
+    : 2;
+export function circumcenter(a: Point, b: Point, c: Point): Point {
+  const x = b.x - a.x,
+    y = b.y - a.y,
+    u = c.x - a.x,
+    v = c.y - a.y,
+    d = 2 * (x * v - y * u);
+  if (Math.abs(d) < 1e-9 * Math.max(1, Math.hypot(x, y) * Math.hypot(u, v)))
+    throw Error("Choose three non-collinear points");
+  return {
+    x: a.x + (v * (x * x + y * y) - y * (u * u + v * v)) / d,
+    y: a.y + (x * (u * u + v * v) - u * (x * x + y * y)) / d,
+  };
+}
+export function construct(mode: Mode, points: Point[], sweep?: number): Shape {
+  const [a, b, c] = points;
+  let kind: Shape["kind"] = "polyline",
+    out = points,
+    rotation = 0;
+  if (!a || !b) throw Error("Place another point");
+  if (mode === "rectangle" || mode === "ellipse") {
+    kind = mode;
+    out = [a, b];
+  }
+  if (mode === "rectangle-center") {
+    kind = "rectangle";
+    out = [{ x: 2 * a.x - b.x, y: 2 * a.y - b.y }, b];
+  }
+  if (mode === "rectangle-three" || mode === "ellipse-center") {
+    if (!c) throw Error("Place the third point");
+    const len = distance(a, b);
+    if (len < 1e-9) throw Error("Shape must have positive size");
+    const ux = (b.x - a.x) / len,
+      uy = (b.y - a.y) / len,
+      h = (c.x - a.x) * -uy + (c.y - a.y) * ux;
+    rotation = (Math.atan2(uy, ux) * 180) / Math.PI;
+    const center =
+      mode === "rectangle-three"
+        ? {
+            x: (a.x + b.x) / 2 - (uy * h) / 2,
+            y: (a.y + b.y) / 2 + (ux * h) / 2,
+          }
+        : a;
+    const rx = mode === "rectangle-three" ? len / 2 : len,
+      ry = mode === "rectangle-three" ? Math.abs(h) / 2 : Math.abs(h);
+    kind = mode === "rectangle-three" ? "rectangle" : "ellipse";
+    out = [
+      { x: center.x - rx, y: center.y - ry },
+      { x: center.x + rx, y: center.y + ry },
+    ];
+  }
+  if (mode === "circle") {
+    kind = "circle";
+    out = [a, b];
+  }
+  if (mode === "circle-two") {
+    kind = "circle";
+    out = [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, b];
+  }
+  if (mode === "circle-three") {
+    kind = "circle";
+    out = [circumcenter(a, b, c), a];
+  }
+  if (mode === "arc" || mode === "arc-three") {
+    kind = "arc";
+    const center = mode === "arc" ? a : circumcenter(a, b, c),
+      start = mode === "arc" ? b : a,
+      end = mode === "arc" ? c : b;
+    const angle = (p: Point) =>
+      (Math.atan2(p.y - center.y, p.x - center.x) * 180) / Math.PI;
+    const positive = (n: number) => ((n % 360) + 360) % 360;
+    let span = positive(angle(end) - angle(start));
+    if (mode === "arc-three" && positive(angle(c) - angle(start)) > span)
+      span -= 360;
+    if (mode === "arc") span = sweep ?? span;
+    out = [center, start];
+    return {
+      id: "",
+      name: "",
+      kind,
+      points: out,
+      rotation,
+      radius: 0,
+      sweep: span,
+    };
+  }
+  return { id: "", name: "", kind, points: out, rotation, radius: 0 };
+}

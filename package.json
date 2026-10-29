@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
-    "build": "npm run wasm && tsc && vite build",
+    "build": "npm run wasm && vue-tsc --noEmit && vite build",
     "desktop": "tauri dev",
     "wasm": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --dev",
     "test": "vitest run",
@@ -15,18 +15,18 @@
     "types": "cargo test --manifest-path crates/document/Cargo.toml export_bindings"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@tauri-apps/api": "^2.0.0"
+    "@tauri-apps/api": "^2.0.0",
+    "vue": "^3.5.0",
+    "reka-ui": "^2.0.0"
   },
   "devDependencies": {
     "typescript": "^5.9.0",
     "vite": "^7.0.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
     "@tauri-apps/cli": "^2.0.0",
     "vitest": "^5.0.5",
     "@playwright/test": "^1.56.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "vue-tsc": "^3.0.0"
   }
 }

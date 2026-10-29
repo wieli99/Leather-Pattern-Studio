@@ -1,6 +1,6 @@
 # Leather Studio
 
-An offline-capable browser-based precision 2D pattern editor. Inspired by Plasticity's focused workspace; no 3D, accounts, server-side document processing, or installation required.
+An offline-capable browser-based precision 2D pattern editor built with Vue 3, TypeScript, Canvas 2D and Rust/Wasm. Inspired by Plasticity's focused workspace; no 3D, accounts, server-side document processing, or installation required.
 
 ## Run with Podman
 
@@ -18,8 +18,8 @@ Runs Rust tests, generated TypeScript contracts, production build, unit tests, a
 
 ## Draw and edit
 
-- **V/L/P/R/C/E**: select, line, polyline, rectangle, circle, ellipse.
-- Click two points to draw. Polylines accept more points; Enter finishes and clicking the first vertex closes. Numeric creation fields appear after the first point.
+- **V/P/R/C**: select, polyline, rectangle variants, and circle/ellipse/arc variants. Repeat R/C to cycle; right-click or hold the tool to open its menu.
+- Click points or drag to draw. Polylines accept more anchors; Enter or right-click finishes, and double-click closes. Refine exact dimensions in Properties.
 - Inspector edits exact dimensions, position, corner radius, rotation, and vertices. Enter or blur accepts a field; Escape cancels the field. Coordinates use millimetres.
 - Select outlines or use the object list. Shift toggles selection; dragging an empty area selects fully enclosed objects. Square handle scales uniformly; round handle rotates. Vertex handles edit lines/polylines.
 - Space+drag or middle-drag pans. Scroll pans; Ctrl/Command+scroll zooms at the cursor. **F** fits all; **Shift+F** fits selected objects.
@@ -29,7 +29,7 @@ Runs Rust tests, generated TypeScript contracts, production build, unit tests, a
 
 Save/Save As use native browser file pickers where supported. Other browsers download a JSON copy; the application reports that a download started rather than claiming a successful disk write. Unsaved work is protected before New/Open and by the browser's navigation prompt. IndexedDB recovery is offered at startup and is separate from a saved project file. Browser storage can be cleared or denied; retain downloaded/saved files.
 
-Version 3 preserves shape parameters, rotation, IDs, and names. Versions 1 and 2 migrate on open; legacy stitch metadata is retained but stitch tools are deferred. Curves, booleans, offsets, export, printing, leather-specific tools, and mobile editing are outside this MVP.
+Version 4 preserves shape parameters, rotation, circular arc sweeps, IDs, and names. Versions 1–3 migrate on open; legacy stitch metadata is retained but stitch tools are deferred. Splines, booleans, offsets, export, printing, leather-specific tools, and mobile editing are outside this MVP.
 
 ## Code
 

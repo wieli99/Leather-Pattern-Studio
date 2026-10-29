@@ -16,6 +16,7 @@ pub enum Kind {
     Rectangle,
     Circle,
     Ellipse,
+    Arc,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
@@ -26,6 +27,9 @@ pub struct Shape {
     pub points: Vec<Point>,
     pub radius: f64,
     pub rotation: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sweep: Option<f64>,
     #[serde(
         rename = "legacyStitch",
         skip_serializing_if = "Option::is_none",
@@ -42,7 +46,7 @@ pub struct Document {
 }
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 3 || self.shapes.len() > 10000 {
+        if self.version != 4 || self.shapes.len() > 10000 {
             return Err("Unsupported or oversized project".into());
         }
         let mut ids = HashSet::new();
@@ -64,6 +68,13 @@ impl Document {
                 .any(|p| !p.x.is_finite() || !p.y.is_finite() || p.x.abs() > 1e7 || p.y.abs() > 1e7)
             {
                 return Err("Invalid coordinate".into());
+            }
+            if s.kind == Kind::Arc
+                && !s
+                    .sweep
+                    .is_some_and(|v| v.is_finite() && v.abs() > 1e-9 && v.abs() <= 360.0)
+            {
+                return Err("Invalid arc sweep".into());
             }
             let a = &s.points[0];
             let b = s.points.last().unwrap();
@@ -93,7 +104,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 3,
+                version: 4,
                 shapes: vec![],
             },
             past: vec![],
@@ -174,7 +185,25 @@ impl Editor {
 mod tests {
     use super::*;
     fn sample() -> String {
-        r#"{"version":3,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
+        r#"{"version":4,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
+    }
+    #[test]
+    fn arc_roundtrip_validation_and_history() {
+        let mut e = Editor::new();
+        let arc = r#"{"version":4,"shapes":[{"id":"arc","name":"Arc","kind":"arc","points":[{"x":0,"y":0},{"x":10,"y":0}],"radius":0,"rotation":30,"sweep":-270}]}"#;
+        e.execute("commit", arc, 0).unwrap();
+        assert_eq!(e.document.shapes[0].sweep, Some(-270.0));
+        let encoded = serde_json::to_string(&e.document).unwrap();
+        let decoded: Document = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, e.document);
+        e.execute("undo", "", 1).unwrap();
+        assert!(e.document.shapes.is_empty());
+        e.execute("redo", "", 2).unwrap();
+        let mut invalid = e.document.clone();
+        for sweep in [None, Some(0.0), Some(361.0), Some(f64::NAN)] {
+            invalid.shapes[0].sweep = sweep;
+            assert!(invalid.validate().is_err());
+        }
     }
     #[test]
     fn history() {
@@ -210,7 +239,7 @@ mod tests {
     #[test]
     fn no_op_has_no_history() {
         let mut e = Editor::new();
-        e.execute("commit", r#"{"version":3,"shapes":[]}"#, 0)
+        e.execute("commit", r#"{"version":4,"shapes":[]}"#, 0)
             .unwrap();
         assert!(e.past.is_empty());
     }
