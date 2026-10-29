@@ -93,3 +93,33 @@ test("three-point arc fixes first two endpoints and passes through third", () =>
   expect(distance(arcPoint(arc, 1), end)).toBeCloseTo(0);
   expect(distance(nearestOutline(arc, through), through)).toBeLessThan(1e-6);
 });
+
+test("regular polygons have equal sides and a closed outline", () => {
+  for (const sides of [3, 5, 100]) {
+    const shape = construct("polygon", [{ x: 10, y: 20 }, { x: 20, y: 30 }], undefined, sides);
+    expect(shape.kind).toBe("polyline");
+    expect(shape.points).toHaveLength(sides + 1);
+    expect(shape.points[0]).toEqual({ x: 20, y: 30 });
+    expect(shape.points.at(-1)).toEqual(shape.points[0]);
+    const length = distance(shape.points[0], shape.points[1]);
+    for (let i = 1; i < sides; i++)
+      expect(distance(shape.points[i], shape.points[i + 1])).toBeCloseTo(length, 8);
+  }
+  expect(() => construct("polygon", [{ x: 0, y: 0 }, { x: 0, y: 0 }])).toThrow();
+});
+
+test("bounding-box polygons fit both corners in either drawing direction", () => {
+  for (const points of [
+    [{ x: 10, y: 20 }, { x: 90, y: 60 }],
+    [{ x: 90, y: 60 }, { x: 10, y: 20 }],
+  ]) {
+    const shape = construct("polygon-box", points, undefined, 5);
+    expect(shape.points).toHaveLength(6);
+    expect(Math.min(...shape.points.map(p => p.x))).toBeCloseTo(10);
+    expect(Math.max(...shape.points.map(p => p.x))).toBeCloseTo(90);
+    expect(Math.min(...shape.points.map(p => p.y))).toBeCloseTo(20);
+    expect(Math.max(...shape.points.map(p => p.y))).toBeCloseTo(60);
+    expect(shape.points.at(-1)).toEqual(shape.points[0]);
+  }
+  expect(() => construct("polygon-box", [{ x: 0, y: 0 }, { x: 0, y: 10 }])).toThrow();
+});

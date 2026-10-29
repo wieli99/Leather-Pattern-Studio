@@ -130,6 +130,11 @@ onMounted(() => {
         ?.focus();
       return;
     }
+    if (editor.mode.startsWith("polygon") && !mod && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      editor.adjustPolygonSides(e.key === "ArrowUp" ? 1 : -1);
+      return;
+    }
     if (e.key === "Escape") {
       editor.setMode("select");
     }

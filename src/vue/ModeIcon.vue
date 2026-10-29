@@ -11,8 +11,9 @@ const center = computed(
   three = computed(() => props.mode.includes("three"));
 const points = computed(() => {
   const m = props.mode;
-  if (m === "select") return [];
-  if (m === "curve" || m === "control-curve")
+  if (m === "select" || m === "ellipse" || m.startsWith("polygon")) return [];
+  if (m === "control-curve") return [[3, 19], [21, 19]];
+  if (m === "curve")
     return [
       [3, 18],
       [21, 6],
@@ -94,24 +95,27 @@ const points = computed(() => {
     aria-hidden="true"
   >
     <path v-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
-    <template v-else-if="mode === 'curve' || mode === 'control-curve'">
-      <path d="M3 18C8 18 16 6 21 6" />
-      <path
-        v-if="mode === 'control-curve'"
-        d="M3 18L8 18M16 6L21 6M8 16V20M16 4V8"
-      />
+    <path v-else-if="mode === 'curve'" d="M3 18C8 18 16 6 21 6" />
+    <template v-else-if="mode === 'control-curve'">
+      <path d="M3 16V7M21 16V7" stroke-width="1" />
+      <path d="M3 19C3 3 21 3 21 19" />
+      <rect x="1.5" y="3.5" width="3" height="3" />
+      <rect x="19.5" y="3.5" width="3" height="3" />
     </template>
+    <template v-else-if="mode === 'polygon-box'">
+      <path d="M2 7V2H7M17 2H22V7M22 17V22H17M7 22H2V17" stroke-width="1" />
+      <path d="M12 5L19 10L16.5 19H7.5L5 10Z" />
+    </template>
+    <path v-else-if="mode === 'polygon'" d="M12 3L21 10L18 21H6L3 10Z" />
     <path v-else-if="mode === 'polyline'" d="M3 18L9 6L16 15L21 5" />
     <path v-else-if="mode.startsWith('rectangle')" d="M4 5H20V19H4Z" />
-    <template v-else-if="mode.startsWith('ellipse')">
+    <template v-else-if="mode === 'ellipse'">
+      <path d="M2 7V2H7M17 2H22V7M22 17V22H17M7 22H2V17" stroke-width="1" />
+      <ellipse cx="12" cy="12" rx="7" ry="5" />
+    </template>
+    <template v-else-if="mode === 'ellipse-center'">
       <ellipse cx="12" cy="12" rx="9" ry="6" />
-      <path
-        :d="
-          center
-            ? 'M3 12H21M12 6V18'
-            : 'M3 10V6H7M17 6H21V10M21 14V18H17M7 18H3V14'
-        "
-      />
+      <path d="M3 12H21M12 6V18" />
     </template>
     <path v-else-if="mode.startsWith('arc')" d="M4 16A8 8 0 0 1 20 16" />
     <template v-else>

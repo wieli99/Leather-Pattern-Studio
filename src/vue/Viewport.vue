@@ -36,6 +36,10 @@ function down(event: PointerEvent) {
 }
 function wheel(event: WheelEvent) {
   event.preventDefault();
+  if (editor.mode.startsWith("polygon") && event.shiftKey) {
+    if (event.deltaY) editor.adjustPolygonSides(event.deltaY < 0 ? 1 : -1);
+    return;
+  }
   editor.wheel(
     pixel(event),
     event.deltaX,

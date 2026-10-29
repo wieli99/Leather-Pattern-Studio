@@ -2,6 +2,7 @@ import type { Point, Shape } from "../model/project";
 import { zeroHandles } from "../model/curves";
 import { distance } from "../model/geometry";
 export const variants = {
+  polygon: ["polygon", "polygon-box"],
   curve: ["curve", "control-curve"],
   rectangle: ["rectangle", "rectangle-center", "rectangle-three"],
   circle: [
@@ -15,12 +16,15 @@ export const variants = {
   ],
 } as const;
 export type Mode =
+  | (typeof variants.polygon)[number]
   | "select"
   | "polyline"
   | (typeof variants.curve)[number]
   | (typeof variants.rectangle)[number]
   | (typeof variants.circle)[number];
 export const labels: Record<Mode, string> = {
+  polygon: "Center polygon",
+  "polygon-box": "Bounding-box polygon",
   curve: "Curve",
   "control-curve": "Control point curve",
   select: "Select",
@@ -63,12 +67,45 @@ export function circumcenter(a: Point, b: Point, c: Point): Point {
     y: a.y + (x * (u * u + v * v) - u * (x * x + y * y)) / d,
   };
 }
-export function construct(mode: Mode, points: Point[], sweep?: number): Shape {
+export function construct(
+  mode: Mode,
+  points: Point[],
+  sweep?: number,
+  sides = 3,
+): Shape {
   const [a, b, c] = points;
   let kind: Shape["kind"] = "polyline",
     out = points,
     rotation = 0;
   if (!a || !b) throw Error("Place another point");
+  if (mode === "polygon" || mode === "polygon-box") {
+    const radius = distance(a, b);
+    if (radius < 1e-9) throw Error("Shape must have positive size");
+    const count = Math.max(3, Math.min(100, Math.round(sides)));
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    out = Array.from({ length: count }, (_, i) => ({
+      x: a.x + radius * Math.cos(angle + (i * 2 * Math.PI) / count),
+      y: a.y + radius * Math.sin(angle + (i * 2 * Math.PI) / count),
+    }));
+    if (mode === "polygon-box") {
+      const width = Math.abs(b.x - a.x),
+        height = Math.abs(b.y - a.y);
+      if (width < 1e-9 || height < 1e-9) throw Error("Shape must have positive size");
+      const unit = Array.from({ length: count }, (_, i) => ({
+        x: Math.cos(-Math.PI / 2 + (i * 2 * Math.PI) / count),
+        y: Math.sin(-Math.PI / 2 + (i * 2 * Math.PI) / count),
+      }));
+      const minX = Math.min(...unit.map((p) => p.x)),
+        maxX = Math.max(...unit.map((p) => p.x)),
+        minY = Math.min(...unit.map((p) => p.y)),
+        maxY = Math.max(...unit.map((p) => p.y));
+      out = unit.map((p) => ({
+        x: Math.min(a.x, b.x) + (p.x - minX) / (maxX - minX) * width,
+        y: Math.min(a.y, b.y) + (p.y - minY) / (maxY - minY) * height,
+      }));
+    }
+    out.push({ ...out[0] });
+  }
   if (isCurveMode(mode)) kind = mode as "curve" | "control-curve";
   if (mode === "rectangle" || mode === "ellipse") {
     kind = mode;

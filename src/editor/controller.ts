@@ -199,6 +199,7 @@ export class Controller {
   tool: Tool = "select";
   mode: Mode = "select";
   lastRectangle: Mode = "rectangle";
+  lastPolygon: Mode = "polygon";
   lastCircle: Mode = "circle";
   lastCurve: Mode = "curve";
   pendingHandles: CurveHandles[] = [];
@@ -292,6 +293,7 @@ export class Controller {
       this.mode,
       this.lastRectangle,
       this.lastCircle,
+      this.lastPolygon,
       this.lastCurve,
       this.selected.join(","),
       this.pending.length,
@@ -473,6 +475,12 @@ export class Controller {
     }
   }
 
+  polygonSides = 3;
+  adjustPolygonSides(delta: number) {
+    this.polygonSides = Math.max(3, Math.min(100, this.polygonSides + delta));
+    this.message = this.instruction;
+    this.notify();
+  }
   setTool(tool: Mode | Tool) {
     this.setMode(tool === "line" ? "polyline" : (tool as Mode));
   }
@@ -484,7 +492,7 @@ export class Controller {
         ? "select"
         : isCurveMode(mode)
           ? (mode as "curve" | "control-curve")
-          : mode === "polyline"
+          : mode === "polyline" || mode.startsWith("polygon")
             ? "polyline"
             : mode.startsWith("rectangle")
               ? "rectangle"
@@ -493,6 +501,8 @@ export class Controller {
                 : mode.startsWith("arc")
                   ? "arc"
                   : "circle";
+    if ((variants.polygon as readonly string[]).includes(mode))
+      this.lastPolygon = mode;
     if (isCurveMode(mode)) this.lastCurve = mode;
     if ((variants.rectangle as readonly string[]).includes(mode))
       this.lastRectangle = mode;
@@ -517,6 +527,12 @@ export class Controller {
       return `${labels[this.mode]} · ${this.mode === "control-curve" ? "Click anchors; drag for smooth handles" : "Click points on the curve"} · Enter/right-click/double-click: finish · Esc: cancel`;
     if (this.mode === "select")
       return "Click an edge; Ctrl selects interiors/crossings; Shift adds";
+    if (this.mode.startsWith("polygon")) {
+      const nextPoint = this.mode === "polygon-box"
+        ? (this.pending.length ? "opposite corner" : "first corner or drag")
+        : (this.pending.length ? "radius and rotation" : "center or drag");
+      return `${labels[this.mode]} · ${this.polygonSides} corners · Choose ${nextPoint} · Up/Down or Shift + wheel: corners`;
+    }
     const n = this.pending.length;
     if (this.mode === "arc-three")
       return n === 0
@@ -632,6 +648,7 @@ export class Controller {
         this.mode,
         [...this.pending, this.cursor],
         this.mode === "arc" ? this.arcSweep : undefined,
+        this.polygonSides,
       );
     } catch {
       return null;
@@ -1290,6 +1307,7 @@ export class Controller {
         this.mode,
         points,
         this.mode === "arc" ? this.arcSweep : undefined,
+        this.polygonSides,
       );
       if (this.mode === "control-curve")
         shape.handles = this.pendingHandles.slice(0, points.length);

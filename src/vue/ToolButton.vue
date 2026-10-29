@@ -19,6 +19,7 @@ const props = defineProps<{ tool: (typeof tools)[number] }>(),
   open = ref(false),
   trigger = ref<HTMLButtonElement | null>(null);
 const group = computed(() =>
+    props.tool.id === "polygon" ||
     props.tool.id === "rectangle" ||
     props.tool.id === "circle" ||
     props.tool.id === "curve"
@@ -32,7 +33,9 @@ const group = computed(() =>
         ? e.value.lastCircle
         : group.value === "curve"
           ? e.value.lastCurve
-          : props.tool.id,
+          : group.value === "polygon"
+            ? e.value.lastPolygon
+            : props.tool.id,
   ),
   active = computed(() =>
     group.value
