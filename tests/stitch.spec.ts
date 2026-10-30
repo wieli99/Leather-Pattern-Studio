@@ -60,7 +60,7 @@ test("place, merge and split within a session, then save", async ({
   await page.getByRole("button", { name: "Split all", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await saved(page);
-  expect(doc.version).toBe(10);
+  expect(doc.version).toBe(11);
   expect(doc.stitchGroups).toHaveLength(2);
   expect(
     doc.stitchGroups.every((g: any) => g.settings.style === "japanese"),

@@ -94,8 +94,9 @@ test("curve project round trips retain handles and reject invalid control geomet
   const doc = { version: 5, shapes: [bezier()] };
   expect(parseProject(JSON.stringify(doc))).toEqual({
     ...doc,
-    version: 10,
+    version: 11,
     stitchGroups: [],
+    stitchLinks: [],
     guides: [],
   });
   for (const handles of [

@@ -89,7 +89,7 @@ test("removed corner members split a merged group and undo data remains untouche
   expect(reconcileStitches({ ...doc, shapes: [] }).stitchGroups).toEqual([]);
 });
 test("version migration and ownership validation", () => {
-  expect(parseProject('{"version":7,"shapes":[]}').version).toBe(10);
+  expect(parseProject('{"version":7,"shapes":[]}').version).toBe(11);
   const g = group();
   expect(() =>
     parseProject(

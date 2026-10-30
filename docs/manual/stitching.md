@@ -72,3 +72,13 @@ Select one polyline or curve and open **Stitch line**, then choose **Convert to 
 Converted stitching paths can be selected in Select mode to edit their geometry. Alt+click inserts an anchor; drag anchors or curve handles to reshape the line. Stitching follows these edits and remains continuous across inserted anchors. Open **Stitch line** to change stitch settings.
 
 ![A converted path in the Stitch line tool](/manual/images/converted-stitching.png)
+
+## Linked stitch lines
+
+Select two or more lines with Shift-click and choose **Link**. All members must have exactly the same hole count. Existing selected links combine. **Unlink** removes selected members. Linking does not adjust spacing.
+
+Each member shows a chain and link number while the Stitch line tool is active or Ctrl is held. Different hole counts produce red broken-chain indicators that remain visible until counts match again. Splitting removes membership; deleting lines removes membership too. Links with fewer than two members disappear. Apply saves changes; Cancel discards them.
+
+![Linked stitch lines with numbered chain indicators](/manual/images/stitch-links.png)
+
+The selection information shows the master line’s hole count. For a broken link with exactly two members it also shows how many holes are missing or too many compared with the other line. Larger links show counts without differences. Unlink is available only when the selection includes a linked line.

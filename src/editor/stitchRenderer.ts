@@ -131,6 +131,48 @@ export function drawStitches(
         ? editor.stitchDraft
         : g,
     );
+  for (const link of doc.stitchLinks ?? []) {
+    const entries = link.members.map(id => {
+      const g = (doc.stitchGroups ?? []).find(g => g.id === id);
+      const shape = doc.shapes.find(s => s.id === g?.shapeId);
+      if (!g || !shape) return null;
+      try {
+        const geometry = stitchGeometry(shape, editor.stitchDraft?.id === id ? editor.stitchDraft : g);
+        let remaining = geometry.points.slice(1).reduce((total, p, i) =>
+          total + Math.hypot(p.x - geometry.points[i].x, p.y - geometry.points[i].y), 0) / 2;
+        let point = geometry.points[0];
+        for (let i = 1; i < geometry.points.length; i++) {
+          const a = geometry.points[i - 1], b = geometry.points[i];
+          const length = Math.hypot(b.x - a.x, b.y - a.y);
+          if (remaining <= length && length > 0) {
+            point = {x: a.x + (b.x - a.x) * remaining / length, y: a.y + (b.y - a.y) * remaining / length};
+            break;
+          }
+          remaining -= length;
+        }
+        return {point, count: geometry.holes.length};
+      } catch { return {point: applyMatrix(shapeMatrix(shape), shape.points[0]), count: -1}; }
+    });
+    const broken = entries.some(e => !e || e.count < 0) || new Set(entries.map(e => e?.count)).size !== 1;
+    if (!broken && !editor.stitchMode && !editor.measurementsVisible) continue;
+    for (const entry of entries) {
+      if (!entry) continue;
+      ctx.save();
+      ctx.translate(entry.point.x, entry.point.y);
+      ctx.scale(1 / editor.zoom, 1 / editor.zoom);
+      ctx.translate(8, -12);
+      ctx.strokeStyle = ctx.fillStyle = broken ? "#dc2626" : color("accent");
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 5, 3, -0.6, 0, Math.PI * 2);
+      ctx.ellipse(7, -4, 5, 3, -0.6, 0, Math.PI * 2);
+      if (broken) { ctx.moveTo(0, -9); ctx.lineTo(8, 5); }
+      ctx.stroke();
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText(String(link.id), 16, 3);
+      ctx.restore();
+    }
+  }
   if (
     editor.stitchMode &&
     editor.stitchHover?.id === "preview" &&

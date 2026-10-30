@@ -492,6 +492,7 @@ export const anchorReplacements = new WeakMap<Shape, Map<string, string[]>>();
 
 export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
   const stitchGroups: StitchGroup[] = [];
+  const splitIds = new Set<string>();
   for (const original of doc.stitchGroups ?? []) {
     let g = original;
     const s = doc.shapes.find((s) => s.id === g.shapeId);
@@ -590,6 +591,7 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
       if (first === (last + 1) % all.length)
         runs[0] = [...runs.pop()!, ...runs[0]];
     }
+    if (runs.length > 1) splitIds.add(g.id);
     runs.forEach((edges, i) =>
       stitchGroups.push({
         ...g,
@@ -599,5 +601,8 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
       }),
     );
   }
-  return { ...doc, stitchGroups };
+  const stitchLinks = (doc.stitchLinks ?? []).map(link => ({
+    ...link, members: link.members.filter(id => !splitIds.has(id) && stitchGroups.some(g => g.id === id)),
+  })).filter(link => link.members.length >= 2);
+  return { ...doc, stitchGroups, stitchLinks };
 }

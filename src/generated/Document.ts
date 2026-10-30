@@ -2,5 +2,6 @@
 import type { Guide } from "./Guide";
 import type { Shape } from "./Shape";
 import type { StitchGroup } from "./StitchGroup";
+import type { StitchLink } from "./StitchLink";
 
-export type Document = { version: number, shapes: Array<Shape>, guides: Array<Guide>, stitchGroups: Array<StitchGroup>, };
+export type Document = { stitchLinks: Array<StitchLink>, version: number, shapes: Array<Shape>, guides: Array<Guide>, stitchGroups: Array<StitchGroup>, };

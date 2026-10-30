@@ -517,9 +517,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 10)
+      if (initial.document.version !== 11)
         throw Error(
-          `Application expects document version 10, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 11, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -903,6 +903,79 @@ export class Controller {
       return;
     }
   }
+  get canUnlinkStitches(): boolean {
+    return (this.document.stitchLinks ?? []).some(link =>
+      link.members.some(id => this.stitchSelected.includes(id)));
+  }
+  get stitchHoleInfo(): string {
+    const id = this.stitchSelected[0];
+    if (!id) return "";
+    const count = (member: string) => {
+      const group = this.stitchDraft?.id === member ? this.stitchDraft : this.stitchGroups.find(g => g.id === member);
+      if (!group) throw Error("Missing stitch line");
+      const shape = (this.preview ?? this.document).shapes.find(s => s.id === group.shapeId);
+      if (!shape) throw Error("Missing shape");
+      return stitchGeometry(shape, group).holes.length;
+    };
+    try {
+      const holes = count(id);
+      let info = `${holes} ${holes === 1 ? "hole" : "holes"}`;
+      const link = (this.document.stitchLinks ?? []).find(link => link.members.includes(id));
+      if (link?.members.length === 2) {
+        try {
+          const difference = holes - count(link.members.find(member => member !== id)!);
+          if (difference) info += ` · ${Math.abs(difference)} ${difference < 0 ? "missing" : "too many"}`;
+        } catch { /* The other member has no count to compare. */ }
+      }
+      return info;
+    } catch {
+      return "Hole count unavailable";
+    }
+  }
+  get stitchLinkReason(): string {
+    const ids = new Set(this.stitchSelected);
+    for (const link of this.document.stitchLinks ?? [])
+      if (link.members.some(id => ids.has(id))) for (const id of link.members) ids.add(id);
+    if (ids.size < 2) return "Select at least two stitch lines.";
+    try {
+      const counts = [...ids].map(id => {
+        const g = this.stitchGroups.find(g => g.id === id)!;
+        return stitchGeometry(this.document.shapes.find(s => s.id === g.shapeId)!, g).holes.length;
+      });
+      return new Set(counts).size === 1 ? "" : "Linked lines must have the same number of holes.";
+    } catch {
+      return "Linked lines must have valid stitch geometry.";
+    }
+  }
+  async linkStitches(unlink = false) {
+    if (this.busy || this.stitchDraft || (unlink && !this.canUnlinkStitches)) return;
+    const selected = new Set(this.stitchSelected);
+    const links = this.document.stitchLinks ?? [];
+    const touched = links.filter(l => l.members.some(id => selected.has(id)));
+    if (!unlink) for (const l of touched) for (const id of l.members) selected.add(id);
+    try {
+      if (!unlink && this.stitchLinkReason) throw Error(this.stitchLinkReason);
+      const remaining = links
+        .map(link => ({
+          ...link,
+          members: link.members.filter(id => !selected.has(id)),
+        }))
+        .filter(link => link.members.length >= 2);
+      if (!unlink) {
+        remaining.push({
+          id: touched.length
+            ? Math.min(...touched.map(link => link.id))
+            : Math.max(0, ...links.map(link => link.id)) + 1,
+          members: [...selected],
+        });
+      }
+      if (!(await this.commit({ ...this.document, stitchLinks: remaining }))) return;
+      this.stitchError = "";
+    } catch (error) {
+      this.stitchError = String(error);
+    }
+    this.notify();
+  }
   async mergeStitches() {
     if (this.stitchSelected.length !== 2 || this.stitchDraft || this.busy)
       return;
@@ -958,6 +1031,7 @@ export class Controller {
     }));
     await this.commit({
       ...this.document,
+      stitchLinks: (this.document.stitchLinks ?? []).map(l => ({...l, members: l.members.filter(id => id !== g.id)})).filter(l => l.members.length >= 2),
       stitchGroups: [
         ...this.stitchGroups.filter((x) => x.id !== g.id),
         ...groups,

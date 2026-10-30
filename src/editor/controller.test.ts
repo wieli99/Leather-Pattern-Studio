@@ -1557,3 +1557,72 @@ test("mirror activation waits for a target and cancellation clears the preview",
   expect(e.mirrorAxis).toBeNull();
   expect(JSON.stringify(e.document)).toBe(original);
 });
+
+test("stitch links combine equal counts and prune after unlink or deletion", async () => {
+  const e = editor();
+  const shapes = ["a", "b", "c"].map((id, i) => ({
+    id, name: id, kind: "line" as const,
+    points: [{x: 0, y: i * 20}, {x: 40, y: i * 20}],
+    radius: 0, rotation: 0,
+  }));
+  await e.commit({...emptyDocument(), shapes, stitchGroups: shapes.map(s => ({
+    id: s.id, shapeId: s.id, edges: ["line:2:edge:0"], side: 1,
+    settings: {style: "round", spacing: 4, inset: 0, alignment: "center"}, closed: false,
+  }))});
+  e.stitchSelected = ["a", "b"];
+  await e.linkStitches();
+  expect(e.document.stitchLinks).toEqual([{id: 1, members: ["a", "b"]}]);
+  e.stitchSelected = ["b", "c"];
+  await e.linkStitches();
+  expect(e.document.stitchLinks?.[0].members.sort()).toEqual(["a", "b", "c"]);
+  e.stitchSelected = ["a"];
+  await e.linkStitches(true);
+  expect(e.document.stitchLinks?.[0].members.sort()).toEqual(["b", "c"]);
+  e.stitchSelected = ["b"];
+  await e.deleteStitches();
+  expect(e.document.stitchLinks).toEqual([]);
+});
+
+
+test("linking rejects unequal hole counts without changing memberships", async () => {
+  const e = editor();
+  const shapes = ["a", "b"].map((id, i) => ({
+    id, name: id, kind: "line" as const,
+    points: [{x: 0, y: i * 20}, {x: 40 + i * 20, y: i * 20}],
+    radius: 0, rotation: 0,
+  }));
+  await e.commit({...emptyDocument(), shapes, stitchGroups: shapes.map(s => ({
+    id: s.id, shapeId: s.id, edges: ["line:2:edge:0"], side: 1,
+    settings: {style: "round", spacing: 4, inset: 0, alignment: "center"}, closed: false,
+  }))});
+  e.stitchSelected = ["a", "b"];
+  expect(e.stitchLinkReason).toContain("same number");
+  await e.linkStitches();
+  expect(e.stitchError).toContain("same number");
+  expect(e.document.stitchLinks).toEqual([]);
+});
+
+test("selected stitching reports pair differences and ignores no-op unlink", async () => {
+  const e = editor();
+  const shapes = ["a", "b", "c"].map((id, i) => ({
+    id, name: id, kind: "line" as const,
+    points: [{x: 0, y: i * 20}, {x: 40 + i * 4, y: i * 20}], radius: 0, rotation: 0,
+  }));
+  await e.commit({...emptyDocument(), shapes, stitchGroups: shapes.map(s => ({
+    id: s.id, shapeId: s.id, edges: ["line:2:edge:0"], side: 1, closed: false,
+    settings: {style: "round", spacing: 4, inset: 0, alignment: "center"},
+  }))});
+  e.stitchSelected = ["a"];
+  expect(e.canUnlinkStitches).toBe(false);
+  expect(e.stitchHoleInfo).toBe("11 holes");
+  const commit = vi.spyOn(e, "commit");
+  await e.linkStitches(true);
+  expect(commit).not.toHaveBeenCalled();
+  await e.commit({...e.document, stitchLinks: [{id: 1, members: ["a", "b"]}]});
+  expect(e.canUnlinkStitches).toBe(true);
+  expect(e.stitchHoleInfo).toBe("11 holes · 1 missing");
+  e.stitchSelected = ["b"];
+  expect(e.stitchHoleInfo).toBe("12 holes · 1 too many");
+  await e.commit({...e.document, stitchLinks: [{id: 1, members: ["a", "b", "c"]}]});
+  expect(e.stitchHoleInfo).toBe("12 holes");
+});

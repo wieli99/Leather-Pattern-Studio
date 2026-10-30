@@ -235,9 +235,25 @@ const warnings = computed(() =>
     /></label>
     <p v-if="selected">
       {{ e.stitchSelected.length }} selected. Master:
-      {{ selected.edges.map(edgeLabel).join(", ") }}
+      {{ selected.edges.map(edgeLabel).join(", ") }} · {{ editor.stitchHoleInfo }}
+    </p>
+    <p v-if="e.stitchSelected.length > 1 && editor.stitchLinkReason">
+      {{ editor.stitchLinkReason }}
     </p>
     <div class="actions">
+      <button
+        :disabled="!!editor.stitchLinkReason || !!e.stitchDraft || e.busy"
+        :title="editor.stitchLinkReason"
+        @click="editor.linkStitches()"
+      >
+        Link
+      </button>
+      <button
+        :disabled="!editor.canUnlinkStitches || !!e.stitchDraft || e.busy"
+        @click="editor.linkStitches(true)"
+      >
+        Unlink
+      </button>
       <button
         :disabled="e.stitchSelected.length !== 2 || !!e.stitchDraft || e.busy"
         @click="editor.mergeStitches()"

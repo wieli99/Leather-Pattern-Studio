@@ -149,7 +149,15 @@ pub struct StitchGroup {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
+pub struct StitchLink {
+    pub id: u32,
+    pub members: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
 pub struct Document {
+    #[serde(default, rename = "stitchLinks")]
+    pub stitch_links: Vec<StitchLink>,
     pub version: u32,
     pub shapes: Vec<Shape>,
     #[serde(default)]
@@ -269,9 +277,9 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
 
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10) {
+        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10 | 11) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11). Reload the application.",
                 self.version
             ));
         }
@@ -417,6 +425,18 @@ impl Document {
                 return Err("Corner radius too large".into());
             }
         }
+        let mut link_ids = HashSet::new();
+        let mut linked = HashSet::new();
+        for link in &self.stitch_links {
+            if link.id == 0 || !link_ids.insert(link.id) || link.members.len() < 2 {
+                return Err("Invalid stitch link".into());
+            }
+            for member in &link.members {
+                if !linked.insert(member) || !self.stitch_groups.iter().any(|g| &g.id == member) {
+                    return Err("Invalid stitch link member".into());
+                }
+            }
+        }
         let mut stitch_ids = HashSet::new();
         let mut attached = HashSet::new();
         if self.stitch_groups.len() > 10000 {
@@ -489,10 +509,11 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 10,
+                version: 11,
                 shapes: vec![],
                 guides: vec![],
                 stitch_groups: vec![],
+                stitch_links: vec![],
             },
             past: vec![],
             future: vec![],
@@ -507,7 +528,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -531,7 +552,7 @@ impl Editor {
             "commit" | "load" | "preview" => {
                 let mut next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
                 next.validate()?;
-                next.version = 10;
+                next.version = 11;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -578,7 +599,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 10;
+        doc.version = 11;
         let group:StitchGroup=serde_json::from_str(r#"{"id":"st","shapeId":"a","edges":["line:2:edge:0"],"side":1,"settings":{"style":"french","spacing":3.85,"inset":3.0,"alignment":"center"},"closed":false}"#).unwrap();
         doc.stitch_groups.push(group);
         let mut editor = Editor::new();
@@ -635,7 +656,7 @@ mod tests {
     #[test]
     fn capabilities_and_version_errors() {
         let editor = Editor::default();
-        assert!(editor.capabilities().contains("[5,6,7,8,9,10]"));
+        assert!(editor.capabilities().contains("[5,6,7,8,9,10,11]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -667,7 +688,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 10;
+        d.version = 11;
         d.shapes[0].kind = Kind::ControlCurve;
         d.shapes[0].handles = Some(vec![
             CurveHandles {
@@ -736,7 +757,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 10;
+        doc.version = 11;
         doc.shapes[0].transform = Some(Affine {
             a: 2.0,
             b: 0.3,
