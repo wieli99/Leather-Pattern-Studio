@@ -125,6 +125,7 @@ export function insertAnchor(
     rotation: 0,
     transform: undefined,
     radius: 0,
+    cornerRadii: undefined,
     sweep: undefined,
   };
 }

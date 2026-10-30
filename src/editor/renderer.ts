@@ -16,7 +16,7 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
     ctx.moveTo(a.x, a.y);
     for (const [, c1, c2, end] of cubicSegments(s))
       ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
-  } else if (isPolygon(s) && s.radius > 0) {
+  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii) {
     const corners = polygonFillets(s).corners;
     ctx.moveTo(corners.at(-1)!.end.x, corners.at(-1)!.end.y);
     for (const c of corners) {
@@ -322,7 +322,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
             handle.point.y - (12 * Math.sin(t + 0.45)) / z,
           );
           ctx.closePath();
-        } else if (handle.handleSide)
+        } else if (handle.handleSide || handle.kind === "corner")
           ctx.arc(handle.point.x, handle.point.y, 4 / z, 0, Math.PI * 2);
         else
           ctx.rect(
@@ -333,7 +333,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           );
         ctx.fill();
       }
-      if (editor.transformTool) {
+      if (editor.transformTool && editor.transformTool !== "corner") {
         ctx.strokeStyle = color("accent");
         ctx.beginPath();
         ctx.arc(pivot.x, pivot.y, 3 / z, 0, Math.PI * 2);
@@ -504,7 +504,10 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       editor.rulers ? 30 : 14,
       h - 10,
     );
-    if (g && (g.kind === "rotate" || g.kind === "scale")) {
+    if (
+      g &&
+      (g.kind === "rotate" || g.kind === "scale" || g.kind === "corner")
+    ) {
       const point = editor.screen(g.end),
         text =
           g.kind === "scale"

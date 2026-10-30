@@ -17,3 +17,11 @@ Drag for proportional sizing, use an axis handle to resize one direction, or ent
 Transforms remain previews until applied. Selection changes are restricted while a transform is active. Apply or cancel before editing Properties.
 
 ![Transforms](/manual/images/transforms.png)
+
+## Individual corner radii
+
+Select rectangles or closed straight-sided polygons, then choose Corner radius (B) beside Move, Rotate and Resize. Drag the dots inward to round a corner or outward to sharpen it. Click a dot to use the numeric corner-radius and all-corners fields in the tool panel. Displayed corner radii are rounded to two decimal places; saved geometry retains full precision. Values use local millimetres: default 1 mm steps, Shift 5 mm, Ctrl 10 mm (Ctrl takes precedence).
+
+Alt applies the radius to every corner of the targeted shape and combines with Shift or Ctrl. Adjust several corners in one preview; Enter, right-click or Apply commits one undo step. Esc or Cancel discards the preview. Radii stop at available edge lengths. Ctrl shows measurements outside this tool. Open paths and curves have no radius dots.
+
+![Individual corner radius, corner dots, edge measurements and exact numeric editing](/manual/images/corner-radii.png)

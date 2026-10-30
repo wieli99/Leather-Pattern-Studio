@@ -81,16 +81,30 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
       e.preventDefault();
       editor.activateTransform(
-        k === "g" ? "move" : k === "e" ? "rotate" : "scale",
+        k === "b"
+          ? "corner"
+          : k === "g"
+            ? "move"
+            : k === "e"
+              ? "rotate"
+              : "scale",
       );
       return;
     }
-    if (editor.transformTool && k === "v") {
+    if (
+      editor.transformTool &&
+      editor.transformTool !== "corner" &&
+      k === "v"
+    ) {
       editor.placingPivot = true;
       editor.notify();
       return;
     }
-    if (editor.transformTool && (k === "x" || k === "y")) {
+    if (
+      editor.transformTool &&
+      editor.transformTool !== "corner" &&
+      (k === "x" || k === "y")
+    ) {
       editor.transformAxis = k;
       editor.notify();
       return;

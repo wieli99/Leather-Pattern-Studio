@@ -25,6 +25,9 @@ import {
   type Tool,
 } from "../model/project";
 import {
+  cornerPoints,
+  cornerRadii,
+  setCornerRadius,
   anchors,
   stretchShape,
   shapeMatrix,
@@ -50,7 +53,7 @@ import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) =>
   JSON.stringify(parseProject(JSON.stringify(doc)));
 export type Gesture = {
-  kind: "move" | "scale" | "rotate" | "vertex" | "marquee" | "pan";
+  kind: "move" | "scale" | "rotate" | "vertex" | "corner" | "marquee" | "pan";
   start: Point;
   end: Point;
   original: Doc;
@@ -61,6 +64,7 @@ export type Gesture = {
   axis?: "x" | "y";
   orientation?: number;
   baseValues?: { x: number; y: number; angle: number; sx: number; sy: number };
+  shapeId?: string;
   vertex?: number;
   handleSide?: "incoming" | "outgoing";
   pan?: Point;
@@ -89,6 +93,37 @@ export class Controller {
     }
     this.notify();
   }
+  updateCornerModifiers(alt: boolean, ctrl: boolean, shift: boolean) {
+    if (this.gesture?.kind === "corner")
+      this.pointerMove(this.screen(this.anchorPointer), alt, ctrl, shift);
+  }
+  selectedCorner: { shapeId: string; index: number } | null = null;
+  cornerHandles() {
+    if (this.tool !== "select" || this.transformTool !== "corner") return [];
+    return this.active.flatMap((s) => {
+      const pts = cornerPoints(s);
+      return pts.flatMap((p, i) => {
+        const prev = pts[(i + pts.length - 1) % pts.length],
+          next = pts[(i + 1) % pts.length];
+        const a = distance(p, prev),
+          b = distance(p, next);
+        const dx = (prev.x - p.x) / (a || 1) + (next.x - p.x) / (b || 1),
+          dy = (prev.y - p.y) / (a || 1) + (next.y - p.y) / (b || 1),
+          len = Math.hypot(dx, dy);
+        if (len < 1e-9 || a < 1e-9 || b < 1e-9) return [];
+        const m = shapeMatrix(s),
+          origin = applyMatrix(m, p),
+          direction = applyMatrix(m, { x: p.x + dx / len, y: p.y + dy / len });
+        const scale = distance(origin, direction),
+          inset = 14 / (this.zoom * (scale || 1));
+        const point = applyMatrix(m, {
+          x: p.x + (dx / len) * inset,
+          y: p.y + (dy / len) * inset,
+        });
+        return [{ kind: "corner" as const, point, vertex: i, shapeId: s.id }];
+      });
+    });
+  }
   measurementsVisible = false;
   setMeasurementModifier(ctrl: boolean) {
     if (this.measurementsVisible === ctrl) return;
@@ -106,7 +141,7 @@ export class Controller {
   busy = false;
   dirty = false;
   savedBaseline = fingerprint(emptyDocument());
-  transformTool: "move" | "rotate" | "scale" | null = null;
+  transformTool: "move" | "rotate" | "scale" | "corner" | null = null;
   transformOriginal: Doc | null = null;
   transformPivot: Point = { x: 0, y: 0 };
   placingPivot = false;
@@ -169,6 +204,24 @@ export class Controller {
     const b = this.selectionBounds;
     this.transformPivot = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     this.notify();
+  }
+  setCornerValue(value: number, all = false) {
+    const target = this.selectedCorner;
+    if (!target) return;
+    if (!Number.isFinite(value) || value < 0) {
+      this.transformError = "Enter a finite non-negative radius.";
+      this.notify();
+      return;
+    }
+    const doc = this.preview ?? this.document;
+    const shape = doc.shapes.find((s) => s.id === target.shapeId);
+    if (!shape) return;
+    this.updateTransformPreview({
+      ...doc,
+      shapes: doc.shapes.map((s) =>
+        s.id === shape.id ? setCornerRadius(s, target.index, value, all) : s,
+      ),
+    });
   }
   setTransformValues(values: Partial<typeof this.transformValues>) {
     if (!this.transformOriginal) return;
@@ -423,9 +476,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 6)
+      if (initial.document.version !== 7)
         throw Error(
-          `Application expects document version 6, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 7, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -874,8 +927,12 @@ export class Controller {
     else this.notify();
   }
 
-  async activateTransform(tool: "move" | "rotate" | "scale") {
+  get canEditCorners() {
+    return this.active.some((s) => cornerPoints(s).length > 0);
+  }
+  async activateTransform(tool: "move" | "rotate" | "scale" | "corner") {
     if (!this.ready || this.busy || !this.selected.length) return;
+    if (tool === "corner" && !this.canEditCorners) return;
     if (this.propertySession) await this.finishProperty();
     this.cancel();
     this.tool = "select";
@@ -883,7 +940,8 @@ export class Controller {
     this.transformTool = tool;
     this.transformOriginal = this.document;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
-    this.resetPivot();
+    if (tool !== "corner") this.resetPivot();
+    else this.selectedCorner = null;
     this.notify();
   }
   async applyTransform() {
@@ -1041,13 +1099,15 @@ export class Controller {
     return bounds(this.active);
   }
   handles(): {
-    kind: "move" | "scale" | "rotate" | "vertex";
+    kind: "move" | "scale" | "rotate" | "vertex" | "corner";
     point: Point;
+    shapeId?: string;
     vertex?: number;
     handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
     if (!this.selected.length) return [];
+    if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
     if (
       this.active.length === 1 &&
@@ -1242,6 +1302,7 @@ export class Controller {
   ) {
     if (!this.ready || this.busy) return;
     const raw = this.world(pixel);
+    this.anchorPointer = raw;
     if (
       button === 0 &&
       !this.space &&
@@ -1307,7 +1368,7 @@ export class Controller {
       this.notify();
       return;
     }
-    if (alt && !this.transformTool) {
+    if (alt && !this.transformTool && this.handleAt(raw)?.kind !== "corner") {
       const hit = [...this.document.shapes]
         .reverse()
         .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
@@ -1327,8 +1388,16 @@ export class Controller {
     }
     const handle = this.handleAt(raw);
     if (handle) {
+      if (handle.kind === "corner") {
+        this.selectedCorner = {
+          shapeId: handle.shapeId!,
+          index: handle.vertex!,
+        };
+        this.notify();
+      }
       this.gesture = {
         kind: handle.kind,
+        shapeId: handle.shapeId,
         start: raw,
         end: raw,
         original: this.preview ?? this.document,
@@ -1589,6 +1658,55 @@ export class Controller {
           ...g.original,
           shapes: g.original.shapes.map((s) =>
             selected(s) ? rotateShape(s, angle, g.pivot) : s,
+          ),
+        };
+      }
+      if (g.kind === "corner") {
+        const original = g.original.shapes.find((s) => s.id === g.shapeId)!;
+        const index = g.vertex!,
+          pts = cornerPoints(original),
+          p = pts[index];
+        const a = pts[(index + pts.length - 1) % pts.length],
+          b = pts[(index + 1) % pts.length];
+        const dx =
+            (a.x - p.x) / (distance(a, p) || 1) +
+            (b.x - p.x) / (distance(b, p) || 1),
+          dy =
+            (a.y - p.y) / (distance(a, p) || 1) +
+            (b.y - p.y) / (distance(b, p) || 1),
+          len = Math.hypot(dx, dy);
+        const inv = inverse(shapeMatrix(original)),
+          start = applyMatrix(inv, g.start),
+          end = applyMatrix(inv, raw);
+        const angle = Math.acos(
+          Math.max(
+            -1,
+            Math.min(
+              1,
+              ((a.x - p.x) * (b.x - p.x) + (a.y - p.y) * (b.y - p.y)) /
+                (distance(a, p) * distance(b, p) || 1),
+            ),
+          ),
+        );
+        const delta =
+          ((((end.x - start.x) * dx + (end.y - start.y) * dy) / (len || 1)) *
+            Math.sin(angle / 2)) /
+          (1 - Math.sin(angle / 2) || 1);
+        const step = ctrl ? 10 : shift ? 5 : 1;
+        const initialRadius = cornerRadii(original)[index];
+        const value =
+          distance(g.start, raw) * this.zoom < 2
+            ? initialRadius
+            : Math.max(0, Math.round((initialRadius + delta) / step) * step);
+        const next =
+          distance(g.start, raw) * this.zoom < 2 && !alt
+            ? original
+            : setCornerRadius(original, index, value, alt);
+        this.message = `Corner radius ${cornerRadii(next)[index].toFixed(2)} mm${alt ? " (all corners)" : ""}`;
+        document = {
+          ...g.original,
+          shapes: g.original.shapes.map((s) =>
+            s.id === original.id ? next : s,
           ),
         };
       }

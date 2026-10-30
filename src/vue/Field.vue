@@ -10,12 +10,13 @@ const props = withDefaults(
     min?: number;
     max?: number;
     step?: number;
+    precision?: number;
   }>(),
-  { step: 0.1 },
+  { step: 0.1, precision: 1 },
 );
 const emit = defineEmits<{ commit: [value: string] }>();
 const format = (v: string | number) =>
-  typeof v === "number" ? String(+v.toFixed(1)) : v;
+  typeof v === "number" ? String(+v.toFixed(props.precision)) : v;
 const draft = ref(format(props.value)),
   invalid = ref(false);
 let focused = false,

@@ -4,7 +4,7 @@ export interface HintState {
   mode: Mode;
   pending: readonly unknown[];
   selected: readonly string[];
-  transformTool: "move" | "rotate" | "scale" | null;
+  transformTool: "move" | "rotate" | "scale" | "corner" | null;
   placingPivot: boolean;
   active?: readonly { kind: string }[];
   measurementFields?: readonly string[];
@@ -55,11 +55,17 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     action = "Click to place the pivot.";
     add("snap", "Alt", "Bypass snapping");
   } else if (s.transformTool) {
-    action = `Drag to ${s.transformTool === "scale" ? "resize" : s.transformTool} the selection.`;
+    action =
+      s.transformTool === "corner"
+        ? "Drag a corner to change its radius."
+        : `Drag to ${s.transformTool === "scale" ? "resize" : s.transformTool} the selection.`;
     add("apply", "Enter / Right-click", "Apply");
     add("values", "Tab", "Edit values");
-    add("pivot", "V", "Place pivot");
-    if (s.transformTool !== "rotate") add("axis", "X / Y", "Constrain axis");
+    if (s.transformTool !== "corner") add("pivot", "V", "Place pivot");
+    if (s.transformTool !== "rotate" && s.transformTool !== "corner")
+      add("axis", "X / Y", "Constrain axis");
+    if (s.transformTool === "corner")
+      add("corner-steps", "Ctrl / Shift / Alt", "10 mm / 5 mm / all corners");
     if (s.transformTool === "rotate") {
       add("rotation", "Drag", "Rotate in 1° steps");
       add("rotation-step", "Ctrl / Shift / Alt", "10° / 5° / free rotation");
@@ -139,8 +145,27 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("finish", "Enter / Right-click", "Finish path");
       if (n >= 3) add("close", "Double-click", "Close path");
     }
-    if (n && (["polyline", "curve", "control-curve", "circle", "circle-two", "polygon", "arc"].includes(s.mode) || (n === 1 && ["ellipse-center", "arc-three"].includes(s.mode)))) add("angle", "Shift", "Constrain to 45°");
-    if (n === 1 && ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(s.mode)) add("square", "Shift", "Equal width and height");
+    if (
+      n &&
+      ([
+        "polyline",
+        "curve",
+        "control-curve",
+        "circle",
+        "circle-two",
+        "polygon",
+        "arc",
+      ].includes(s.mode) ||
+        (n === 1 && ["ellipse-center", "arc-three"].includes(s.mode)))
+    )
+      add("angle", "Shift", "Constrain to 45°");
+    if (
+      n === 1 &&
+      ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
+        s.mode,
+      )
+    )
+      add("square", "Shift", "Equal width and height");
     if (n) add("back", "Backspace", "Remove last anchor");
     if (s.measurementFields?.length) add("values", "Tab", "Edit dimensions");
     if (s.mode.startsWith("polygon"))

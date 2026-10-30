@@ -24,7 +24,10 @@ const items = computed(() => {
       const segmentFields = editor.measurementFields.includes("Angle");
       let p = edge?.point ?? { x: (a.x + end.x) / 2, y: (a.y + end.y) / 2 };
       if (editor.mode === "rectangle-center") {
-        p = key === "Width" ? { x: a.x, y: Math.min(end.y, 2 * a.y - end.y) } : { x: Math.max(end.x, 2 * a.x - end.x), y: a.y };
+        p =
+          key === "Width"
+            ? { x: a.x, y: Math.min(end.y, 2 * a.y - end.y) }
+            : { x: Math.max(end.x, 2 * a.x - end.x), y: a.y };
       }
       const point = segmentFields
         ? segmentLabelPoint(
@@ -42,12 +45,19 @@ const items = computed(() => {
         key,
         value: editor.measurementLocks[key] ?? editor.measurementValue(key),
         point,
-        angle: segmentFields ? 0 : editor.mode === "rectangle-center" ? (key === "Width" ? 0 : Math.PI / 2) : (edge?.angle ?? 0),
+        angle: segmentFields
+          ? 0
+          : editor.mode === "rectangle-center"
+            ? key === "Width"
+              ? 0
+              : Math.PI / 2
+            : (edge?.angle ?? 0),
         shape: undefined,
         index: i,
       };
     });
   }
+  if (editor.transformTool === "corner") return [];
   if (!editor.measurementsVisible && !active.value) return [];
   return (editor.preview ?? editor.document).shapes
     .filter((s) => editor.selected.includes(s.id))

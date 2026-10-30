@@ -92,7 +92,11 @@ test("adaptive subdivision preserves collinear overshoot", () => {
 });
 test("curve project round trips retain handles and reject invalid control geometry", () => {
   const doc = { version: 5, shapes: [bezier()] };
-  expect(parseProject(JSON.stringify(doc))).toEqual({ ...doc, version: 6, guides: [] });
+  expect(parseProject(JSON.stringify(doc))).toEqual({
+    ...doc,
+    version: 7,
+    guides: [],
+  });
   for (const handles of [
     [],
     [zeroHandles()],

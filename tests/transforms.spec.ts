@@ -69,12 +69,12 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await expect(page.getByLabel("Position X", { exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(
-    page.getByLabel("Corner radius (local)", { exact: true }),
+    page.getByLabel("All corner radii (local)", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(page.getByLabel("Corner radius", { exact: true })).toHaveValue(
-    "8",
-  );
+  await expect(
+    page.getByLabel("All corner radii", { exact: true }),
+  ).toHaveValue("8");
   await page.getByRole("button", { name: "Redo", exact: true }).click();
   await page.getByRole("button", { name: "Move", exact: true }).click();
   await page.getByLabel("X (mm)", { exact: true }).fill("15");
@@ -111,7 +111,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const saved = (await (await downloading).path())!;
   const document = JSON.parse(await readFile(saved, "utf8"));
-  expect(document.version).toBe(6);
+  expect(document.version).toBe(7);
   expect(document.shapes.every((s: any) => s.transform)).toBe(true);
   expect(document.shapes[1].kind).toBe("arc");
   const chooser = page.waitForEvent("filechooser");

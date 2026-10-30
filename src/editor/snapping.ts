@@ -11,7 +11,13 @@ import {
   worldPoints,
 } from "../model/geometry";
 export type SnapKind =
-  "grid" | "vertex" | "midpoint" | "center" | "quadrant" | "edge" | "alignment";
+  | "grid"
+  | "vertex"
+  | "midpoint"
+  | "center"
+  | "quadrant"
+  | "edge"
+  | "alignment";
 export type SnapCandidate = { point: Point; kind: SnapKind; objectId?: string };
 export function snapCandidates(shape: Shape): SnapCandidate[] {
   const c = center(shape),
@@ -20,7 +26,7 @@ export function snapCandidates(shape: Shape): SnapCandidate[] {
   const vertices =
     shape.kind === "arc"
       ? [arcPoint(shape, 0), arcPoint(shape, 1)]
-      : shape.kind === "rectangle" && shape.radius === 0
+      : shape.kind === "rectangle" && shape.radius === 0 && !shape.cornerRadii
         ? [a, b, { x: a.x, y: b.y }, { x: b.x, y: a.y }].map((p) =>
             applyMatrix(shapeMatrix(shape), p),
           )
@@ -40,13 +46,18 @@ export function snapCandidates(shape: Shape): SnapCandidate[] {
   if (isPolygon(shape)) {
     // The closing point repeats the first corner and must not bias the average.
     const corners = worldPoints(shape).slice(0, -1);
-    const point = corners.reduce((sum, p) => ({
-      x: sum.x + p.x,
-      y: sum.y + p.y,
-    }), { x: 0, y: 0 });
+    const point = corners.reduce(
+      (sum, p) => ({
+        x: sum.x + p.x,
+        y: sum.y + p.y,
+      }),
+      { x: 0, y: 0 },
+    );
     point.x /= corners.length;
     point.y /= corners.length;
-    if (!candidates.some((candidate) => distance(candidate.point, point) < 1e-8))
+    if (
+      !candidates.some((candidate) => distance(candidate.point, point) < 1e-8)
+    )
       candidates.push({ point, kind: "center", objectId: shape.id });
   }
   return candidates;
@@ -80,12 +91,25 @@ export function smartSnap(point: Point, shapes: Shape[], tolerance: number) {
         const delta = Math.abs(point[axis] - coordinate);
         if (delta < best) {
           best = delta;
-          const alignment = coordinate === start + size / 2
-            ? axis === "x" ? "Vertical center" : "Horizontal center"
-            : axis === "x"
-              ? coordinate === start ? "Left edge" : "Right edge"
-              : coordinate === start ? "Top edge" : "Bottom edge";
-          guide = { axis, coordinate, objectId: shape.id, bounds: box, alignment };
+          const alignment =
+            coordinate === start + size / 2
+              ? axis === "x"
+                ? "Vertical center"
+                : "Horizontal center"
+              : axis === "x"
+                ? coordinate === start
+                  ? "Left edge"
+                  : "Right edge"
+                : coordinate === start
+                  ? "Top edge"
+                  : "Bottom edge";
+          guide = {
+            axis,
+            coordinate,
+            objectId: shape.id,
+            bounds: box,
+            alignment,
+          };
         }
       }
     }

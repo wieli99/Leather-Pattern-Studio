@@ -117,8 +117,81 @@ export function isPolygon(s: Shape): boolean {
     distance(s.points[0], s.points.at(-1)!) < 1e-9
   );
 }
+export function cornerPoints(s: Shape): Point[] {
+  if (s.kind !== "rectangle") return isPolygon(s) ? s.points.slice(0, -1) : [];
+  const [a, b] = s.points;
+  const l = Math.min(a.x, b.x),
+    r = Math.max(a.x, b.x),
+    t = Math.min(a.y, b.y),
+    d = Math.max(a.y, b.y);
+  return [
+    { x: l, y: t },
+    { x: r, y: t },
+    { x: r, y: d },
+    { x: l, y: d },
+  ];
+}
+export function cornerRadii(s: Shape): number[] {
+  return s.cornerRadii
+    ? polygonFillets(s).corners.map((c) => c.radius)
+    : cornerPoints(s).map(() => s.radius);
+}
+export function setCornerRadius(
+  s: Shape,
+  index: number,
+  value: number,
+  all = false,
+): Shape {
+  if (!Number.isFinite(value)) return s;
+  const base = polygonFillets(s).corners.map((c) => c.radius),
+    count = base.length;
+  if (
+    !count ||
+    (!all && (!Number.isInteger(index) || index < 0 || index >= count))
+  )
+    return s;
+  const probe = polygonFillets({ ...s, radius: 0, cornerRadii: undefined }).max;
+  if (all)
+    return {
+      ...s,
+      radius: Math.max(0, Math.min(value, probe)),
+      cornerRadii: undefined,
+    };
+  const pts = cornerPoints(s);
+  const k = (i: number) => {
+    const p = pts[i],
+      a = pts[(i + count - 1) % count],
+      b = pts[(i + 1) % count];
+    const u = distance(p, a),
+      v = distance(p, b);
+    const angle = Math.acos(
+      Math.max(
+        -1,
+        Math.min(
+          1,
+          ((a.x - p.x) * (b.x - p.x) + (a.y - p.y) * (b.y - p.y)) /
+            (u * v || 1),
+        ),
+      ),
+    );
+    return u > 1e-9 && v > 1e-9 && angle > 1e-9 && Math.PI - angle > 1e-9
+      ? 1 / Math.tan(angle / 2)
+      : 0;
+  };
+  const factor = k(index);
+  const max = factor
+    ? Math.min(
+        ...[-1, 1].map((d) => {
+          const j = (index + d + count) % count;
+          return (distance(pts[index], pts[j]) - base[j] * k(j)) / factor;
+        }),
+      )
+    : 0;
+  base[index] = Math.max(0, Math.min(value, max));
+  return { ...s, cornerRadii: base };
+}
 export function polygonFillets(s: Shape) {
-  const pts = s.points.slice(0, -1);
+  const pts = cornerPoints(s);
   const corners = pts.map((p, i) => {
     const prev = pts[(i + pts.length - 1) % pts.length],
       next = pts[(i + 1) % pts.length];
@@ -138,10 +211,20 @@ export function polygonFillets(s: Shape) {
     const k = c.k + corners[(i + 1) % corners.length].k;
     if (k > 0) max = Math.min(max, c.n / k);
   });
-  const radius = Math.min(s.radius, Number.isFinite(max) ? max : 0);
+  const uniformRadius = Math.min(s.radius, Number.isFinite(max) ? max : 0);
+  let scale = 1;
+  corners.forEach((q, j) => {
+    const used =
+      (s.cornerRadii?.[j] ?? uniformRadius) * q.k +
+      (s.cornerRadii?.[(j + 1) % corners.length] ?? uniformRadius) *
+        corners[(j + 1) % corners.length].k;
+    if (used > q.n) scale = Math.min(scale, q.n / used);
+  });
   return {
     max: Number.isFinite(max) ? max : 0,
-    corners: corners.map((c) => {
+    corners: corners.map((c, i) => {
+      const requested = s.cornerRadii?.[i] ?? uniformRadius;
+      const radius = requested * scale;
       const d = radius * c.k;
       const start = { x: c.p.x + c.u.x * d, y: c.p.y + c.u.y * d };
       const end = { x: c.p.x + c.v.x * d, y: c.p.y + c.v.y * d };
@@ -174,7 +257,8 @@ export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
     s.transform ||
     s.kind === "arc" ||
     isCurve(s) ||
-    (isPolygon(s) && s.radius > 0)
+    (isPolygon(s) && s.radius > 0) ||
+    !!s.cornerRadii
   )
     return (
       distance(nearestOutline(s, point, tolerance / 32), point) <= tolerance
@@ -285,6 +369,9 @@ export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
         }
       : {}),
     radius: s.radius * factor,
+    ...(s.cornerRadii
+      ? { cornerRadii: s.cornerRadii.map((r) => r * factor) }
+      : {}),
   };
 }
 export function anchors(s: Shape): Point[] {
@@ -294,7 +381,7 @@ export function anchors(s: Shape): Point[] {
     );
   if (s.kind === "arc")
     return [localCenter(s), arcPoint(s, 0), arcPoint(s, 0.5), arcPoint(s, 1)];
-  if (isPolygon(s) && s.radius > 0)
+  if ((isPolygon(s) && s.radius > 0) || s.cornerRadii)
     return [
       center(s),
       ...polygonFillets(s)
@@ -408,7 +495,7 @@ export function contains(s: Shape, p: Point): boolean {
         ((q.y - c.y) / (Math.abs(b.y - a.y) / 2)) ** 2 <=
       1
     );
-  if (s.kind === "rectangle") {
+  if (s.kind === "rectangle" && !s.cornerRadii) {
     const r = s.radius,
       x = Math.abs(q.x - c.x) - Math.abs(b.x - a.x) / 2 + r,
       y = Math.abs(q.y - c.y) - Math.abs(b.y - a.y) / 2 + r;
@@ -419,11 +506,11 @@ export function contains(s: Shape, p: Point): boolean {
     );
   }
   if (
-    s.kind === "polyline" &&
-    distance(a, s.points[s.points.length - 1]) < 1e-9
+    (s.kind === "rectangle" && !!s.cornerRadii) ||
+    (s.kind === "polyline" && distance(a, s.points[s.points.length - 1]) < 1e-9)
   ) {
     const polygon =
-      s.radius > 0
+      s.radius > 0 || s.cornerRadii
         ? polygonFillets(s).corners.flatMap((c) =>
             c.radius
               ? Array.from({ length: 65 }, (_, i) => ({
@@ -453,7 +540,10 @@ export function contains(s: Shape, p: Point): boolean {
 }
 // Parametric boundary pieces retain exact circular and elliptical geometry.
 type Curve = { c: Point; u: Point; v: Point; start: number; span: number };
-export function boundary(s: Shape): { lines: [Point, Point][]; curves: Curve[] } {
+export function boundary(s: Shape): {
+  lines: [Point, Point][];
+  curves: Curve[];
+} {
   if (s.transform) {
     const m = s.transform,
       q = boundary({ ...s, transform: undefined }),
@@ -505,7 +595,7 @@ export function boundary(s: Shape): { lines: [Point, Point][]; curves: Curve[] }
     );
   } else if (s.kind === "ellipse")
     curve(c, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, Math.PI * 2);
-  else if (s.kind === "rectangle") {
+  else if (s.kind === "rectangle" && !s.cornerRadii) {
     const l = Math.min(a.x, b.x),
       t = Math.min(a.y, b.y),
       right = Math.max(a.x, b.x),
@@ -527,7 +617,7 @@ export function boundary(s: Shape): { lines: [Point, Point][]; curves: Curve[] }
         world({ x: next.x + r * Math.cos(end), y: next.y + r * Math.sin(end) }),
       ]);
     }
-  } else if (isPolygon(s) && s.radius > 0) {
+  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii) {
     const corners = polygonFillets(s).corners;
     corners.forEach((q, i) => {
       lines.push([

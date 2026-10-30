@@ -1012,3 +1012,148 @@ test.each(["x", "y"] as const)(
     }
   },
 );
+
+test("corner drag previews independently, survives Ctrl release and cancels", () => {
+  const e = editor();
+  e.document = {
+    version: 7,
+    shapes: [
+      {
+        id: "r",
+        name: "Rectangle",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 40, y: 20 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  };
+  e.selected = ["r"];
+  expect(e.cornerHandles()).toHaveLength(0);
+  e.transformTool = "corner";
+  const h = e.cornerHandles()[0];
+  e.pointerDown(e.screen(h.point), 0, false, false, true);
+  expect(e.gesture?.kind).toBe("corner");
+  e.setMeasurementModifier(false);
+  e.pointerMove(
+    e.screen({ x: h.point.x + 3, y: h.point.y + 3 }),
+    false,
+    false,
+    false,
+  );
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBeGreaterThan(0);
+  expect(e.document.shapes[0].cornerRadii).toBeUndefined();
+  e.pointerMove(
+    e.screen({ x: h.point.x + 3, y: h.point.y + 3 }),
+    true,
+    false,
+    true,
+  );
+  expect(e.preview?.shapes[0].cornerRadii).toBeUndefined();
+  expect(e.preview?.shapes[0].radius).toBeCloseTo(10);
+  e.cancel();
+  expect(e.preview).toBeNull();
+  expect(e.document.shapes[0].radius).toBe(0);
+});
+
+test("selecting a corner preserves a fractional radius without dragging", () => {
+  const e = editor();
+  e.document = {
+    version: 7,
+    shapes: [
+      {
+        id: "r",
+        name: "Rectangle",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 40, y: 20 },
+        ],
+        radius: 2.3,
+        rotation: 0,
+      },
+    ],
+  };
+  e.selected = ["r"];
+  e.transformTool = "corner";
+  const h = e.cornerHandles()[0];
+  e.pointerDown(e.screen(h.point), 0, false, false, true);
+  e.updateCornerModifiers(false, false, false);
+  expect(e.preview?.shapes[0].radius).toBeCloseTo(2.3);
+  expect(e.preview?.shapes[0].cornerRadii).toBeUndefined();
+  expect(e.selectedCorner).toEqual({ shapeId: "r", index: 0 });
+  e.cancel();
+});
+
+test("corner tool accumulates edits and applies one undoable transaction", async () => {
+  const e = editor();
+  const doc: Doc = {
+    version: 7,
+    shapes: [
+      {
+        id: "r",
+        name: "Rectangle",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 40, y: 20 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  };
+  await e.transact("load", doc);
+  e.selected = ["r"];
+  await e.activateTransform("corner");
+  e.selectedCorner = { shapeId: "r", index: 0 };
+  e.setCornerValue(4);
+  e.selectedCorner = { shapeId: "r", index: 1 };
+  e.setCornerValue(6);
+  expect(e.document.shapes[0].cornerRadii).toBeUndefined();
+  expect(e.preview?.shapes[0].cornerRadii?.slice(0, 2)).toEqual([4, 6]);
+  await e.applyTransform();
+  expect(e.document.shapes[0].cornerRadii?.slice(0, 2)).toEqual([4, 6]);
+  await e.transact("undo");
+  expect(e.document.shapes[0].radius).toBe(0);
+  expect(e.document.shapes[0].cornerRadii).toBeUndefined();
+});
+
+test("corner tool uses Ctrl over Shift and combines Alt with coarse steps", () => {
+  const e = editor();
+  e.document = {
+    version: 7,
+    shapes: [
+      {
+        id: "r",
+        name: "Rectangle",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 200, y: 200 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  };
+  e.selected = ["r"];
+  e.transformTool = "corner";
+  const h = e.cornerHandles()[0],
+    p = e.screen({ x: h.point.x + 2, y: h.point.y + 2 });
+  e.pointerDown(e.screen(h.point), 0, false, false);
+  e.pointerMove(p, false, false, false);
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBe(7);
+  e.pointerMove(p, false, false, true);
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBe(5);
+  e.pointerMove(p, false, true, true);
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBe(10);
+  e.pointerMove(p, true, true, true);
+  expect(e.preview?.shapes[0].radius).toBe(10);
+  expect(e.preview?.shapes[0].cornerRadii).toBeUndefined();
+  e.cancel();
+  expect(e.document.shapes[0].radius).toBe(0);
+});

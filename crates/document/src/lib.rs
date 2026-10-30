@@ -55,6 +55,13 @@ pub struct Shape {
     #[serde(default, rename = "fontSize", skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub font_size: Option<f64>,
+    #[serde(
+        default,
+        rename = "cornerRadii",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub corner_radii: Option<Vec<f64>>,
     pub radius: f64,
     pub rotation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -88,11 +95,31 @@ pub struct Document {
 }
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 5 | 6) {
+        if !matches!(self.version, 5 | 6 | 7) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7). Reload the application.",
                 self.version
             ));
+        }
+        for s in &self.shapes {
+            if let Some(radii) = &s.corner_radii {
+                let count = if s.kind == Kind::Rectangle {
+                    4
+                } else if s.kind == Kind::Polyline
+                    && s.points.len() >= 4
+                    && s.points.first() == s.points.last()
+                {
+                    s.points.len() - 1
+                } else {
+                    0
+                };
+                if radii.len() != count
+                    || count == 0
+                    || radii.iter().any(|r| !r.is_finite() || *r < 0.0 || *r > 1e7)
+                {
+                    return Err("Invalid corner radii".into());
+                }
+            }
         }
         if self.shapes.len() > 10000 {
             return Err("Project exceeds 10000 shapes".into());
@@ -230,7 +257,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 6,
+                version: 7,
                 shapes: vec![],
                 guides: vec![],
             },
@@ -247,7 +274,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -271,7 +298,7 @@ impl Editor {
             "commit" | "load" | "preview" => {
                 let mut next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
                 next.validate()?;
-                next.version = 6;
+                next.version = 7;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -316,9 +343,28 @@ impl Editor {
 mod tests {
     use super::*;
     #[test]
+    fn corner_radii_roundtrip_and_validation() {
+        let json = r#"{"version":7,"shapes":[{"id":"r","name":"Rectangle","kind":"rectangle","points":[{"x":0,"y":0},{"x":40,"y":20}],"radius":0,"cornerRadii":[15,0,0,5],"rotation":0}]}"#;
+        let mut editor = Editor::new();
+        editor.execute("commit", json, 0).unwrap();
+        assert_eq!(
+            editor.document.shapes[0].corner_radii,
+            Some(vec![15.0, 0.0, 0.0, 5.0])
+        );
+        let mut doc = editor.document.clone();
+        doc.shapes[0].corner_radii = Some(vec![-1.0; 4]);
+        assert!(doc.validate().is_err());
+        doc.shapes[0].corner_radii = Some(vec![1.0; 3]);
+        assert!(doc.validate().is_err());
+        editor.execute("undo", "", 1).unwrap();
+        assert!(editor.document.shapes.is_empty());
+        editor.execute("redo", "", 2).unwrap();
+        assert!(editor.document.shapes[0].corner_radii.is_some());
+    }
+    #[test]
     fn capabilities_and_version_errors() {
         let editor = Editor::default();
-        assert!(editor.capabilities().contains("[5,6]"));
+        assert!(editor.capabilities().contains("[5,6,7]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -327,7 +373,7 @@ mod tests {
             .contains("Unsupported document version 99"));
     }
     fn sample() -> String {
-        r#"{"version":6,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
+        r#"{"version":7,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
     }
     #[test]
     fn arc_roundtrip_validation_and_history() {

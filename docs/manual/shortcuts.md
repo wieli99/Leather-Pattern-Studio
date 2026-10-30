@@ -4,12 +4,12 @@ Single-letter editor shortcuts require canvas focus. Click the canvas first. Inp
 
 | Key | Action |
 |---|---|
-| V | Select; during transforms, place pivot |
+| V | Select; in Move, Rotate or Resize, place pivot |
 | P / R / C / H | Path / rectangle / circle / polygon group |
 | Shift+group key | Previous variant |
 | T | Text |
-| G / E / S | Move / Rotate / Resize selection |
-| X / Y | Transform axis constraint |
+| G / E / S / B | Move / Rotate / Resize / Corner radius selection tools |
+| X / Y | Move or Resize axis constraint |
 | Enter | Finish path or apply transform |
 | Esc | Cancel and return to Select |
 | Backspace | Remove pending anchor; otherwise delete selection |
@@ -31,3 +31,5 @@ See [selection](#selection), [drawing](#drawing), and [transforms](#transforms) 
 While dragging a [guideline](#measurements), the shortcut list in the right inspector shows its controls: default 1 mm steps, Ctrl for 10 mm steps, Shift for 5 mm steps, and Alt for free placement. Esc cancels the drag; dropping on a ruler removes the guideline.
 
 Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
+
+Choose Corner radius (B) for selected rectangles and closed polygons. Drag in 1 mm steps; Shift uses 5 mm, Ctrl 10 mm, and Alt applies to all corners of the targeted shape. Enter/right-click applies; Esc cancels. See [corner radii](#transforms).

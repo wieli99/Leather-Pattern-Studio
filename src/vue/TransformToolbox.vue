@@ -1,9 +1,21 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import { cornerRadii } from "../model/geometry";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { transformShortcuts } from "./tools";
 const e = useEditor();
+const cornerShape = computed(() =>
+  e.value.active.find((s) => s.id === e.value.selectedCorner?.shapeId),
+);
+const radii = computed(() =>
+  cornerShape.value ? cornerRadii(cornerShape.value) : [],
+);
+const uniformRadius = computed(() =>
+  radii.value.length && radii.value.every((r) => r === radii.value[0])
+    ? +radii.value[0].toFixed(2)
+    : "",
+);
 const focusedFactor = ref<string | null>(null);
 const drafts = ref<Record<string, string>>({});
 function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
@@ -27,11 +39,46 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       <strong>{{
         e.transformTool === "scale"
           ? "Resize"
-          : e.transformTool === "move"
-            ? "Move"
-            : "Rotate"
+          : e.transformTool === "corner"
+            ? "Corner radius"
+            : e.transformTool === "move"
+              ? "Move"
+              : "Rotate"
       }}</strong>
-      <div class="transform-inputs" data-hint-edit="transform">
+      <div v-if="e.transformTool === 'corner'" class="transform-inputs">
+        <p v-if="!cornerShape">Click a corner to edit its radius.</p>
+        <template v-else>
+          <label
+            >Corner radius (mm)<input
+              type="number"
+              :aria-invalid="!!e.transformError"
+              min="0"
+              step="0.01"
+              :value="+radii[e.selectedCorner!.index].toFixed(2)"
+              @input="
+                editor.setCornerValue(
+                  +($event.target as HTMLInputElement).value,
+                )
+              "
+          /></label>
+          <label
+            >All corners (mm)<input
+              type="number"
+              :aria-invalid="!!e.transformError"
+              min="0"
+              step="0.01"
+              placeholder="Mixed"
+              :value="uniformRadius"
+              @input="
+                editor.setCornerValue(
+                  +($event.target as HTMLInputElement).value,
+                  true,
+                )
+              "
+          /></label>
+        </template>
+      </div>
+      <div v-else class="transform-inputs" data-hint-edit="transform">
         <template
           v-for="item in e.transformTool === 'move'
             ? [
@@ -81,7 +128,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           /></label>
         </template>
       </div>
-      <label v-if="e.active.length === 1"
+      <label v-if="e.active.length === 1 && e.transformTool !== 'corner'"
         >Axes
         <select
           :value="e.transformOrientation"
@@ -95,7 +142,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           <option value="local">Local</option>
         </select></label
       >
-      <div class="actions">
+      <div v-if="e.transformTool !== 'corner'" class="actions">
         <button
           :aria-pressed="e.placingPivot"
           @click="
@@ -124,6 +171,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       <button
         v-for="item in transformShortcuts"
         :key="item[0]"
+        :disabled="item[0] === 'corner' && !e.canEditCorners"
         :aria-label="item[1]"
         :title="`${item[1]} (${item[2]})`"
         :aria-pressed="e.transformTool === item[0]"
@@ -146,6 +194,10 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           <path
             v-else-if="item[0] === 'move'"
             d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"
+          />
+          <path
+            v-else-if="item[0] === 'corner'"
+            d="M4 20V12a8 8 0 0 1 8-8h8M4 4h4M4 4v4"
           />
           <path
             v-else

@@ -16,4 +16,5 @@ export const transformShortcuts = [
   ["rotate", "Rotate", "E"],
   ["move", "Move", "G"],
   ["scale", "Resize", "S"],
+  ["corner", "Corner radius", "B"],
 ] as const;

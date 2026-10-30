@@ -3,6 +3,7 @@ import {
   applyMatrix,
   inverse,
   shapeMatrix,
+  cornerPoints,
   boundary,
   distance,
 } from "./geometry";
@@ -50,10 +51,20 @@ export function editEdge(
       points = [...points.slice(1, 4), points[0], points[1]];
     }
   }
+  if (shape.cornerRadii) {
+    const corners = cornerPoints(shape);
+    points = [...corners, corners[0]];
+  }
   const closed = distance(points[0], points.at(-1)!) < 1e-9;
   const count = closed ? points.length - 1 : points.length;
-  const end = shape.radius > 0 ? selected.index : (selected.index + 1) % count;
-  const start = shape.radius > 0 ? (end + count - 1) % count : selected.index;
+  const end =
+    shape.radius > 0 || shape.cornerRadii
+      ? selected.index
+      : (selected.index + 1) % count;
+  const start =
+    shape.radius > 0 || shape.cornerRadii
+      ? (end + count - 1) % count
+      : selected.index;
   const [a, b] = selected.line,
     current = distance(a, b);
   const ux = (b.x - a.x) / current,

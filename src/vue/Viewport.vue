@@ -223,6 +223,7 @@ function updateModifiers(event: KeyboardEvent) {
   editor.setAnchorModifier(event.altKey);
   editor.setDrawingModifier(event.shiftKey);
   editor.setMeasurementModifier(event.ctrlKey);
+  editor.updateCornerModifiers(event.altKey, event.ctrlKey, event.shiftKey);
 }
 function clearModifiers() {
   editor.setAnchorModifier(false);
@@ -283,7 +284,8 @@ onUnmounted(() => {
   />
   <div
     v-if="draft"
-    class="canvas-text-editor" data-hint-edit="text"
+    class="canvas-text-editor"
+    data-hint-edit="text"
     :style="textStyle"
     @pointerdown.stop
     @keydown.stop

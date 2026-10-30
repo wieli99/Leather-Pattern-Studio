@@ -4,13 +4,13 @@ export type Point = CorePoint;
 export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
-export type Doc = { version: 5 | 6; shapes: Shape[]; guides?: Guide[] };
-export const emptyDocument = (): Doc => ({ version: 6, shapes: [] });
+export type Doc = { version: 5 | 6 | 7; shapes: Shape[]; guides?: Guide[] };
+export const emptyDocument = (): Doc => ({ version: 7, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -166,6 +166,26 @@ export function parseProject(text: string): Doc {
       )
         throw Error("Transformed coordinate exceeds limit");
     }
+    if (s.cornerRadii !== undefined) {
+      const count =
+        s.kind === "rectangle"
+          ? 4
+          : s.kind === "polyline" &&
+              s.points.length >= 4 &&
+              s.points[0].x === s.points.at(-1).x &&
+              s.points[0].y === s.points.at(-1).y
+            ? s.points.length - 1
+            : 0;
+      if (
+        !Array.isArray(s.cornerRadii) ||
+        !count ||
+        s.cornerRadii.length !== count ||
+        s.cornerRadii.some(
+          (r: number) => !Number.isFinite(r) || r < 0 || r > 1e7,
+        )
+      )
+        throw Error("Invalid corner radii");
+    }
     ids.add(s.id);
     result.push({
       id: s.id,
@@ -174,6 +194,7 @@ export function parseProject(text: string): Doc {
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize } : {}),
       radius: s.radius,
+      ...(s.cornerRadii ? { cornerRadii: [...s.cornerRadii] } : {}),
       ...(s.handles
         ? {
             handles: s.handles.map((h: any) => ({
@@ -204,7 +225,7 @@ export function parseProject(text: string): Doc {
   )
     throw Error("Invalid guidelines");
   return {
-    version: 6,
+    version: 7,
     shapes: result,
     guides: guides.map((g: Guide) => ({
       id: g.id,
