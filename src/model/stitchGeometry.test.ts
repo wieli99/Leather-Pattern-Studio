@@ -284,3 +284,19 @@ test("acute and right triangles accept valid insets but reject collapsed paths",
     ).toThrow();
   }
 });
+
+test("project parsing preserves both stitch marker dimensions", () => {
+  const g = group();
+  g.settings = {
+    ...g.settings,
+    style: "round",
+    roundDiameter: 2.3,
+    flatLength: 4.1,
+  };
+  const project = { version: 10, shapes: [rect], stitchGroups: [g] };
+  const loaded = parseProject(JSON.stringify(project));
+  expect(loaded.stitchGroups![0].settings).toEqual(g.settings);
+  expect(parseProject(JSON.stringify(loaded)).stitchGroups![0].settings).toEqual(
+    g.settings,
+  );
+});

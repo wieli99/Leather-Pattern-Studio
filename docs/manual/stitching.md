@@ -17,7 +17,7 @@ Only one line is allowed per edge. Click an already stitched edge to select its 
 
 Spacing defaults to **3.85 mm**, with presets **3.00, 3.38, 3.85, 4.00, 5.00**. Inset defaults to **3.00 mm**, with presets **2.50, 2.00, 3.00, 4.00, 5.00**. Enter custom values with up to two decimals. Spacing must be at least 0.01 mm; inset can be zero.
 
-French is a narrow angled slit; Japanese is an angled diamond; Round is circular; Flat is a slot aligned along the path. Marks use fixed illustrative sizes, not manufacturer-specific dimensions.
+French is a narrow angled slit; Japanese is an angled diamond; Round is circular; Flat is a slot aligned along the path. Round offers a Diameter slider (default 0.8 mm); Flat offers a Length slider (default 1.4 mm) and scales its thickness proportionally (0.3 mm at the default length; doubling length also doubles thickness). Both sliders range from 0.1 to 5.0 mm in 0.1 mm steps and preview immediately. Sizes are saved per line; switching styles preserves them. Apply commits changes and Cancel discards them. Size does not change spacing or hole positions; large marks may overlap. French and Japanese retain fixed illustrative sizes.
 
 Center shares the unused length between both ends; Start puts it at the end; End puts it at the beginning. The arrow shows the source traversal direction. Spacing is measured along the inset path, not along the source edge. A short path receives one hole.
 

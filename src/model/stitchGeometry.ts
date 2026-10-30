@@ -472,6 +472,12 @@ export function validateStitchGroups(
       side: g.side,
       closed: g.closed,
       settings: {
+        ...(g.settings.roundDiameter !== undefined
+          ? { roundDiameter: g.settings.roundDiameter }
+          : {}),
+        ...(g.settings.flatLength !== undefined
+          ? { flatLength: g.settings.flatLength }
+          : {}),
         startClearance: g.settings.startClearance ?? 0,
         endClearance: g.settings.endClearance ?? 0,
         style: g.settings.style,

@@ -62,3 +62,15 @@ test("clearances shorten the alignment interval and open a loop at its seam", ()
   expect(stitchDistances(12, value, true)).toEqual([2, 5, 8, 11]);
   expect(() => stitchDistances(3, value)).toThrow();
 });
+
+test("marker dimensions validate independently and preserve hole positions", () => {
+  for (const key of ["roundDiameter", "flatLength"] as const) {
+    for (const value of [0, 0.09, 5.1, NaN, Infinity])
+      expect(() => validateStitchSettings({ ...settings, [key]: value })).toThrow();
+    for (const value of [0.1, 0.8, 1.4, 5]) {
+      const sized = { ...settings, [key]: value };
+      expect(() => validateStitchSettings(sized)).not.toThrow();
+      expect(stitchDistances(20, sized)).toEqual(stitchDistances(20, settings));
+    }
+  }
+});

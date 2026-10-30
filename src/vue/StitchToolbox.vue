@@ -56,6 +56,8 @@ function update(key: keyof StitchSettings, event: Event) {
   editor.setStitchSettings({
     ...settings.value,
     [key]:
+      key === "roundDiameter" ||
+      key === "flatLength" ||
       key === "spacing" ||
       key === "inset" ||
       key === "startClearance" ||
@@ -124,6 +126,19 @@ const warnings = computed(() =>
         <option value="flat">Flat</option>
       </select></label
     >
+    <label v-if="settings.style === 'round' || settings.style === 'flat'">
+      {{ settings.style === 'round' ? 'Diameter (mm)' : 'Length (mm)' }}
+      <input
+        type="range"
+        min="0.1"
+        max="5"
+        step="0.1"
+        :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'"
+        :disabled="e.busy"
+        :value="settings.style === 'round' ? (settings.roundDiameter ?? 0.8) : (settings.flatLength ?? 1.4)"
+        @input="update(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
+      <output>{{ (settings.style === 'round' ? (settings.roundDiameter ?? 0.8) : (settings.flatLength ?? 1.4)).toFixed(1) }} mm</output>
+    </label>
     <label
       >Spacing (mm)
       <span class="stitch-value"

@@ -22,7 +22,20 @@ export function drawStitches(
     ctx.lineWidth = 1 / editor.zoom;
     try {
       const geometry = stitchGeometry(s, g),
-        mark = stitchMarks[g.settings.style];
+        baseMark = stitchMarks[g.settings.style],
+        flatScale =
+          (g.settings.flatLength ?? stitchMarks.flat.width) / stitchMarks.flat.width,
+        mark = {
+          ...baseMark,
+          width: g.settings.style === "round"
+            ? (g.settings.roundDiameter ?? baseMark.width)
+            : g.settings.style === "flat"
+              ? baseMark.width * flatScale
+              : baseMark.width,
+          height: g.settings.style === "flat"
+            ? baseMark.height * flatScale
+            : baseMark.height,
+        };
       if (preview) {
         ctx.save();
         ctx.setLineDash([4 / editor.zoom, 3 / editor.zoom]);

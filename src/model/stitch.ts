@@ -29,6 +29,9 @@ export function validateStitchSettings(settings: StitchSettings): void {
         n < 0 ||
         Math.abs(n * 100 - Math.round(n * 100)) > 1e-7,
     ) ||
+    [settings.roundDiameter, settings.flatLength].some(
+      (n) => n !== undefined && (!Number.isFinite(n) || n < 0.1 || n > 5),
+    ) ||
     !Object.hasOwn(stitchMarks, settings.style) ||
     !["center", "start", "end"].includes(settings.alignment) ||
     !Number.isFinite(settings.spacing) ||
@@ -40,7 +43,7 @@ export function validateStitchSettings(settings: StitchSettings): void {
     )
   ) {
     throw new Error(
-      "Stitch spacing must be at least 0.01 mm and inset non-negative, with at most two decimals.",
+      "Marker sizes must be between 0.1 and 5 mm. Stitch spacing must be at least 0.01 mm and inset non-negative, with at most two decimals.",
     );
   }
 }

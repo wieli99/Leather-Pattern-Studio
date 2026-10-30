@@ -2,4 +2,4 @@
 import type { StitchAlignment } from "./StitchAlignment";
 import type { StitchStyle } from "./StitchStyle";
 
-export type StitchSettings = { startClearance: number, endClearance: number, style: StitchStyle, spacing: number, inset: number, alignment: StitchAlignment, };
+export type StitchSettings = { roundDiameter?: number, flatLength?: number, startClearance: number, endClearance: number, style: StitchStyle, spacing: number, inset: number, alignment: StitchAlignment, };

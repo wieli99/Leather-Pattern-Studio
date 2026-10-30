@@ -112,6 +112,20 @@ pub enum StitchAlignment {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
 pub struct StitchSettings {
+    #[serde(
+        default,
+        rename = "roundDiameter",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub round_diameter: Option<f64>,
+    #[serde(
+        default,
+        rename = "flatLength",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub flat_length: Option<f64>,
     #[serde(default, rename = "startClearance")]
     pub start_clearance: f64,
     #[serde(default, rename = "endClearance")]
@@ -442,6 +456,10 @@ impl Document {
                 || [v.start_clearance, v.end_clearance].iter().any(|n| {
                     !n.is_finite() || *n < 0.0 || (n * 100.0 - (n * 100.0).round()).abs() > 1e-7
                 })
+                || [v.round_diameter, v.flat_length]
+                    .into_iter()
+                    .flatten()
+                    .any(|n| !n.is_finite() || !(0.1..=5.0).contains(&n))
                 || !v.spacing.is_finite()
                 || v.spacing < 0.01
                 || !v.inset.is_finite()

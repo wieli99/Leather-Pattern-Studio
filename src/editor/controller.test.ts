@@ -1184,6 +1184,11 @@ test("stitch previews, master settings, split, deletion and undo use document tr
   e.stitchClick({ x: 0, y: 15 }, false);
   await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(1));
   const first = e.stitchGroups[0];
+  e.setStitchSettings({ ...first.settings, style: "round", roundDiameter: 2.3, flatLength: 4.1 });
+  expect(e.stitchGroups[0].settings.roundDiameter).toBe(2.3);
+  e.setStitchSettings({ ...e.stitchGroups[0].settings, roundDiameter: 3.2 });
+  expect(e.stitchGroups[0].settings.roundDiameter).toBe(3.2);
+  expect(e.stitchGroups[0].settings.flatLength).toBe(4.1);
   e.setStitchSettings({ ...first.settings, spacing: 5, style: "japanese" });
   expect(e.stitchGroups[0].settings.spacing).toBe(5);
   e.setStitchSettings({ ...first.settings, spacing: 5, style: "japanese" });
