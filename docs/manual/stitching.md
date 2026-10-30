@@ -64,3 +64,11 @@ Selected stitch groups show a broad translucent highlight with a dashed centerli
 Click a visible stitch path in Select mode to open its stitch settings and highlight its group. Within the Stitch line tool, click the visible path to select it, or Shift-click to add/remove groups from the selection. Selection uses a fixed screen-space tolerance at every zoom; you do not need to click the source edge.
 
 Stitch placement previews and clicks snap to the nearest source edge within 24 screen pixels, at any zoom. On open paths, the side of the edge you point at still chooses the stitch side.
+
+## Convert a path
+
+Select one polyline or curve and open **Stitch line**, then choose **Convert to stitching line**. The entire path becomes continuous stitching with zero initial inset, using the current style and spacing. Remove any existing stitching before converting. Apply commits the conversion; Cancel restores the path. Geometry editing remains available. Deleting the last stitch group removes the converted path.
+
+Converted stitching paths can be selected in Select mode to edit their geometry. Alt+click inserts an anchor; drag anchors or curve handles to reshape the line. Stitching follows these edits and remains continuous across inserted anchors. Open **Stitch line** to change stitch settings.
+
+![A converted path in the Stitch line tool](/manual/images/converted-stitching.png)

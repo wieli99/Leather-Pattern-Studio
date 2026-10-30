@@ -1221,9 +1221,8 @@ test("a stitched loop can open at a junction, split again, and duplicate with it
     radius: 8,
     rotation: 0,
   };
-  const { stitchEdges, stitchGeometry, insideStitchSide } = await import(
-    "../model/stitchGeometry"
-  );
+  const { stitchEdges, stitchGeometry, insideStitchSide } =
+    await import("../model/stitchGeometry");
   const { defaultStitchSettings } = await import("../model/stitch");
   const g = {
     id: "loop-stitch",
@@ -1258,9 +1257,8 @@ test("a stitched loop can open at a junction, split again, and duplicate with it
 
 test("Shift placement joins both matching neighbors and refuses conflicting settings", async () => {
   const e = editor();
-  const { stitchEdges, insideStitchSide } = await import(
-    "../model/stitchGeometry"
-  );
+  const { stitchEdges, insideStitchSide } =
+    await import("../model/stitchGeometry");
   const { defaultStitchSettings } = await import("../model/stitch");
   const shape = {
     id: "auto",
@@ -1483,4 +1481,43 @@ test("delayed recovery excludes pending stitching and inspector edits cannot cha
     vi.mocked(recovery).mock.calls.at(-1)?.[0]?.document.stitchGroups,
   ).toEqual([]);
   e.cancel();
+});
+
+test("path conversion cancels or commits as one transaction", async () => {
+  const e = editor();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [
+      {
+        id: "p",
+        name: "Path",
+        kind: "polyline",
+        points: [
+          { x: 0, y: 0 },
+          { x: 40, y: 0 },
+          { x: 40, y: 30 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  });
+  e.selected = ["p"];
+  e.activateStitch();
+  await e.convertPathToStitch();
+  expect(e.document.shapes[0].stitchOnly).toBe(true);
+  expect(e.stitchGroups[0].edges).toHaveLength(2);
+  expect(e.stitchGroups[0].settings.inset).toBe(0);
+  e.cancel();
+  expect(e.document.shapes[0].stitchOnly).toBeUndefined();
+  expect(e.stitchGroups).toHaveLength(0);
+  e.activateStitch();
+  await e.convertPathToStitch();
+  await e.applyStitch();
+  expect(parseProject(JSON.stringify(e.document)).shapes[0].stitchOnly).toBe(
+    true,
+  );
+  await e.transact("undo");
+  expect(e.document.shapes[0].stitchOnly).toBeUndefined();
+  expect(e.stitchGroups).toHaveLength(0);
 });

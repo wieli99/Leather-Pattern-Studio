@@ -60,7 +60,7 @@ test("place, merge and split within a session, then save", async ({
   await page.getByRole("button", { name: "Split all", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await saved(page);
-  expect(doc.version).toBe(9);
+  expect(doc.version).toBe(10);
   expect(doc.stitchGroups).toHaveLength(2);
   expect(
     doc.stitchGroups.every((g: any) => g.settings.style === "japanese"),
@@ -112,4 +112,63 @@ test("sharp rectangles accept placement and editable preset values in the bottom
   expect(doc.stitchGroups).toHaveLength(1);
   expect(doc.stitchGroups[0].settings.spacing).toBe(4.25);
   expect(doc.stitchGroups[0].settings.inset).toBe(2.75);
+});
+
+test("converted path stays stitched after inserting an anchor", async ({
+  page,
+}, info) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Open", exact: true }),
+  ).toBeEnabled();
+  await page.evaluate(() => {
+    delete (window as any).showOpenFilePicker;
+    delete (window as any).showSaveFilePicker;
+  });
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await (
+    await chooser
+  ).setFiles({
+    name: "path.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        version: 9,
+        shapes: [
+          {
+            ...shape,
+            kind: "polyline",
+            radius: 0,
+            points: [
+              { x: 15, y: 20 },
+              { x: 95, y: 20 },
+              { x: 95, y: 85 },
+            ],
+          },
+        ],
+      }),
+    ),
+  });
+  await page.locator(".objects button").first().click();
+  await page.getByRole("button", { name: "Stitch line", exact: true }).click();
+  await page.getByRole("button", { name: "Convert to stitching line" }).click();
+  await expect(page.getByLabel("Stitch inset", { exact: true })).toHaveValue(
+    "0.00",
+  );
+  if (
+    info.project.name === "chromium" &&
+    process.env.UPDATE_MANUAL_SCREENSHOTS === "1"
+  )
+    await page.screenshot({
+      path: "public/manual/images/converted-stitching.png",
+    });
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 245, y: 160 }, modifiers: ["Alt"] });
+  const doc = await saved(page);
+  expect(doc.shapes[0].stitchOnly).toBe(true);
+  expect(doc.shapes[0].points).toHaveLength(4);
+  expect(doc.stitchGroups).toHaveLength(1);
+  expect(doc.stitchGroups[0].edges).toHaveLength(3);
 });

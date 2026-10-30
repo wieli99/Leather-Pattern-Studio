@@ -509,9 +509,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 9)
+      if (initial.document.version !== 10)
         throw Error(
-          `Application expects document version 9, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 10, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -618,6 +618,51 @@ export class Controller {
     }
   }
   stitchError = "";
+  get convertiblePath() {
+    if (this.selected.length !== 1) return undefined;
+    return this.document.shapes.find(
+      (s) =>
+        s.id === this.selected[0] &&
+        ["polyline", "curve", "control-curve"].includes(s.kind) &&
+        !s.stitchOnly,
+    );
+  }
+  async convertPathToStitch() {
+    const shape = this.convertiblePath;
+    if (!this.stitchMode || !shape || this.busy || this.stitchDraft) return;
+    if (this.stitchGroups.some((g) => g.shapeId === shape.id)) {
+      this.stitchError =
+        "Remove existing stitching before converting this path.";
+      this.notify();
+      return;
+    }
+    try {
+      const group: StitchGroup = {
+        id: crypto.randomUUID(),
+        shapeId: shape.id,
+        edges: stitchEdges(shape).map((e) => e.key),
+        side: 1,
+        closed: stitchClosed(shape),
+        settings: { ...this.stitchSettings, inset: 0 },
+      };
+      stitchGeometry(shape, group);
+      const ok = await this.commit({
+        ...this.document,
+        shapes: this.document.shapes.map((s) =>
+          s.id === shape.id ? { ...s, stitchOnly: true } : s,
+        ),
+        stitchGroups: [...this.stitchGroups, group],
+      });
+      if (ok) {
+        this.stitchSelected = [group.id];
+        this.stitchHover = null;
+        this.stitchError = "";
+      }
+    } catch (error) {
+      this.stitchError = String(error);
+    }
+    this.notify();
+  }
   activateStitch() {
     this.cancel();
     this.tool = "select";
@@ -854,8 +899,8 @@ export class Controller {
     if (this.stitchSelected.length !== 2 || this.stitchDraft || this.busy)
       return;
     try {
-      const [master, other] = this.stitchSelected.map(
-        (id) => this.stitchGroups.find((g) => g.id === id)!,
+      const [master, other] = this.stitchSelected.map((id) =>
+        this.stitchGroups.find((g) => g.id === id)!,
       );
       if (!master || !other || master.shapeId !== other.shapeId)
         throw Error("Select two connected lines on the same shape.");
@@ -915,11 +960,15 @@ export class Controller {
   }
   async deleteStitches() {
     if (this.busy) return;
+    const remaining = this.stitchGroups.filter(
+      (g) => !this.stitchSelected.includes(g.id),
+    );
     await this.commit({
       ...this.document,
-      stitchGroups: this.stitchGroups.filter(
-        (g) => !this.stitchSelected.includes(g.id),
+      shapes: this.document.shapes.filter(
+        (s) => !s.stitchOnly || remaining.some((g) => g.shapeId === s.id),
       ),
+      stitchGroups: remaining,
     });
     this.stitchSelected = [];
     this.stitchDraft = null;
@@ -1709,7 +1758,10 @@ export class Controller {
       button === 0
     ) {
       const line = this.stitchLineAt(raw);
-      if (line) {
+      if (
+        line &&
+        !this.document.shapes.find((s) => s.id === line.shapeId)?.stitchOnly
+      ) {
         this.activateStitch();
         this.selected = [line.shapeId];
         this.stitchSelected = [line.id];

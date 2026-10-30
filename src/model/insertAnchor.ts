@@ -1,3 +1,4 @@
+import { stitchEdges, anchorReplacements } from "./stitchGeometry";
 import type { Point, Shape } from "./project";
 import { boundary, distance, worldCubics, worldPoints } from "./geometry";
 import { cubicAt, isCurve, type Cubic } from "./curves";
@@ -117,7 +118,7 @@ export function insertAnchor(
     incoming: i ? sub(segments[i - 1][2], p) : { x: 0, y: 0 },
     outgoing: i < segments.length ? sub(segments[i][1], p) : { x: 0, y: 0 },
   }));
-  return {
+  const result: Shape = {
     ...shape,
     kind: "control-curve",
     points,
@@ -128,4 +129,25 @@ export function insertAnchor(
     cornerRadii: undefined,
     sweep: undefined,
   };
+  if (shape.stitchOnly) {
+    const after = stitchEdges(result);
+    const mapping = new Map<string, string[]>();
+    for (const edge of stitchEdges(shape)) {
+      const start = after.findIndex(
+        (e) => distance(e.points[0], edge.points[0]) < 1e-7,
+      );
+      if (start < 0) continue;
+      const keys: string[] = [];
+      for (let i = 0; i < after.length; i++) {
+        const next = after[(start + i) % after.length];
+        keys.push(next.key);
+        if (distance(next.points.at(-1)!, edge.points.at(-1)!) < 1e-7) {
+          mapping.set(edge.key, keys);
+          break;
+        }
+      }
+    }
+    anchorReplacements.set(result, mapping);
+  }
+  return result;
 }

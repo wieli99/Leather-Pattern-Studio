@@ -7,17 +7,17 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
-  version: 5 | 6 | 7 | 8 | 9;
+  version: 5 | 6 | 7 | 8 | 9 | 10;
   shapes: Shape[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
 };
-export const emptyDocument = (): Doc => ({ version: 9, shapes: [] });
+export const emptyDocument = (): Doc => ({ version: 10, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -198,6 +198,7 @@ export function parseProject(text: string): Doc {
       id: s.id,
       name: s.name,
       kind: s.kind,
+      ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize } : {}),
       radius: s.radius,
@@ -234,7 +235,7 @@ export function parseProject(text: string): Doc {
   const stitchGroups = validateStitchGroups(input.stitchGroups ?? [], result);
   return {
     stitchGroups,
-    version: 9,
+    version: 10,
     shapes: result,
     guides: guides.map((g: Guide) => ({
       id: g.id,

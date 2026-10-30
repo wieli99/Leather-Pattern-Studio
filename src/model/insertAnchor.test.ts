@@ -65,3 +65,39 @@ test("sharp and rounded rectangles accept anchors without changing their outline
     expect(insertAnchor(result!, { x: 50, y: 0 }, 2)).toBeNull();
   }
 });
+
+test("converted path insertion preserves continuous stitching", async () => {
+  const { reconcileStitches, stitchEdges } = await import("./stitchGeometry");
+  const { defaultStitchSettings } = await import("./stitch");
+  const shape: Shape = {
+    id: "path",
+    name: "Path",
+    kind: "polyline",
+    points: [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ],
+    radius: 0,
+    rotation: 0,
+    stitchOnly: true,
+  };
+  const group = {
+    id: "stitch",
+    shapeId: shape.id,
+    edges: stitchEdges(shape).map((e) => e.key),
+    side: 1 as const,
+    closed: false,
+    settings: { ...defaultStitchSettings, inset: 0 },
+  };
+  const before = {
+    version: 10 as const,
+    shapes: [shape],
+    stitchGroups: [group],
+  };
+  const inserted = insertAnchor(shape, { x: 50, y: 0 }, 2)!;
+  const next = reconcileStitches({ ...before, shapes: [inserted] }, before);
+  expect(next.stitchGroups).toEqual([
+    { ...group, edges: stitchEdges(inserted).map((e) => e.key) },
+  ]);
+});

@@ -482,6 +482,8 @@ export function validateStitchGroups(
     };
   });
 }
+export const anchorReplacements = new WeakMap<Shape, Map<string, string[]>>();
+
 export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
   const stitchGroups: StitchGroup[] = [];
   for (const original of doc.stitchGroups ?? []) {
@@ -489,7 +491,21 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
     const s = doc.shapes.find((s) => s.id === g.shapeId);
     if (!s) continue;
     const old = previous?.shapes.find((shape) => shape.id === s.id);
-    if (old && (old.kind !== s.kind || old.points.length !== s.points.length)) {
+    const replacements =
+      s.stitchOnly &&
+      old &&
+      (old.kind !== s.kind || old.points.length !== s.points.length)
+        ? anchorReplacements.get(s)
+        : undefined;
+    if (replacements) {
+      g = {
+        ...g,
+        edges: g.edges.flatMap((key) => replacements.get(key) ?? [key]),
+      };
+    } else if (
+      old &&
+      (old.kind !== s.kind || old.points.length !== s.points.length)
+    ) {
       const before = stitchEdges(old),
         after = stitchEdges(s);
       const mapped = new Map(

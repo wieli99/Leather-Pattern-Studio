@@ -43,6 +43,13 @@ pub struct CurveHandles {
 #[ts(export, export_to = "../../../src/generated/")]
 pub struct Shape {
     pub id: String,
+    #[serde(
+        default,
+        rename = "stitchOnly",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stitch_only: Option<bool>,
     pub name: String,
     pub kind: Kind,
     pub points: Vec<Point>,
@@ -248,9 +255,9 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
 
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 5 | 6 | 7 | 8 | 9) {
+        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10). Reload the application.",
                 self.version
             ));
         }
@@ -464,7 +471,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 9,
+                version: 10,
                 shapes: vec![],
                 guides: vec![],
                 stitch_groups: vec![],
@@ -482,7 +489,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -506,7 +513,7 @@ impl Editor {
             "commit" | "load" | "preview" => {
                 let mut next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
                 next.validate()?;
-                next.version = 9;
+                next.version = 10;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -553,7 +560,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 9;
+        doc.version = 10;
         let group:StitchGroup=serde_json::from_str(r#"{"id":"st","shapeId":"a","edges":["line:2:edge:0"],"side":1,"settings":{"style":"french","spacing":3.85,"inset":3.0,"alignment":"center"},"closed":false}"#).unwrap();
         doc.stitch_groups.push(group);
         let mut editor = Editor::new();
@@ -610,7 +617,7 @@ mod tests {
     #[test]
     fn capabilities_and_version_errors() {
         let editor = Editor::default();
-        assert!(editor.capabilities().contains("[5,6,7,8,9]"));
+        assert!(editor.capabilities().contains("[5,6,7,8,9,10]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -642,7 +649,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 9;
+        d.version = 10;
         d.shapes[0].kind = Kind::ControlCurve;
         d.shapes[0].handles = Some(vec![
             CurveHandles {
@@ -711,7 +718,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 9;
+        doc.version = 10;
         doc.shapes[0].transform = Some(Affine {
             a: 2.0,
             b: 0.3,

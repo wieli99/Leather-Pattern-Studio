@@ -175,7 +175,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
               s.points[0].y + i * (s.fontSize ?? 5) * 1.2,
             ),
           );
-      } else ctx.stroke(path);
+      } else if (!s.stitchOnly || selected || preview) ctx.stroke(path);
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.forEach((s) => shape(s));

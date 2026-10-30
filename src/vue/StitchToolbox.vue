@@ -96,6 +96,17 @@ const warnings = computed(() =>
     @keydown.enter.prevent="editor.applyStitch()"
   >
     <strong>Stitch line</strong>
+    <button
+      v-if="e.convertiblePath"
+      :disabled="
+        e.busy ||
+        !!e.stitchDraft ||
+        e.stitchGroups.some((g) => g.shapeId === e.convertiblePath?.id)
+      "
+      @click="editor.convertPathToStitch()"
+    >
+      Convert to stitching line
+    </button>
     <small
       >Hover an edge; click to place. Shift-click two lines to merge.</small
     >

@@ -89,7 +89,7 @@ test("removed corner members split a merged group and undo data remains untouche
   expect(reconcileStitches({ ...doc, shapes: [] }).stitchGroups).toEqual([]);
 });
 test("version migration and ownership validation", () => {
-  expect(parseProject('{"version":7,"shapes":[]}').version).toBe(9);
+  expect(parseProject('{"version":7,"shapes":[]}').version).toBe(10);
   const g = group();
   expect(() =>
     parseProject(
@@ -209,8 +209,8 @@ test("rounding preserves closed perimeters but does not claim arcs for single or
   const closed = { ...group(sharp, [0, 1, 2, 3]), closed: true };
   const adapt = (groups: StitchGroup[]) =>
     reconcileStitches(
-      { version: 9, shapes: [rect], stitchGroups: groups },
-      { version: 9, shapes: [sharp], stitchGroups: groups },
+      { version: 10, shapes: [rect], stitchGroups: groups },
+      { version: 10, shapes: [sharp], stitchGroups: groups },
     );
   const full = adapt([closed]).stitchGroups![0];
   expect(full.id).toBe(closed.id);
