@@ -33,7 +33,7 @@ test("construction measurements cycle and retain typed sizes", async ({
 
 test("anchor toggles share state and remain undoable", async ({ page }) => {
   await page.goto("/");
-  const tool = page.getByRole("button", { name: "Curve", exact: true });
+  const tool = page.getByRole("button", { name: "Polyline (P)", exact: true });
   await tool.click({ button: "right" });
   await page
     .getByRole("menuitemradio", { name: "Control point curve", exact: true })

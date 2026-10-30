@@ -164,9 +164,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
 }
 </script>
 <template>
-  <p v-if="e.transformTool">
-    Apply or cancel the transform to edit properties or change selection.
-  </p>
+  <p v-if="e.transformTool">Apply or cancel to edit properties.</p>
   <template v-if="s">
     <template v-if="s.kind === 'text'">
       <Field
@@ -286,9 +284,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     <h2>Selection</h2>
     <p>
       {{
-        selected.length
-          ? `${selected.length} objects selected. Choose Move, Rotate or Resize in the floating toolbox.`
-          : "Click an edge or drag a box. Ctrl selects interiors or crossing outlines; Shift adds to selection."
+        selected.length ? `${selected.length} objects selected` : "No selection"
       }}
     </p>
   </template>

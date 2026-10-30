@@ -625,16 +625,7 @@ nav button[aria-pressed="true"] {
   z-index: 7;
   cursor: default;
 }
-.construction-hint {
-  position: absolute;
-  bottom: 30px;
-  left: 70px;
-  right: 12px;
-  text-align: center;
-  pointer-events: none;
-  color: var(--muted);
-  font-size: 12px;
-}
+
 .settings {
   position: relative;
   margin: 0;
@@ -1022,3 +1013,12 @@ input[type="number"]::-webkit-outer-spin-button {
   outline: 2px solid #ffc58e;
   outline-offset: -2px;
 }
+
+.inspector-hint p { margin: 0; }
+
+.inspector-hint dl { margin: 8px 0 0; }
+.inspector-hint dt { color: var(--text); margin-top: 6px; }
+.inspector-hint dd { margin: 0; }
+
+.header-actions a[aria-label="Help"] { color: inherit; text-decoration: none; padding: 6px 10px; border-radius: 4px; }
+.header-actions a[aria-label="Help"]:hover { background: var(--panel); }

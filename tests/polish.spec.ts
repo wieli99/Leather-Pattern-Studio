@@ -185,10 +185,8 @@ test("keyboard cycling and long press open tool variants; info is accessible", a
   await expect(
     page.getByRole("button", { name: "Shortcuts and behavior", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Help", exact: true }).click();
-  await expect(
-    page.getByRole("dialog", { name: "Drawing help" }),
-  ).toContainText("Ctrl-click selects interiors");
+  await page.getByRole("link", { name: "Help", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Help", exact: true })).toHaveAttribute("href", "/manual/index.html");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
@@ -279,10 +277,10 @@ test("objects rename in place with commit, cancel and undo", async ({
   await expect(row).toContainText("Wallet body");
   await row.dblclick();
   await name.fill("Front");
-  await page.getByRole("button", { name: "Help", exact: true }).click();
+  await page.getByRole("link", { name: "Help", exact: true }).click();
   await expect(row).toContainText("Front");
 });
-test("keyboard menus, F2 rename, and Help focus restoration", async ({
+test("keyboard menus, F2 rename, and manual link focus", async ({
   page,
 }) => {
   await ready(page);
@@ -307,7 +305,7 @@ test("keyboard menus, F2 rename, and Help focus restoration", async ({
     page.getByRole("textbox", { name: "Rename object", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
-  const help = page.getByRole("button", { name: "Help", exact: true });
+  const help = page.getByRole("link", { name: "Help", exact: true });
   await help.click();
   await page.keyboard.press("Escape");
   await expect(help).toBeFocused();
@@ -343,11 +341,9 @@ test("Settings closes on outside clicks without consuming the click", async ({
   await expect(settings).toHaveAttribute("aria-expanded", "true");
   await page.getByLabel("Theme", { exact: true }).selectOption("light");
   await expect(settings).toHaveAttribute("aria-expanded", "true");
-  await page.getByRole("button", { name: "Help", exact: true }).click();
+  await page.getByRole("link", { name: "Help", exact: true }).click();
   await expect(settings).not.toHaveAttribute("aria-expanded", "true");
-  await expect(
-    page.getByRole("dialog", { name: "Drawing help" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Help", exact: true })).toHaveAttribute("target", "_blank");
   await page.keyboard.press("Escape");
   await page.getByText("Settings", { exact: true }).click();
   await page.keyboard.press("Escape");

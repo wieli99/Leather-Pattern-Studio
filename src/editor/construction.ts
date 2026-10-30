@@ -3,7 +3,7 @@ import { zeroHandles } from "../model/curves";
 import { distance } from "../model/geometry";
 export const variants = {
   polygon: ["polygon", "polygon-box"],
-  curve: ["curve", "control-curve"],
+  polyline: ["polyline", "curve", "control-curve"],
   rectangle: ["rectangle", "rectangle-center", "rectangle-three"],
   circle: [
     "circle",
@@ -19,8 +19,7 @@ export type Mode =
   | (typeof variants.polygon)[number]
   | "text"
   | "select"
-  | "polyline"
-  | (typeof variants.curve)[number]
+  | (typeof variants.polyline)[number]
   | (typeof variants.rectangle)[number]
   | (typeof variants.circle)[number];
 export const labels: Record<Mode, string> = {

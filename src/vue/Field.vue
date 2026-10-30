@@ -61,6 +61,7 @@ function blur() {
   void editor.finishProperty();
 }
 function key(event: KeyboardEvent) {
+  if (event.isComposing) return;
   if (event.key === "Enter") (event.target as HTMLInputElement).blur();
   if (event.key === "Escape") {
     event.stopPropagation();
@@ -71,7 +72,7 @@ function key(event: KeyboardEvent) {
 }
 </script>
 <template>
-  <label class="field">
+  <label class="field" data-hint-edit="property">
     <span>{{ label }}</span>
     <input
       :aria-label="label"

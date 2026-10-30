@@ -126,17 +126,6 @@ function cancel() {
   error.value = "";
   document.querySelector<HTMLCanvasElement>("canvas")?.focus();
 }
-function cycle(event: KeyboardEvent) {
-  const fields = Array.from(
-    document.querySelectorAll<HTMLInputElement>(
-      ".construction-measurements input",
-    ),
-  );
-  const index = fields.indexOf(event.target as HTMLInputElement);
-  fields[
-    (index + (event.shiftKey ? fields.length - 1 : 1)) % fields.length
-  ]?.focus();
-}
 function style(item: (typeof items.value)[number]) {
   const p = active.value === item.id ? pinned.value : item.point;
   let angle = item.angle;
@@ -155,7 +144,7 @@ function style(item: (typeof items.value)[number]) {
 }
 </script>
 <template>
-  <div class="construction-measurements">
+  <div class="construction-measurements" data-hint-edit="measurement">
     <label v-for="item in items" :key="item.id" :style="style(item)">
       <span v-if="item.key" class="measurement-name">{{
         item.key === "Angle" ? "Direction" : item.key
@@ -171,8 +160,7 @@ function style(item: (typeof items.value)[number]) {
           ($event.target as HTMLInputElement).select();
         "
         @input="input(item, $event)"
-        @keydown.tab.prevent="cycle"
-        @keydown.enter.prevent="confirm(item)"
+        @keydown.enter.prevent="!$event.isComposing && confirm(item)"
         @keydown.esc.prevent="cancel()"
       />
       <span>{{ ["Angle", "Sweep"].includes(item.key) ? "°" : "mm" }}</span>

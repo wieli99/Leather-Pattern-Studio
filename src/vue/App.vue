@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { computed } from "vue";
+import { editorHint } from "../editor/hint";
 import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import TransformToolbox from "./TransformToolbox.vue";
-import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import Viewport from "./Viewport.vue";
@@ -10,15 +12,21 @@ import ObjectRow from "./ObjectRow.vue";
 import Inspector from "./Inspector.vue";
 import Settings from "./Settings.vue";
 import StatusBar from "./StatusBar.vue";
-import HelpDialog from "./HelpDialog.vue";
+
 import { tools } from "./tools";
+import { handleShortcut } from "./shortcuts";
 const e = useEditor();
+const editing = ref("");
+const hint = computed(() => editorHint(e.value, editing.value));
+function hintFocus(event: FocusEvent) {
+  const target = event.target as HTMLElement;
+  editing.value =
+    target.closest<HTMLElement>("[data-hint-edit]")?.dataset.hintEdit ?? "";
+}
 const panel = ref(localStorage.getItem("panel-right") !== "false"),
   left = ref(localStorage.getItem("panel-left") !== "false"),
   bottom = ref(localStorage.getItem("panel-bottom") !== "false"),
-  help = ref(false),
-  update = ref<ServiceWorker | null>(null),
-  helpTrigger = ref<HTMLButtonElement | null>(null);
+  update = ref<ServiceWorker | null>(null);
 watch([panel, left, bottom], () => {
   localStorage.setItem("panel-right", String(panel.value));
   localStorage.setItem("panel-left", String(left.value));
@@ -32,12 +40,6 @@ watch(
   },
   { immediate: true },
 );
-watch(help, async (value) => {
-  if (!value) {
-    await nextTick();
-    helpTrigger.value?.focus();
-  }
-});
 function toggleInspector() {
   void editor.finishProperty();
   panel.value = !panel.value;
@@ -53,131 +55,10 @@ function reload() {
   }
 }
 onMounted(() => {
-  const key = (e: KeyboardEvent) => {
-    const typing = (e.target as HTMLElement).closest(
-      "input,textarea,[contenteditable=true]",
-    );
-    if (
-      typing ||
-      document.querySelector("[role=dialog]") ||
-      (e.target as HTMLElement).closest("[role=menu]")
-    )
-      return;
-    if (
-      e.key === "Tab" &&
-      (editor.measurementFields.length || editor.measurementsVisible)
-    ) {
-      e.preventDefault();
-      document
-        .querySelector<HTMLInputElement>(".construction-measurements input")
-        ?.focus();
-      return;
-    }
-    const mod = e.ctrlKey || e.metaKey;
-    if (e.code === "Space") {
-      e.preventDefault();
-      editor.space = true;
-    }
-    if (mod && e.key.toLowerCase() === "s") {
-      e.preventDefault();
-      void editor.save(e.shiftKey);
-      return;
-    }
-    if (mod && e.key.toLowerCase() === "z") {
-      e.preventDefault();
-      editor.cancel();
-      void editor.transact(e.shiftKey ? "redo" : "undo");
-      return;
-    }
-    if (mod && e.key.toLowerCase() === "d") {
-      e.preventDefault();
-      editor.duplicate();
-      return;
-    }
-    if (mod && e.key.toLowerCase() === "a") {
-      if (editor.transformTool) {
-        e.preventDefault();
-        return;
-      }
-      e.preventDefault();
-      editor.cancel();
-      editor.selected = editor.document.shapes.map((s) => s.id);
-      editor.notify();
-      return;
-    }
-    if (
-      !mod &&
-      !e.repeat &&
-      editor.tool === "select" &&
-      editor.selected.length
-    ) {
-      const k = e.key.toLowerCase();
-      if (["g", "r", "s"].includes(k)) {
-        e.preventDefault();
-        editor.activateTransform(
-          k === "g" ? "move" : k === "r" ? "rotate" : "scale",
-        );
-        return;
-      }
-      if (editor.transformTool && k === "v") {
-        editor.placingPivot = true;
-        editor.notify();
-        return;
-      }
-      if (editor.transformTool && (k === "x" || k === "y")) {
-        editor.transformAxis = k;
-        editor.notify();
-        return;
-      }
-    }
-    if (
-      e.key === "Tab" &&
-      editor.transformTool &&
-      (e.target as HTMLElement).tagName === "CANVAS"
-    ) {
-      e.preventDefault();
-      document
-        .querySelector<HTMLInputElement>(".transform-inputs input")
-        ?.focus();
-      return;
-    }
-    if (
-      editor.mode.startsWith("polygon") &&
-      !mod &&
-      (e.key === "ArrowUp" || e.key === "ArrowDown")
-    ) {
-      e.preventDefault();
-      editor.adjustPolygonSides(e.key === "ArrowUp" ? 1 : -1);
-      return;
-    }
-    if (e.key === "Escape") {
-      editor.setMode("select");
-    }
-    if (e.key === "Enter") {
-      if (editor.transformTool) void editor.applyTransform();
-      else editor.finish();
-    }
-    if (e.key === "Backspace" && editor.pending.length) {
-      e.preventDefault();
-      editor.pending = editor.pending.slice(0, -1);
-      editor.pendingHandles = editor.pendingHandles.slice(0, -1);
-      editor.notify();
-    } else if (["Delete", "Backspace"].includes(e.key)) {
-      e.preventDefault();
-      editor.delete();
-    }
-    if (e.key === "f" || e.key === "F") editor.fit(e.shiftKey);
-    if (!mod && !e.repeat) {
-      if (e.key.toLowerCase() === "r" || e.key.toLowerCase() === "c") {
-        editor.cycle(e.key.toLowerCase() === "r" ? "rectangle" : "circle");
-        return;
-      }
-      const tool = tools.find(
-        (t) => t.key.toLowerCase() === e.key.toLowerCase(),
-      );
-      if (tool) editor.setTool(tool.id);
-    }
-  };
+  const key = (event: KeyboardEvent) =>
+    handleShortcut(event, () => {
+      window.open("/manual/index.html", "_blank", "noopener");
+    });
   const up = (e: KeyboardEvent) => {
     if (e.code === "Space") editor.space = false;
   };
@@ -191,11 +72,16 @@ onMounted(() => {
       e.returnValue = "";
     }
   };
+  const releasePan = () => {
+    editor.space = false;
+  };
+  window.addEventListener("focusout", releasePan);
   window.addEventListener("keydown", key);
   window.addEventListener("keyup", up);
   window.addEventListener("blur", blur);
   window.addEventListener("beforeunload", leave);
   onUnmounted(() => {
+    window.removeEventListener("focusout", releasePan);
     window.removeEventListener("keydown", key);
     window.removeEventListener("keyup", up);
     window.removeEventListener("blur", blur);
@@ -225,7 +111,7 @@ onMounted(() => {
 });
 </script>
 <template>
-  <main>
+  <main @focusin="hintFocus" @focusout="editing = ''">
     <header>
       <div class="brand">
         <span class="brand-icon">⌑</span>
@@ -238,11 +124,28 @@ onMounted(() => {
       <div class="header-actions">
         <button :disabled="!e.ready" @click="editor.newProject()">New</button>
         <button :disabled="!e.ready" @click="editor.open()">Open</button>
-        <button :disabled="!e.ready" @click="editor.save()">Save</button>
-        <button :disabled="!e.ready" @click="editor.save(true)">Save as</button>
-        <button ref="helpTrigger" aria-label="Help" @click="help = true">
-          ?
+        <button
+          :disabled="!e.ready"
+          title="Save (Ctrl/⌘+S)"
+          @click="editor.save()"
+        >
+          Save
         </button>
+        <button
+          :disabled="!e.ready"
+          title="Save as (Ctrl/⌘+Shift+S)"
+          @click="editor.save(true)"
+        >
+          Save as
+        </button>
+        <a
+          href="/manual/index.html"
+          target="_blank"
+          rel="noopener"
+          aria-label="Help"
+          title="User manual (? on canvas)"
+          >?</a
+        >
       </div>
     </header>
     <section class="workspace">
@@ -258,7 +161,7 @@ onMounted(() => {
         </template>
         <div class="rail-divider" />
         <button
-          title="Undo (Ctrl/⌘ Z)"
+          title="Undo (Ctrl/⌘+Z)"
           aria-label="Undo"
           :disabled="!e.canUndo"
           @click="editor.transact('undo')"
@@ -266,7 +169,7 @@ onMounted(() => {
           ↶
         </button>
         <button
-          title="Redo (Ctrl/⌘ Shift Z)"
+          title="Redo (Ctrl/⌘+Shift+Z)"
           aria-label="Redo"
           :disabled="!e.canRedo"
           @click="editor.transact('redo')"
@@ -320,7 +223,7 @@ onMounted(() => {
               <kbd>F</kbd>
             </button>
             <button :disabled="!e.selected.length" @click="editor.fit(true)">
-              Fit selection
+              Fit selection <kbd>Shift+F</kbd>
             </button>
           </div>
         </div>
@@ -330,18 +233,11 @@ onMounted(() => {
         >
           <span>DESIGN WITH PRECISION</span>
           <h1>Start with a shape.</h1>
-          <p>
-            Choose a tool, then click points or drag a shape.
-            <br />
-            Refine dimensions in Properties.
-          </p>
+          <p>Choose a tool to start drawing.</p>
           <button @click="editor.setTool('rectangle')">
             Draw a rectangle
             <kbd>R</kbd>
           </button>
-        </div>
-        <div class="construction-hint">
-          {{ e.pending.length ? e.instruction : "" }}
         </div>
         <div v-if="!e.ready" class="loading">{{ e.message }}</div>
       </div>
@@ -359,11 +255,13 @@ onMounted(() => {
         <h2>Properties</h2>
         <Inspector />
         <div class="inspector-hint">
-          Choose a transform in the floating toolbox
-          <br />
-          Enter · Apply Esc · Cancel
-          <br />
-          Shift + click · Multiple selection
+          <p>{{ hint.action }}</p>
+          <dl>
+            <template v-for="control in hint.controls" :key="control.id"
+              ><dt>{{ control.gesture }}</dt>
+              <dd>{{ control.action }}</dd></template
+            >
+          </dl>
         </div>
       </aside>
     </section>
@@ -414,6 +312,5 @@ onMounted(() => {
       </div>
       <StatusBar coordinates />
     </footer>
-    <HelpDialog v-model:open="help" />
   </main>
 </template>

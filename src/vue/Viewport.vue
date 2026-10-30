@@ -280,7 +280,7 @@ onUnmounted(() => {
   />
   <div
     v-if="draft"
-    class="canvas-text-editor"
+    class="canvas-text-editor" data-hint-edit="text"
     :style="textStyle"
     @pointerdown.stop
     @keydown.stop

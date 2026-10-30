@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
+import { transformShortcuts } from "./tools";
 const e = useEditor();
 const focusedFactor = ref<string | null>(null);
 const drafts = ref<Record<string, string>>({});
@@ -20,7 +21,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
     <div
       v-if="e.transformTool"
       class="transform-options"
-      @keydown.enter.prevent="editor.applyTransform()"
+      @keydown.enter.prevent="!$event.isComposing && editor.applyTransform()"
       @keydown.esc.stop="editor.cancel()"
     >
       <strong>{{
@@ -30,7 +31,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
             ? "Move"
             : "Rotate"
       }}</strong>
-      <div class="transform-inputs">
+      <div class="transform-inputs" data-hint-edit="transform">
         <template
           v-for="item in e.transformTool === 'move'
             ? [
@@ -105,7 +106,6 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           Set pivot (V)</button
         ><button @click="editor.resetPivot()">Reset center</button>
       </div>
-      <small v-if="e.placingPivot">Click to place the pivot</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions">
         <button
@@ -122,15 +122,12 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       aria-label="Transform selection"
     >
       <button
-        v-for="item in [
-          ['rotate', 'Rotate', 'R'],
-          ['move', 'Move', 'G'],
-          ['scale', 'Resize', 'S'],
-        ] as const"
+        v-for="item in transformShortcuts"
         :key="item[0]"
         :aria-label="item[1]"
         :title="`${item[1]} (${item[2]})`"
         :aria-pressed="e.transformTool === item[0]"
+        :aria-keyshortcuts="item[2].toLowerCase()"
         @click="editor.activateTransform(item[0])"
       >
         <svg

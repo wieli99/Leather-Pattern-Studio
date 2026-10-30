@@ -16,14 +16,9 @@ tools/dev/run.sh check
 
 Runs Rust tests, generated TypeScript contracts, production build, unit tests, and Chromium/Firefox/WebKit acceptance tests. Browser dependencies are installed inside the container. To test offline behavior, build and run `tools/dev/run.sh preview`; development mode intentionally does not register a service worker. Offline use starts after the first successful online load and cache installation. Serve deployments over HTTPS (localhost also works).
 
-## Draw and edit
+## User manual
 
-- **V/P/R/C**: select, polyline, rectangle variants, and circle/ellipse/arc variants. Repeat R/C to cycle; right-click or hold the tool to open its menu.
-- Click points or drag to draw. Polylines accept more anchors; Enter or right-click finishes, and double-click closes. Refine exact dimensions in Properties.
-- Inspector edits exact dimensions, position, corner radius, rotation, and vertices. Enter or blur accepts a field; Escape cancels the field. Coordinates use millimetres.
-- Select outlines or use the object list. Shift toggles selection; dragging an empty area selects fully enclosed objects. Choose Move (G), Rotate (R), or Resize (S) in the floating bottom toolbox before manipulating shapes. Drag the active gizmo or enter numeric values, then Apply/Enter/right-click to commit; Escape cancels the whole preview. Resize supports proportional or independent X/Y factors. Move exposes vertex handles for lines/polylines.
-- Space+drag or middle-drag pans. Scroll pans; Ctrl/Command+scroll zooms at the cursor. **F** fits all; **Shift+F** fits selected objects.
-- **Ctrl/Command+Z**, **Ctrl/Command+Shift+Z**, **Ctrl/Command+D**, and Delete undo, redo, duplicate, and delete. Alt bypasses snapping; Escape cancels an active gesture.
+Open the ? link in the editor for the bundled, searchable user manual, or visit `/manual/index.html`. Sources live in [docs/manual](docs/manual/home.md).
 
 ## Project files and recovery
 
@@ -31,7 +26,7 @@ Projects save as version 5. Per-shape affine transforms preserve exact stretched
 
 Save/Save As use native browser file pickers where supported. Other browsers download a JSON copy; the application reports that a download started rather than claiming a successful disk write. Unsaved work is protected before New/Open and by the browser's navigation prompt. IndexedDB recovery is offered at startup and is separate from a saved project file. Browser storage can be cleared or denied; retain downloaded/saved files.
 
-Version 4 preserves shape parameters, rotation, circular arc sweeps, IDs, and names. Versions 1–3 migrate on open; legacy stitch metadata is retained but stitch tools are deferred. Splines, booleans, offsets, export, printing, leather-specific tools, and mobile editing are outside this MVP.
+Version 4 preserves shape parameters, rotation, circular arc sweeps, IDs, and names. Versions 1–3 migrate on open; legacy stitch metadata is retained but stitch tools are deferred. Booleans, offsets, export, printing, leather-specific tools, and mobile editing are outside this MVP.
 
 ## Code
 

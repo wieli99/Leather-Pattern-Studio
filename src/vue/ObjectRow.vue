@@ -37,7 +37,7 @@ function select(event: MouseEvent) {
 }
 </script>
 <template>
-  <div v-if="renaming" class="object-rename">
+  <div v-if="renaming" class="object-rename" data-hint-edit="rename">
     <ModeIcon :mode="shape.kind === 'line' ? 'polyline' : shape.kind" />
     <input
       ref="input"
@@ -54,6 +54,7 @@ function select(event: MouseEvent) {
     v-else
     :class="{ selected }"
     @click="select"
+    title="Rename (F2 or double-click)"
     @dblclick="rename"
     @keydown.f2.prevent="rename"
   >

@@ -26,3 +26,7 @@ Run Vitest unit tests, Rust tests, and Playwright acceptance tests for meaningfu
 ## Commits & Pull Requests
 
 No established Git history convention exists. Use concise imperative commit subjects. PRs should describe resulting behavior, validation, remaining limitations, and linked issues. Include screenshots for UI changes. Do not claim completion based only on a successful build.
+
+## User manual maintenance
+
+Keep `docs/manual/` updated with every user-visible behavior change in the same change. Update affected procedures, shortcut references, and screenshots. Verify internal links and instructions against the implementation before reporting completion. The bundled manual is opened through the ? link and must remain available offline.

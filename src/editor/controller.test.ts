@@ -812,3 +812,22 @@ test("measurement modifier changes do not create document history", () => {
   expect(e.measurementsVisible).toBe(false);
   expect(e.document).toBe(document);
 });
+
+test("every grouped mode cycles both ways and remembers its last variant", async () => {
+  const { variants } = await import("./construction");
+  const e = editor();
+  for (const group of Object.keys(variants) as (keyof typeof variants)[]) {
+    const modes = variants[group];
+    e.setMode(modes[0]);
+    for (let i = 0; i < modes.length; i++) {
+      expect(e.mode).toBe(modes[i]);
+      e.cycle(group);
+    }
+    expect(e.mode).toBe(modes[0]);
+    e.cycle(group, -1);
+    expect(e.mode).toBe(modes[modes.length - 1]);
+    e.setMode("select");
+    e.cycle(group);
+    expect(e.mode).toBe(modes[modes.length - 1]);
+  }
+});

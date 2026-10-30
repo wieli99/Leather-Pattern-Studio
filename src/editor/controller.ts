@@ -209,7 +209,7 @@ export class Controller {
   lastRectangle: Mode = "rectangle";
   lastPolygon: Mode = "polygon";
   lastCircle: Mode = "circle";
-  lastCurve: Mode = "curve";
+  lastPolyline: Mode = "polyline";
   pendingHandles: CurveHandles[] = [];
   hoverHandle = "";
   drawingDown: { pixel: Point; point: Point; initial: boolean } | null = null;
@@ -302,7 +302,7 @@ export class Controller {
       this.lastRectangle,
       this.lastCircle,
       this.lastPolygon,
-      this.lastCurve,
+      this.lastPolyline,
       this.selected.join(","),
       this.pending.length,
       this.grid,
@@ -389,7 +389,7 @@ export class Controller {
     try {
       this.accept(await this.core.request("snapshot", 0));
       this.ready = true;
-      this.message = "Ready · Choose a drawing tool";
+      this.message = "Ready";
       try {
         this.restore = await recovery();
         if (!this.restore) {
@@ -516,7 +516,7 @@ export class Controller {
   polygonSides = 3;
   adjustPolygonSides(delta: number) {
     this.polygonSides = Math.max(3, Math.min(100, this.polygonSides + delta));
-    this.message = this.instruction;
+    this.message = "Ready";
     this.notify();
   }
   setTool(tool: Mode | Tool) {
@@ -543,55 +543,29 @@ export class Controller {
                     : "circle";
     if ((variants.polygon as readonly string[]).includes(mode))
       this.lastPolygon = mode;
-    if (isCurveMode(mode)) this.lastCurve = mode;
+    if ((variants.polyline as readonly string[]).includes(mode))
+      this.lastPolyline = mode;
     if ((variants.rectangle as readonly string[]).includes(mode))
       this.lastRectangle = mode;
     if ((variants.circle as readonly string[]).includes(mode))
       this.lastCircle = mode;
-    this.message = this.instruction;
+    this.message = "Ready";
     this.notify();
   }
-  cycle(group: "rectangle" | "circle") {
+  cycle(group: keyof typeof variants, direction = 1) {
     const list = variants[group] as readonly Mode[],
       current = list.indexOf(this.mode);
     this.setMode(
       current < 0
         ? group === "rectangle"
           ? this.lastRectangle
-          : this.lastCircle
-        : list[(current + 1) % list.length],
+          : group === "circle"
+            ? this.lastCircle
+            : group === "polyline"
+              ? this.lastPolyline
+              : this.lastPolygon
+        : list[(current + direction + list.length) % list.length],
     );
-  }
-  get instruction() {
-    if (isCurveMode(this.mode))
-      return `${labels[this.mode]} · ${this.mode === "control-curve" ? "Click anchors; drag for smooth handles" : "Click points on the curve"} · Enter/right-click/double-click: finish · Esc: cancel`;
-    if (this.mode === "select")
-      return "Click an edge; Alt-click adds an anchor; Ctrl selects interiors/crossings; Shift adds";
-    if (this.mode.startsWith("polygon")) {
-      const nextPoint =
-        this.mode === "polygon-box"
-          ? this.pending.length
-            ? "opposite corner"
-            : "first corner or drag"
-          : this.pending.length
-            ? "radius and rotation"
-            : "center or drag";
-      return `${labels[this.mode]} · ${this.polygonSides} corners · Choose ${nextPoint} · Up/Down or Shift + wheel: corners`;
-    }
-    const n = this.pending.length;
-    if (this.mode === "arc-three")
-      return n === 0
-        ? "Choose arc start"
-        : n === 1
-          ? "Choose arc end"
-          : "Move to shape the arc; click to finish";
-    if (this.mode === "polyline")
-      return n
-        ? "Click next point · Shift: 45° · Right-click/Enter: finish · Double-click: close"
-        : "Click first anchor or drag a finished line";
-    if (!n)
-      return `${labels[this.mode]} · Choose ${this.mode === "rectangle-center" || this.mode === "circle" || this.mode === "ellipse-center" || this.mode === "arc" ? "center" : "first point"}${pointCount(this.mode) === 2 ? " or drag" : ""}`;
-    return `${labels[this.mode]} · ${n === 1 ? "Choose second point" : this.mode === "arc" ? "Move to set sweep, click to finish" : "Choose third point"}`;
   }
   polylineClick(count: number) {
     if (isCurveMode(this.mode)) {
@@ -746,7 +720,7 @@ export class Controller {
         this.pending.push(p);
         this.pendingHandles.push(zeroHandles());
       }
-      this.message = this.instruction;
+      this.message = "Ready";
       this.notify();
       return;
     }
@@ -761,7 +735,7 @@ export class Controller {
     } else if (this.pending.length + 1 === pointCount(this.mode))
       this.finish([...this.pending, p]);
     else this.pending = [...this.pending, p];
-    if (this.pending.length) this.message = this.instruction;
+    if (this.pending.length) this.message = "Ready";
     this.notify();
   }
   get constructionPreview(): Shape | null {
@@ -1503,7 +1477,7 @@ export class Controller {
       void this.commit(next).then(() => {
         if (this.document.shapes.some((s) => s.id === shape.id))
           this.selected = [shape.id];
-        this.message = this.instruction;
+        this.message = "Ready";
         this.notify();
       });
     } catch (e) {

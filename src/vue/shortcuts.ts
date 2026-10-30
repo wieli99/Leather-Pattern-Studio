@@ -1,0 +1,141 @@
+import { editor } from "../editor/instance";
+import { tools, groupKeys, transformShortcuts } from "./tools";
+export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
+  if (
+    e.defaultPrevented ||
+    e.isComposing ||
+    e.getModifierState("AltGraph") ||
+    e.repeat
+  )
+    return;
+  const target = e.target instanceof HTMLElement ? e.target : null;
+  if (
+    !target ||
+    target.closest(
+      "input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=menu]",
+    ) ||
+    document.querySelector("[role=dialog]")
+  )
+    return;
+  const canvas = target.tagName === "CANVAS";
+  if (!(e.ctrlKey || e.metaKey) && !canvas) return;
+  if (e.altKey || (e.ctrlKey && e.metaKey)) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod && e.code === "Space") {
+    e.preventDefault();
+    editor.space = true;
+  }
+  if (mod && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    void editor.save(e.shiftKey);
+    return;
+  }
+  if (
+    mod &&
+    (e.key.toLowerCase() === "z" ||
+      (!e.metaKey && !e.shiftKey && e.key.toLowerCase() === "y"))
+  ) {
+    e.preventDefault();
+    editor.cancel();
+    void editor.transact(
+      e.shiftKey || e.key.toLowerCase() === "y" ? "redo" : "undo",
+    );
+    return;
+  }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === "d") {
+    e.preventDefault();
+    editor.duplicate();
+    return;
+  }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === "a") {
+    if (editor.transformTool) {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    editor.cancel();
+    editor.selected = editor.document.shapes.map((s) => s.id);
+    editor.notify();
+    return;
+  }
+  if (mod) return;
+  if (e.key === "?") {
+    e.preventDefault();
+    openHelp();
+    return;
+  }
+  if (e.key === "Tab" && !e.shiftKey && canvas) {
+    const field = document.querySelector<HTMLInputElement>(
+      editor.transformTool
+        ? ".transform-inputs input"
+        : ".construction-measurements input",
+    );
+    if (field) {
+      e.preventDefault();
+      field.focus();
+    }
+    return;
+  }
+  if (!e.shiftKey && editor.tool === "select" && editor.selected.length) {
+    const k = e.key.toLowerCase();
+    if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
+      e.preventDefault();
+      editor.activateTransform(
+        k === "g" ? "move" : k === "e" ? "rotate" : "scale",
+      );
+      return;
+    }
+    if (editor.transformTool && k === "v") {
+      editor.placingPivot = true;
+      editor.notify();
+      return;
+    }
+    if (editor.transformTool && (k === "x" || k === "y")) {
+      editor.transformAxis = k;
+      editor.notify();
+      return;
+    }
+  }
+  if (
+    editor.mode.startsWith("polygon") &&
+    !mod &&
+    (e.key === "ArrowUp" || e.key === "ArrowDown")
+  ) {
+    e.preventDefault();
+    editor.adjustPolygonSides(e.key === "ArrowUp" ? 1 : -1);
+    return;
+  }
+  if (e.key === "Escape") {
+    editor.setMode("select");
+  }
+  if (e.key === "Enter") {
+    if (editor.transformTool) void editor.applyTransform();
+    else editor.finish();
+  }
+  if (e.key === "Backspace" && editor.pending.length) {
+    e.preventDefault();
+    editor.pending = editor.pending.slice(0, -1);
+    editor.pendingHandles = editor.pendingHandles.slice(0, -1);
+    editor.notify();
+  } else if (["Delete", "Backspace"].includes(e.key)) {
+    e.preventDefault();
+    editor.delete();
+  }
+  if (e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    editor.fit(e.shiftKey);
+    return;
+  }
+  if (!mod && !e.repeat) {
+    if (groupKeys[e.key.toLowerCase()]) {
+      e.preventDefault();
+      editor.cycle(groupKeys[e.key.toLowerCase()], e.shiftKey ? -1 : 1);
+      return;
+    }
+    const tool = tools.find((t) => t.key.toLowerCase() === e.key.toLowerCase());
+    if (tool) {
+      e.preventDefault();
+      editor.setTool(tool.id);
+    }
+  }
+}

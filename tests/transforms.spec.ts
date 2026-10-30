@@ -129,7 +129,7 @@ test("shortcuts activate tools, selection resets sessions and compact viewport k
 }) => {
   await setup(page);
   await page.getByLabel("Pattern drawing canvas").focus();
-  await page.keyboard.press("r");
+  await page.keyboard.press("e");
   await expect(page.getByLabel("Angle (°)", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await page.keyboard.press("g");
@@ -178,4 +178,70 @@ test("creation exposes transforms and move values use two decimals", async ({
   await expect(page.getByLabel("Y factor", { exact: true })).toHaveValue(
     "1.00",
   );
+});
+
+test("group shortcuts cover variants in both directions", async ({ page }) => {
+  await page.goto("/");
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await expect(
+    page.getByRole("button", { name: "Rectangle (R)", exact: true }),
+  ).toBeEnabled();
+  await canvas.focus();
+  for (const [key, count] of [
+    ["p", 3],
+    ["h", 2],
+    ["r", 3],
+    ["c", 7],
+  ] as const) {
+    await page.keyboard.press(key);
+    for (let i = 0; i < count; i++) {
+      const before = await page
+        .locator(".tool-group button[aria-pressed=true] .tool-icon")
+        .innerHTML();
+      await page.keyboard.press(key);
+      await expect(
+        page.locator(".tool-group button[aria-pressed=true] .tool-icon"),
+      ).not.toHaveJSProperty("innerHTML", before);
+      await page.keyboard.press(`Shift+${key}`);
+      await expect(
+        page.locator(".tool-group button[aria-pressed=true] .tool-icon"),
+      ).toHaveJSProperty("innerHTML", before);
+      await page.keyboard.press(key);
+    }
+  }
+});
+
+test("canvas shortcuts leave controls and browser combinations alone", async ({
+  page,
+}, info) => {
+  await setup(page);
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.focus();
+  await page.keyboard.press("r");
+  await expect(
+    page.getByRole("button", { name: "Rectangle (R)", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("link", { name: "Help", exact: true }).focus();
+  await page.keyboard.press("c");
+  await expect(
+    page.getByRole("button", { name: "Rectangle (R)", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const popupPromise = page.waitForEvent("popup");
+  await page.keyboard.press("Enter");
+  const manual = await popupPromise;
+  await expect(manual).toHaveURL(/manual\/index.html/);
+  await manual.close();
+  await canvas.focus();
+  // Synthetic dispatch checks the app's handling without opening browser chrome.
+  const prevented = await canvas.evaluate((element) => {
+    const event = new KeyboardEvent("keydown", {
+      key: "f",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(prevented).toBe(false);
 });

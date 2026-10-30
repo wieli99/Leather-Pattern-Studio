@@ -4,10 +4,11 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   page,
 }, info) => {
   await page.goto("/");
-  const tool = page.getByRole("button", { name: "Curve", exact: true });
+  const tool = page.getByRole("button", { name: "Polyline (P)", exact: true });
   await expect(tool).toBeEnabled();
   const canvas = page.getByLabel("Pattern drawing canvas");
-  await tool.click();
+  await tool.click({ button: "right" });
+  await page.getByRole("menuitemradio", { name: "Curve", exact: true }).click();
   await canvas.click({ position: { x: 150, y: 180 } });
   await canvas.click({ position: { x: 250, y: 280 } });
   await canvas.dblclick({ position: { x: 400, y: 180 } });
@@ -74,9 +75,10 @@ test("curve variants draw, edit, undo, save and reopen", async ({
 for (const mode of ["Curve", "Control point curve"]) {
   test(`${mode} shows working Move axis arrows`, async ({ page }, info) => {
     await page.goto("/");
-    const curve = page.getByRole("button", { name: "Curve", exact: true });
+    const curve = page.getByRole("button", { name: "Polyline (P)", exact: true });
     await expect(curve).toBeEnabled();
-    await curve.click();
+    await curve.click({ button: "right" });
+    await page.getByRole("menuitemradio", { name: "Curve", exact: true }).click();
     if (mode === "Control point curve") {
       await curve.click({ button: "right" });
       await page
@@ -115,3 +117,25 @@ for (const mode of ["Curve", "Control point curve"]) {
     );
   });
 }
+
+test("Polyline groups straight and curved paths and remembers its variant", async ({ page }, info) => {
+  await page.goto("/");
+  const tool = page.getByRole("button", { name: "Polyline (P)", exact: true });
+  await expect(tool).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Curve (B)", exact: true })).toHaveCount(0);
+  await tool.click({ button: "right" });
+  for (const name of ["Polyline", "Curve", "Control point curve"]) await expect(page.getByRole("menuitemradio", { name, exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("polyline-variants.png") });
+  await page.getByRole("menuitemradio", { name: "Curve", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.focus();
+  await page.keyboard.press("Escape");
+  await tool.click();
+  await tool.click({ button: "right" });
+  await expect(page.getByRole("menuitemradio", { name: "Curve", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await canvas.focus();
+  const before = await tool.locator(".tool-icon").innerHTML();
+  await page.keyboard.press("b");
+  expect(await tool.locator(".tool-icon").innerHTML()).toBe(before);
+});
