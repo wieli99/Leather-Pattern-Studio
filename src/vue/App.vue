@@ -308,6 +308,17 @@ onMounted(() => {
           />
           Object snap
         </label>
+        <label>
+          <input
+            type="checkbox"
+            :checked="e.smart"
+            @change="
+              editor.smart = ($event.target as HTMLInputElement).checked;
+              editor.preferences();
+            "
+          />
+          Smart snapping
+        </label>
         <Settings />
       </div>
       <StatusBar coordinates />

@@ -370,6 +370,40 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           ["move", "scale", "vertex"].includes(editor.gesture.kind)
         ? editor.snapTarget
         : null;
+    if (editor.smart && editor.snapTarget) {
+      ctx.save();
+      ctx.strokeStyle = color("preview");
+      ctx.lineWidth = 1 / z;
+      for (const id of new Set(editor.smartGuides.map((guide) => guide.objectId))) {
+        const source = editor.document.shapes.find((s) => s.id === id);
+        if (!source) continue;
+        const primitive = new Path2D();
+        shapePath(primitive, source);
+        const path = new Path2D();
+        const m = shapeMatrix(source);
+        path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
+        ctx.strokeStyle = color("canvas");
+        ctx.lineWidth = 5 / z;
+        ctx.stroke(path);
+        ctx.strokeStyle = color("preview");
+        ctx.lineWidth = 2 / z;
+        ctx.stroke(path);
+      }
+      ctx.lineWidth = 1 / z;
+      ctx.setLineDash([4 / z, 4 / z]);
+      for (const guide of editor.smartGuides) {
+        ctx.beginPath();
+        if (guide.axis === "x") {
+          ctx.moveTo(guide.coordinate, guide.bounds.y);
+          ctx.lineTo(guide.coordinate, guide.bounds.y + guide.bounds.height);
+        } else {
+          ctx.moveTo(guide.bounds.x, guide.coordinate);
+          ctx.lineTo(guide.bounds.x + guide.bounds.width, guide.coordinate);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     if (target) {
       const p = target;
       ctx.strokeStyle = color("preview");
@@ -435,13 +469,22 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.lineTo(point.x, point.y + 10);
       }
       ctx.stroke();
-      ctx.fillText(
+      const smartLabel = editor.smart
+        ? editor.smartGuides.map((guide) => {
+            const name = editor.document.shapes.find((s) => s.id === guide.objectId)?.name ?? "Object";
+            return `${guide.alignment} · ${name}`;
+          }).join(" / ")
+        : "";
+      const label = smartLabel ||
         (editor.snapKind === "vertex"
           ? "Endpoint / vertex"
           : editor.snapKind[0].toUpperCase() + editor.snapKind.slice(1)) +
-          (axes.length ? ` · ${axes.join(" + ")}` : ""),
-        point.x + 22,
-        point.y - 10,
+        (axes.length ? ` · ${axes.join(" + ")}` : "");
+      ctx.fillText(
+        label,
+        Math.max(4, Math.min(point.x + 22, w - ctx.measureText(label).width - 4)),
+        Math.max(14, Math.min(point.y - 10, h - 4)),
+        Math.max(1, w - 8),
       );
     }
     ctx.font = "11px system-ui";

@@ -844,3 +844,19 @@ test("every grouped mode cycles both ways and remembers its last variant", async
     expect(e.mode).toBe(modes[modes.length - 1]);
   }
 });
+
+test("object center snap shows both reference axes and clears on bypass", () => {
+  const e = editor();
+  e.smart = true;
+  e.objects = true;
+  e.document.shapes = [{ id: "center", name: "Rectangle", kind: "rectangle",
+    points: [{ x: 10, y: 10 }, { x: 50, y: 30 }], rotation: 0, radius: 0 }];
+  expect(e.snap({ x: 30.1, y: 20.1 })).toEqual({ x: 30, y: 20 });
+  expect(e.smartGuides.map((g) => [g.axis, g.coordinate, g.objectId]))
+    .toEqual([["x", 30, "center"], ["y", 20, "center"]]);
+  e.snap({ x: 30, y: 20 }, true);
+  expect(e.smartGuides).toEqual([]);
+  e.smart = false;
+  e.snap({ x: 30, y: 20 });
+  expect(e.smartGuides).toEqual([]);
+});

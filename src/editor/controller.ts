@@ -2,7 +2,7 @@ import { sharpAnchor, toggleAnchor } from "../model/sharpAnchor";
 import { insertAnchor } from "../model/insertAnchor";
 import { isCurve, zeroHandles, mirroredHandles } from "../model/curves";
 import type { CurveHandles } from "../generated/CurveHandles";
-import { snapCandidates, type SnapKind } from "./snapping";
+import { smartSnap, type SmartGuide, snapCandidates, type SnapKind } from "./snapping";
 import {
   construct,
   isCurveMode,
@@ -229,6 +229,8 @@ export class Controller {
   snapTarget: Point | null = null;
   snapKind: SnapKind | null = null;
   pointerInside = false;
+  smart = true;
+  smartGuides: SmartGuide[] = [];
   grid = true;
   objects = true;
   gridSize = 1;
@@ -253,7 +255,7 @@ export class Controller {
   constructor() {
     try {
       const p = JSON.parse(localStorage.getItem("leather-ui") ?? "{}");
-      for (const key of ["grid", "objects", "rulers"] as const)
+      for (const key of ["grid", "objects", "smart", "rulers"] as const)
         if (typeof p[key] === "boolean") this[key] = p[key];
       if (["world", "local"].includes(p.transformOrientation))
         this.transformOrientation = p.transformOrientation;
@@ -265,11 +267,13 @@ export class Controller {
     } catch {}
   }
   preferences() {
+    if (!this.smart) this.smartGuides = [];
     try {
       localStorage.setItem(
         "leather-ui",
         JSON.stringify({
           transformOrientation: this.transformOrientation,
+          smart: this.smart,
           grid: this.grid,
           objects: this.objects,
           gridSize: this.gridSize,
@@ -306,6 +310,7 @@ export class Controller {
       this.lastPolyline,
       this.selected.join(","),
       this.pending.length,
+      this.smart,
       this.grid,
       this.objects,
       this.gridSize,
@@ -351,6 +356,7 @@ export class Controller {
   }
   leavePointer() {
     this.pointerInside = false;
+    this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
     this.notify();
@@ -711,6 +717,7 @@ export class Controller {
         ) < 1e-7
       )
         return q;
+      this.smartGuides = [];
       this.snapTarget = null;
       return p;
     }
@@ -830,6 +837,7 @@ export class Controller {
     this.pendingHandles = [];
     this.preview = null;
     this.gesture = null;
+    this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
     void this.core.request("cancel", this.revision).catch(() => {});
@@ -845,6 +853,7 @@ export class Controller {
     };
   }
   snap(p: Point, disabled = false): Point {
+    this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
     if (disabled) return p;
@@ -859,6 +868,15 @@ export class Controller {
             best = d;
             this.snapTarget = candidate.point;
             this.snapKind = candidate.kind;
+            this.smartGuides = this.smart && candidate.kind === "center"
+              ? (["x", "y"] as const).map((axis) => ({
+                  axis,
+                  coordinate: candidate.point[axis],
+                  objectId: s.id,
+                  bounds: bounds([s]),
+                  alignment: axis === "x" ? "Vertical center" : "Horizontal center",
+                }))
+              : [];
           }
         }
       }
@@ -882,6 +900,19 @@ export class Controller {
         }
       }
       if (this.snapTarget) return this.snapTarget;
+    }
+    if (this.smart) {
+      const result = smartSnap(
+        p,
+        this.document.shapes.filter((shape) => !this.gesture?.selection.includes(shape.id)),
+        tolerance,
+      );
+      if (result.guides.length) {
+        this.smartGuides = result.guides;
+        this.snapTarget = result.point;
+        this.snapKind = "alignment";
+        return result.point;
+      }
     }
     if (this.grid) {
       const q = {
@@ -1187,21 +1218,26 @@ export class Controller {
         let dx = raw.x - g.start.x,
           dy = raw.y - g.start.y,
           best = Infinity,
+          bestPriority = Infinity,
           adjust = { x: 0, y: 0 },
           target: Point | null = null;
         let source: Point | undefined;
+        let targetGuides: SmartGuide[] = [];
         let targetKind: SnapKind | null = null;
         for (const s of g.original.shapes.filter(selected))
           for (const a of g.snapAnchor ? [] : anchors(s)) {
             const p = { x: a.x + dx, y: a.y + dy },
               q = this.snap(p, alt),
               d = distance(p, q);
-            if (this.snapTarget && d < best) {
+            const priority = this.snapKind === "alignment" ? 1 : this.snapKind === "grid" ? 2 : 0;
+            if (this.snapTarget && (priority < bestPriority || (priority === bestPriority && d < best))) {
+              bestPriority = priority;
               best = d;
               source = a;
               adjust = { x: q.x - p.x, y: q.y - p.y };
               target = this.snapTarget;
               targetKind = this.snapKind;
+              targetGuides = this.smartGuides;
             }
           }
         if (source) g.snapAnchor = source;
@@ -1211,6 +1247,7 @@ export class Controller {
           adjust = { x: q.x - p.x, y: q.y - p.y };
           target = this.snapTarget;
           targetKind = this.snapKind;
+          targetGuides = this.smartGuides;
         }
         dx += adjust.x;
         dy += adjust.y;
@@ -1238,6 +1275,7 @@ export class Controller {
             dy * Math.cos(orientation),
         };
         this.message = `Move ${this.transformValues.x.toFixed(1)}, ${this.transformValues.y.toFixed(1)} mm`;
+        this.smartGuides = g.axis ? [] : targetGuides;
         this.snapTarget = g.axis ? null : target;
         this.snapKind = g.axis ? null : targetKind;
         document = {
@@ -1410,6 +1448,9 @@ export class Controller {
     if (!g) return;
     this.previewId++;
     this.gesture = null;
+    this.smartGuides = [];
+    this.snapTarget = null;
+    this.snapKind = null;
     if (g.kind === "move" && this.transformTool) {
       this.transformPivot = {
         x: this.transformPivot.x + (g.displacement?.x ?? 0),
@@ -1477,6 +1518,9 @@ export class Controller {
       parseProject(JSON.stringify(next));
       this.pending = [];
       this.pendingHandles = [];
+      this.smartGuides = [];
+      this.snapTarget = null;
+      this.snapKind = null;
       this.arcSweep = 0;
       this.arcLast = undefined;
       void this.commit(next).then(() => {
