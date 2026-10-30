@@ -97,6 +97,25 @@ test("sharp rectangles accept placement and editable preset values in the bottom
     .getByRole("button", { name: "Spacing presets", exact: true })
     .click();
   await expect(page.getByRole("menuitem")).toHaveCount(5);
+  const trigger = await page
+    .getByRole("button", { name: "Spacing presets", exact: true })
+    .boundingBox();
+  await expect
+    .poll(async () => {
+      const menu = await page.getByRole("menu").boundingBox();
+      return Math.abs(menu!.x + menu!.width - trigger!.x - trigger!.width);
+    })
+    .toBeLessThan(2);
+  const preset = page.getByRole("menuitem", { name: "3.38 mm", exact: true });
+  const background = await preset.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  await preset.hover();
+  await expect(preset).toHaveAttribute("data-highlighted");
+  await expect(preset).toHaveCSS("cursor", "pointer");
+  expect(
+    await preset.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).not.toBe(background);
   await page.getByRole("menuitem", { name: "3.38 mm", exact: true }).click();
   await expect(page.getByLabel("Stitch spacing", { exact: true })).toHaveValue(
     "3.38",

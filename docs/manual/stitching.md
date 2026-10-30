@@ -3,7 +3,7 @@
 ## Place a line
 
 1. Select the source shape, then choose **Stitch line** beside **Corner radius**.
-2. In the bottom-right popup beside the sidebar, choose the iron style, spacing, inset, and alignment. Spacing and inset are editable fields with preset suggestions; type over the value directly or open its arrow dropdown and choose a preset.
+2. In the bottom-right popup beside the sidebar, choose the iron style, spacing, inset, and alignment. Spacing and inset are editable fields with preset suggestions; type over the value directly or open its arrow dropdown and choose a preset. Presets open beside the field, with a pointer cursor and a highlight on the option under the mouse. Arrow keys also highlight options; Enter selects one.
 3. Hover a source edge to preview the entire stitch line. On an open path, hover on the side you want. Closed shapes always stitch inside.
 4. Click to preview placement. Each straight edge, curve segment, and rounded corner is a separate target. Circles and ellipses use their whole perimeter.
 

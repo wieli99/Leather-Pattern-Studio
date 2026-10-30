@@ -19,8 +19,9 @@ const emit = defineEmits<{ choose: [number] }>();
     >
     <DropdownMenuPortal
       ><DropdownMenuContent
-        class="tool-menu"
+        class="tool-menu stitch-preset-menu"
         side="top"
+        align="end"
         :side-offset="4"
         @keydown.enter.stop
         @keydown.esc.stop
@@ -28,6 +29,7 @@ const emit = defineEmits<{ choose: [number] }>();
         <DropdownMenuItem
           v-for="value in values"
           :key="value"
+          class="stitch-preset-item"
           @select="emit('choose', value)"
           >{{ value.toFixed(2) }} mm</DropdownMenuItem
         >
@@ -37,6 +39,23 @@ const emit = defineEmits<{ choose: [number] }>();
 </template>
 
 <style scoped>
+:global(.tool-menu.stitch-preset-menu) {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: max-content;
+  min-width: 135px;
+}
+:global(.stitch-preset-item) {
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+:global(.stitch-preset-item[data-highlighted]) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  outline: none;
+}
 .preset-arrow {
   border: 0;
   border-left: 1px solid var(--border);
