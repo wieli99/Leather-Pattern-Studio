@@ -212,18 +212,6 @@ onMounted(() => {
           </svg>
         </button>
         <Viewport />
-        <div
-          v-if="!e.document.shapes.length && !e.pending.length"
-          class="empty"
-        >
-          <span>DESIGN WITH PRECISION</span>
-          <h1>Start with a shape.</h1>
-          <p>Choose a tool to start drawing.</p>
-          <button @click="editor.setTool('rectangle')">
-            Draw a rectangle
-            <kbd>R</kbd>
-          </button>
-        </div>
         <div v-if="!e.ready" class="loading">{{ e.message }}</div>
       </div>
       <aside v-if="panel">

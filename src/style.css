@@ -160,37 +160,6 @@ kbd {
   margin-left: 6px;
   opacity: 0.6;
 }
-.empty {
-  position: absolute;
-  inset: 30% 0 auto;
-  text-align: center;
-  pointer-events: none;
-}
-.empty > span {
-  color: #82948e;
-  letter-spacing: 3px;
-  font-size: 10px;
-}
-.empty h1 {
-  font-size: 32px;
-  font-weight: 400;
-  letter-spacing: -1px;
-  color: #e0e6ea;
-  margin: 15px 0;
-}
-.empty p {
-  color: #8d9ba9;
-  line-height: 1.8;
-}
-.empty button {
-  pointer-events: auto;
-  border: 1px solid #59616a;
-  background: #303840;
-  margin-top: 14px;
-}
-.empty ~ .drawing-input {
-  z-index: 2;
-}
 aside {
   width: 278px;
   flex-shrink: 0;
@@ -528,9 +497,7 @@ h2,
 summary,
 .document-name,
 footer,
-.inspector-hint,
-.empty p,
-.empty h1 {
+.inspector-hint {
   color: var(--text);
 }
 .field input,
@@ -633,11 +600,6 @@ nav button[aria-pressed="true"] {
 }
 .objects button {
   color: var(--text);
-}
-.empty button {
-  background: var(--button);
-  color: var(--text);
-  border-color: var(--border);
 }
 .units-hint {
   color: var(--muted);

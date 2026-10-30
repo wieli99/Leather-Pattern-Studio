@@ -10,6 +10,7 @@ export interface HintState {
   measurementFields?: readonly string[];
   polygonSides?: number;
   measurementsVisible?: boolean;
+  guideDrag?: { axis: "x" | "y" } | null;
 }
 export interface HintControl {
   id: string;
@@ -42,7 +43,15 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     return { action, controls };
   }
   const n = s.pending.length;
-  if (s.placingPivot) {
+  if (s.guideDrag) {
+    action = "Drag to position the guideline.";
+    add("guide-step", "Drag", "1 mm steps");
+    add("guide-coarse", "Ctrl", "10 mm steps");
+    add("guide-medium", "Shift", "5 mm steps");
+    add("snap", "Alt", "Free placement");
+    add("guide-remove", "Drop on ruler", "Remove guideline");
+    add("cancel", "Esc", "Cancel guideline drag");
+  } else if (s.placingPivot) {
     action = "Click to place the pivot.";
     add("snap", "Alt", "Bypass snapping");
   } else if (s.transformTool) {
@@ -153,7 +162,8 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("menu", "Right-click / hold tool", "Open variants");
     }
   }
-  if (s.mode !== "select" || s.transformTool) add("cancel", "Esc", "Cancel");
+  if (!s.guideDrag && (s.mode !== "select" || s.transformTool))
+    add("cancel", "Esc", "Cancel");
   add("pan", "Space+drag / Middle-drag", "Pan");
   add("scroll", "Scroll", "Pan");
   add("zoom", "Ctrl/⌘+scroll", "Zoom");

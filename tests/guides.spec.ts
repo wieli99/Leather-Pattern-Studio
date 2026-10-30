@@ -54,6 +54,12 @@ test("guideline alignment reference preview", async ({ page }, info) => {
   await page.mouse.move(box.x + 600, box.y + 10);
   await page.mouse.down();
   await page.mouse.move(box.x + 600, box.y + 285, { steps: 10 });
+  const hint = page.locator("aside .inspector-hint");
+  await expect(hint).toContainText("Drag to position the guideline.");
+  await expect(hint).toContainText("10 mm steps");
+  await expect(hint).toContainText("5 mm steps");
+  await expect(hint).toContainText("Free placement");
   await page.screenshot({ path: info.outputPath("guide-alignment.png") });
   await page.mouse.up();
+  await expect(hint).toContainText("Choose Move, Rotate or Resize.");
 });

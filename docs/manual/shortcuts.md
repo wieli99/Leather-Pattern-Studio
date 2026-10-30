@@ -28,4 +28,6 @@ Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the poi
 
 See [selection](#selection), [drawing](#drawing), and [transforms](#transforms) for modifier gestures.
 
+While dragging a [guideline](#measurements), the shortcut list in the right inspector shows its controls: default 1 mm steps, Ctrl for 10 mm steps, Shift for 5 mm steps, and Alt for free placement. Esc cancels the drag; dropping on a ruler removes the guideline.
+
 Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.

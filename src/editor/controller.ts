@@ -337,6 +337,7 @@ export class Controller {
       this.lastPolyline,
       this.selected.join(","),
       this.pending.length,
+      !!this.guideDrag,
       this.smart,
       this.grid,
       this.objects,

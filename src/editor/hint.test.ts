@@ -8,6 +8,25 @@ const base: HintState = {
   transformTool: null,
   placingPivot: false,
 };
+test.each(["select", "rectangle"] as const)(
+  "guideline drag overrides %s guidance",
+  (mode) => {
+    const hint = editorHint({ ...base, mode, guideDrag: { axis: "y" } });
+    expect(hint.action).toBe("Drag to position the guideline.");
+    expect(hint.controls).toEqual(expect.arrayContaining([
+      { id: "guide-step", gesture: "Drag", action: "1 mm steps" },
+      { id: "guide-coarse", gesture: "Ctrl", action: "10 mm steps" },
+      { id: "guide-medium", gesture: "Shift", action: "5 mm steps" },
+      { id: "snap", gesture: "Alt", action: "Free placement" },
+      { id: "cancel", gesture: "Esc", action: "Cancel guideline drag" },
+    ]));
+    expect(hint.controls.filter((row) => row.id === "cancel")).toHaveLength(1);
+    expect(
+      hint.controls.some((row) => row.id === "toggle" || row.id === "draw-drag"),
+    ).toBe(false);
+    expect(editorHint({ ...base, mode }).action).not.toBe(hint.action);
+  },
+);
 test("all modes and drawing stages have compact guidance", () => {
   const modes: Mode[] = [
     "select",

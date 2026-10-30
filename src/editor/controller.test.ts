@@ -938,8 +938,12 @@ test("ruler guideline persists after release with final modifier increments", as
   e.height = 600;
   e.pan = { x: 0, y: 0 };
   e.zoom = 1;
+  const idleUi = e.uiSnapshot();
   e.pointerDown({ x: 100, y: 10 }, 0, false, false);
+  expect(e.uiSnapshot()).not.toBe(idleUi);
+  const draggingUi = e.uiSnapshot();
   e.pointerMove({ x: 100, y: 123.4 }, false);
+  expect(e.uiSnapshot()).toBe(draggingUi);
   expect(e.guideDrag?.coordinate).toBe(123);
   e.updateGuideModifiers(false, true, false);
   expect(e.guideDrag?.coordinate).toBe(120);
