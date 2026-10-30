@@ -220,10 +220,12 @@ function wheel(event: WheelEvent) {
 }
 function updateModifiers(event: KeyboardEvent) {
   editor.setAnchorModifier(event.altKey);
+  editor.setDrawingModifier(event.shiftKey);
   editor.setMeasurementModifier(event.ctrlKey);
 }
 function clearModifiers() {
   editor.setAnchorModifier(false);
+  editor.setDrawingModifier(false);
   editor.setMeasurementModifier(false);
 }
 let detach: (() => void) | undefined;

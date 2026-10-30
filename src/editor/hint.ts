@@ -130,7 +130,8 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("finish", "Enter / Right-click", "Finish path");
       if (n >= 3) add("close", "Double-click", "Close path");
     }
-    if (s.mode === "polyline" && n) add("angle", "Shift", "Constrain to 45°");
+    if (n && (["polyline", "curve", "control-curve", "circle", "circle-two", "polygon", "arc"].includes(s.mode) || (n === 1 && ["ellipse-center", "arc-three"].includes(s.mode)))) add("angle", "Shift", "Constrain to 45°");
+    if (n === 1 && ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(s.mode)) add("square", "Shift", "Equal width and height");
     if (n) add("back", "Backspace", "Remove last anchor");
     if (s.measurementFields?.length) add("values", "Tab", "Edit dimensions");
     if (s.mode.startsWith("polygon"))

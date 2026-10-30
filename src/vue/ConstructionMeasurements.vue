@@ -11,6 +11,7 @@ const active = ref<string>();
 const draft = ref("");
 const error = ref("");
 const pinned = ref({ x: 0, y: 0 });
+const pinnedAngle = ref(0);
 const items = computed(() => {
   revision.value;
   if (editor.measurementFields.length) {
@@ -21,7 +22,10 @@ const items = computed(() => {
       const a = editor.pending.at(-1)!;
       const end = editor.constrainMeasurement(editor.cursor);
       const segmentFields = editor.measurementFields.includes("Angle");
-      const p = edge?.point ?? { x: (a.x + end.x) / 2, y: (a.y + end.y) / 2 };
+      let p = edge?.point ?? { x: (a.x + end.x) / 2, y: (a.y + end.y) / 2 };
+      if (editor.mode === "rectangle-center") {
+        p = key === "Width" ? { x: a.x, y: Math.min(end.y, 2 * a.y - end.y) } : { x: Math.max(end.x, 2 * a.x - end.x), y: a.y };
+      }
       const point = segmentFields
         ? segmentLabelPoint(
             editor.screen(a),
@@ -29,12 +33,16 @@ const items = computed(() => {
             key === "Angle",
           )
         : editor.screen(p);
+      // Keep the two full-size labels apart even before the rectangle has size.
+      if (editor.mode === "rectangle-center" && key === "Width") {
+        point.x -= 80;
+      }
       return {
         id: key,
         key,
         value: editor.measurementLocks[key] ?? editor.measurementValue(key),
         point,
-        angle: segmentFields ? 0 : (edge?.angle ?? 0),
+        angle: segmentFields ? 0 : editor.mode === "rectangle-center" ? (key === "Width" ? 0 : Math.PI / 2) : (edge?.angle ?? 0),
         shape: undefined,
         index: i,
       };
@@ -58,6 +66,7 @@ const items = computed(() => {
 function focus(item: (typeof items.value)[number]) {
   active.value = item.id;
   pinned.value = item.point;
+  pinnedAngle.value = item.angle;
   draft.value = String(Number(item.value.toFixed(3)));
   error.value = "";
 }
@@ -128,7 +137,7 @@ function cancel() {
 }
 function style(item: (typeof items.value)[number]) {
   const p = active.value === item.id ? pinned.value : item.point;
-  let angle = item.angle;
+  let angle = active.value === item.id ? pinnedAngle.value : item.angle;
   if (angle > Math.PI / 2) angle -= Math.PI;
   if (angle < -Math.PI / 2) angle += Math.PI;
   const cursor = editor.screen(editor.cursor);
@@ -139,7 +148,7 @@ function style(item: (typeof items.value)[number]) {
     left: `${p.x}px`,
     top: `${p.y}px`,
     pointerEvents: nearPointer ? ("none" as const) : ("auto" as const),
-    transform: `translate(-50%, -130%) rotate(${angle}rad)`,
+    transform: `translate(-50%, -50%) rotate(${angle}rad) translateY(calc(-50% - 8px))`,
   };
 }
 </script>

@@ -27,3 +27,5 @@ Single-letter editor shortcuts require canvas focus. Click the canvas first. Inp
 Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the pointer. F fits all objects; Shift+F fits the selection.
 
 See [selection](#selection), [drawing](#drawing), and [transforms](#transforms) for modifier gestures.
+
+Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.

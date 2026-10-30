@@ -65,6 +65,20 @@ export type Gesture = {
   factor?: number;
 };
 export class Controller {
+  drawingShift = false;
+  setDrawingModifier(shift: boolean) {
+    if (this.drawingShift === shift) return;
+    this.drawingShift = shift;
+    if (this.tool !== "select" && this.pointerInside && !this.gesture) {
+      this.pointerMove(
+        this.screen(this.anchorPointer),
+        this.anchorAlt,
+        this.measurementsVisible,
+        shift,
+      );
+    }
+    this.notify();
+  }
   measurementsVisible = false;
   setMeasurementModifier(ctrl: boolean) {
     if (this.measurementsVisible === ctrl) return;
@@ -220,6 +234,7 @@ export class Controller {
   transactionQueue: Promise<void> = Promise.resolve();
   pendingDocument: Doc | null = null;
   arcSweep = 0;
+  arcRawSweep = 0;
   arcLast: number | undefined;
   propertySession: { original: Doc; next: Doc } | null = null;
   selected: string[] = [];
@@ -634,8 +649,9 @@ export class Controller {
   }
   measurementValue(key: string) {
     const a = this.pending.at(-1)!;
-    const dx = this.cursor.x - a.x,
-      dy = this.cursor.y - a.y;
+    const resolved = this.constrainMeasurement(this.cursor);
+    const dx = resolved.x - a.x,
+      dy = resolved.y - a.y;
     if (key === "Sweep") return this.arcSweep;
     if (key === "Angle") return (Math.atan2(dy, dx) * 180) / Math.PI;
     if (this.measurementFields.length === 1) {
@@ -676,11 +692,16 @@ export class Controller {
     let dx = p.x - a.x,
       dy = p.y - a.y;
     if (this.measurementFields.includes("Height")) {
+      const square =
+        this.drawingShift &&
+        ["rectangle", "rectangle-center"].includes(this.mode);
+      const width = locks.Width ?? (square ? locks.Height : undefined);
+      const height = locks.Height ?? (square ? locks.Width : undefined);
       const factor = this.mode === "rectangle-center" ? 2 : 1;
-      if (locks.Width !== undefined)
-        dx = (Math.sign((locks._x ?? dx) || 1) * locks.Width) / factor;
-      if (locks.Height !== undefined)
-        dy = (Math.sign((locks._y ?? dy) || 1) * locks.Height) / factor;
+      if (width !== undefined)
+        dx = (Math.sign((locks._x ?? dx) || 1) * width) / factor;
+      if (height !== undefined)
+        dy = (Math.sign((locks._y ?? dy) || 1) * height) / factor;
     } else {
       const key = this.measurementFields[0];
       const r =
@@ -702,7 +723,18 @@ export class Controller {
     this.addPoint(this.constrainMeasurement(this.cursor));
   }
   drawingPoint(raw: Point, alt: boolean, shift: boolean): Point {
-    if (this.mode === "polyline" && shift && this.pending.length) {
+    this.drawingShift = shift;
+    if (shift && this.pending.length === 1 && ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(this.mode)) {
+      const a = this.pending[0];
+      const size = Math.max(Math.abs(raw.x - a.x), Math.abs(raw.y - a.y));
+      this.smartGuides = [];
+      this.snapTarget = null;
+      return { x: a.x + (raw.x < a.x ? -size : size), y: a.y + (raw.y < a.y ? -size : size) };
+    }
+    if (shift && this.pending.length && (
+      this.mode === "polyline" || isCurveMode(this.mode) ||
+      (this.pending.length === 1 && ["circle", "circle-two", "polygon", "ellipse-center", "arc", "arc-three"].includes(this.mode))
+    )) {
       const a = this.pending[this.pending.length - 1],
         theta =
           (Math.round(Math.atan2(raw.y - a.y, raw.x - a.x) / (Math.PI / 4)) *
@@ -831,6 +863,7 @@ export class Controller {
     this.transformOriginal = null;
     this.drawingDown = null;
     this.arcSweep = 0;
+    this.arcRawSweep = 0;
     this.arcLast = undefined;
     this.previewId++;
     this.pending = [];
@@ -1173,6 +1206,12 @@ export class Controller {
       g?.kind === "marquee"
         ? raw
         : this.drawingPoint(raw, alt, shift);
+    if (this.mode === "control-curve" && this.drawingDown) {
+      const a = this.drawingDown.point;
+      const radius = distance(a, raw);
+      const angle = shift ? Math.round(Math.atan2(raw.y - a.y, raw.x - a.x) / (Math.PI / 4)) * Math.PI / 4 : Math.atan2(raw.y - a.y, raw.x - a.x);
+      this.cursor = { x: a.x + radius * Math.cos(angle), y: a.y + radius * Math.sin(angle) };
+    }
     if (this.mode === "arc" && this.pending.length === 2) {
       const a = this.pending[0],
         b = this.pending[1],
@@ -1184,8 +1223,10 @@ export class Controller {
       while (delta < -Math.PI) delta += 2 * Math.PI;
       this.arcSweep = Math.max(
         -360,
-        Math.min(360, this.arcSweep + (delta * 180) / Math.PI),
+        Math.min(360, this.arcRawSweep + (delta * 180) / Math.PI),
       );
+      this.arcRawSweep = this.arcSweep;
+      if (shift) this.arcSweep = Math.round(this.arcSweep / 45) * 45;
       this.arcLast = theta;
       if (this.measurementLocks.Sweep !== undefined)
         this.arcSweep = this.measurementLocks.Sweep;
@@ -1431,10 +1472,15 @@ export class Controller {
         const count = this.pending.length;
         this.addPoint(anchor);
         if (this.mode === "control-curve" && this.pending.length > count) {
-          const v =
+          let v =
             pixel && distance(pixel, d.pixel) >= 4
-              ? { x: p.x - anchor.x, y: p.y - anchor.y }
+              ? { x: this.world(pixel).x - anchor.x, y: this.world(pixel).y - anchor.y }
               : { x: 0, y: 0 };
+          if (shift) {
+            const angle = Math.round(Math.atan2(v.y, v.x) / (Math.PI / 4)) * Math.PI / 4;
+            const radius = Math.hypot(v.x, v.y);
+            v = { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
+          }
           this.pendingHandles[this.pending.length - 1] = mirroredHandles(v);
         }
         this.notify();
@@ -1522,6 +1568,7 @@ export class Controller {
       this.snapTarget = null;
       this.snapKind = null;
       this.arcSweep = 0;
+      this.arcRawSweep = 0;
       this.arcLast = undefined;
       void this.commit(next).then(() => {
         if (this.document.shapes.some((s) => s.id === shape.id))

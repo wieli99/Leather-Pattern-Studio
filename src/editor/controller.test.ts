@@ -860,3 +860,42 @@ test("object center snap shows both reference axes and clears on bypass", () => 
   e.snap({ x: 30, y: 20 });
   expect(e.smartGuides).toEqual([]);
 });
+
+test.each(["rectangle", "rectangle-center", "ellipse", "polygon-box"] as const)("Shift makes %s square", mode => {
+  const e = editor();
+  e.setMode(mode);
+  e.pending = [{ x: 2, y: 3 }];
+  const p = e.drawingPoint({ x: -8, y: 7 }, true, true);
+  expect(p).toEqual({ x: -8, y: 13 });
+});
+test.each(["circle", "circle-two", "polygon", "ellipse-center", "arc", "arc-three", "curve", "control-curve"] as const)("Shift constrains %s direction", mode => {
+  const e = editor();
+  e.setMode(mode);
+  e.pending = [{ x: 0, y: 0 }];
+  const p = e.drawingPoint({ x: 10, y: 8 }, true, true);
+  expect(p.x).toBeCloseTo(p.y);
+  expect(Math.hypot(p.x, p.y)).toBeCloseTo(Math.hypot(10, 8));
+});
+
+test.each(["rectangle", "rectangle-center"] as const)("Shift couples one dimension in %s", mode => {
+  const e = editor();
+  e.setMode(mode);
+  e.pending = [{ x: 0, y: 0 }];
+  e.measurementLocks = { Width: 20 };
+  const point = e.drawingPoint({ x: 30, y: 40 }, true, true);
+  const p = e.constrainMeasurement(point);
+  expect(Math.abs(p.x)).toBe(Math.abs(p.y));
+  expect(p.x).toBe(mode === "rectangle-center" ? 10 : 20);
+  e.measurementLocks.Height = 30;
+  expect(e.constrainMeasurement(point).y).toBe(mode === "rectangle-center" ? 15 : 30);
+});
+test("Shift release refreshes rectangle without pointer movement", () => {
+  const e = editor();
+  e.setMode("rectangle");
+  e.pending = [{ x: 0, y: 0 }];
+  e.pointerMove(e.screen({ x: 30, y: 40 }), true, false, true);
+  expect(e.cursor.x).toBe(e.cursor.y);
+  e.setDrawingModifier(false);
+  expect(e.cursor.x).toBeCloseTo(30);
+  expect(e.cursor.y).toBeCloseTo(40);
+});

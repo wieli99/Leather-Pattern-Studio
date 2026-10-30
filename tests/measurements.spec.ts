@@ -65,3 +65,18 @@ test("anchor toggles share state and remain undoable", async ({ page }) => {
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(sharp).toHaveAttribute("aria-pressed", "true");
 });
+
+test("center rectangle displays separate dimensions before sizing", async ({ page }, info) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitemradio", { name: "Center rectangle", exact: true }).click();
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 350, y: 300 } });
+  const width = page.locator(".construction-measurements label").filter({ has: page.getByRole("spinbutton", { name: "Width", exact: true }) });
+  const height = page.locator(".construction-measurements label").filter({ has: page.getByRole("spinbutton", { name: "Height", exact: true }) });
+  await expect(width).toBeVisible();
+  await expect(height).toBeVisible();
+  const a = (await width.boundingBox())!;
+  const b = (await height.boundingBox())!;
+  expect(a.x + a.width + 8 <= b.x || b.x + b.width + 8 <= a.x || a.y + a.height + 8 <= b.y || b.y + b.height + 8 <= a.y).toBe(true);
+  await page.screenshot({ path: info.outputPath("center-rectangle-measurements.png") });
+});

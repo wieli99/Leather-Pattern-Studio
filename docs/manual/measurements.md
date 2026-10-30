@@ -13,3 +13,11 @@ Properties exposes positions, dimensions, radii, rotation, and path vertices. Af
 Object snap also offers the average position of all polygon corners as a center point. The repeated closing corner is counted once; rounded polygons use their original corners. Center-point snapping shows both axes when Smart snapping is enabled.
 
 ![Both center axes highlighted on the reference rectangle](/manual/images/smart-snapping.png)
+
+Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
+
+For corner and center rectangles, holding Shift with one entered side sets both sides to that value. Two entered sides retain their values, even if unequal. Shift press/release updates the preview immediately. Center rectangle dimensions are full width and height.
+
+Edge measurements follow the edge angle with a visible gap. Center rectangle width and height stay separated, including immediately after placing the center.
+
+![Separate center rectangle dimensions](/manual/images/center-rectangle-measurements.png)

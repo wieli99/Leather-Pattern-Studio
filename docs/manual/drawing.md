@@ -25,3 +25,5 @@ Center polygon uses a center followed by radius/rotation. Bounding-box polygon u
 Two-point shapes can be dragged in one gesture. Use [numeric measurements](#measurements) for precision. Repeat P/R/C/H for the next variant; Shift+key selects the previous variant.
 
 ![Tool variants](/manual/images/tool-variants.png)
+
+Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
