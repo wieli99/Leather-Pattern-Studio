@@ -6,7 +6,7 @@
 4. Apply with Enter, right-click, or Apply. Esc cancels the preview.
 
 ## Axes and pivot
-Move and Resize support X/Y axis constraints. For a single object, choose Local or World axes. V starts pivot placement; click to place it. Reset center restores the selection center. Alt bypasses pivot snapping.
+Move and Resize support X/Y axis constraints. For a single object, choose Local or World axes. V starts pivot placement; click to place it. Reset pivot restores the selection center. Alt bypasses pivot snapping.
 
 ## Rotation
 Dragging rotates in 1° steps. Ctrl uses 10°, Shift uses 5°, and Alt allows free rotation. Numeric angles allow exact entry.
@@ -30,4 +30,12 @@ Tool settings open in a compact popup at the bottom right of the drawing canvas,
 
 ## Trim
 
-Choose the scissors icon to activate Trim. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over a straight outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to remove that portion between corners or crossings. Escape exits Trim. Curved outlines are not yet supported.
+Choose the scissors icon to activate Trim. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over a straight outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to preview removing that portion between corners or crossings. Make multiple cuts, then Apply, Enter, or right-click to save them as one undo step. Cancel or Escape discards all cuts and exits Trim. Curved outlines are not yet supported.
+
+## Mirror
+
+Select objects and choose Mirror (M), next to Resize. Click an X, Y, +45° or −45° axis line on the canvas to reflect across it through the pivot. Hover highlights selectable axes and straight edges. Activation leaves geometry unchanged until you click a target. The popup retains the Local/World axes dropdown. X reflects across the X axis, reversing Y. Use World/Local axes and Set pivot as with other transforms.
+
+Click a straight outline segment to use its infinite supporting line. Selected objects can supply the reference edge. Curves cannot supply an axis. Apply, Enter or right-click replaces the selection in one undo step; Cancel or Escape discards the preview.
+
+Selection-tool popups show small, muted instructions below their titles.

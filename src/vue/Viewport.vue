@@ -169,6 +169,7 @@ function editText(event: MouseEvent) {
 const canvas = ref<HTMLCanvasElement | null>(null),
   hover = useEditorSelector(editor, editor.hoverSnapshot);
 const cursor = computed(() => {
+  if (e.value.transformTool === "mirror" && e.value.mirrorHover) return "pointer";
   hover.value;
   if (editor.tool === "text") return "none";
   if (editor.placingPivot) return "crosshair";

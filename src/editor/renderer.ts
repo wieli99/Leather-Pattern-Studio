@@ -195,6 +195,45 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.stroke();
       ctx.restore();
     }
+    if (editor.transformTool === "mirror") {
+      const line = editor.mirrorLine;
+      const p = line ? line[0] : editor.transformPivot;
+      const angle = line ? Math.atan2(line[1].y-p.y, line[1].x-p.x)
+        : (editor.transformAngle + ({x:0,y:90,positive:45,negative:-45}[editor.mirrorAxis ?? ""] ?? 0))*Math.PI/180;
+      ctx.save();
+      ctx.strokeStyle = "#94a3b8";
+      ctx.lineWidth = 1 / z;
+      ctx.setLineDash([4/z, 4/z]);
+      for (const degrees of [0, 90, 45, -45]) {
+        const a = (degrees + editor.transformAngle) * Math.PI / 180;
+        const origin = editor.transformPivot;
+        ctx.beginPath();
+        ctx.moveTo(origin.x-Math.cos(a)*10000,origin.y-Math.sin(a)*10000);
+        ctx.lineTo(origin.x+Math.cos(a)*10000,origin.y+Math.sin(a)*10000);
+        ctx.stroke();
+      }
+      if (editor.mirrorAxis) {
+        ctx.beginPath();
+        ctx.moveTo(p.x-Math.cos(angle)*10000,p.y-Math.sin(angle)*10000);
+        ctx.lineTo(p.x+Math.cos(angle)*10000,p.y+Math.sin(angle)*10000);
+        ctx.strokeStyle = "#f43f5e";
+        ctx.lineWidth = 1.5/z;
+        ctx.setLineDash([6/z,4/z]);
+        ctx.stroke();
+      }
+      const hover = editor.pointerInside && !editor.space && !editor.placingPivot ? editor.mirrorHover : null;
+      if (hover) {
+        const [a,b] = hover.line;
+        const scale = hover.axis === "edge" ? 1 : 10000;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(hover.axis === "edge" ? a.x : a.x-(b.x-a.x)*scale, hover.axis === "edge" ? a.y : a.y-(b.y-a.y)*scale);
+        ctx.lineTo(a.x+(b.x-a.x)*scale,a.y+(b.y-a.y)*scale);
+        ctx.strokeStyle = color("canvas"); ctx.lineWidth = 7/z; ctx.stroke();
+        ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 4/z; ctx.stroke();
+      }
+      ctx.restore();
+    }
     const construction = editor.constructionPreview;
     if (construction) shape(construction, true);
     else if (editor.mode === "arc-three" && editor.pending.length)

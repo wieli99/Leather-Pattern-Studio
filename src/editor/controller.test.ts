@@ -1540,3 +1540,20 @@ test("trim activation and cancellation update the toolbar subscription", () => {
   expect(e.trimMode).toBe(false);
   expect(e.uiSnapshot()).not.toBe(active);
 });
+
+test("mirror activation waits for a target and cancellation clears the preview", async () => {
+  const e = editor();
+  e.document.shapes = [shape];
+  e.selected = [shape.id];
+  const original = JSON.stringify(e.document);
+  await e.activateTransform("mirror");
+  expect(e.preview).toBeNull();
+  expect(e.transformValid).toBe(false);
+  e.setMirrorAxis("x");
+  expect(e.preview).not.toBeNull();
+  expect(JSON.stringify(e.document)).toBe(original);
+  e.cancel();
+  expect(e.preview).toBeNull();
+  expect(e.mirrorAxis).toBeNull();
+  expect(JSON.stringify(e.document)).toBe(original);
+});

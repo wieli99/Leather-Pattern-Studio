@@ -90,7 +90,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await page
     .getByLabel("Pattern drawing canvas")
     .click({ position: { x: 100, y: 100 } });
-  await page.getByRole("button", { name: "Reset center", exact: true }).click();
+  await page.getByRole("button", { name: "Reset pivot", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await page.locator(".objects button").nth(1).click();
   await page.getByRole("button", { name: "Resize", exact: true }).click();

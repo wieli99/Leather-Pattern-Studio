@@ -5,7 +5,7 @@ export interface HintState {
   stitchMode?: boolean;
   pending: readonly unknown[];
   selected: readonly string[];
-  transformTool: "move" | "rotate" | "scale" | "corner" | null;
+  transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   placingPivot: boolean;
   active?: readonly { kind: string }[];
   measurementFields?: readonly string[];
@@ -84,13 +84,15 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     add("snap", "Alt", "Bypass snapping");
   } else if (s.transformTool) {
     action =
-      s.transformTool === "corner"
+      s.transformTool === "mirror"
+        ? "Click an axis or straight edge to mirror the selection."
+        : s.transformTool === "corner"
         ? "Drag a corner to change its radius."
         : `Drag to ${s.transformTool === "scale" ? "resize" : s.transformTool} the selection.`;
     add("apply", "Enter / Right-click", "Apply");
-    add("values", "Tab", "Edit values");
+    if (s.transformTool !== "mirror") add("values", "Tab", "Edit values");
     if (s.transformTool !== "corner") add("pivot", "V", "Place pivot");
-    if (s.transformTool !== "rotate" && s.transformTool !== "corner")
+    if (s.transformTool !== "mirror" && s.transformTool !== "rotate" && s.transformTool !== "corner")
       add("axis", "X / Y", "Constrain axis");
     if (s.transformTool === "corner")
       add("corner-steps", "Ctrl / Shift / Alt", "10 mm / 5 mm / all corners");

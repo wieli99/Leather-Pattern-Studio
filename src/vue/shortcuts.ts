@@ -87,7 +87,9 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
             ? "move"
             : k === "e"
               ? "rotate"
-              : "scale",
+              : k === "m"
+                ? "mirror"
+                : "scale",
       );
       return;
     }
@@ -129,7 +131,8 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     editor.setMode("select");
   }
   if (e.key === "Enter") {
-    if (editor.transformTool) void editor.applyTransform();
+    if (editor.trimMode) void editor.applyTrim();
+    else if (editor.transformTool) void editor.applyTransform();
     else editor.finish();
   }
   if (e.key === "Backspace" && editor.pending.length) {

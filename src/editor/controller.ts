@@ -46,6 +46,7 @@ import {
   setCornerRadius,
   anchors,
   stretchShape,
+  boundary,
   shapeMatrix,
   applyMatrix,
   inverse,
@@ -161,7 +162,7 @@ export class Controller {
   busy = false;
   dirty = false;
   savedBaseline = fingerprint(emptyDocument());
-  transformTool: "move" | "rotate" | "scale" | "corner" | null = null;
+  transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null = null;
   transformOriginal: Doc | null = null;
   transformPivot: Point = { x: 0, y: 0 };
   placingPivot = false;
@@ -194,6 +195,7 @@ export class Controller {
     } else this.cancel();
   }
   get transformValid() {
+    if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
     if (!this.preview) return !this.transformError;
     try {
       parseProject(JSON.stringify(this.preview));
@@ -208,21 +210,24 @@ export class Controller {
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
   }
   setPivot(point: Point) {
-    this.rebaseTransform();
+    if (this.transformTool !== "mirror") this.rebaseTransform();
     this.transformPivot = point;
     this.placingPivot = false;
+    if (this.transformTool === "mirror") this.refreshMirror();
     this.notify();
   }
   setOrientation(value: "world" | "local") {
-    this.rebaseTransform();
+    if (this.transformTool !== "mirror") this.rebaseTransform();
     this.transformOrientation = value;
+    if (this.transformTool === "mirror") this.refreshMirror();
     this.preferences();
     this.notify();
   }
   resetPivot() {
-    this.rebaseTransform();
+    if (this.transformTool !== "mirror") this.rebaseTransform();
     const b = this.selectionBounds;
     this.transformPivot = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    if (this.transformTool === "mirror") this.refreshMirror();
     this.notify();
   }
   setCornerValue(value: number, all = false) {
@@ -247,6 +252,7 @@ export class Controller {
     if (!this.transformOriginal) return;
     const previous = { ...this.transformValues };
     this.transformValues = { ...this.transformValues, ...values };
+    if (this.transformTool === "mirror") { this.refreshMirror(); return; }
     const v = this.transformValues,
       p = this.transformPivot;
     if (
@@ -1365,7 +1371,54 @@ export class Controller {
   get canEditCorners() {
     return this.active.some((s) => cornerPoints(s).length > 0);
   }
-  async activateTransform(tool: "move" | "rotate" | "scale" | "corner") {
+  mirrorAxis: string | null = null;
+  mirrorHover: { axis: string; line: [Point, Point] } | null = null;
+  mirrorLine: [Point, Point] | null = null;
+  mirrorTargetAt(point: Point) {
+    const pivot = this.transformPivot;
+    const candidates: { axis: string; line: [Point, Point]; distance: number }[] = [];
+    for (const shape of [...(this.transformOriginal?.shapes ?? [])].reverse()) {
+      for (const line of boundary(shape).lines) {
+        if (distance(...line) > 1e-9)
+          candidates.push({ axis: "edge", line, distance: distanceToSegment(point, ...line) });
+      }
+    }
+    if (distance(point, pivot) > 8 / this.zoom) {
+      for (const [axis, degrees] of [["x", 0], ["y", 90], ["positive", 45], ["negative", -45]] as const) {
+        const angle = (degrees + this.transformAngle) * Math.PI / 180;
+        const dx = Math.cos(angle), dy = Math.sin(angle);
+        candidates.push({ axis, line: [pivot, { x: pivot.x + dx, y: pivot.y + dy }],
+          distance: Math.abs((point.x-pivot.x)*dy-(point.y-pivot.y)*dx) });
+      }
+    }
+    return candidates.filter(c => c.distance <= 8 / this.zoom).sort((a,b) => a.distance-b.distance)[0] ?? null;
+  }
+  setMirrorAxis(axis: string) {
+    this.mirrorAxis = axis;
+    this.mirrorLine = null;
+    this.refreshMirror();
+  }
+  refreshMirror() {
+    if (!this.transformOriginal || !this.mirrorAxis) return;
+    if (this.mirrorAxis === "edge" && !this.mirrorLine) {
+      this.preview = null;
+      this.transformDraft = null;
+      this.transformError = "Choose a straight edge.";
+      this.notify();
+      return;
+    }
+    const line = this.mirrorLine;
+    const angle = line
+      ? Math.atan2(line[1].y - line[0].y, line[1].x - line[0].x) * 180 / Math.PI
+      : this.transformAngle + ({ x: 0, y: 90, positive: 45, negative: -45 }[this.mirrorAxis] ?? 0);
+    const pivot = line ? line[0] : this.transformPivot;
+    this.updateTransformPreview({
+      ...this.transformOriginal,
+      shapes: this.transformOriginal.shapes.map(s => this.selected.includes(s.id)
+        ? stretchShape(s, 1, -1, pivot, angle) : s),
+    });
+  }
+  async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
     if (!this.ready || this.busy || !this.selected.length) return;
     if (tool === "corner" && !this.canEditCorners) return;
     if (this.propertySession) await this.finishProperty();
@@ -1377,6 +1430,7 @@ export class Controller {
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
     if (tool !== "corner") this.resetPivot();
     else this.selectedCorner = null;
+    if (tool === "mirror") { this.mirrorAxis = null; this.mirrorLine = null; this.mirrorHover = null; }
     this.notify();
   }
   async applyTransform() {
@@ -1388,6 +1442,13 @@ export class Controller {
   }
   trimHighlight: [Point, Point] | null = null;
   trimMode = false;
+  trimDraft: Doc | null = null;
+  async applyTrim() {
+    if (!this.trimDraft || this.transformError || this.busy) return;
+    const next = this.trimDraft;
+    this.cancel();
+    await this.commit(next);
+  }
   activateTrim() {
     this.cancel();
     this.tool = "select";
@@ -1395,7 +1456,11 @@ export class Controller {
     this.notify();
   }
   cancel() {
+    this.mirrorAxis = null;
+    this.mirrorLine = null;
+    this.mirrorHover = null;
     this.trimMode = false;
+    this.trimDraft = null;
     this.trimHighlight = null;
     if (this.stitchOriginal) {
       this.document = this.stitchOriginal;
@@ -1562,7 +1627,7 @@ export class Controller {
     handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
-    if (!this.selected.length) return [];
+    if (!this.selected.length || this.transformTool === "mirror") return [];
     if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
     if (
@@ -1759,10 +1824,21 @@ export class Controller {
     if (!this.ready || this.busy) return;
     const raw = this.world(pixel);
     this.anchorPointer = raw;
+    if (this.trimMode && button === 2) { void this.applyTrim(); return; }
     if (this.trimMode && button === 0 && !this.space) {
-      const shapes = trimAt(this.document.shapes, raw, 8 / this.zoom);
+      const baseline = this.trimDraft ?? this.document;
+      const shapes = trimAt(baseline.shapes, raw, 8 / this.zoom);
       this.trimHighlight = null;
-      if (shapes) void this.commit({ ...this.document, shapes });
+      if (shapes) {
+        try {
+          const next = reconcileStitches({ ...baseline, shapes }, baseline);
+          parseProject(JSON.stringify(next));
+          this.trimDraft = next;
+          this.preview = next;
+          this.transformError = "";
+        } catch (error) { this.transformError = String(error); }
+      }
+      this.notify();
       return;
     }
     if (
@@ -1845,6 +1921,15 @@ export class Controller {
     if (button !== 0) return;
     if (this.placingPivot) {
       this.setPivot(this.snap(raw, alt));
+      return;
+    }
+    if (this.transformTool === "mirror") {
+      const target = this.mirrorTargetAt(raw);
+      if (target) {
+        this.mirrorAxis = target.axis;
+        this.mirrorLine = target.axis === "edge" ? target.line : null;
+        this.refreshMirror();
+      }
       return;
     }
     if (this.tool === "text") {
@@ -1947,11 +2032,19 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    this.mirrorHover = null;
+    if (this.transformTool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
+      this.pointerInside = true;
+      this.anchorPointer = this.world(pixel);
+      this.mirrorHover = this.mirrorTargetAt(this.anchorPointer);
+      this.notify();
+      return;
+    }
     if (this.trimMode && !this.space && !this.gesture) {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
       this.trimHighlight = null;
-      trimAt(this.document.shapes, this.anchorPointer, 8 / this.zoom,
+      trimAt((this.trimDraft ?? this.document).shapes, this.anchorPointer, 8 / this.zoom,
         span => { this.trimHighlight = span; });
       this.notify();
       return;

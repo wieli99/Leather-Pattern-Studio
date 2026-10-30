@@ -28,10 +28,20 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
 </script>
 <template>
   <div
-    v-if="e.selected.length && !e.pending.length && !e.drawingDown"
+    v-if="(e.selected.length || e.trimMode) && !e.pending.length && !e.drawingDown"
     class="transform-overlay"
   >
     <StitchToolbox />
+    <section v-if="e.trimMode" class="transform-options" aria-label="Trim settings"
+      @keydown.enter.prevent="editor.applyTrim()" @keydown.esc.stop.prevent="editor.cancel()">
+      <strong>Trim</strong>
+      <small>Click a highlighted straight outline portion to trim it.</small>
+      <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
+      <div class="actions tool-popup-footer">
+        <button :disabled="!e.trimDraft || !!e.transformError || e.busy" @click="editor.applyTrim()">Apply</button>
+        <button @click="editor.cancel()">Cancel</button>
+      </div>
+    </section>
     <div
       v-if="e.transformTool && !e.stitchMode"
       class="transform-options"
@@ -41,15 +51,23 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       <strong>{{
         e.transformTool === "scale"
           ? "Resize"
+          : e.transformTool === "mirror" ? "Mirror"
           : e.transformTool === "corner"
             ? "Corner radius"
             : e.transformTool === "move"
               ? "Move"
               : "Rotate"
       }}</strong>
+      <small>{{ {
+        move: "Drag the gizmo or enter X/Y distances to move the selection.",
+        rotate: "Drag the rotation ring or enter an angle to rotate the selection.",
+        scale: "Drag the gizmo or enter X/Y factors to resize the selection.",
+        mirror: "Click an axis or straight outline edge on the canvas to mirror.",
+        corner: "Drag a corner to adjust its radius; click a corner to enter an exact value."
+      }[e.transformTool] }}</small>
       <div v-if="e.transformTool === 'corner'" class="transform-inputs">
-        <p v-if="!cornerShape">Click a corner to edit its radius.</p>
-        <template v-else>
+
+        <template v-if="cornerShape">
           <label
             >Corner radius (mm)<input
               type="number"
@@ -80,7 +98,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           /></label>
         </template>
       </div>
-      <div v-else class="transform-inputs" data-hint-edit="transform">
+      <div v-else-if="e.transformTool !== 'mirror'" class="transform-inputs" data-hint-edit="transform">
         <template
           v-for="item in e.transformTool === 'move'
             ? [
@@ -153,7 +171,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           "
         >
           Set pivot (V)</button
-        ><button @click="editor.resetPivot()">Reset center</button>
+        ><button @click="editor.resetPivot()">Reset pivot</button>
       </div>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
@@ -196,6 +214,10 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           <path
             v-else-if="item[0] === 'move'"
             d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"
+          />
+          <path
+            v-else-if="item[0] === 'mirror'"
+            d="M12 2v20M9 6 3 18h6ZM15 6l6 12h-6Z"
           />
           <path
             v-else-if="item[0] === 'corner'"
