@@ -164,7 +164,9 @@ function vertex(i: number, axis: "x" | "y", v: string) {
 }
 </script>
 <template>
-  <p v-if="e.transformTool">Apply or cancel to edit properties.</p>
+  <p v-if="e.transformTool || e.stitchMode">
+    Apply or cancel to edit properties.
+  </p>
   <template v-if="s">
     <template v-if="s.kind === 'text'">
       <Field

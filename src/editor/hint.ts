@@ -2,6 +2,7 @@ import { variants, pointCount, type Mode } from "./construction";
 import { groupKeys, transformShortcuts } from "../vue/tools";
 export interface HintState {
   mode: Mode;
+  stitchMode?: boolean;
   pending: readonly unknown[];
   selected: readonly string[];
   transformTool: "move" | "rotate" | "scale" | "corner" | null;
@@ -41,6 +42,33 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("blur", "Leave field", "Apply");
     add("fields", "Tab / Shift+Tab", "Next / previous field");
     return { action, controls };
+  }
+  if (s.stitchMode) {
+    return {
+      action: "Hover an edge to preview stitching; click to place or select.",
+      controls: [
+        {
+          id: "stitch-merge",
+          gesture: "Shift+click",
+          action: "Select second line; first is master",
+        },
+        {
+          id: "stitch-apply",
+          gesture: "Enter",
+          action: "Apply stitch session",
+        },
+        {
+          id: "stitch-cancel",
+          gesture: "Esc",
+          action: "Cancel stitch session",
+        },
+        {
+          id: "stitch-delete",
+          gesture: "Delete",
+          action: "Delete selected stitching",
+        },
+      ],
+    };
   }
   const n = s.pending.length;
   if (s.guideDrag) {

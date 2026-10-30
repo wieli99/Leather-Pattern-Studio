@@ -20,6 +20,7 @@ const order = [
   "selection",
   "measurements",
   "transforms",
+  "stitching",
   "text",
   "shortcuts",
   "files",

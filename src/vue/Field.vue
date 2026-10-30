@@ -77,7 +77,7 @@ function key(event: KeyboardEvent) {
     <span>{{ label }}</span>
     <input
       :aria-label="label"
-      :disabled="!e.ready || !!e.transformTool"
+      :disabled="!e.ready || !!e.transformTool || e.stitchMode"
       :aria-invalid="invalid"
       :type="typeof value === 'number' ? 'number' : 'text'"
       :min="min"

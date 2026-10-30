@@ -87,17 +87,170 @@ pub struct Guide {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "lowercase")]
+pub enum StitchStyle {
+    French,
+    Japanese,
+    Round,
+    Flat,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "lowercase")]
+pub enum StitchAlignment {
+    Center,
+    Start,
+    End,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+pub struct StitchSettings {
+    #[serde(default, rename = "startClearance")]
+    pub start_clearance: f64,
+    #[serde(default, rename = "endClearance")]
+    pub end_clearance: f64,
+    pub style: StitchStyle,
+    pub spacing: f64,
+    pub inset: f64,
+    pub alignment: StitchAlignment,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct StitchGroup {
+    pub id: String,
+    pub shape_id: String,
+    pub edges: Vec<String>,
+    pub side: i32,
+    pub settings: StitchSettings,
+    #[serde(default)]
+    pub closed: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
 pub struct Document {
     pub version: u32,
     pub shapes: Vec<Shape>,
     #[serde(default)]
     pub guides: Vec<Guide>,
+    #[serde(default, rename = "stitchGroups")]
+    pub stitch_groups: Vec<StitchGroup>,
 }
+// Logical boundary order mirrors the renderer, independent of viewport and transforms.
+fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
+    let closed = matches!(shape.kind, Kind::Rectangle | Kind::Circle | Kind::Ellipse)
+        || matches!(
+            shape.kind,
+            Kind::Polyline | Kind::Curve | Kind::ControlCurve
+        ) && shape.points.first() == shape.points.last()
+        || shape.kind == Kind::Arc && shape.sweep.is_some_and(|s| s.abs() == 360.0);
+    let kind = serde_json::to_value(&shape.kind).unwrap();
+    let prefix = format!("{}:{}:", kind.as_str().unwrap(), shape.points.len());
+    let mut keys = vec![];
+    if shape.kind == Kind::Rectangle || shape.kind == Kind::Polyline && closed {
+        let points = if shape.kind == Kind::Rectangle {
+            let a = &shape.points[0];
+            let b = &shape.points[1];
+            vec![
+                Point {
+                    x: a.x.min(b.x),
+                    y: a.y.min(b.y),
+                },
+                Point {
+                    x: a.x.max(b.x),
+                    y: a.y.min(b.y),
+                },
+                Point {
+                    x: a.x.max(b.x),
+                    y: a.y.max(b.y),
+                },
+                Point {
+                    x: a.x.min(b.x),
+                    y: a.y.max(b.y),
+                },
+            ]
+        } else {
+            shape.points[..shape.points.len() - 1].to_vec()
+        };
+        let n = points.len();
+        let mut lengths = vec![];
+        let mut factors = vec![];
+        for i in 0..n {
+            let p = &points[i];
+            let prev = &points[(i + n - 1) % n];
+            let next = &points[(i + 1) % n];
+            let l = (prev.x - p.x).hypot(prev.y - p.y);
+            let r = (next.x - p.x).hypot(next.y - p.y);
+            let dot = if l * r > 0.0 {
+                ((prev.x - p.x) * (next.x - p.x) + (prev.y - p.y) * (next.y - p.y)) / (l * r)
+            } else {
+                1.0
+            };
+            let angle = dot.clamp(-1.0, 1.0).acos();
+            factors.push(
+                if l > 1e-9 && r > 1e-9 && angle > 1e-9 && std::f64::consts::PI - angle > 1e-9 {
+                    1.0 / (angle / 2.0).tan()
+                } else {
+                    0.0
+                },
+            );
+            lengths.push(r);
+        }
+        let mut max = f64::INFINITY;
+        for i in 0..n {
+            let k = factors[i] + factors[(i + 1) % n];
+            if k > 0.0 {
+                max = max.min(lengths[i] / k);
+            }
+        }
+        let uniform = shape.radius.min(if max.is_finite() { max } else { 0.0 });
+        let requested = shape.corner_radii.clone().unwrap_or(vec![uniform; n]);
+        let mut scale: f64 = 1.0;
+        for i in 0..n {
+            let used = requested[i] * factors[i] + requested[(i + 1) % n] * factors[(i + 1) % n];
+            if used > lengths[i] {
+                scale = scale.min(lengths[i] / used);
+            }
+        }
+        for i in 0..n {
+            let prev = (i + n - 1) % n;
+            if lengths[prev] - (requested[prev] * factors[prev] + requested[i] * factors[i]) * scale
+                > 1e-9
+            {
+                keys.push(format!("{prefix}edge:{i}"));
+            }
+            if requested[i] * scale > 0.0 && factors[i] > 0.0 {
+                keys.push(format!("{prefix}corner:{i}"));
+            }
+        }
+    } else if matches!(shape.kind, Kind::Circle | Kind::Ellipse | Kind::Arc) {
+        keys.push(format!("{prefix}edge:0"));
+    } else if shape.kind != Kind::Text {
+        let mut pts = shape.points.clone();
+        if shape.kind == Kind::Curve {
+            pts.dedup_by(|a, b| (a.x - b.x).hypot(a.y - b.y) <= 1e-9);
+        }
+        for i in 0..pts.len() - 1 {
+            let nonzero = (pts[i].x - pts[i + 1].x).hypot(pts[i].y - pts[i + 1].y) > 1e-9
+                || shape.handles.as_ref().is_some_and(|h| {
+                    h[i].outgoing.x != 0.0
+                        || h[i].outgoing.y != 0.0
+                        || h[i + 1].incoming.x != 0.0
+                        || h[i + 1].incoming.y != 0.0
+                });
+            if nonzero {
+                keys.push(format!("{prefix}edge:{i}"));
+            }
+        }
+    }
+    (keys, closed)
+}
+
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 5 | 6 | 7) {
+        if !matches!(self.version, 5 | 6 | 7 | 8 | 9) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9). Reload the application.",
                 self.version
             ));
         }
@@ -243,6 +396,60 @@ impl Document {
                 return Err("Corner radius too large".into());
             }
         }
+        let mut stitch_ids = HashSet::new();
+        let mut attached = HashSet::new();
+        if self.stitch_groups.len() > 10000 {
+            return Err("Too many stitch groups".into());
+        }
+        for group in &self.stitch_groups {
+            let v = &group.settings;
+            let parent = self
+                .shapes
+                .iter()
+                .find(|s| s.id == group.shape_id)
+                .ok_or("Missing stitch parent")?;
+            let (boundary, closed) = stitch_boundary(parent);
+            let start = group
+                .edges
+                .first()
+                .and_then(|key| boundary.iter().position(|k| k == key))
+                .ok_or("Missing stitch edge")?;
+            if group.edges.len() > boundary.len()
+                || group.closed && (!closed || group.edges.len() != boundary.len())
+                || group.edges.iter().enumerate().any(|(i, key)| {
+                    (!closed && start + i >= boundary.len())
+                        || *key != boundary[(start + i) % boundary.len()]
+                })
+            {
+                return Err("Invalid stitch topology".into());
+            }
+            if group.id.is_empty()
+                || !stitch_ids.insert(&group.id)
+                || !self
+                    .shapes
+                    .iter()
+                    .any(|s| s.id == group.shape_id && s.kind != Kind::Text)
+                || group.edges.is_empty()
+                || group.edges.len() > 20000
+                || !matches!(group.side, -1 | 1)
+                || [v.start_clearance, v.end_clearance].iter().any(|n| {
+                    !n.is_finite() || *n < 0.0 || (n * 100.0 - (n * 100.0).round()).abs() > 1e-7
+                })
+                || !v.spacing.is_finite()
+                || v.spacing < 0.01
+                || !v.inset.is_finite()
+                || v.inset < 0.0
+                || [v.spacing, v.inset]
+                    .iter()
+                    .any(|n| (n * 100.0 - (n * 100.0).round()).abs() > 1e-7)
+                || group
+                    .edges
+                    .iter()
+                    .any(|edge| edge.is_empty() || !attached.insert((&group.shape_id, edge)))
+            {
+                return Err("Invalid stitch group".into());
+            }
+        }
         Ok(())
     }
 }
@@ -257,9 +464,10 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 7,
+                version: 9,
                 shapes: vec![],
                 guides: vec![],
+                stitch_groups: vec![],
             },
             past: vec![],
             future: vec![],
@@ -274,7 +482,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -298,7 +506,7 @@ impl Editor {
             "commit" | "load" | "preview" => {
                 let mut next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
                 next.validate()?;
-                next.version = 7;
+                next.version = 9;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -343,6 +551,44 @@ impl Editor {
 mod tests {
     use super::*;
     #[test]
+    fn stitch_history_roundtrip_and_validation() {
+        let mut doc: Document = serde_json::from_str(&sample()).unwrap();
+        doc.version = 9;
+        let group:StitchGroup=serde_json::from_str(r#"{"id":"st","shapeId":"a","edges":["line:2:edge:0"],"side":1,"settings":{"style":"french","spacing":3.85,"inset":3.0,"alignment":"center"},"closed":false}"#).unwrap();
+        doc.stitch_groups.push(group);
+        let mut editor = Editor::new();
+        let json = serde_json::to_string(&doc).unwrap();
+        editor.execute("preview", &json, 0).unwrap();
+        assert!(editor.document.stitch_groups.is_empty());
+        editor.execute("commit", &json, 0).unwrap();
+        assert_eq!(editor.document, doc);
+        assert!(editor.execute("commit", &json, 0).is_err());
+        editor.execute("undo", "", 1).unwrap();
+        assert!(editor.document.stitch_groups.is_empty());
+        editor.execute("redo", "", 2).unwrap();
+        assert_eq!(editor.document, doc);
+        let mut bad = doc.clone();
+        bad.stitch_groups[0].edges[0] = "line:2:edge:9".into();
+        assert!(bad.validate().is_err());
+        let mut bad = doc.clone();
+        bad.stitch_groups[0].closed = true;
+        assert!(bad.validate().is_err());
+        let mut bad = doc.clone();
+        bad.stitch_groups[0].settings.spacing = 0.0;
+        assert!(bad.validate().is_err());
+        let mut bad = doc.clone();
+        bad.stitch_groups[0].settings.inset = 1.001;
+        assert!(bad.validate().is_err());
+        let mut bad = doc.clone();
+        let mut duplicate = bad.stitch_groups[0].clone();
+        duplicate.id = "copy".into();
+        bad.stitch_groups.push(duplicate);
+        assert!(bad.validate().is_err());
+        let mut bad = doc.clone();
+        bad.shapes.clear();
+        assert!(bad.validate().is_err());
+    }
+    #[test]
     fn corner_radii_roundtrip_and_validation() {
         let json = r#"{"version":7,"shapes":[{"id":"r","name":"Rectangle","kind":"rectangle","points":[{"x":0,"y":0},{"x":40,"y":20}],"radius":0,"cornerRadii":[15,0,0,5],"rotation":0}]}"#;
         let mut editor = Editor::new();
@@ -364,7 +610,7 @@ mod tests {
     #[test]
     fn capabilities_and_version_errors() {
         let editor = Editor::default();
-        assert!(editor.capabilities().contains("[5,6,7]"));
+        assert!(editor.capabilities().contains("[5,6,7,8,9]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -396,6 +642,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
+        d.version = 9;
         d.shapes[0].kind = Kind::ControlCurve;
         d.shapes[0].handles = Some(vec![
             CurveHandles {
@@ -464,6 +711,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
+        doc.version = 9;
         doc.shapes[0].transform = Some(Affine {
             a: 2.0,
             b: 0.3,

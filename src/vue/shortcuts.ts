@@ -119,6 +119,12 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     editor.adjustPolygonSides(e.key === "ArrowUp" ? 1 : -1);
     return;
   }
+  if (editor.stitchMode && (e.key === "Enter" || e.key === "Escape")) {
+    e.preventDefault();
+    if (e.key === "Enter") void editor.applyStitch();
+    else editor.cancel();
+    return;
+  }
   if (e.key === "Escape") {
     editor.setMode("select");
   }
@@ -133,7 +139,9 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     editor.notify();
   } else if (["Delete", "Backspace"].includes(e.key)) {
     e.preventDefault();
-    editor.delete();
+    if (editor.stitchMode && editor.stitchSelected.length)
+      void editor.deleteStitches();
+    else editor.delete();
   }
   if (e.key.toLowerCase() === "f") {
     e.preventDefault();

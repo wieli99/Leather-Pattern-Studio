@@ -835,28 +835,34 @@ footer {
 }
 .transform-overlay {
   position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
   z-index: 10;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100% - 24px);
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.transform-overlay > * {
+  pointer-events: auto;
+}
+.transform-overlay .transform-toolbox {
+  align-self: center;
 }
 .transform-options {
   background: var(--panel, #252830);
   color: var(--text);
   border: 1px solid var(--border, #555);
   border-radius: 12px;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   width: 280px;
   max-width: 100%;
-  max-height: 55vh;
+  max-height: 48vh;
   overflow: auto;
   box-shadow: 0 4px 20px #0005;
 }
@@ -871,6 +877,12 @@ footer {
 .transform-inputs input {
   width: 100%;
   box-sizing: border-box;
+}
+.transform-options p {
+  margin: 2px 0;
+}
+.transform-options label {
+  font-size: 12px;
 }
 .transform-options small {
   color: var(--muted);
@@ -948,3 +960,28 @@ input[type="number"]::-webkit-outer-spin-button {
 
 .header-actions a[aria-label="Help"] { color: inherit; text-decoration: none; padding: 6px 10px; border-radius: 4px; }
 .header-actions a[aria-label="Help"]:hover { background: var(--panel); }
+
+.transform-options .tool-popup-footer {
+  position: sticky;
+  bottom: -10px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  padding: 6px 0;
+  background: var(--panel);
+  z-index: 1;
+}
+
+/* Anchor the settings panel independently of the centered icon bar. */
+.transform-overlay > .transform-options {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+}
+@media (max-width: 1100px) {
+  .transform-overlay {
+    flex-direction: column-reverse;
+  }
+  .transform-overlay > .transform-options {
+    position: static;
+  }
+}

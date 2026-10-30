@@ -16,4 +16,4 @@ Save project files regularly. Browser storage access and persistence depend on b
 First load a production build online and allow caching to finish. Keep saved files independent of the browser cache.
 
 ## Current limits
-The editor is a 2D drawing workspace. Printing, export to manufacturing formats, booleans, offsets, and leather-specific stitch tools are not available. Browser-engine tests do not establish physical device or operating-system compatibility.
+The editor is a 2D drawing workspace. Printing, export to manufacturing formats, booleans, and general-purpose offsets are not available. Attached stitch lines are described in [Stitch lines](#stitching). Browser-engine tests do not establish physical device or operating-system compatibility.

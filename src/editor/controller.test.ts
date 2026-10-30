@@ -34,7 +34,7 @@ vi.mock("./core", () => ({
 }));
 vi.mock("./persistence", () => ({
   ProjectFiles: class {},
-  recovery: async () => undefined,
+  recovery: vi.fn(async () => undefined),
 }));
 import { Controller } from "./controller";
 function editor() {
@@ -1156,4 +1156,331 @@ test("corner tool uses Ctrl over Shift and combines Alt with coarse steps", () =
   expect(e.preview?.shapes[0].cornerRadii).toBeUndefined();
   e.cancel();
   expect(e.document.shapes[0].radius).toBe(0);
+});
+
+test("stitch previews, master settings, split, deletion and undo use document transactions", async () => {
+  const e = editor();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [
+      {
+        id: "stitched",
+        name: "Rounded",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 40, y: 30 },
+        ],
+        radius: 8,
+        rotation: 0,
+      },
+    ],
+  });
+  e.selected = ["stitched"];
+  e.activateStitch();
+  e.pointerMove(e.screen({ x: 0, y: 15 }), false);
+  expect(e.stitchHover?.edges).toEqual(["rectangle:2:edge:0"]);
+  expect(e.stitchGroups).toHaveLength(0);
+  e.stitchClick({ x: 0, y: 15 }, false);
+  await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(1));
+  const first = e.stitchGroups[0];
+  e.setStitchSettings({ ...first.settings, spacing: 5, style: "japanese" });
+  expect(e.stitchGroups[0].settings.spacing).toBe(5);
+  e.setStitchSettings({ ...first.settings, spacing: 5, style: "japanese" });
+  await e.applyStitch();
+  e.activateStitch();
+  e.stitchClick({ x: 2.34314575, y: 2.34314575 }, false);
+  await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(2));
+  e.stitchSelected = [first.id, e.stitchGroups[1].id];
+  await e.mergeStitches();
+  expect(e.stitchGroups).toHaveLength(1);
+  expect(e.stitchGroups[0].edges).toHaveLength(2);
+  expect(e.stitchGroups[0].settings.spacing).toBe(5);
+  await e.splitStitches();
+  expect(e.stitchGroups).toHaveLength(2);
+  expect(e.stitchGroups.every((g) => g.settings.style === "japanese")).toBe(
+    true,
+  );
+  await e.applyStitch();
+  await e.commit({ ...e.document, shapes: [] });
+  expect(e.stitchGroups).toHaveLength(0);
+  await e.transact("undo");
+  expect(e.stitchGroups).toHaveLength(2);
+});
+
+test("a stitched loop can open at a junction, split again, and duplicate with its source", async () => {
+  const e = editor();
+  const shape = {
+    id: "loop",
+    name: "Loop",
+    kind: "rectangle" as const,
+    points: [
+      { x: 0, y: 0 },
+      { x: 40, y: 30 },
+    ],
+    radius: 8,
+    rotation: 0,
+  };
+  const { stitchEdges, stitchGeometry, insideStitchSide } = await import(
+    "../model/stitchGeometry"
+  );
+  const { defaultStitchSettings } = await import("../model/stitch");
+  const g = {
+    id: "loop-stitch",
+    shapeId: shape.id,
+    edges: stitchEdges(shape).map((e) => e.key),
+    side: insideStitchSide(shape),
+    settings: { ...defaultStitchSettings },
+    closed: true,
+  };
+  await e.commit({ ...emptyDocument(), shapes: [shape], stitchGroups: [g] });
+  e.selected = [shape.id];
+  e.activateStitch();
+  e.stitchSelected = [g.id];
+  await e.splitStitches(3);
+  expect(e.stitchGroups).toHaveLength(1);
+  expect(e.stitchGroups[0].closed).toBe(false);
+  expect(e.stitchGroups[0].edges[0]).toBe(g.edges[3]);
+  expect(stitchGeometry(e.document.shapes[0], e.stitchGroups[0]).closed).toBe(
+    false,
+  );
+  await e.splitStitches(2);
+  expect(e.stitchGroups).toHaveLength(2);
+  await e.applyStitch();
+  e.duplicate();
+  await vi.waitFor(() => expect(e.document.shapes).toHaveLength(2));
+  expect(e.stitchGroups).toHaveLength(4);
+  expect(new Set(e.stitchGroups.map((g) => g.id)).size).toBe(4);
+  expect(
+    e.stitchGroups.filter((g) => g.shapeId === e.document.shapes[1].id),
+  ).toHaveLength(2);
+});
+
+test("Shift placement joins both matching neighbors and refuses conflicting settings", async () => {
+  const e = editor();
+  const { stitchEdges, insideStitchSide } = await import(
+    "../model/stitchGeometry"
+  );
+  const { defaultStitchSettings } = await import("../model/stitch");
+  const shape = {
+    id: "auto",
+    name: "Auto",
+    kind: "rectangle" as const,
+    points: [
+      { x: 0, y: 0 },
+      { x: 40, y: 30 },
+    ],
+    radius: 8,
+    rotation: 0,
+  };
+  const keys = stitchEdges(shape).map((e) => e.key);
+  const base = {
+    shapeId: shape.id,
+    side: insideStitchSide(shape),
+    settings: { ...defaultStitchSettings },
+    closed: false,
+  };
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [shape],
+    stitchGroups: [
+      { ...base, id: "first", edges: [keys[0]] },
+      { ...base, id: "second", edges: [keys[2]] },
+    ],
+  });
+  const target = { ...base, id: "preview", edges: [keys[1]] };
+  const joined = e.stitchPlacement(target, true);
+  expect(joined.next.edges).toEqual(keys.slice(0, 3));
+  expect(joined.absorbed).toHaveLength(2);
+  expect(e.stitchPlacement(target, false).absorbed).toHaveLength(0);
+  await e.commit({
+    ...e.document,
+    stitchGroups: e.stitchGroups.map((g) =>
+      g.id === "second" ? { ...g, settings: { ...g.settings, spacing: 5 } } : g,
+    ),
+  });
+  expect(() => e.stitchPlacement(target, true)).toThrow("different settings");
+  expect(e.stitchGroups).toHaveLength(2);
+});
+
+test("stitch session cancel restores the original and apply commits once", async () => {
+  const e = editor();
+  const shape = {
+    id: "session",
+    name: "Session",
+    kind: "rectangle" as const,
+    points: [
+      { x: 0, y: 0 },
+      { x: 40, y: 30 },
+    ],
+    radius: 0,
+    rotation: 0,
+  };
+  await e.commit({ ...emptyDocument(), shapes: [shape] });
+  const revision = e.revision;
+  e.selected = [shape.id];
+  e.activateStitch();
+  e.stitchClick({ x: 0, y: 15 }, false);
+  await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(1));
+  expect(e.revision).toBe(revision);
+  e.cancel();
+  expect(e.stitchGroups).toHaveLength(0);
+  e.activateStitch();
+  e.stitchClick({ x: 0, y: 15 }, false);
+  await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(1));
+  await e.applyStitch();
+  expect(e.stitchMode).toBe(false);
+  expect(e.revision).toBe(revision + 1);
+  expect(e.stitchGroups).toHaveLength(1);
+  await e.transact("undo");
+  expect(e.stitchGroups).toHaveLength(0);
+});
+
+test("rounded stitch preview survives repeated radius changes and cancels atomically", async () => {
+  const e = editor();
+  const shape = {
+    id: "rounded",
+    name: "Rounded",
+    kind: "rectangle" as const,
+    points: [
+      { x: 0, y: 0 },
+      { x: 40, y: 30 },
+    ],
+    radius: 0,
+    rotation: 0,
+  };
+  const { defaultStitchSettings } = await import("../model/stitch");
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [shape],
+    stitchGroups: [
+      {
+        id: "g",
+        shapeId: shape.id,
+        edges: [0, 1, 2, 3].map((i) => `rectangle:2:edge:${i}`),
+        side: 1,
+        closed: true,
+        settings: { ...defaultStitchSettings },
+      },
+    ],
+  });
+  e.selected = [shape.id];
+  await e.activateTransform("corner");
+  e.selectedCorner = { shapeId: shape.id, index: 0 };
+  for (const radius of [8, 0, 10, 8]) {
+    e.setCornerValue(radius, true);
+    expect(e.transformError).toBe("");
+    expect(e.preview?.stitchGroups?.[0].edges).toHaveLength(radius ? 8 : 4);
+  }
+  e.cancel();
+  expect(e.stitchGroups[0].edges).toHaveLength(4);
+  await e.activateTransform("corner");
+  e.selectedCorner = { shapeId: shape.id, index: 0 };
+  e.setCornerValue(8, true);
+  await e.applyTransform();
+  expect(e.stitchGroups[0].edges).toHaveLength(8);
+  await e.transact("undo");
+  expect(e.stitchGroups[0].edges).toHaveLength(4);
+});
+
+test("visible stitch paths select at large inset and zoom without a selected parent", async () => {
+  const e = editor();
+  const { defaultStitchSettings } = await import("../model/stitch");
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [
+      {
+        id: "pick",
+        name: "Pick",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 80, y: 60 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+    stitchGroups: [
+      {
+        id: "row",
+        shapeId: "pick",
+        edges: ["rectangle:2:edge:0"],
+        side: 1,
+        closed: false,
+        settings: { ...defaultStitchSettings, inset: 10 },
+      },
+    ],
+  });
+  e.zoom = 10;
+  e.selected = [];
+  expect(e.stitchLineAt({ x: 10, y: 30 })?.id).toBe("row");
+  e.pointerDown(e.screen({ x: 10, y: 30 }), 0, false, false);
+  expect(e.stitchMode).toBe(true);
+  expect(e.stitchSelected).toEqual(["row"]);
+  expect(e.selected).toEqual(["pick"]);
+  e.stitchClick({ x: 10, y: 30 }, true);
+  expect(e.stitchSelected).toEqual([]);
+  e.stitchClick({ x: 10, y: 30 }, false);
+  expect(e.stitchSelected).toEqual(["row"]);
+});
+
+test("stitch placement accepts a wider screen-space distance at every zoom", async () => {
+  const e = editor();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [
+      {
+        id: "wide",
+        name: "Wide",
+        kind: "line",
+        points: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  });
+  e.selected = ["wide"];
+  e.activateStitch();
+  for (const zoom of [1, 3, 10]) {
+    e.zoom = zoom;
+    expect(e.stitchTarget({ x: 50, y: 20 / zoom })?.id).toBe("preview");
+    expect(e.stitchTarget({ x: 50, y: 20 / zoom })?.side).toBe(1);
+    expect(e.stitchTarget({ x: 50, y: -20 / zoom })?.side).toBe(-1);
+    expect(e.stitchTarget({ x: 50, y: 26 / zoom })).toBeNull();
+  }
+  e.stitchClick({ x: 50, y: 20 / e.zoom }, false);
+  await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(1));
+});
+
+test("delayed recovery excludes pending stitching and inspector edits cannot change its source", async () => {
+  vi.useFakeTimers();
+  const e = editor();
+  const shape = {
+    id: "safe",
+    name: "Safe",
+    kind: "line" as const,
+    points: [
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+    ],
+    radius: 0,
+    rotation: 0,
+  };
+  await e.commit({ ...emptyDocument(), shapes: [shape] });
+  e.selected = [shape.id];
+  e.activateStitch();
+  e.stitchClick({ x: 20, y: 0 }, false);
+  expect(e.stitchGroups).toHaveLength(1);
+  await e.edit(shape.id, { name: "Changed" });
+  expect(e.document.shapes[0].name).toBe("Safe");
+  await vi.advanceTimersByTimeAsync(301);
+  const { recovery } = await import("./persistence");
+  expect(
+    vi.mocked(recovery).mock.calls.at(-1)?.[0]?.document.stitchGroups,
+  ).toEqual([]);
+  e.cancel();
 });

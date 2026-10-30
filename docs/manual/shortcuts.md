@@ -33,3 +33,5 @@ While dragging a [guideline](#measurements), the shortcut list in the right insp
 Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
 
 Choose Corner radius (B) for selected rectangles and closed polygons. Drag in 1 mm steps; Shift uses 5 mm, Ctrl 10 mm, and Alt applies to all corners of the targeted shape. Enter/right-click applies; Esc cancels. See [corner radii](#transforms).
+
+In [Stitch line](#stitching), Shift-click selects a second line for merging; the first selection is master. Enter/right-click commits the session and exits; Esc discards the session and exits, and Delete removes selected stitching when the canvas is focused. The tool button is beside Corner radius and has no dedicated letter shortcut.

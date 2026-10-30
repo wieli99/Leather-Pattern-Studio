@@ -25,3 +25,5 @@ Select rectangles or closed straight-sided polygons, then choose Corner radius (
 Alt applies the radius to every corner of the targeted shape and combines with Shift or Ctrl. Adjust several corners in one preview; Enter, right-click or Apply commits one undo step. Esc or Cancel discards the preview. Radii stop at available edge lengths. Ctrl shows measurements outside this tool. Open paths and curves have no radius dots.
 
 ![Individual corner radius, corner dots, edge measurements and exact numeric editing](/manual/images/corner-radii.png)
+
+Tool settings open in a compact popup at the bottom right of the drawing canvas, beside the sidebar, with matching 12 px bottom and right margins. The tool icon bar stays centered along the bottom. Longer settings panels scroll internally.

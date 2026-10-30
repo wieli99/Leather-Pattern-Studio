@@ -1,3 +1,18 @@
+import {
+  defaultStitchSettings,
+  validateStitchSettings,
+  type StitchSettings,
+} from "../model/stitch";
+import {
+  worldStitchSide,
+  stitchEdges,
+  stitchClosed,
+  insideStitchSide,
+  stitchGeometry,
+  orderStitchEdges,
+  reconcileStitches,
+  type StitchGroup,
+} from "../model/stitchGeometry";
 import { sharpAnchor, toggleAnchor } from "../model/sharpAnchor";
 import { insertAnchor } from "../model/insertAnchor";
 import { isCurve, zeroHandles, mirroredHandles } from "../model/curves";
@@ -78,6 +93,10 @@ export class Controller {
   setDrawingModifier(shift: boolean) {
     if (this.drawingShift === shift) return;
     this.drawingShift = shift;
+    if (this.stitchMode) {
+      this.updateStitchHover();
+      this.notify();
+    }
     if (
       this.tool !== "select" &&
       this.pointerInside &&
@@ -270,6 +289,10 @@ export class Controller {
     this.updateTransformPreview(next);
   }
   updateTransformPreview(next: Doc) {
+    const baseline = this.transformOriginal ?? this.document;
+    if (this.transformTool === "corner")
+      next = { ...next, stitchGroups: baseline.stitchGroups };
+    next = reconcileStitches(next, baseline);
     this.transformDraft = next;
     try {
       parseProject(JSON.stringify(next));
@@ -375,6 +398,12 @@ export class Controller {
   private dirtyBaseline = "";
   uiSnapshot = () =>
     [
+      this.stitchMode,
+      this.stitchMode ? this.version : 0,
+      this.stitchSelected.join(","),
+      JSON.stringify(this.stitchDraft),
+      JSON.stringify(this.stitchSettings),
+      this.stitchError,
       this.transformTool,
       this.transformTool ? this.version : 0,
       this.revision,
@@ -436,6 +465,7 @@ export class Controller {
     return point;
   }
   leavePointer() {
+    this.stitchHover = null;
     this.pointerInside = false;
     this.smartGuides = [];
     this.snapTarget = null;
@@ -445,7 +475,10 @@ export class Controller {
 
   updateDirty() {
     const source =
-      this.propertySession?.next ?? this.pendingDocument ?? this.document;
+      this.propertySession?.next ??
+      this.pendingDocument ??
+      this.stitchOriginal ??
+      this.document;
     if (
       source !== this.dirtySource ||
       this.savedBaseline !== this.dirtyBaseline
@@ -476,9 +509,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 7)
+      if (initial.document.version !== 9)
         throw Error(
-          `Application expects document version 7, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 9, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -520,7 +553,7 @@ export class Controller {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       void recovery({
-        document: this.document,
+        document: this.stitchOriginal ?? this.document,
         name: this.name,
         time: Date.now(),
       }).catch(() =>
@@ -529,7 +562,7 @@ export class Controller {
     }, 300);
   }
   async transact(operation: string, document?: Doc) {
-    if (this.transformTool) this.cancel();
+    if (this.transformTool || this.stitchMode) this.cancel();
     const run = async () => {
       if (!this.ready) return;
       this.busy = true;
@@ -556,9 +589,360 @@ export class Controller {
     this.transactionQueue = task.catch(() => {});
     await task;
   }
-  async commit(document: Doc) {
+  stitchOriginal: Doc | null = null;
+  stitchOriginalSettings: StitchSettings | null = null;
+  stitchMode = false;
+  stitchSelected: string[] = [];
+  stitchSettings: StitchSettings = { ...defaultStitchSettings };
+  stitchDraft: StitchGroup | null = null;
+  stitchHover: StitchGroup | null = null;
+  stitchAbsorbed: string[] = [];
+  updateStitchHover() {
+    if (this.stitchDraft) {
+      this.stitchHover = null;
+      return;
+    }
+    this.stitchAbsorbed = [];
+    const target = this.stitchTarget(this.anchorPointer);
+    this.stitchHover = target;
+    if (target?.id === "preview") {
+      try {
+        const result = this.stitchPlacement(target, this.drawingShift);
+        this.stitchHover = { ...result.next, id: "preview" };
+        this.stitchAbsorbed = result.absorbed;
+        this.stitchError = "";
+      } catch (error) {
+        this.stitchHover = null;
+        this.stitchError = String(error);
+      }
+    }
+  }
+  stitchError = "";
+  activateStitch() {
+    this.cancel();
+    this.tool = "select";
+    this.stitchOriginal = this.document;
+    this.stitchOriginalSettings = { ...this.stitchSettings };
+    this.stitchMode = true;
+    this.stitchSelected = [];
+    this.notify();
+  }
+  get stitchGroups() {
+    return this.document.stitchGroups ?? [];
+  }
+  stitchLineAt(raw: Point): StitchGroup | null {
+    let closest = 8 / this.zoom,
+      target: StitchGroup | null = null;
+    for (const group of this.stitchGroups) {
+      const shape = this.document.shapes.find((s) => s.id === group.shapeId);
+      if (!shape) continue;
+      try {
+        const points = stitchGeometry(shape, group).points;
+        for (let i = 1; i < points.length; i++) {
+          const d = distanceToSegment(raw, points[i - 1], points[i]);
+          if (d < closest) {
+            closest = d;
+            target = group;
+          }
+        }
+      } catch {
+        /* Invalid geometry remains selectable through its source edge. */
+      }
+    }
+    return target;
+  }
+  stitchTarget(raw: Point): StitchGroup | null {
+    const line = this.stitchLineAt(raw);
+    if (line) return line;
+    let best = 24 / this.zoom,
+      target: StitchGroup | null = null;
+    for (const s of this.document.shapes.filter((s) =>
+      this.selected.includes(s.id),
+    )) {
+      for (const edge of stitchEdges(s))
+        for (let i = 1; i < edge.points.length; i++) {
+          const a = edge.points[i - 1],
+            b = edge.points[i],
+            d = distanceToSegment(raw, a, b);
+          if (d >= best) continue;
+          best = d;
+          const existing = this.stitchGroups.find(
+            (g) => g.shapeId === s.id && g.edges.includes(edge.key),
+          );
+          target = existing ?? {
+            id: "preview",
+            shapeId: s.id,
+            edges: [edge.key],
+            side: stitchClosed(s)
+              ? insideStitchSide(s)
+              : worldStitchSide(
+                  s,
+                  (b.x - a.x) * (raw.y - a.y) - (b.y - a.y) * (raw.x - a.x) >= 0
+                    ? 1
+                    : -1,
+                ),
+            settings: { ...this.stitchSettings },
+            closed: stitchClosed(s) && stitchEdges(s).length === 1,
+          };
+        }
+    }
+    return target;
+  }
+  stitchPlacement(target: StitchGroup, shift: boolean) {
+    let next: StitchGroup = { ...target, id: crypto.randomUUID() };
+    let absorbed: string[] = [];
+    if (shift) {
+      const source = this.document.shapes.find((s) => s.id === target.shapeId)!;
+      const all = stitchEdges(source).map((e) => e.key),
+        index = all.indexOf(target.edges[0]);
+      const adjacent = [index - 1, index + 1]
+        .filter((i) => stitchClosed(source) || (i >= 0 && i < all.length))
+        .map((i) => all[(i + all.length) % all.length]);
+      const neighbors = this.stitchGroups.filter(
+        (g) =>
+          g.shapeId === source.id &&
+          (stitchClosed(source) || g.side === target.side) &&
+          g.edges.some((k) => adjacent.includes(k)),
+      );
+      const signature = (g: StitchGroup) =>
+        JSON.stringify([
+          g.settings.style,
+          g.settings.alignment,
+          Math.round(g.settings.spacing * 100),
+          Math.round(g.settings.inset * 100),
+          Math.round((g.settings.startClearance ?? 0) * 100),
+          Math.round((g.settings.endClearance ?? 0) * 100),
+        ]);
+      if (
+        neighbors.length === 2 &&
+        signature(neighbors[0]) !== signature(neighbors[1])
+      )
+        throw Error(
+          "Neighboring stitch lines have different settings. Match their settings before auto-merging.",
+        );
+      if (neighbors.length) {
+        const master =
+          this.stitchSelected
+            .map((id) => neighbors.find((g) => g.id === id))
+            .find((g) => g) ??
+          [...neighbors].sort(
+            (a, b) => all.indexOf(a.edges[0]) - all.indexOf(b.edges[0]),
+          )[0];
+        const edges = orderStitchEdges(
+          source,
+          [...neighbors.flatMap((g) => g.edges), ...target.edges],
+          master.edges[0],
+        );
+        next = {
+          ...master,
+          edges,
+          closed: stitchClosed(source) && edges.length === all.length,
+        };
+        stitchGeometry(source, next);
+        absorbed = neighbors.map((g) => g.id);
+      }
+    }
+    stitchGeometry(
+      this.document.shapes.find((s) => s.id === next.shapeId)!,
+      next,
+    );
+    return { next, absorbed };
+  }
+  stitchClick(raw: Point, shift: boolean) {
+    if (this.stitchDraft) {
+      this.stitchError =
+        "Apply or cancel settings before selecting another line.";
+      this.notify();
+      return;
+    }
+    const target = this.stitchTarget(raw);
+    if (!target) return;
+    if (target.id !== "preview") {
+      this.stitchSelected = shift
+        ? this.stitchSelected.includes(target.id)
+          ? this.stitchSelected.filter((id) => id !== target.id)
+          : [...this.stitchSelected, target.id]
+        : [target.id];
+      this.stitchError = "";
+      this.notify();
+      return;
+    }
     try {
-      const validated = parseProject(JSON.stringify(document));
+      const { next, absorbed } = this.stitchPlacement(target, shift);
+      void this.commit({
+        ...this.document,
+        stitchGroups: [
+          ...this.stitchGroups.filter((g) => !absorbed.includes(g.id)),
+          next,
+        ],
+      }).then((ok) => {
+        if (ok) {
+          this.stitchSelected = [next.id];
+          this.stitchHover = null;
+          this.stitchAbsorbed = [];
+        }
+        this.notify();
+      });
+      this.stitchError = "";
+    } catch (e) {
+      this.stitchError = String(e);
+      this.notify();
+    }
+  }
+  setStitchSettings(settings: StitchSettings) {
+    this.stitchError = "";
+    const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
+    if (g) this.stitchDraft = { ...g, settings: { ...settings } };
+    try {
+      validateStitchSettings(settings);
+      if (!g) this.stitchSettings = { ...settings };
+      if (this.stitchDraft)
+        stitchGeometry(
+          this.document.shapes.find((s) => s.id === g!.shapeId)!,
+          this.stitchDraft,
+        );
+      if (this.stitchOriginal && this.stitchDraft) {
+        const draft = this.stitchDraft;
+        this.stitchSettings = { ...draft.settings };
+        this.document = parseProject(
+          JSON.stringify({
+            ...this.document,
+            stitchGroups: this.stitchGroups.map((g) =>
+              g.id === draft.id ? draft : g,
+            ),
+          }),
+        );
+        this.stitchDraft = null;
+      }
+    } catch (e) {
+      this.stitchError = String(e);
+    }
+    this.notify();
+  }
+  async applyStitch() {
+    if (this.stitchOriginal) {
+      if (this.busy || this.stitchError) return;
+      const draft = this.stitchDraft;
+      const next = draft
+        ? {
+            ...this.document,
+            stitchGroups: this.stitchGroups.map((g) =>
+              g.id === draft.id ? draft : g,
+            ),
+          }
+        : this.document;
+      try {
+        if (draft)
+          stitchGeometry(
+            next.shapes.find((s) => s.id === draft.shapeId)!,
+            draft,
+          );
+      } catch (error) {
+        this.stitchError = String(error);
+        this.notify();
+        return;
+      }
+      const defaults = { ...(draft?.settings ?? this.stitchSettings) };
+      this.cancel();
+      await this.commit(next);
+      this.stitchSettings = defaults;
+      this.notify();
+      return;
+    }
+  }
+  async mergeStitches() {
+    if (this.stitchSelected.length !== 2 || this.stitchDraft || this.busy)
+      return;
+    try {
+      const [master, other] = this.stitchSelected.map(
+        (id) => this.stitchGroups.find((g) => g.id === id)!,
+      );
+      if (!master || !other || master.shapeId !== other.shapeId)
+        throw Error("Select two connected lines on the same shape.");
+      const s = this.document.shapes.find((s) => s.id === master.shapeId)!;
+      if (!stitchClosed(s) && master.side !== other.side)
+        throw Error("Stitch lines must use the same side.");
+      const edges = orderStitchEdges(
+        s,
+        [...master.edges, ...other.edges],
+        master.edges[0],
+      );
+      const merged = {
+        ...master,
+        edges,
+        closed: stitchClosed(s) && edges.length === stitchEdges(s).length,
+      };
+      stitchGeometry(s, merged);
+      await this.commit({
+        ...this.document,
+        stitchGroups: this.stitchGroups
+          .filter((g) => g.id !== other.id)
+          .map((g) => (g.id === master.id ? merged : g)),
+      });
+      this.stitchSelected = [master.id];
+      this.stitchError = "";
+    } catch (e) {
+      this.stitchError = String(e);
+    }
+    this.notify();
+  }
+  async splitStitches(junction?: number) {
+    const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
+    if (!g || this.stitchDraft || this.busy) return;
+    let runs: string[][];
+    if (junction === undefined) runs = g.edges.map((k) => [k]);
+    else if (g.closed)
+      runs = [[...g.edges.slice(junction), ...g.edges.slice(0, junction)]];
+    else
+      runs = [g.edges.slice(0, junction), g.edges.slice(junction)].filter(
+        (r) => r.length,
+      );
+    const groups = runs.map((edges, i) => ({
+      ...g,
+      id: i ? crypto.randomUUID() : g.id,
+      edges,
+      closed: false,
+    }));
+    await this.commit({
+      ...this.document,
+      stitchGroups: [
+        ...this.stitchGroups.filter((x) => x.id !== g.id),
+        ...groups,
+      ],
+    });
+    this.stitchSelected = [groups[0].id];
+    this.notify();
+  }
+  async deleteStitches() {
+    if (this.busy) return;
+    await this.commit({
+      ...this.document,
+      stitchGroups: this.stitchGroups.filter(
+        (g) => !this.stitchSelected.includes(g.id),
+      ),
+    });
+    this.stitchSelected = [];
+    this.stitchDraft = null;
+    this.notify();
+  }
+  async commit(document: Doc) {
+    if (this.stitchOriginal) {
+      try {
+        this.document = parseProject(
+          JSON.stringify(reconcileStitches(document, this.document)),
+        );
+        this.notify();
+        return true;
+      } catch (error) {
+        this.stitchError = String(error);
+        this.notify();
+        return false;
+      }
+    }
+    try {
+      const validated = parseProject(
+        JSON.stringify(reconcileStitches(document, this.document)),
+      );
       this.pendingDocument = validated;
       await this.transact("commit", validated);
       if (this.pendingDocument === validated) this.pendingDocument = null;
@@ -571,7 +955,7 @@ export class Controller {
     }
   }
   async validatePreview(document: Doc) {
-    this.queuedPreview = document;
+    this.queuedPreview = reconcileStitches(document, this.document);
     if (this.previewRunning) return;
     this.previewRunning = true;
     try {
@@ -910,7 +1294,7 @@ export class Controller {
     }
   }
   beginProperty() {
-    if (this.transformTool) return;
+    if (this.transformTool || this.stitchMode) return;
     if (!this.propertySession)
       this.propertySession = {
         original: this.pendingDocument ?? this.document,
@@ -952,6 +1336,17 @@ export class Controller {
       await this.commit(next);
   }
   cancel() {
+    if (this.stitchOriginal) {
+      this.document = this.stitchOriginal;
+      this.stitchOriginal = null;
+      if (this.stitchOriginalSettings)
+        this.stitchSettings = this.stitchOriginalSettings;
+      this.stitchOriginalSettings = null;
+    }
+    this.stitchMode = false;
+    this.stitchDraft = null;
+    this.stitchHover = null;
+    this.stitchError = "";
     this.guideDrag = null;
     this.measurementLocks = {};
     this.transformGeneration++;
@@ -1304,6 +1699,29 @@ export class Controller {
     const raw = this.world(pixel);
     this.anchorPointer = raw;
     if (
+      !this.stitchMode &&
+      this.tool === "select" &&
+      !this.transformTool &&
+      !this.gesture &&
+      !this.space &&
+      !alt &&
+      !ctrl &&
+      button === 0
+    ) {
+      const line = this.stitchLineAt(raw);
+      if (line) {
+        this.activateStitch();
+        this.selected = [line.shapeId];
+        this.stitchSelected = [line.id];
+        this.notify();
+        return;
+      }
+    }
+    if (this.stitchMode && button === 0 && !this.space) {
+      this.stitchClick(raw, shift);
+      return;
+    }
+    if (
       button === 0 &&
       !this.space &&
       !this.gesture &&
@@ -1344,6 +1762,10 @@ export class Controller {
     }
     if (button === 2 && (this.tool === "polyline" || isCurveMode(this.mode))) {
       this.finish();
+      return;
+    }
+    if (button === 2 && this.stitchMode) {
+      void this.applyStitch();
       return;
     }
     if (button === 2 && this.transformTool) {
@@ -1455,6 +1877,14 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    if (this.stitchMode && !this.space && !this.gesture) {
+      this.pointerInside = true;
+      this.anchorPointer = this.world(pixel);
+      this.drawingShift = shift;
+      this.updateStitchHover();
+      this.notify();
+      return;
+    }
     if (this.guideDrag) {
       this.updateGuide(pixel, alt, ctrl, shift);
       return;
@@ -1953,6 +2383,7 @@ export class Controller {
     if (next !== shape) await this.edit(id, { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
+    if (this.stitchMode) return;
     const source =
       this.propertySession?.next ?? this.pendingDocument ?? this.document;
     try {
@@ -1971,7 +2402,11 @@ export class Controller {
         const session = this.propertySession,
           revision = this.revision,
           token = ++this.previewId;
-        const result = await this.core.request("preview", revision, next);
+        const result = await this.core.request(
+          "preview",
+          revision,
+          reconcileStitches(next, this.document),
+        );
         if (
           this.propertySession === session &&
           token === this.previewId &&
@@ -2006,6 +2441,20 @@ export class Controller {
     void this.commit({
       ...this.document,
       shapes: [...this.document.shapes, ...copies],
+      stitchGroups: [
+        ...this.stitchGroups,
+        ...this.active.flatMap((source, i) =>
+          this.stitchGroups
+            .filter((g) => g.shapeId === source.id)
+            .map((g) => ({
+              ...g,
+              id: crypto.randomUUID(),
+              shapeId: copies[i].id,
+              edges: [...g.edges],
+              settings: { ...g.settings },
+            })),
+        ),
+      ],
     }).then(() => {
       this.selected = copies.map((s) => s.id);
       this.notify();
@@ -2073,7 +2522,7 @@ export class Controller {
     }
   }
   async save(saveAs = false) {
-    if (this.transformTool) this.cancel();
+    if (this.transformTool || this.stitchMode) this.cancel();
     await this.finishProperty();
     await this.transactionQueue;
     try {

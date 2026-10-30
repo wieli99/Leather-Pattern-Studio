@@ -1,3 +1,4 @@
+import { drawStitches } from "./stitchRenderer";
 import { isCurve, cubicSegments } from "../model/curves";
 import { snappedAxes } from "./snapping";
 import type { Controller } from "./controller";
@@ -178,6 +179,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.forEach((s) => shape(s));
+    drawStitches(ctx,editor,color);
     const construction = editor.constructionPreview;
     if (construction) shape(construction, true);
     else if (editor.mode === "arc-three" && editor.pending.length)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import StitchToolbox from "./StitchToolbox.vue";
 import { computed, ref } from "vue";
 import { cornerRadii } from "../model/geometry";
 import { editor } from "../editor/instance";
@@ -30,8 +31,9 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
     v-if="e.selected.length && !e.pending.length && !e.drawingDown"
     class="transform-overlay"
   >
+    <StitchToolbox />
     <div
-      v-if="e.transformTool"
+      v-if="e.transformTool && !e.stitchMode"
       class="transform-options"
       @keydown.enter.prevent="!$event.isComposing && editor.applyTransform()"
       @keydown.esc.stop="editor.cancel()"
@@ -154,7 +156,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
         ><button @click="editor.resetPivot()">Reset center</button>
       </div>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
-      <div class="actions">
+      <div class="actions tool-popup-footer">
         <button
           :disabled="!e.transformValid || e.busy"
           @click="editor.applyTransform()"
@@ -203,6 +205,22 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
             v-else
             d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M4 4l6 6M20 20l-6-6M20 4l-6 6M4 20l6-6"
           />
+        </svg>
+      </button>
+      <button
+        aria-label="Stitch line"
+        title="Stitch line"
+        :aria-pressed="e.stitchMode"
+        @click="editor.activateStitch()"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          aria-hidden="true"
+        >
+          <path d="M4 5h16M5 14l3-4m3 4 3-4m3 4 3-4M4 20h16" />
         </svg>
       </button>
     </div>
