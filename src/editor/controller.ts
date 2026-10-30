@@ -74,7 +74,12 @@ export class Controller {
   setDrawingModifier(shift: boolean) {
     if (this.drawingShift === shift) return;
     this.drawingShift = shift;
-    if (this.tool !== "select" && this.pointerInside && !this.gesture) {
+    if (
+      this.tool !== "select" &&
+      this.pointerInside &&
+      !this.gesture &&
+      !this.guideDrag
+    ) {
       this.pointerMove(
         this.screen(this.anchorPointer),
         this.anchorAlt,

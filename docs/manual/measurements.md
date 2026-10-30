@@ -29,3 +29,5 @@ The guideline coordinate appears beside the pointer while dragging and stays ins
 While dragging a guideline, object snaps highlight the reference shape and show the alignment and object name beside the coordinate, for example “Horizontal center · Rectangle 1”. Alt clears this feedback while bypassing snapping.
 
 ![Guideline alignment feedback](/manual/images/guideline-snapping.png)
+
+Guideline increments update when modifiers change without moving the pointer, including while a drawing tool is selected.

@@ -977,3 +977,34 @@ test("guideline snaps explain object alignment and clear feedback", () => {
   expect(e.guideSnapLabel).toBe("");
   expect(e.snapTarget).toBeNull();
 });
+
+test.each(["x", "y"] as const)(
+  "Shift changes %s guideline increments without refreshing the drawing preview",
+  (axis) => {
+    const e = editor();
+    e.setMode("rectangle");
+    e.smart = false;
+    e.rulers = true;
+    e.pan = { x: 0, y: 0 };
+    e.zoom = 1;
+    // Seed a previous drawing position, distinct from the guideline drag.
+    e.pointerMove({ x: 40, y: 60 }, false);
+    e.pointerDown(
+      axis === "x" ? { x: 10, y: 100 } : { x: 100, y: 10 },
+      0,
+      false,
+      false,
+    );
+    e.pointerMove({ x: 123.4, y: 123.4 }, false);
+    expect(e.guideDrag?.coordinate).toBe(123);
+    // Match Viewport's keydown/keyup order with a stationary pointer.
+    for (const shift of [true, false, true]) {
+      e.updateGuideModifiers(false, false, shift);
+      e.setAnchorModifier(false);
+      e.setDrawingModifier(shift);
+      e.setMeasurementModifier(false);
+      expect(e.guideDrag?.coordinate).toBe(shift ? 125 : 123);
+      expect(e.pending).toEqual([]);
+    }
+  },
+);
