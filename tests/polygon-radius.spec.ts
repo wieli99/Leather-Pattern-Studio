@@ -43,10 +43,15 @@ test("closed polygons expose tangent rounded corners", async ({
   });
   for (let i = 0; i < 2; i++) {
     await page.locator(".objects button").nth(i).click();
-    const radius = page.getByLabel("All corner radii", { exact: true });
+    await expect(page.getByLabel("All corner radii", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Corner radius", exact: true }).click();
+    await page.getByLabel("Pattern drawing canvas").click({
+      position: i === 0 ? { x: 152, y: 167 } : { x: 360, y: 170 },
+    });
+    const radius = page.getByLabel("All corners (mm)", { exact: true });
     await radius.fill("8");
-    await radius.press("Enter");
     await expect(radius).toHaveValue("8");
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
   }
   await page.screenshot({ path: info.outputPath("rounded-polygons.png") });
 });

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import {
-  cornerRadii,
-  setCornerRadius,
   isPolygon,
   polygonFillets,
   center,
@@ -47,14 +45,6 @@ const e = useEditor(),
         Math.hypot(matrix.value.c, matrix.value.d),
   ),
   vertices = computed(() => worldPoints(s.value!));
-const selectedRadii = computed(() => (s.value ? cornerRadii(s.value) : []));
-const selectedCornerShape = computed(() => {
-  const corner = e.value.selectedCorner;
-  const shape = selected.value.find((shape) => shape.id === corner?.shapeId);
-  return shape && corner && corner.index < cornerRadii(shape).length
-    ? shape
-    : null;
-});
 function isSharp(shape: Shape, index: number) {
   const handles = shape.handles?.[index];
   return (
@@ -220,33 +210,6 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       />
     </div>
     <Field
-      v-if="s.kind === 'rectangle' || isPolygon(s)"
-      :label="s.transform ? 'All corner radii (local)' : 'All corner radii'"
-      :precision="2"
-      :step="0.01"
-      :value="
-        selectedRadii.every((r) => r === selectedRadii[0])
-          ? selectedRadii[0]
-          : 'Mixed'
-      "
-      :min="0"
-      :max="
-        isPolygon(s)
-          ? polygonFillets(s).max
-          : Math.min(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / 2
-      "
-      @commit="edit(setCornerRadius(s, 0, +$event, true))"
-    />
-    <Field
-      v-if="selectedCornerShape?.id === s.id && e.selectedCorner"
-      :label="`Corner ${e.selectedCorner.index + 1} radius${s.transform ? ' (local)' : ''}`"
-      :precision="2"
-      :step="0.01"
-      :value="selectedRadii[e.selectedCorner.index]"
-      :min="0"
-      @commit="edit(setCornerRadius(s, e.selectedCorner!.index, +$event))"
-    />
-    <Field
       v-if="s.kind === 'circle' || s.kind === 'arc'"
       :label="s.transform ? 'Radius (local)' : 'Radius'"
       :value="+distance(a, b).toFixed(1)"
@@ -313,20 +276,6 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       }}
     </p>
   </template>
-  <Field
-    v-if="!s && selectedCornerShape && e.selectedCorner"
-    :label="`${selectedCornerShape.name}: corner ${e.selectedCorner.index + 1} radius`"
-    :precision="2"
-    :step="0.01"
-    :value="cornerRadii(selectedCornerShape)[e.selectedCorner.index]"
-    :min="0"
-    @commit="
-      editor.edit(
-        selectedCornerShape.id,
-        setCornerRadius(selectedCornerShape, e.selectedCorner!.index, +$event),
-      )
-    "
-  />
   <div v-if="selected.length" class="actions">
     <button :disabled="!e.ready" @click="editor.duplicate()">Duplicate</button>
     <button :disabled="!e.ready" @click="editor.delete()">Delete</button>

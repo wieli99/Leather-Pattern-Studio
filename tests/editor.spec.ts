@@ -15,6 +15,21 @@ async function rect(page: any) {
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
   await expect(page.getByLabel("Width", { exact: true })).toBeVisible();
 }
+async function cornerRadius(page: any) {
+  await page.getByRole("button", { name: "Corner radius", exact: true }).click();
+  await page.getByLabel("Pattern drawing canvas").click({
+    position: { x: 160, y: 190 },
+  });
+  return page.getByLabel("All corners (mm)", { exact: true });
+}
+async function expectRadius(page: any, value: string) {
+  await expect(await cornerRadius(page)).toHaveValue(value);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+}
+async function setRadius(page: any, value: string) {
+  await (await cornerRadius(page)).fill(value);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+}
 test("precise rectangle, rounded corners, undo, redo and download", async ({
   page,
 }) => {
@@ -23,19 +38,12 @@ test("precise rectangle, rounded corners, undo, redo and download", async ({
   const width = page.getByLabel("Width", { exact: true });
   await width.fill("100");
   await width.press("Enter");
-  await page.getByLabel("All corner radii", { exact: true }).fill("10");
-  await page.getByLabel("All corner radii", { exact: true }).press("Enter");
-  await expect(
-    page.getByLabel("All corner radii", { exact: true }),
-  ).toHaveValue("10");
+  await setRadius(page, "10");
+  await expectRadius(page, "10");
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(
-    page.getByLabel("All corner radii", { exact: true }),
-  ).toHaveValue("0");
+  await expectRadius(page, "0");
   await page.getByRole("button", { name: "Redo", exact: true }).click();
-  await expect(
-    page.getByLabel("All corner radii", { exact: true }),
-  ).toHaveValue("10");
+  await expectRadius(page, "10");
   // Force the portable download path even in Chromium.
   await page.evaluate(() => {
     Object.defineProperty(window, "showSaveFilePicker", {
@@ -191,8 +199,7 @@ test("saved project opens and invalid file preserves current work", async ({
 }, info) => {
   await ready(page);
   await rect(page);
-  await page.getByLabel("All corner radii", { exact: true }).fill("8");
-  await page.getByLabel("All corner radii", { exact: true }).press("Enter");
+  await setRadius(page, "8");
   await page.evaluate(() => {
     delete (window as any).showSaveFilePicker;
     delete (window as any).showOpenFilePicker;
@@ -207,9 +214,7 @@ test("saved project opens and invalid file preserves current work", async ({
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await (await chooser).setFiles(path);
   await page.locator(".objects button").first().click();
-  await expect(
-    page.getByLabel("All corner radii", { exact: true }),
-  ).toHaveValue("8");
+  await expectRadius(page, "8");
   chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await (
@@ -293,11 +298,11 @@ test("corner tool previews, edits numerically and applies once", async ({
   await canvas.focus();
   await page.screenshot({ path: testInfo.outputPath("corner-radii.png") });
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(page.getByLabel("Corner 1 radius", { exact: true })).toHaveValue(
-    "8.12",
-  );
+  await expect(page.getByLabel("Corner 1 radius", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("All corner radii", { exact: true })).toHaveCount(0);
+  await cornerRadius(page);
+  await expect(corner).toHaveValue("8.12");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(
-    page.getByLabel("All corner radii", { exact: true }),
-  ).toHaveValue("0");
+  await expectRadius(page, "0");
 });
