@@ -156,7 +156,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
             : color("shape");
       if (["rectangle", "circle", "ellipse"].includes(s.kind)) {
         ctx.save();
-        ctx.globalAlpha = selected ? 0.07 : 0.02;
+        ctx.globalAlpha = selected ? 0.12 : 0.05;
         ctx.fillStyle = selected ? color("accent") : color("shape");
         ctx.fill(path);
         ctx.restore();

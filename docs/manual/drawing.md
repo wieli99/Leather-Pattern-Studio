@@ -1,5 +1,7 @@
 # Drawing tools
 
+Rectangles, circles, and ellipses have a light interior tint to make their area visible against the grid. Selected shapes have a stronger accent tint.
+
 ## Polyline (P)
 The variants are Polyline, Curve, and Control point curve. Polyline joins straight segments; Curve passes through clicked points; Control point curve uses anchors and handles. Click creates sharp anchors; drag creates smooth handles.
 
