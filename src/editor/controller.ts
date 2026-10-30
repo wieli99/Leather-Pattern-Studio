@@ -2,7 +2,12 @@ import { sharpAnchor, toggleAnchor } from "../model/sharpAnchor";
 import { insertAnchor } from "../model/insertAnchor";
 import { isCurve, zeroHandles, mirroredHandles } from "../model/curves";
 import type { CurveHandles } from "../generated/CurveHandles";
-import { smartSnap, type SmartGuide, snapCandidates, type SnapKind } from "./snapping";
+import {
+  smartSnap,
+  type SmartGuide,
+  snapCandidates,
+  type SnapKind,
+} from "./snapping";
 import {
   construct,
   isCurveMode,
@@ -95,7 +100,7 @@ export class Controller {
   ready = false;
   busy = false;
   dirty = false;
-  savedBaseline = JSON.stringify(emptyDocument());
+  savedBaseline = fingerprint(emptyDocument());
   transformTool: "move" | "rotate" | "scale" | null = null;
   transformOriginal: Doc | null = null;
   transformPivot: Point = { x: 0, y: 0 };
@@ -249,6 +254,7 @@ export class Controller {
   grid = true;
   objects = true;
   gridSize = 1;
+  guideDrag: { id: string; axis: "x" | "y"; coordinate: number } | null = null;
   gridStyle: "dots" | "lines" = "dots";
   rulers = false;
   theme = "dark";
@@ -315,6 +321,7 @@ export class Controller {
       this.transformTool ? this.version : 0,
       this.revision,
       this.ready,
+      this.message,
       this.busy,
       this.dirty,
       this.name,
@@ -409,7 +416,12 @@ export class Controller {
   }
   async initialize() {
     try {
-      this.accept(await this.core.request("snapshot", 0));
+      const initial = await this.core.request("snapshot", 0);
+      if (initial.document.version !== 6)
+        throw Error(
+          `Application expects document version 6, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+        );
+      this.accept(initial);
       this.ready = true;
       this.message = "Ready";
       try {
@@ -474,6 +486,7 @@ export class Controller {
         }
       } catch (e) {
         this.fail(e);
+        throw e;
       } finally {
         this.preview = null;
         this.busy = false;
@@ -490,9 +503,12 @@ export class Controller {
       this.pendingDocument = validated;
       await this.transact("commit", validated);
       if (this.pendingDocument === validated) this.pendingDocument = null;
+      return true;
     } catch (e) {
+      this.pendingDocument = null;
       this.preview = null;
       this.fail(e);
+      return false;
     }
   }
   async validatePreview(document: Doc) {
@@ -724,17 +740,37 @@ export class Controller {
   }
   drawingPoint(raw: Point, alt: boolean, shift: boolean): Point {
     this.drawingShift = shift;
-    if (shift && this.pending.length === 1 && ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(this.mode)) {
+    if (
+      shift &&
+      this.pending.length === 1 &&
+      ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
+        this.mode,
+      )
+    ) {
       const a = this.pending[0];
       const size = Math.max(Math.abs(raw.x - a.x), Math.abs(raw.y - a.y));
       this.smartGuides = [];
       this.snapTarget = null;
-      return { x: a.x + (raw.x < a.x ? -size : size), y: a.y + (raw.y < a.y ? -size : size) };
+      return {
+        x: a.x + (raw.x < a.x ? -size : size),
+        y: a.y + (raw.y < a.y ? -size : size),
+      };
     }
-    if (shift && this.pending.length && (
-      this.mode === "polyline" || isCurveMode(this.mode) ||
-      (this.pending.length === 1 && ["circle", "circle-two", "polygon", "ellipse-center", "arc", "arc-three"].includes(this.mode))
-    )) {
+    if (
+      shift &&
+      this.pending.length &&
+      (this.mode === "polyline" ||
+        isCurveMode(this.mode) ||
+        (this.pending.length === 1 &&
+          [
+            "circle",
+            "circle-two",
+            "polygon",
+            "ellipse-center",
+            "arc",
+            "arc-three",
+          ].includes(this.mode)))
+    ) {
       const a = this.pending[this.pending.length - 1],
         theta =
           (Math.round(Math.atan2(raw.y - a.y, raw.x - a.x) / (Math.PI / 4)) *
@@ -852,6 +888,7 @@ export class Controller {
       await this.commit(next);
   }
   cancel() {
+    this.guideDrag = null;
     this.measurementLocks = {};
     this.transformGeneration++;
     this.transformDraft = null;
@@ -901,15 +938,17 @@ export class Controller {
             best = d;
             this.snapTarget = candidate.point;
             this.snapKind = candidate.kind;
-            this.smartGuides = this.smart && candidate.kind === "center"
-              ? (["x", "y"] as const).map((axis) => ({
-                  axis,
-                  coordinate: candidate.point[axis],
-                  objectId: s.id,
-                  bounds: bounds([s]),
-                  alignment: axis === "x" ? "Vertical center" : "Horizontal center",
-                }))
-              : [];
+            this.smartGuides =
+              this.smart && candidate.kind === "center"
+                ? (["x", "y"] as const).map((axis) => ({
+                    axis,
+                    coordinate: candidate.point[axis],
+                    objectId: s.id,
+                    bounds: bounds([s]),
+                    alignment:
+                      axis === "x" ? "Vertical center" : "Horizontal center",
+                  }))
+                : [];
           }
         }
       }
@@ -934,10 +973,34 @@ export class Controller {
       }
       if (this.snapTarget) return this.snapTarget;
     }
+    if (this.objects) {
+      const q = { ...p };
+      let found = false;
+      for (const axis of ["x", "y"] as const) {
+        const guide = (this.document.guides ?? [])
+          .filter((g) => g.axis === axis && g.id !== this.guideDrag?.id)
+          .sort(
+            (a, b) =>
+              Math.abs(a.coordinate - p[axis]) -
+              Math.abs(b.coordinate - p[axis]),
+          )[0];
+        if (guide && Math.abs(guide.coordinate - p[axis]) < tolerance) {
+          q[axis] = guide.coordinate;
+          found = true;
+        }
+      }
+      if (found) {
+        this.snapTarget = q;
+        this.snapKind = "alignment";
+        return q;
+      }
+    }
     if (this.smart) {
       const result = smartSnap(
         p,
-        this.document.shapes.filter((shape) => !this.gesture?.selection.includes(shape.id)),
+        this.document.shapes.filter(
+          (shape) => !this.gesture?.selection.includes(shape.id),
+        ),
         tolerance,
       );
       if (result.guides.length) {
@@ -1068,6 +1131,102 @@ export class Controller {
     this.notify();
   }
   onTextRequested?: (point: Point) => void;
+  get guideSnapLabel() {
+    if (!this.guideDrag) return "";
+    return this.smartGuides
+      .map(
+        (g) =>
+          `${g.alignment} · ${this.document.shapes.find((s) => s.id === g.objectId)?.name ?? "Object"}`,
+      )
+      .join(" / ");
+  }
+  private guidePointer: Point | null = null;
+  updateGuideModifiers(alt: boolean, ctrl: boolean, shift: boolean) {
+    if (this.guideDrag && this.guidePointer)
+      this.updateGuide(this.guidePointer, alt, ctrl, shift);
+  }
+  private updateGuide(
+    pixel: Point,
+    alt: boolean,
+    ctrl: boolean,
+    shift: boolean,
+  ) {
+    this.guidePointer = pixel;
+    const g = this.guideDrag!;
+    const raw = this.world(pixel),
+      axis = g.axis;
+    this.smartGuides = [];
+    this.snapTarget = null;
+    this.snapKind = null;
+    let coordinate = raw[axis];
+    if (!alt) {
+      const tolerance = 8 / this.zoom;
+      const candidates = this.objects
+        ? this.document.shapes.flatMap((shape) =>
+            snapCandidates(shape).map((candidate) => ({
+              shape,
+              candidate,
+              coordinate: candidate.point[axis],
+            })),
+          )
+        : [];
+      const nearest = candidates.sort(
+        (a, b) =>
+          Math.abs(a.coordinate - coordinate) -
+          Math.abs(b.coordinate - coordinate),
+      )[0];
+      if (nearest && Math.abs(nearest.coordinate - coordinate) <= tolerance) {
+        coordinate = nearest.coordinate;
+        const box = bounds([nearest.shape]);
+        const start = axis === "x" ? box.x : box.y;
+        const size = axis === "x" ? box.width : box.height;
+        const near = (value: number) => Math.abs(coordinate - value) < 1e-8;
+        const alignment = near(start + size / 2)
+          ? axis === "x"
+            ? "Vertical center"
+            : "Horizontal center"
+          : near(start)
+            ? axis === "x"
+              ? "Left edge"
+              : "Top edge"
+            : near(start + size)
+              ? axis === "x"
+                ? "Right edge"
+                : "Bottom edge"
+              : nearest.candidate.kind === "vertex"
+                ? "Endpoint / vertex"
+                : nearest.candidate.kind[0].toUpperCase() +
+                  nearest.candidate.kind.slice(1);
+        this.smartGuides = [
+          {
+            axis,
+            coordinate,
+            bounds: box,
+            objectId: nearest.shape.id,
+            alignment,
+          },
+        ];
+        this.snapKind = nearest.candidate.kind;
+      } else {
+        const result = this.smart
+          ? smartSnap(raw, this.document.shapes, tolerance)
+          : null;
+        const guide = result?.guides.find((v) => v.axis === axis);
+        if (guide) {
+          coordinate = guide.coordinate;
+          this.smartGuides = [guide];
+          this.snapKind = "alignment";
+        } else {
+          const step = ctrl ? 10 : shift ? 5 : 1;
+          coordinate = Math.round(coordinate / step) * step;
+        }
+      }
+    }
+    g.coordinate = coordinate;
+    this.cursor = { ...raw, [axis]: coordinate };
+    if (this.smartGuides.length) this.snapTarget = this.cursor;
+    this.notify();
+  }
   pointerDown(
     pixel: Point,
     button: number,
@@ -1077,6 +1236,33 @@ export class Controller {
   ) {
     if (!this.ready || this.busy) return;
     const raw = this.world(pixel);
+    if (
+      button === 0 &&
+      !this.space &&
+      !this.gesture &&
+      !this.pending.length &&
+      !this.transformTool
+    ) {
+      const axis =
+        this.rulers && pixel.x > 22 && pixel.y < 22
+          ? "y"
+          : this.rulers && pixel.y > 22 && pixel.x < 22
+            ? "x"
+            : null;
+      const existing =
+        !axis && this.tool === "select" && !this.handleAt(raw)
+          ? (this.document.guides ?? []).find(
+              (g) => Math.abs(raw[g.axis] - g.coordinate) * this.zoom < 5,
+            )
+          : undefined;
+      if (axis || existing) {
+        this.guideDrag = existing
+          ? { ...existing }
+          : { id: crypto.randomUUID(), axis: axis!, coordinate: raw[axis!] };
+        this.updateGuide(pixel, alt, ctrl, shift);
+        return;
+      }
+    }
     if (button === 1 || (button === 0 && this.space)) {
       this.gesture = {
         kind: "pan",
@@ -1194,6 +1380,10 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    if (this.guideDrag) {
+      this.updateGuide(pixel, alt, ctrl, shift);
+      return;
+    }
     this.pointerInside = true;
     this.anchorAlt = alt;
     this.anchorPointer = this.world(pixel);
@@ -1209,8 +1399,15 @@ export class Controller {
     if (this.mode === "control-curve" && this.drawingDown) {
       const a = this.drawingDown.point;
       const radius = distance(a, raw);
-      const angle = shift ? Math.round(Math.atan2(raw.y - a.y, raw.x - a.x) / (Math.PI / 4)) * Math.PI / 4 : Math.atan2(raw.y - a.y, raw.x - a.x);
-      this.cursor = { x: a.x + radius * Math.cos(angle), y: a.y + radius * Math.sin(angle) };
+      const angle = shift
+        ? (Math.round(Math.atan2(raw.y - a.y, raw.x - a.x) / (Math.PI / 4)) *
+            Math.PI) /
+          4
+        : Math.atan2(raw.y - a.y, raw.x - a.x);
+      this.cursor = {
+        x: a.x + radius * Math.cos(angle),
+        y: a.y + radius * Math.sin(angle),
+      };
     }
     if (this.mode === "arc" && this.pending.length === 2) {
       const a = this.pending[0],
@@ -1270,8 +1467,17 @@ export class Controller {
             const p = { x: a.x + dx, y: a.y + dy },
               q = this.snap(p, alt),
               d = distance(p, q);
-            const priority = this.snapKind === "alignment" ? 1 : this.snapKind === "grid" ? 2 : 0;
-            if (this.snapTarget && (priority < bestPriority || (priority === bestPriority && d < best))) {
+            const priority =
+              this.snapKind === "alignment"
+                ? 1
+                : this.snapKind === "grid"
+                  ? 2
+                  : 0;
+            if (
+              this.snapTarget &&
+              (priority < bestPriority ||
+                (priority === bestPriority && d < best))
+            ) {
               bestPriority = priority;
               best = d;
               source = a;
@@ -1450,6 +1656,29 @@ export class Controller {
     this.notifyPointer();
   }
   pointerUp(pixel?: Point, alt = false, shift = false, ctrl = false) {
+    if (this.guideDrag) {
+      if (pixel) this.updateGuide(pixel, alt, ctrl, shift);
+      const g = this.guideDrag;
+      this.guideDrag = null;
+      this.smartGuides = [];
+      this.snapTarget = null;
+      this.snapKind = null;
+      const inside =
+        pixel &&
+        pixel.x >= 0 &&
+        pixel.y >= 0 &&
+        pixel.x < this.width &&
+        pixel.y < this.height;
+      if (inside) {
+        const guides = (this.document.guides ?? []).filter(
+          (v) => v.id !== g.id,
+        );
+        if (!(this.rulers && (pixel.x < 22 || pixel.y < 22))) guides.push(g);
+        void this.commit({ ...this.document, guides });
+      }
+      this.notify();
+      return;
+    }
     if (this.drawingDown) {
       const d = this.drawingDown;
       this.drawingDown = null;
@@ -1474,10 +1703,14 @@ export class Controller {
         if (this.mode === "control-curve" && this.pending.length > count) {
           let v =
             pixel && distance(pixel, d.pixel) >= 4
-              ? { x: this.world(pixel).x - anchor.x, y: this.world(pixel).y - anchor.y }
+              ? {
+                  x: this.world(pixel).x - anchor.x,
+                  y: this.world(pixel).y - anchor.y,
+                }
               : { x: 0, y: 0 };
           if (shift) {
-            const angle = Math.round(Math.atan2(v.y, v.x) / (Math.PI / 4)) * Math.PI / 4;
+            const angle =
+              (Math.round(Math.atan2(v.y, v.x) / (Math.PI / 4)) * Math.PI) / 4;
             const radius = Math.hypot(v.x, v.y);
             v = { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
           }
@@ -1570,7 +1803,8 @@ export class Controller {
       this.arcSweep = 0;
       this.arcRawSweep = 0;
       this.arcLast = undefined;
-      void this.commit(next).then(() => {
+      void this.commit(next).then((success) => {
+        if (!success) return;
         if (this.document.shapes.some((s) => s.id === shape.id))
           this.selected = [shape.id];
         this.message = "Ready";

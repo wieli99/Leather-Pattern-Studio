@@ -1,4 +1,4 @@
-const CACHE='leather-studio-v3';
+const CACHE='leather-studio-__BUILD_HASH__';
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);const manifest=await fetch('/offline-assets.json',{cache:'no-cache'}).then(r=>r.json());await cache.addAll(['/','/index.html',...manifest]);
 })()));

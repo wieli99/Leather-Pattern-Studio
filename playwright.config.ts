@@ -4,7 +4,7 @@ export default defineConfig({
   timeout: 30000,
   workers: 1,
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: "http://127.0.0.1:5183",
     viewport: { width: 1280, height: 800 },
   },
   projects: [
@@ -13,8 +13,8 @@ export default defineConfig({
     { name: "webkit", use: { browserName: "webkit" } },
   ],
   webServer: {
-    command: "npm run preview",
-    port: 5173,
+    command: "npm run preview -- --port 5183",
+    port: 5183,
     reuseExistingServer: false,
   },
 });

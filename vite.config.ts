@@ -16,25 +16,32 @@ export default defineConfig({
         ].map((m) => m[1]);
         // Worker and Wasm assets must also be available before the user goes offline.
         const sw = readFileSync("dist/sw.js", "utf8");
+        if (!sw.includes("__BUILD_HASH__"))
+          throw Error("Missing service worker build hash placeholder");
         writeFileSync(
           "dist/sw.js",
           sw.replace(
-            "leather-studio-v3",
-            "leather-studio-" +
-              createHash("sha256")
-                .update(
-                  html +
-                    readdirSync("dist/manual/images")
-                      .sort()
-                      .map((f) =>
-                        readFileSync("dist/manual/images/" + f).toString(
-                          "base64",
-                        ),
-                      )
-                      .join(""),
-                )
-                .digest("hex")
-                .slice(0, 12),
+            "__BUILD_HASH__",
+            createHash("sha256")
+              .update(
+                html +
+                  readdirSync("dist/assets")
+                    .sort()
+                    .map((f) =>
+                      readFileSync("dist/assets/" + f).toString("base64"),
+                    )
+                    .join("") +
+                  readdirSync("dist/manual/images")
+                    .sort()
+                    .map((f) =>
+                      readFileSync("dist/manual/images/" + f).toString(
+                        "base64",
+                      ),
+                    )
+                    .join(""),
+              )
+              .digest("hex")
+              .slice(0, 12),
           ),
         );
         writeFileSync(

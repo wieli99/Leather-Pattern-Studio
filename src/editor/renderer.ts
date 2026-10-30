@@ -112,7 +112,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.fillStyle = color("grid-dot");
       for (let x = ((pan.x % step) + step) % step; x < w; x += step)
         for (let y = ((pan.y % step) + step) % step; y < h; y += step)
-          ctx.fillRect(x, y, 1, 1);
+          ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
     } else {
       ctx.beginPath();
       for (let x = ((pan.x % step) + step) % step; x < w; x += step) {
@@ -370,11 +370,13 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           ["move", "scale", "vertex"].includes(editor.gesture.kind)
         ? editor.snapTarget
         : null;
-    if (editor.smart && editor.snapTarget) {
+    if ((editor.smart || editor.guideDrag) && editor.snapTarget) {
       ctx.save();
       ctx.strokeStyle = color("preview");
       ctx.lineWidth = 1 / z;
-      for (const id of new Set(editor.smartGuides.map((guide) => guide.objectId))) {
+      for (const id of new Set(
+        editor.smartGuides.map((guide) => guide.objectId),
+      )) {
         const source = editor.document.shapes.find((s) => s.id === id);
         if (!source) continue;
         const primitive = new Path2D();
@@ -470,19 +472,27 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       }
       ctx.stroke();
       const smartLabel = editor.smart
-        ? editor.smartGuides.map((guide) => {
-            const name = editor.document.shapes.find((s) => s.id === guide.objectId)?.name ?? "Object";
-            return `${guide.alignment} · ${name}`;
-          }).join(" / ")
+        ? editor.smartGuides
+            .map((guide) => {
+              const name =
+                editor.document.shapes.find((s) => s.id === guide.objectId)
+                  ?.name ?? "Object";
+              return `${guide.alignment} · ${name}`;
+            })
+            .join(" / ")
         : "";
-      const label = smartLabel ||
+      const label =
+        smartLabel ||
         (editor.snapKind === "vertex"
           ? "Endpoint / vertex"
           : editor.snapKind[0].toUpperCase() + editor.snapKind.slice(1)) +
-        (axes.length ? ` · ${axes.join(" + ")}` : "");
+          (axes.length ? ` · ${axes.join(" + ")}` : "");
       ctx.fillText(
         label,
-        Math.max(4, Math.min(point.x + 22, w - ctx.measureText(label).width - 4)),
+        Math.max(
+          4,
+          Math.min(point.x + 22, w - ctx.measureText(label).width - 4),
+        ),
         Math.max(14, Math.min(point.y - 10, h - 4)),
         Math.max(1, w - 8),
       );
@@ -505,6 +515,34 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.fillRect(point.x + 12, point.y - 24, width + 16, 23);
       ctx.fillStyle = color("accent");
       ctx.fillText(text, point.x + 20, point.y - 8);
+    }
+    ctx.save();
+    ctx.strokeStyle = color("accent");
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    for (const g of [
+      ...((editor.pendingDocument ?? editor.document).guides ?? []).filter(
+        (g) => g.id !== editor.guideDrag?.id,
+      ),
+      ...(editor.guideDrag ? [editor.guideDrag] : []),
+    ]) {
+      const p = g.coordinate * z + pan[g.axis];
+      ctx.beginPath();
+      ctx.moveTo(g.axis === "x" ? p : 0, g.axis === "y" ? p : 0);
+      ctx.lineTo(g.axis === "x" ? p : w, g.axis === "y" ? p : h);
+      ctx.stroke();
+    }
+    ctx.restore();
+    if (editor.guideDrag) {
+      const text = `${editor.guideDrag.coordinate.toFixed(2)} mm${editor.guideSnapLabel ? " · " + editor.guideSnapLabel : ""}`;
+      const point = editor.screen(editor.cursor);
+      const width = ctx.measureText(text).width + 16;
+      const left = Math.max(26, Math.min(w - width - 4, point.x + 14));
+      const top = Math.max(26, Math.min(h - 28, point.y + 14));
+      ctx.fillStyle = color("panel");
+      ctx.fillRect(left, top, width, 24);
+      ctx.fillStyle = color("accent");
+      ctx.fillText(text, left + 8, top + 16);
     }
     if (editor.rulers) {
       ctx.fillStyle = color("panel");

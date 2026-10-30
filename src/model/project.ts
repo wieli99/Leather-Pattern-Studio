@@ -3,13 +3,14 @@ import type { Point as CorePoint } from "../generated/Point";
 export type Point = CorePoint;
 export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
-export type Doc = { version: 5; shapes: Shape[] };
-export const emptyDocument = (): Doc => ({ version: 5, shapes: [] });
+export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
+export type Doc = { version: 5 | 6; shapes: Shape[]; guides?: Guide[] };
+export const emptyDocument = (): Doc => ({ version: 6, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -140,7 +141,7 @@ export function parseProject(text: string): Doc {
     if (s.transform !== undefined) {
       const m = s.transform;
       if (
-        input.version !== 5 ||
+        input.version < 5 ||
         !m ||
         !["a", "b", "c", "d", "e", "f"].every((k) => Number.isFinite(m[k])) ||
         Math.abs(m.a * m.d - m.b * m.c) < 1e-12
@@ -187,5 +188,28 @@ export function parseProject(text: string): Doc {
       ...(s.legacyStitch ? { legacyStitch: s.legacyStitch } : {}),
     });
   }
-  return { version: 5, shapes: result };
+  const guides = input.guides ?? [];
+  if (
+    !Array.isArray(guides) ||
+    guides.length > 10000 ||
+    guides.some(
+      (g: any) =>
+        !g ||
+        typeof g.id !== "string" ||
+        !g.id ||
+        !["x", "y"].includes(g.axis) ||
+        !Number.isFinite(g.coordinate),
+    ) ||
+    new Set(guides.map((g: any) => g.id)).size !== guides.length
+  )
+    throw Error("Invalid guidelines");
+  return {
+    version: 6,
+    shapes: result,
+    guides: guides.map((g: Guide) => ({
+      id: g.id,
+      axis: g.axis,
+      coordinate: g.coordinate,
+    })),
+  };
 }

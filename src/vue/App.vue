@@ -212,12 +212,6 @@ onMounted(() => {
           </svg>
         </button>
         <Viewport />
-        <div class="viewport-top">
-          <span>
-            TOP
-            <small>2D / mm</small>
-          </span>
-        </div>
         <div
           v-if="!e.document.shapes.length && !e.pending.length"
           class="empty"

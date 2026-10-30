@@ -219,6 +219,7 @@ function wheel(event: WheelEvent) {
   );
 }
 function updateModifiers(event: KeyboardEvent) {
+  editor.updateGuideModifiers(event.altKey, event.ctrlKey, event.shiftKey);
   editor.setAnchorModifier(event.altKey);
   editor.setDrawingModifier(event.shiftKey);
   editor.setMeasurementModifier(event.ctrlKey);

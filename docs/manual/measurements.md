@@ -21,3 +21,11 @@ For corner and center rectangles, holding Shift with one entered side sets both 
 Edge measurements follow the edge angle with a visible gap. Center rectangle width and height stay separated, including immediately after placing the center.
 
 ![Separate center rectangle dimensions](/manual/images/center-rectangle-measurements.png)
+
+Enable X/Y rulers in Settings. Drag from the top ruler for a horizontal guideline or the left ruler for a vertical guideline. With Select, drag a guideline to move it; drop it onto a ruler to remove it. Guidelines are saved with the project and support undo/redo. Placement uses 1 mm steps, Ctrl 10 mm, and Shift 5 mm (Ctrl takes precedence). Enabled Object snapping takes priority over Smart snapping, followed by these increments. Alt bypasses both snapping and increments. Object snap makes guidelines available as alignment targets. Esc cancels a guideline drag.
+
+The guideline coordinate appears beside the pointer while dragging and stays inside the drawing area.
+
+While dragging a guideline, object snaps highlight the reference shape and show the alignment and object name beside the coordinate, for example “Horizontal center · Rectangle 1”. Alt clears this feedback while bypassing snapping.
+
+![Guideline alignment feedback](/manual/images/guideline-snapping.png)

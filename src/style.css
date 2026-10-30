@@ -152,27 +152,6 @@ canvas {
 .viewport:not(.tool-select) canvas {
   cursor: crosshair;
 }
-.viewport-top {
-  position: absolute;
-  top: 16px;
-  left: 20px;
-  right: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  pointer-events: none;
-}
-.viewport-top span {
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: #b4c0cb;
-}
-.viewport-top small {
-  color: #6d7c8b;
-  font-size: 10px;
-  margin-left: 10px;
-  letter-spacing: 0;
-}
 kbd {
   font: 10px system-ui;
   border: 1px solid #ffffff25;
@@ -551,9 +530,6 @@ summary,
 footer,
 .inspector-hint,
 .empty p,
-.viewport-top span {
-  color: var(--muted);
-}
 .empty h1 {
   color: var(--text);
 }
@@ -654,10 +630,6 @@ nav button[aria-pressed="true"] {
 }
 .modal-backdrop p {
   color: var(--text);
-}
-.viewport-top {
-  top: 30px;
-  left: 30px;
 }
 .objects button {
   color: var(--text);

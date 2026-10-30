@@ -9,3 +9,9 @@ Properties edits the selection. Enter or leaving a field applies one undo step; 
 Edge tabs hide or show tools, Properties, and the status bar. Settings controls rulers, grid style, spacing, and theme.
 
 ![Workspace](/manual/images/workspace.png)
+
+If the application reports incompatible geometry worker versions, save existing work before reloading. In a browser, Ctrl+Shift+R requests a fresh page. Offline updates offer a Reload button; save your project before activating an update.
+
+If engine startup fails, the loading panel shows the worker error. An unresponsive engine reports a timeout after 15 seconds. Reload to retry; this does not clear saved projects or browser recovery.
+
+Development startup removes this app’s production offline worker before loading the editor and may reload once. Recovery data and preferences are preserved. If the offline worker still controls the page, close the app’s tabs and reopen it.

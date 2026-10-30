@@ -73,14 +73,40 @@ pub struct Shape {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
+pub struct Guide {
+    pub id: String,
+    pub axis: String,
+    pub coordinate: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
 pub struct Document {
     pub version: u32,
     pub shapes: Vec<Shape>,
+    #[serde(default)]
+    pub guides: Vec<Guide>,
 }
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 5 || self.shapes.len() > 10000 {
-            return Err("Unsupported or oversized project".into());
+        if !matches!(self.version, 5 | 6) {
+            return Err(format!(
+                "Unsupported document version {} (supported: 5, 6). Reload the application.",
+                self.version
+            ));
+        }
+        if self.shapes.len() > 10000 {
+            return Err("Project exceeds 10000 shapes".into());
+        }
+        let mut guide_ids = HashSet::new();
+        if self.guides.len() > 10000
+            || self.guides.iter().any(|g| {
+                g.id.is_empty()
+                    || !guide_ids.insert(&g.id)
+                    || !matches!(g.axis.as_str(), "x" | "y")
+                    || !g.coordinate.is_finite()
+            })
+        {
+            return Err("Invalid guidelines".into());
         }
         let mut ids = HashSet::new();
         for s in &self.shapes {
@@ -204,8 +230,9 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 5,
+                version: 6,
                 shapes: vec![],
+                guides: vec![],
             },
             past: vec![],
             future: vec![],
@@ -218,6 +245,9 @@ impl Editor {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self::default()
+    }
+    pub fn capabilities(&self) -> String {
+        serde_json::json!({"documentVersions":[5,6]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -239,8 +269,9 @@ impl Editor {
         }
         match op {
             "commit" | "load" | "preview" => {
-                let next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
+                let mut next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
                 next.validate()?;
+                next.version = 6;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -284,8 +315,19 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capabilities_and_version_errors() {
+        let editor = Editor::default();
+        assert!(editor.capabilities().contains("[5,6]"));
+        let mut doc = editor.document.clone();
+        doc.version = 99;
+        assert!(doc
+            .validate()
+            .unwrap_err()
+            .contains("Unsupported document version 99"));
+    }
     fn sample() -> String {
-        r#"{"version":5,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
+        r#"{"version":6,"shapes":[{"id":"a","name":"Line","kind":"line","points":[{"x":0,"y":0},{"x":10,"y":5}],"radius":0,"rotation":0}]}"#.into()
     }
     #[test]
     fn arc_roundtrip_validation_and_history() {

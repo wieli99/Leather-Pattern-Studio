@@ -436,7 +436,7 @@ test("cursor movement preserves the UI snapshot and clears snap feedback on leav
 });
 test("baseline comparison ignores worker JSON key ordering", async () => {
   const e = editor();
-  e.document = { shapes: [], version: 5 };
+  e.document = { shapes: [], version: 6 };
   e.notify();
   expect(e.dirty).toBe(false);
 });
@@ -849,11 +849,24 @@ test("object center snap shows both reference axes and clears on bypass", () => 
   const e = editor();
   e.smart = true;
   e.objects = true;
-  e.document.shapes = [{ id: "center", name: "Rectangle", kind: "rectangle",
-    points: [{ x: 10, y: 10 }, { x: 50, y: 30 }], rotation: 0, radius: 0 }];
+  e.document.shapes = [
+    {
+      id: "center",
+      name: "Rectangle",
+      kind: "rectangle",
+      points: [
+        { x: 10, y: 10 },
+        { x: 50, y: 30 },
+      ],
+      rotation: 0,
+      radius: 0,
+    },
+  ];
   expect(e.snap({ x: 30.1, y: 20.1 })).toEqual({ x: 30, y: 20 });
-  expect(e.smartGuides.map((g) => [g.axis, g.coordinate, g.objectId]))
-    .toEqual([["x", 30, "center"], ["y", 20, "center"]]);
+  expect(e.smartGuides.map((g) => [g.axis, g.coordinate, g.objectId])).toEqual([
+    ["x", 30, "center"],
+    ["y", 20, "center"],
+  ]);
   e.snap({ x: 30, y: 20 }, true);
   expect(e.smartGuides).toEqual([]);
   e.smart = false;
@@ -861,14 +874,26 @@ test("object center snap shows both reference axes and clears on bypass", () => 
   expect(e.smartGuides).toEqual([]);
 });
 
-test.each(["rectangle", "rectangle-center", "ellipse", "polygon-box"] as const)("Shift makes %s square", mode => {
-  const e = editor();
-  e.setMode(mode);
-  e.pending = [{ x: 2, y: 3 }];
-  const p = e.drawingPoint({ x: -8, y: 7 }, true, true);
-  expect(p).toEqual({ x: -8, y: 13 });
-});
-test.each(["circle", "circle-two", "polygon", "ellipse-center", "arc", "arc-three", "curve", "control-curve"] as const)("Shift constrains %s direction", mode => {
+test.each(["rectangle", "rectangle-center", "ellipse", "polygon-box"] as const)(
+  "Shift makes %s square",
+  (mode) => {
+    const e = editor();
+    e.setMode(mode);
+    e.pending = [{ x: 2, y: 3 }];
+    const p = e.drawingPoint({ x: -8, y: 7 }, true, true);
+    expect(p).toEqual({ x: -8, y: 13 });
+  },
+);
+test.each([
+  "circle",
+  "circle-two",
+  "polygon",
+  "ellipse-center",
+  "arc",
+  "arc-three",
+  "curve",
+  "control-curve",
+] as const)("Shift constrains %s direction", (mode) => {
   const e = editor();
   e.setMode(mode);
   e.pending = [{ x: 0, y: 0 }];
@@ -877,18 +902,23 @@ test.each(["circle", "circle-two", "polygon", "ellipse-center", "arc", "arc-thre
   expect(Math.hypot(p.x, p.y)).toBeCloseTo(Math.hypot(10, 8));
 });
 
-test.each(["rectangle", "rectangle-center"] as const)("Shift couples one dimension in %s", mode => {
-  const e = editor();
-  e.setMode(mode);
-  e.pending = [{ x: 0, y: 0 }];
-  e.measurementLocks = { Width: 20 };
-  const point = e.drawingPoint({ x: 30, y: 40 }, true, true);
-  const p = e.constrainMeasurement(point);
-  expect(Math.abs(p.x)).toBe(Math.abs(p.y));
-  expect(p.x).toBe(mode === "rectangle-center" ? 10 : 20);
-  e.measurementLocks.Height = 30;
-  expect(e.constrainMeasurement(point).y).toBe(mode === "rectangle-center" ? 15 : 30);
-});
+test.each(["rectangle", "rectangle-center"] as const)(
+  "Shift couples one dimension in %s",
+  (mode) => {
+    const e = editor();
+    e.setMode(mode);
+    e.pending = [{ x: 0, y: 0 }];
+    e.measurementLocks = { Width: 20 };
+    const point = e.drawingPoint({ x: 30, y: 40 }, true, true);
+    const p = e.constrainMeasurement(point);
+    expect(Math.abs(p.x)).toBe(Math.abs(p.y));
+    expect(p.x).toBe(mode === "rectangle-center" ? 10 : 20);
+    e.measurementLocks.Height = 30;
+    expect(e.constrainMeasurement(point).y).toBe(
+      mode === "rectangle-center" ? 15 : 30,
+    );
+  },
+);
 test("Shift release refreshes rectangle without pointer movement", () => {
   const e = editor();
   e.setMode("rectangle");
@@ -898,4 +928,52 @@ test("Shift release refreshes rectangle without pointer movement", () => {
   e.setDrawingModifier(false);
   expect(e.cursor.x).toBeCloseTo(30);
   expect(e.cursor.y).toBeCloseTo(40);
+});
+
+test("ruler guideline persists after release with final modifier increments", async () => {
+  const e = editor();
+  e.rulers = true;
+  e.smart = false;
+  e.width = 800;
+  e.height = 600;
+  e.pan = { x: 0, y: 0 };
+  e.zoom = 1;
+  e.pointerDown({ x: 100, y: 10 }, 0, false, false);
+  e.pointerMove({ x: 100, y: 123.4 }, false);
+  expect(e.guideDrag?.coordinate).toBe(123);
+  e.updateGuideModifiers(false, true, false);
+  expect(e.guideDrag?.coordinate).toBe(120);
+  e.updateGuideModifiers(false, false, true);
+  expect(e.guideDrag?.coordinate).toBe(125);
+  e.pointerUp({ x: 100, y: 127.3 }, true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(e.document.guides?.[0].coordinate).toBe(127.3);
+});
+
+test("guideline snaps explain object alignment and clear feedback", () => {
+  const e = editor();
+  e.smart = false;
+  e.objects = true;
+  e.zoom = 1;
+  e.pan = { x: 0, y: 0 };
+  e.document.shapes = [
+    {
+      id: "r",
+      name: "Rectangle 1",
+      kind: "rectangle",
+      points: [
+        { x: 100, y: 100 },
+        { x: 200, y: 200 },
+      ],
+      radius: 0,
+      rotation: 0,
+    },
+  ];
+  e.guideDrag = { id: "g", axis: "y", coordinate: 0 };
+  e.pointerMove({ x: 500, y: 151 }, false);
+  expect(e.guideSnapLabel).toBe("Horizontal center · Rectangle 1");
+  expect(e.snapTarget?.y).toBe(150);
+  e.updateGuideModifiers(true, false, false);
+  expect(e.guideSnapLabel).toBe("");
+  expect(e.snapTarget).toBeNull();
 });

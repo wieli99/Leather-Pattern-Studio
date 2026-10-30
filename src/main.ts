@@ -1,4 +1,18 @@
-import { createApp } from "vue";
-import App from "./vue/App.vue";
 import "./style.css";
-createApp(App).mount("#root");
+import { prepareDevelopmentStartup } from "./developmentStartup";
+async function start() {
+  if (import.meta.env.DEV && !(await prepareDevelopmentStartup())) return;
+  // Load the editor singleton only after removing production worker control.
+  const [{ createApp }, { default: App }] = await Promise.all([
+    import("vue"),
+    import("./vue/App.vue"),
+  ]);
+  createApp(App).mount("#root");
+}
+void start().catch((error) => {
+  const root = document.getElementById("root");
+  if (root) {
+    root.setAttribute("role", "alert");
+    root.textContent = error instanceof Error ? error.message : String(error);
+  }
+});

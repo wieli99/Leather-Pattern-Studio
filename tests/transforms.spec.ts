@@ -111,7 +111,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const saved = (await (await downloading).path())!;
   const document = JSON.parse(await readFile(saved, "utf8"));
-  expect(document.version).toBe(5);
+  expect(document.version).toBe(6);
   expect(document.shapes.every((s: any) => s.transform)).toBe(true);
   expect(document.shapes[1].kind).toBe("arc");
   const chooser = page.waitForEvent("filechooser");
