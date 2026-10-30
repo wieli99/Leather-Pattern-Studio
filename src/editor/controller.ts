@@ -1,3 +1,4 @@
+import { trimAt } from "../model/trim";
 import {
   defaultStitchSettings,
   validateStitchSettings,
@@ -398,6 +399,7 @@ export class Controller {
   private dirtyBaseline = "";
   uiSnapshot = () =>
     [
+      this.trimMode,
       this.stitchMode,
       this.stitchMode ? this.version : 0,
       this.stitchSelected.join(","),
@@ -1384,7 +1386,17 @@ export class Controller {
     if (next && fingerprint(next) !== fingerprint(this.document))
       await this.commit(next);
   }
+  trimHighlight: [Point, Point] | null = null;
+  trimMode = false;
+  activateTrim() {
+    this.cancel();
+    this.tool = "select";
+    this.trimMode = true;
+    this.notify();
+  }
   cancel() {
+    this.trimMode = false;
+    this.trimHighlight = null;
     if (this.stitchOriginal) {
       this.document = this.stitchOriginal;
       this.stitchOriginal = null;
@@ -1747,6 +1759,12 @@ export class Controller {
     if (!this.ready || this.busy) return;
     const raw = this.world(pixel);
     this.anchorPointer = raw;
+    if (this.trimMode && button === 0 && !this.space) {
+      const shapes = trimAt(this.document.shapes, raw, 8 / this.zoom);
+      this.trimHighlight = null;
+      if (shapes) void this.commit({ ...this.document, shapes });
+      return;
+    }
     if (
       !this.stitchMode &&
       this.tool === "select" &&
@@ -1929,6 +1947,15 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    if (this.trimMode && !this.space && !this.gesture) {
+      this.pointerInside = true;
+      this.anchorPointer = this.world(pixel);
+      this.trimHighlight = null;
+      trimAt(this.document.shapes, this.anchorPointer, 8 / this.zoom,
+        span => { this.trimHighlight = span; });
+      this.notify();
+      return;
+    }
     if (this.stitchMode && !this.space && !this.gesture) {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);

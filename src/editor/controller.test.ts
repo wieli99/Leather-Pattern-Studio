@@ -1521,3 +1521,17 @@ test("path conversion cancels or commits as one transaction", async () => {
   expect(e.document.shapes[0].stitchOnly).toBeUndefined();
   expect(e.stitchGroups).toHaveLength(0);
 });
+
+test("trim activation and cancellation update the toolbar subscription", () => {
+  const e = editor();
+  const initial = e.uiSnapshot();
+  e.activateTrim();
+  expect(e.trimMode).toBe(true);
+  const active = e.uiSnapshot();
+  expect(active).not.toBe(initial);
+  e.pointerMove({ x: 100, y: 100 }, false);
+  expect(e.uiSnapshot()).toBe(active);
+  e.cancel();
+  expect(e.trimMode).toBe(false);
+  expect(e.uiSnapshot()).not.toBe(active);
+});

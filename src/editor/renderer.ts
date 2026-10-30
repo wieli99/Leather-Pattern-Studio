@@ -180,6 +180,21 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     }
     (editor.preview ?? editor.document).shapes.forEach((s) => shape(s));
     drawStitches(ctx,editor,color);
+    if (editor.trimMode && editor.pointerInside && editor.trimHighlight) {
+      const [a, b] = editor.trimHighlight;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = color("canvas");
+      ctx.lineWidth = 9 / z;
+      ctx.stroke();
+      ctx.strokeStyle = "#f43f5e";
+      ctx.lineWidth = 5 / z;
+      ctx.stroke();
+      ctx.restore();
+    }
     const construction = editor.constructionPreview;
     if (construction) shape(construction, true);
     else if (editor.mode === "arc-three" && editor.pending.length)

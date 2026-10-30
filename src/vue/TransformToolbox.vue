@@ -207,6 +207,13 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           />
         </svg>
       </button>
+      <button aria-label="Trim" title="Trim" :aria-pressed="e.trimMode" @click="editor.activateTrim()">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <circle cx="6" cy="6" r="3" />
+          <circle cx="6" cy="18" r="3" />
+          <path d="M8.2 8.2 20 20M8.2 15.8 20 4" />
+        </svg>
+      </button>
       <button
         aria-label="Stitch line"
         title="Stitch line"
