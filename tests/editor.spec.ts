@@ -254,7 +254,7 @@ test("native save writes editable project and cancelled save preserves dirty sta
     });
   });
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.locator(".document-name")).toHaveText(
+  await expect(page.getByLabel("Project filename")).toHaveValue(
     "example.leather.json",
   );
   expect(
@@ -268,7 +268,10 @@ test("native save writes editable project and cancelled save preserves dirty sta
       throw new DOMException("Cancelled", "AbortError");
     };
   });
-  await page.getByRole("button", { name: "Save as", exact: true }).click();
+  await page.getByTitle("Rename project").click();
+  await page.getByLabel("Project filename").fill("Renamed");
+  await page.getByLabel("Project filename").press("Enter");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator(".document-name")).toContainText("•");
 });
 
@@ -305,4 +308,23 @@ test("corner tool previews, edits numerically and applies once", async ({
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expectRadius(page, "0");
+});
+
+test("inline rename controls download filename", async ({ page }, info) => {
+  await ready(page);
+  await page.evaluate(() => { delete (window as any).showSaveFilePicker; });
+  const filename = page.getByLabel("Project filename");
+  const before = await filename.boundingBox();
+  await filename.click();
+  expect(await filename.boundingBox()).toEqual(before);
+  await expect(filename).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await filename.fill("Cancelled");
+  await filename.press("Escape");
+  await expect(filename).toHaveValue("Untitled.leather.json");
+  await filename.fill("Wallet");
+  await page.screenshot({ path: info.outputPath("rename.png") });
+  await page.getByLabel("Project filename").press("Enter");
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await pending).suggestedFilename()).toBe("Wallet.leather.json");
 });

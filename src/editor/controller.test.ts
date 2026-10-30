@@ -381,7 +381,7 @@ test("move snapping aligns shape anchor instead of pointer grab offset", async (
 test("saved baseline follows undo and cancelled/failed saves", async () => {
   const e = editor();
   await e.commit({ version: 5, shapes: [shape] });
-  Object.assign(e.files, { save: vi.fn(async () => "downloaded") });
+  Object.assign(e.files, { save: vi.fn(async () => ({ outcome: "downloaded", name: e.name })) });
   await e.save();
   expect(e.dirty).toBe(false);
   await e.edit("a", { name: "Changed" });
@@ -389,7 +389,7 @@ test("saved baseline follows undo and cancelled/failed saves", async () => {
   await e.transact("undo");
   expect(e.dirty).toBe(false);
   await e.edit("a", { name: "Again" });
-  Object.assign(e.files, { save: vi.fn(async () => "cancelled") });
+  Object.assign(e.files, { save: vi.fn(async () => ({ outcome: "cancelled", name: e.name })) });
   await e.save();
   expect(e.dirty).toBe(true);
   Object.assign(e.files, {
@@ -403,7 +403,7 @@ test("saved baseline follows undo and cancelled/failed saves", async () => {
 test("save completing after new edits does not mark them saved", async () => {
   const e = editor();
   await e.commit({ version: 5, shapes: [shape] });
-  let finish!: (v: string) => void;
+  let finish!: (v: { outcome: string; name: string }) => void;
   Object.assign(e.files, {
     save: vi.fn(
       () =>
@@ -415,7 +415,7 @@ test("save completing after new edits does not mark them saved", async () => {
   const saving = e.save();
   await vi.waitFor(() => expect(finish).toBeDefined());
   await e.edit("a", { name: "After save started" });
-  finish("downloaded");
+  finish({ outcome: "downloaded", name: e.name });
   await saving;
   expect(e.dirty).toBe(true);
   await e.transact("undo");
@@ -1625,4 +1625,20 @@ test("selected stitching reports pair differences and ignores no-op unlink", asy
   expect(e.stitchHoleInfo).toBe("12 holes · 1 too many");
   await e.commit({...e.document, stitchLinks: [{id: 1, members: ["a", "b", "c"]}]});
   expect(e.stitchHoleInfo).toBe("12 holes");
+});
+
+test("renaming disconnects files and requires saving without changing geometry", () => {
+  const e = editor();
+  const document = e.document;
+  e.files.handle = { name: e.name };
+  e.rename("  Wallet  ");
+  expect(e.name).toBe("Wallet.leather.json");
+  expect(e.files.handle).toBeNull();
+  expect(e.dirty).toBe(true);
+  expect(e.document).toBe(document);
+  e.rename(" ");
+  expect(e.name).toBe("Wallet.leather.json");
+  e.fileBusy = true;
+  e.rename("Other");
+  expect(e.name).toBe("Wallet.leather.json");
 });

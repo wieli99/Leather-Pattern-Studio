@@ -20,7 +20,6 @@ Single-letter editor shortcuts require canvas focus. Click the canvas first. Inp
 | Ctrl/⌘+Shift+Z | Redo |
 | Ctrl+Y | Additional redo binding |
 | Ctrl/⌘+S | Save |
-| Ctrl/⌘+Shift+S | Save as |
 | ? | Open this manual |
 
 ## View navigation

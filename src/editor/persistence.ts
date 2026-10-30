@@ -78,13 +78,12 @@ export class ProjectFiles {
   async save(
     document: Doc,
     name: string,
-    saveAs = false,
-  ): Promise<"saved" | "downloaded" | "cancelled"> {
+  ): Promise<{ outcome: "saved" | "downloaded" | "cancelled"; name: string }> {
     const text = JSON.stringify(document, null, 2);
     if ("showSaveFilePicker" in window) {
       try {
         const h =
-          (!saveAs && this.handle) ||
+          this.handle ||
           (await (window as any).showSaveFilePicker({
             suggestedName: name,
             types: [
@@ -98,9 +97,9 @@ export class ProjectFiles {
         await writable.write(text);
         await writable.close();
         this.handle = h;
-        return "saved";
+        return { outcome: "saved", name: h.name };
       } catch (e) {
-        if ((e as Error).name === "AbortError") return "cancelled";
+        if ((e as Error).name === "AbortError") return { outcome: "cancelled", name };
         throw e;
       }
     }
@@ -112,6 +111,6 @@ export class ProjectFiles {
     a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    return "downloaded";
+    return { outcome: "downloaded", name };
   }
 }

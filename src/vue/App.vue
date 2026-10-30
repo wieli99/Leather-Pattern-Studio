@@ -15,7 +15,39 @@ import StatusBar from "./StatusBar.vue";
 
 import { tools } from "./tools";
 import { handleShortcut } from "./shortcuts";
+const nativeSaving = "showSaveFilePicker" in window;
+const renaming = ref(false);
+const draftName = ref("");
+function startRename(event: FocusEvent) {
+  if (editor.fileBusy) {
+    (event.target as HTMLInputElement).blur();
+    return;
+  }
+  draftName.value = editor.name;
+  renaming.value = true;
+}
+function finishRename() {
+  if (!renaming.value) return;
+  editor.rename(draftName.value);
+  renaming.value = false;
+  draftName.value = editor.name;
+}
 const e = useEditor();
+watch(
+  () => e.value.name,
+  (name) => {
+    if (!renaming.value) draftName.value = name;
+  },
+  { immediate: true },
+);
+function cancelRename(event: KeyboardEvent) {
+  renaming.value = false;
+  draftName.value = editor.name;
+  (event.target as HTMLInputElement).blur();
+}
+function applyRename(event: KeyboardEvent) {
+  (event.target as HTMLInputElement).blur();
+}
 const editing = ref("");
 const hint = computed(() => editorHint(e.value, editing.value));
 function hintFocus(event: FocusEvent) {
@@ -120,8 +152,23 @@ onMounted(() => {
           <span>STUDIO</span>
         </strong>
       </div>
-      <span class="document-name">{{ e.name }}{{ e.dirty ? " •" : "" }}</span>
-      <div class="header-actions">
+      <span class="document-name">
+        <input
+          v-model="draftName"
+          class="filename-input"
+          aria-label="Project filename"
+          title="Rename project"
+          :disabled="!e.ready"
+          :size="Math.max(12, draftName.length)"
+          spellcheck="false"
+          @focus="startRename"
+          @keydown.enter.prevent="applyRename"
+          @keydown.esc.prevent="cancelRename"
+          @blur="finishRename()"
+        />
+        <span v-if="e.dirty"> •</span>
+      </span>
+      <div class="header-actions" :title="nativeSaving ? undefined : 'Save downloads a copy; click the filename to rename it. Open reopens saved JSON files.'">
         <button :disabled="!e.ready" @click="editor.newProject()">New</button>
         <button :disabled="!e.ready" @click="editor.open()">Open</button>
         <button
@@ -130,13 +177,6 @@ onMounted(() => {
           @click="editor.save()"
         >
           Save
-        </button>
-        <button
-          :disabled="!e.ready"
-          title="Save as (Ctrl/⌘+Shift+S)"
-          @click="editor.save(true)"
-        >
-          Save as
         </button>
         <a
           href="/manual/index.html"

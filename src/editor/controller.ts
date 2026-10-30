@@ -2742,6 +2742,7 @@ export class Controller {
     );
   }
   async newProject() {
+    if (this.fileBusy) return;
     if (!this.confirmReplace()) return;
     this.cancel();
     await this.transact("load", emptyDocument());
@@ -2752,7 +2753,9 @@ export class Controller {
     this.notify();
   }
   async open() {
+    if (this.fileBusy) return;
     if (!this.confirmReplace()) return;
+    this.fileBusy = true;
     try {
       const file = await this.files.open();
       if (!file) return;
@@ -2765,38 +2768,56 @@ export class Controller {
       this.notify();
     } catch (e) {
       this.fail(e);
+    } finally {
+      this.fileBusy = false;
     }
   }
-  async save(saveAs = false) {
-    if (this.transformTool || this.stitchMode) this.cancel();
-    await this.finishProperty();
-    await this.transactionQueue;
+  fileBusy = false;
+  rename(value: string) {
+    if (this.fileBusy) return;
+    let name = value.trim();
+    if (!name) return;
+    if (!/\.json$/i.test(name)) name += ".leather.json";
+    if (name === this.name) return;
+    this.name = name;
+    this.files.handle = null;
+    this.savedBaseline = "";
+    this.updateDirty();
+    this.scheduleRecovery();
+    this.notify();
+  }
+  async save() {
+    if (this.fileBusy) return;
+    this.fileBusy = true;
     try {
+      if (this.transformTool || this.stitchMode) this.cancel();
+      await this.finishProperty();
+      await this.transactionQueue;
       const doc = this.document,
-        result = await this.files.save(doc, this.name, saveAs);
-      if (result === "cancelled") return;
-      if (result === "saved") {
-        this.name = this.files.handle.name;
-        this.savedBaseline = fingerprint(doc);
-        this.updateDirty();
+        result = await this.files.save(doc, this.name);
+      if (result.outcome === "cancelled") return;
+      this.name = result.name;
+      this.savedBaseline = fingerprint(doc);
+      this.updateDirty();
+      if (result.outcome === "saved") {
         this.message = "Project saved";
       } else {
-        this.savedBaseline = fingerprint(doc);
-        this.updateDirty();
-        this.message =
-          "Project download started. Keep the downloaded file as your saved copy.";
+        this.message = `Download started: ${result.name}. Keep this file; use Open to edit it again.`;
       }
       this.notify();
     } catch (e) {
       this.fail(e);
+    } finally {
+      this.fileBusy = false;
     }
   }
   async restoreProject() {
-    if (!this.restore || !this.confirmReplace()) return;
+    if (this.fileBusy || !this.restore || !this.confirmReplace()) return;
     const value = this.restore;
     this.restore = undefined;
     this.cancel();
     await this.transact("load", parseProject(JSON.stringify(value.document)));
+    this.files.handle = null;
     this.name = value.name;
     this.savedBaseline = "";
     this.dirty = true;

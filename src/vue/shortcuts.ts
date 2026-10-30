@@ -25,9 +25,9 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     e.preventDefault();
     editor.space = true;
   }
-  if (mod && e.key.toLowerCase() === "s") {
+  if (mod && !e.shiftKey && e.key.toLowerCase() === "s") {
     e.preventDefault();
-    void editor.save(e.shiftKey);
+    void editor.save();
     return;
   }
   if (
