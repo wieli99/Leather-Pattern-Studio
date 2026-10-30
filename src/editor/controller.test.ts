@@ -147,38 +147,51 @@ test("drag places a sticky rectangle and initial polyline drag ends a line", asy
   expect(e.pending).toHaveLength(0);
   expect(e.document.shapes[1].points).toHaveLength(2);
 });
-test("polyline double click adds no closing anchors and rejects short paths", async () => {
-  vi.useFakeTimers();
-  const e = editor();
-  e.setMode("polyline");
-  e.pending = [
-    { x: 0, y: 0 },
-    { x: 20, y: 0 },
-    { x: 20, y: 20 },
-  ];
-  click(e, { x: 200, y: 200 });
-  e.polylineClick(1);
-  click(e, { x: 200, y: 200 });
-  e.polylineClick(2);
-  await e.transactionQueue;
-  expect(e.document.shapes[0].points).toEqual([
-    { x: 0, y: 0 },
-    { x: 20, y: 0 },
-    { x: 20, y: 20 },
-    { x: 0, y: 0 },
-  ]);
-  expect(e.pending).toHaveLength(0);
-  e.pending = [
-    { x: 0, y: 0 },
-    { x: 20, y: 0 },
-  ];
-  click(e, { x: 300, y: 200 });
-  e.polylineClick(1);
-  click(e, { x: 300, y: 200 });
-  e.polylineClick(2);
-  expect(e.pending).toHaveLength(2);
-  expect(e.message).toContain("three anchors");
-});
+test.each(["polyline", "curve", "control-curve"] as const)(
+  "%s double click adds no closing anchors and rejects short paths",
+  async (mode) => {
+    vi.useFakeTimers();
+    const e = editor();
+    e.setMode(mode);
+    e.pendingHandles = Array.from({ length: 3 }, () => ({
+      incoming: { x: -5, y: -10 },
+      outgoing: { x: 5, y: 10 },
+    }));
+    e.pending = [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 20 },
+    ];
+    click(e, { x: 200, y: 200 });
+    e.polylineClick(1);
+    click(e, { x: 200, y: 200 });
+    e.polylineClick(2);
+    await e.transactionQueue;
+    expect(e.document.shapes[0].points).toEqual([
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 20 },
+      { x: 0, y: 0 },
+    ]);
+    if (mode === "control-curve") {
+      expect(e.document.shapes[0].handles).toHaveLength(4);
+      expect(e.document.shapes[0].handles![3]).toEqual(
+        e.document.shapes[0].handles![0],
+      );
+    }
+    expect(e.pending).toHaveLength(0);
+    e.pending = [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+    ];
+    click(e, { x: 300, y: 200 });
+    e.polylineClick(1);
+    click(e, { x: 300, y: 200 });
+    e.polylineClick(2);
+    expect(e.pending).toHaveLength(2);
+    expect(e.message).toContain("three anchors");
+  },
+);
 test("right click flushes last anchor without appending cursor", async () => {
   vi.useFakeTimers();
   const e = editor();
@@ -607,7 +620,7 @@ test("curve drawing previews stay outside history and completion is one transact
   e.addPoint({ x: 30, y: 0 });
   expect(e.document.shapes).toHaveLength(0);
   expect(e.constructionPreview?.kind).toBe("curve");
-  e.polylineClick(2);
+  e.finish();
   await vi.waitFor(() => expect(e.revision).toBe(1));
   expect(e.document.shapes[0].points).toHaveLength(3);
   await e.transact("undo");
@@ -644,7 +657,7 @@ test("curve duplicate clicks and invalid short paths do not create extra anchors
   expect(e.revision).toBe(0);
   e.addPoint({ x: 10, y: 10 });
   e.addPoint({ x: 10, y: 10 });
-  e.polylineClick(2);
+  e.finish();
   await vi.waitFor(() => expect(e.revision).toBe(1));
   expect(e.document.shapes[0].points).toHaveLength(2);
 });

@@ -3,7 +3,7 @@
 ## Polyline (P)
 The variants are Polyline, Curve, and Control point curve. Polyline joins straight segments; Curve passes through clicked points; Control point curve uses anchors and handles. Click creates sharp anchors; drag creates smooth handles.
 
-Enter or right-click finishes paths. Double-click finishes curves; for a polyline with at least three anchors it closes the outline. Shift constrains polyline segments to 45°. Backspace removes the last pending anchor. Esc cancels.
+Enter or right-click finishes paths. Double-click closes polylines and both curve variants with at least three placed anchors; the double-click position is not added. Shift constrains polyline segments to 45°. Backspace removes the last pending anchor. Esc cancels.
 
 ## Rectangles (R)
 - Corner rectangle: first corner, opposite corner; dragging also works.

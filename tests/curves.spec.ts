@@ -11,7 +11,8 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   await page.getByRole("menuitemradio", { name: "Curve", exact: true }).click();
   await canvas.click({ position: { x: 150, y: 180 } });
   await canvas.click({ position: { x: 250, y: 280 } });
-  await canvas.dblclick({ position: { x: 400, y: 180 } });
+  await canvas.click({ position: { x: 400, y: 180 } });
+  await page.keyboard.press("Enter");
   await expect(page.locator(".objects button")).toHaveCount(1);
   await tool.click({ button: "right" });
   await page

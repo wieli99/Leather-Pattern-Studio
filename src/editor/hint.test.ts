@@ -53,7 +53,7 @@ test("selection exposes anchor insertion and editing contexts", () => {
 
 test.each([
   ["polyline", 3, ["finish", "close", "angle", "back", "snap"]],
-  ["control-curve", 1, ["finish", "double-finish", "back", "snap"]],
+  ["control-curve", 1, ["finish", "back", "snap"]],
   ["polygon", 1, ["sides", "variants", "menu", "snap"]],
 ] as const)("%s covers its construction controls", (mode, count, ids) => {
   const hint = editorHint({ ...base, mode, pending: Array(count).fill({}) });

@@ -128,9 +128,7 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("draw-drag", "Drag", "Draw in one gesture");
     if (path && n) {
       add("finish", "Enter / Right-click", "Finish path");
-      if (s.mode !== "polyline")
-        add("double-finish", "Double-click", "Finish path");
-      else if (n >= 3) add("close", "Double-click", "Close path");
+      if (n >= 3) add("close", "Double-click", "Close path");
     }
     if (s.mode === "polyline" && n) add("angle", "Shift", "Constrain to 45°");
     if (n) add("back", "Backspace", "Remove last anchor");

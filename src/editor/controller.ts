@@ -216,6 +216,7 @@ export class Controller {
   beforeClick: Point[] = [];
   doubleClickBase: Point[] = [];
   doubleClickClosed = false;
+  doubleClickHandles: CurveHandles[] = [];
   transactionQueue: Promise<void> = Promise.resolve();
   pendingDocument: Doc | null = null;
   arcSweep = 0;
@@ -568,14 +569,14 @@ export class Controller {
     );
   }
   polylineClick(count: number) {
-    if (isCurveMode(this.mode)) {
-      if (count === 2) this.finish();
-      return;
-    }
-    if (this.mode !== "polyline") return;
+    if (this.mode !== "polyline" && !isCurveMode(this.mode)) return;
     if (count === 1) {
       this.doubleClickBase = [...this.beforeClick];
       this.doubleClickClosed = !this.pending.length;
+      this.doubleClickHandles = this.pendingHandles.slice(
+        0,
+        this.beforeClick.length,
+      );
     }
     if (count === 2 && this.doubleClickClosed) {
       this.pending = [];
@@ -584,15 +585,18 @@ export class Controller {
     }
     if (count === 2 && this.pending.length) {
       this.pending = [...this.doubleClickBase];
+      this.pendingHandles = [...this.doubleClickHandles];
       this.closePolyline();
     }
   }
   closePolyline() {
     if (this.pending.length < 3) {
-      this.message = "Place at least three anchors before closing a polyline";
+      this.message = "Place at least three anchors before closing a path";
       this.notify();
       return;
     }
+    if (this.mode === "control-curve")
+      this.pendingHandles = [...this.pendingHandles, this.pendingHandles[0]];
     this.finish([...this.pending, this.pending[0]]);
   }
   measurementLocks: Record<string, number> = {};
@@ -1384,6 +1388,7 @@ export class Controller {
         return;
       }
       if (isCurveMode(this.mode)) {
+        this.beforeClick = [...this.pending];
         const anchor = this.mode === "control-curve" ? d.point : p;
         const count = this.pending.length;
         this.addPoint(anchor);
