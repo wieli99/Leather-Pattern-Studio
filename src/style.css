@@ -173,13 +173,6 @@ canvas {
   margin-left: 10px;
   letter-spacing: 0;
 }
-.viewport-top button {
-  pointer-events: auto;
-  background: #222a32cc;
-  border-color: #3b444e;
-  font-size: 11px;
-  margin-left: 5px;
-}
 kbd {
   font: 10px system-ui;
   border: 1px solid #ffffff25;
@@ -669,8 +662,7 @@ nav button[aria-pressed="true"] {
 .objects button {
   color: var(--text);
 }
-.empty button,
-.viewport-top button {
+.empty button {
   background: var(--button);
   color: var(--text);
   border-color: var(--border);

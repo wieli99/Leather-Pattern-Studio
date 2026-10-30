@@ -217,15 +217,6 @@ onMounted(() => {
             TOP
             <small>2D / mm</small>
           </span>
-          <div>
-            <button @click="editor.fit()">
-              Fit all
-              <kbd>F</kbd>
-            </button>
-            <button :disabled="!e.selected.length" @click="editor.fit(true)">
-              Fit selection <kbd>Shift+F</kbd>
-            </button>
-          </div>
         </div>
         <div
           v-if="!e.document.shapes.length && !e.pending.length"
