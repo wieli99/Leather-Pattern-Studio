@@ -1837,3 +1837,83 @@ test("clipboard ignores unrelated text and requires an idle canvas pointer", asy
   e.busy = true;
   expect(e.canUseClipboard).toBe(false);
 });
+
+test("group tree moves reject stale revisions and grouping preserves effective locks", async () => {
+  const e = editor();
+  await e.commit({ version: 13, shapes: ["a", "b"].map((id, i) => ({ id, name: id, kind: "rectangle", points: [{x: i * 20,y: 0}, {x: i * 20 + 10,y: 10}], radius: 0, rotation: 0 })) });
+  e.selected = ["a", "b"];
+  const id = await e.newGroup(true);
+  expect(id).toBeTruthy();
+  expect(e.tree).toHaveLength(1);
+  await e.toggleGroupState(id!, "locked");
+  expect(e.selectionLocked).toBe(true);
+  const revision = e.revision;
+  await e.movePanelItems(["a"], null, 0, revision - 1);
+  expect(e.revision).toBe(revision);
+  await e.movePanelItems(["a"], null, 0);
+  expect(e.isLocked("a")).toBe(false);
+  expect(e.isLocked("b")).toBe(true);
+  await e.ungroup(id!);
+  expect(e.isLocked("b")).toBe(false);
+});
+
+test("clipboard round trips nested and empty groups with unlocked copies", async () => {
+  const source = editor();
+  await source.commit({ version: 13, shapes: [{ id: "a", name: "A", kind: "rectangle", points: [{x: 0,y: 0}, {x: 10,y: 10}], radius: 0, rotation: 0 }] });
+  source.selected = ["a"];
+  const inner = await source.newGroup(true);
+  const outer = await source.newGroup(true);
+  await source.toggleGroupState(outer!, "locked");
+  source.pointerMove({x: 100,y: 100}, false);
+  const text = source.copyObjects()!;
+  const target = editor(); target.pointerMove({x: 200,y: 200}, false);
+  await target.pasteObjects(text);
+  expect(target.tree[0].kind).toBe("group");
+  const copied = target.tree[0];
+  if (copied.kind !== "group") throw Error("Expected copied group");
+  expect(copied.id).not.toBe(outer);
+  expect(copied.locked).toBe(false);
+  expect(copied.children[0].kind).toBe("group");
+  expect(target.document.shapes).toHaveLength(1);
+  expect(target.selectionLocked).toBe(false);
+  const empty = editor();
+  await empty.newGroup();
+  empty.pointerMove({x: 100,y: 100}, false);
+  await target.pasteObjects(empty.copyObjects()!);
+  expect(target.tree).toHaveLength(2);
+  expect(target.tree[0]).toHaveProperty("children", []);
+});
+
+test("group deletion is atomic and duplication preserves subtrees", async () => {
+  const e = editor();
+  await e.commit({ version: 13, shapes: ["a", "b"].map((id, i) => ({ id, name: id, kind: "rectangle", points: [{x: i * 20,y: 0}, {x: i * 20 + 10,y: 10}], radius: 0, rotation: 0 })) });
+  e.selected = ["a", "b"];
+  const group = await e.newGroup(true);
+  await e.toggleGroupState(group!, "locked");
+  e.delete();
+  await e.transactionQueue;
+  expect(e.document.shapes).toHaveLength(2);
+  await e.duplicate();
+  expect(e.tree).toHaveLength(2);
+  expect(e.document.shapes).toHaveLength(4);
+  const copied = e.tree[0];
+  expect(copied.kind).toBe("group");
+  expect(e.selectedGroups).toEqual([]);
+  if (copied.kind !== "group") throw Error("Expected group");
+  e.selectGroup(copied.id);
+  expect(e.selectionLocked).toBe(false);
+  e.delete(); await e.transactionQueue;
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.tree).toHaveLength(1);
+});
+
+test("hidden group outlines are excluded from mirror references", async () => {
+  const e = editor();
+  await e.commit({ version: 13, shapes: [{ id: "r", name: "Rectangle", kind: "rectangle", points: [{x: 20,y: 20}, {x: 100,y: 70}], radius: 0, rotation: 0 }] });
+  e.selected = ["r"];
+  const group = await e.newGroup(true);
+  e.transformOriginal = e.document;
+  expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).toBe("edge");
+  await e.toggleGroupState(group!, "hidden");
+  expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).not.toBe("edge");
+});

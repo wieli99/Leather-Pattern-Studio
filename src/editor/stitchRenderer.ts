@@ -14,7 +14,7 @@ export function drawStitches(
   const doc = editor.preview ?? editor.document;
   function draw(g: StitchGroup, preview = false) {
     const s = doc.shapes.find((s) => s.id === g.shapeId);
-    if (!s || s.hidden) return;
+    if (!s || editor.isHidden(s.id)) return;
     const selected =
       preview || (editor.stitchMode && editor.stitchSelected.includes(g.id));
     ctx.save();
@@ -135,7 +135,7 @@ export function drawStitches(
     const entries = link.members.map(id => {
       const g = (doc.stitchGroups ?? []).find(g => g.id === id);
       const shape = doc.shapes.find(s => s.id === g?.shapeId);
-      if (!g || !shape || shape.hidden) return null;
+      if (!g || !shape || editor.isHidden(shape.id)) return null;
       try {
         const geometry = stitchGeometry(shape, editor.stitchDraft?.id === id ? editor.stitchDraft : g);
         let remaining = geometry.points.slice(1).reduce((total, p, i) =>

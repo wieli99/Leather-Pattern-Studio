@@ -45,6 +45,9 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     );
     return;
   }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === "g") {
+    e.preventDefault(); void editor.newGroup(true); return;
+  }
   if (mod && !e.shiftKey && e.key.toLowerCase() === "d") {
     e.preventDefault();
     editor.duplicate();
@@ -57,6 +60,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     }
     e.preventDefault();
     editor.cancel();
+    editor.selectedGroups = [];
     editor.selected = editor.document.shapes.map((s) => s.id);
     editor.notify();
     return;

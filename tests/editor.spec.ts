@@ -259,7 +259,7 @@ test("native save writes editable project and cancelled save preserves dirty sta
   );
   expect(
     await page.evaluate(() => JSON.parse((window as any).savedProject).version),
-  ).toBe(11);
+  ).toBe(13);
   await page.getByLabel("Width", { exact: true }).fill("120");
   await page.getByLabel("Width", { exact: true }).press("Enter");
   await expect(page.locator(".document-name")).toContainText("•");

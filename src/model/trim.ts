@@ -29,6 +29,7 @@ export function trimAt(
   point: Point,
   tolerance: number,
   preview?: (span: Point[]) => void,
+  canEdit: (shape: Shape) => boolean = () => true,
 ): Shape[] | null {
   const pieces: Piece[] = [];
   for (const source of shapes) {
@@ -169,6 +170,7 @@ export function trimAt(
   );
   if (target < 0) return null;
   const source = ordered[target].source;
+  if (!canEdit(source)) return null;
   const indices = ordered
     .map((p, i) => (p.source === source ? i : -1))
     .filter((i) => i >= 0);

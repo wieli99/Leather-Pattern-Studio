@@ -23,3 +23,17 @@ Copy Styling copies the base fill color and opacity to the system clipboard. Ctr
 Use the eye and lock buttons at the right of any object row to hide/show or lock/unlock it without selecting it first. Toggling another object preserves your selection. These buttons are disabled during unfinished drawings, property edits, and modifier previews; Apply or Cancel the edit to enable them again. Hidden objects remain in the panel but disappear from the canvas, snapping, and fit bounds. Hiding clears that object's selection. When any selected object is locked, all modifier tools (Move, Rotate, Resize, Mirror, Corner radius, Merge, Trim, and Stitch line) are disabled. Locked objects can be selected, copied, and duplicated, but cannot be edited or deleted until unlocked. Duplicates start unlocked. Visibility can be changed while locked. Both states are saved with the project and toggles support undo/redo.
 
 ![Object visibility and lock controls](/manual/images/object-states.png)
+
+## Object groups
+
+The Objects panel lists the frontmost object first. The folder-plus button (**New Group**) creates a group containing all currently selected objects and groups. With nothing selected, it creates an empty group. **Group Selection** in the context menu or Ctrl/⌘+G also groups the selection. Groups may contain objects and other groups. Each item has only one parent. Click a group name to select its contents; Shift+click adds or removes the group from selection. Canvas clicks still select individual objects.
+
+Use the arrow to collapse or expand a group. Collapse affects only the panel and is remembered in saved projects and recovery, without adding undo steps. Double-click or F2 renames a group. **Ungroup** keeps its contents in place. Delete on a selected group removes its contents too; locked contents prevent deletion.
+
+A group's eye and lock controls apply to all descendants. Showing or unlocking a group preserves each child's own state. Child eye and lock icons always show their own local state. Child controls still change their local state while an ancestor hides or locks them. An inherited state remains effective until the ancestor is shown or unlocked. Locked items may still be reorganized in the panel.
+
+Drag an object or group row to reorder it. An insertion line indicates before/after placement; a highlighted group indicates moving inside it, even when collapsed. Expanded groups expose their child rows for insertion; empty groups provide an unlabeled drop area. Group names are displayed without a decorative icon. An unlabeled drop area appears below the scrolling object list while dragging; drop there to move items to the top level, even when every object is grouped. You can also drag a nested row into its left indentation gutter to move it to the top level. Dragging a selected row moves the selected items together. Escape cancels a drag. Each completed move is one undo step. Moving a group moves all its contents; a group cannot contain itself.
+
+For keyboard organization, focus a row and use Alt+Shift+Up/Down to reorder, Alt+Shift+Right to move into the preceding group, or Alt+Shift+Left to move out to the parent level.
+
+![Nested object groups](/manual/images/object-groups.png)

@@ -1,5 +1,5 @@
 import { parseProject, type Doc } from "../model/project";
-export type Recovery = { document: Doc; name: string; time: number };
+export type Recovery = { document: Doc; name: string; time: number; collapsedGroupIds?: string[] };
 function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const r = indexedDB.open("leather-studio", 1);
@@ -31,7 +31,7 @@ export async function recovery(
 }
 export class ProjectFiles {
   handle: any = null;
-  async open(): Promise<{ document: Doc; name: string } | undefined> {
+  async open(): Promise<{ document: Doc; name: string; collapsedGroupIds?: string[] } | undefined> {
     if ("showOpenFilePicker" in window) {
       try {
         const [h] = await (window as any).showOpenFilePicker({
@@ -44,9 +44,11 @@ export class ProjectFiles {
         });
         const f = await h.getFile();
         if (f.size > 1e7) throw Error("Project exceeds 10 MB");
-        const document = parseProject(await f.text());
+        const text = await f.text();
+        const document = parseProject(text);
+        const collapsedGroupIds = projectCollapsedGroups(text);
         this.handle = h;
-        return { document, name: f.name };
+        return { document, name: f.name, collapsedGroupIds };
       } catch (e) {
         if ((e as Error).name === "AbortError") return;
         throw e;
@@ -65,9 +67,11 @@ export class ProjectFiles {
             return;
           }
           if (f.size > 1e7) throw Error("Project exceeds 10 MB");
-          const document = parseProject(await f.text());
+          const text = await f.text();
+          const document = parseProject(text);
+          const collapsedGroupIds = projectCollapsedGroups(text);
           this.handle = null;
-          resolve({ document, name: f.name });
+          resolve({ document, name: f.name, collapsedGroupIds });
         } catch (e) {
           reject(e);
         }
@@ -78,8 +82,9 @@ export class ProjectFiles {
   async save(
     document: Doc,
     name: string,
+    collapsedGroupIds: string[] = [],
   ): Promise<{ outcome: "saved" | "downloaded" | "cancelled"; name: string }> {
-    const text = JSON.stringify(document, null, 2);
+    const text = JSON.stringify({ ...document, ui: { collapsedGroupIds } }, null, 2);
     if ("showSaveFilePicker" in window) {
       try {
         const h =
@@ -113,4 +118,9 @@ export class ProjectFiles {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return { outcome: "downloaded", name };
   }
+}
+
+function projectCollapsedGroups(text: string): string[] {
+  const value = JSON.parse(text)?.ui?.collapsedGroupIds;
+  return Array.isArray(value) ? value.filter((id: unknown): id is string => typeof id === "string").slice(0, 100000) : [];
 }

@@ -176,10 +176,84 @@ pub struct Document {
     pub stitch_links: Vec<StitchLink>,
     pub version: u32,
     pub shapes: Vec<Shape>,
+    #[serde(
+        default,
+        rename = "objectTree",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub object_tree: Option<Vec<ObjectNode>>,
     #[serde(default)]
     pub guides: Vec<Guide>,
     #[serde(default, rename = "stitchGroups")]
     pub stitch_groups: Vec<StitchGroup>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/generated/")]
+pub enum ObjectNode {
+    Object {
+        id: String,
+    },
+    Group {
+        id: String,
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        hidden: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        locked: Option<bool>,
+        children: Vec<ObjectNode>,
+    },
+}
+impl ObjectNode {
+    fn protected_group_names<'a>(&'a self, inherited: bool, out: &mut Vec<(&'a str, &'a str)>) {
+        if let Self::Group {
+            id,
+            name,
+            locked,
+            children,
+            ..
+        } = self
+        {
+            let effective = inherited || *locked == Some(true);
+            if effective {
+                out.push((id, name));
+            }
+            for node in children {
+                node.protected_group_names(effective, out);
+            }
+        }
+    }
+    fn group_name(&self, target: &str) -> Option<&str> {
+        if let Self::Group {
+            id, name, children, ..
+        } = self
+        {
+            if id == target {
+                return Some(name);
+            }
+            return children.iter().find_map(|node| node.group_name(target));
+        }
+        None
+    }
+    fn locked_ids(&self, inherited: bool, out: &mut Vec<String>) {
+        match self {
+            Self::Object { id } => {
+                if inherited {
+                    out.push(id.clone());
+                }
+            }
+            Self::Group {
+                locked, children, ..
+            } => {
+                for n in children {
+                    n.locked_ids(inherited || *locked == Some(true), out);
+                }
+            }
+        }
+    }
 }
 // Logical boundary order mirrors the renderer, independent of viewport and transforms.
 fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
@@ -293,11 +367,49 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
 
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12) {
+        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13). Reload the application.",
                 self.version
             ));
+        }
+        if let Some(tree) = &self.object_tree {
+            fn visit(
+                nodes: &[ObjectNode],
+                depth: usize,
+                seen: &mut std::collections::HashSet<String>,
+                leaves: &mut Vec<String>,
+            ) -> Result<(), String> {
+                if depth > 100 {
+                    return Err("Group nesting too deep".into());
+                }
+                for node in nodes {
+                    let id = match node {
+                        ObjectNode::Object { id } | ObjectNode::Group { id, .. } => id,
+                    };
+                    if id.is_empty() || !seen.insert(id.clone()) {
+                        return Err("Duplicate tree item".into());
+                    }
+                    match node {
+                        ObjectNode::Object { id } => leaves.push(id.clone()),
+                        ObjectNode::Group { name, children, .. } => {
+                            if name.trim().is_empty() || name.len() > 800 {
+                                return Err("Invalid group name".into());
+                            }
+                            visit(children, depth + 1, seen, leaves)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            let mut seen = std::collections::HashSet::new();
+            let mut leaves = Vec::new();
+            visit(tree, 0, &mut seen, &mut leaves)?;
+            if leaves.iter().rev().collect::<Vec<_>>()
+                != self.shapes.iter().map(|s| &s.id).collect::<Vec<_>>()
+            {
+                return Err("Object tree does not match drawing order".into());
+            }
         }
         for s in &self.shapes {
             if let Some(radii) = &s.corner_radii {
@@ -535,8 +647,9 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 12,
+                version: 13,
                 shapes: vec![],
+                object_tree: Some(vec![]),
                 guides: vec![],
                 stitch_groups: vec![],
                 stitch_links: vec![],
@@ -554,7 +667,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -577,13 +690,43 @@ impl Editor {
         match op {
             "commit" | "load" | "preview" => {
                 let mut next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
+                if next.object_tree.is_none() {
+                    next.object_tree = Some(
+                        next.shapes
+                            .iter()
+                            .rev()
+                            .map(|s| ObjectNode::Object { id: s.id.clone() })
+                            .collect(),
+                    );
+                }
                 next.validate()?;
+                let mut inherited_locks = Vec::new();
+                for node in self.document.object_tree.iter().flatten() {
+                    node.locked_ids(false, &mut inherited_locks);
+                }
+
                 if op != "load" {
+                    let mut names = Vec::new();
+                    for node in self.document.object_tree.iter().flatten() {
+                        node.protected_group_names(false, &mut names);
+                    }
+                    for (id, name) in names {
+                        if let Some(next_name) = next
+                            .object_tree
+                            .iter()
+                            .flatten()
+                            .find_map(|node| node.group_name(id))
+                        {
+                            if next_name != name {
+                                return Err("Unlock the group before renaming it".into());
+                            }
+                        }
+                    }
                     for old in self
                         .document
                         .shapes
                         .iter()
-                        .filter(|s| s.locked == Some(true))
+                        .filter(|s| s.locked == Some(true) || inherited_locks.contains(&s.id))
                     {
                         let mut candidate = next
                             .shapes
@@ -636,7 +779,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 12;
+                next.version = 13;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -683,7 +826,14 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 12;
+        doc.version = 13;
+        doc.object_tree = Some(
+            doc.shapes
+                .iter()
+                .rev()
+                .map(|s| ObjectNode::Object { id: s.id.clone() })
+                .collect(),
+        );
         let group:StitchGroup=serde_json::from_str(r#"{"id":"st","shapeId":"a","edges":["line:2:edge:0"],"side":1,"settings":{"style":"french","spacing":3.85,"inset":3.0,"alignment":"center"},"closed":false}"#).unwrap();
         doc.stitch_groups.push(group);
         let mut editor = Editor::new();
@@ -740,7 +890,7 @@ mod tests {
     #[test]
     fn capabilities_and_version_errors() {
         let editor = Editor::default();
-        assert!(editor.capabilities().contains("[5,6,7,8,9,10,11,12]"));
+        assert!(editor.capabilities().contains("[5,6,7,8,9,10,11,12,13]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -772,7 +922,14 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 12;
+        d.version = 13;
+        d.object_tree = Some(
+            d.shapes
+                .iter()
+                .rev()
+                .map(|s| ObjectNode::Object { id: s.id.clone() })
+                .collect(),
+        );
         d.shapes[0].kind = Kind::ControlCurve;
         d.shapes[0].handles = Some(vec![
             CurveHandles {
@@ -834,6 +991,63 @@ mod tests {
             .is_err());
     }
     #[test]
+    fn group_inheritance_and_organization() {
+        let mut e = Editor::new();
+        let mut d: Document = serde_json::from_str(&sample()).unwrap();
+        d.object_tree = Some(vec![ObjectNode::Group {
+            id: "g".into(),
+            name: "Group".into(),
+            hidden: None,
+            locked: Some(true),
+            children: vec![ObjectNode::Object { id: "a".into() }],
+        }]);
+        e.execute("commit", &serde_json::to_string(&d).unwrap(), 0)
+            .unwrap();
+        d = e.document.clone();
+        d.shapes[0].name = "Forbidden".into();
+        assert!(e
+            .execute("preview", &serde_json::to_string(&d).unwrap(), 1)
+            .is_err());
+        assert!(e
+            .execute("commit", &serde_json::to_string(&d).unwrap(), 1)
+            .is_err());
+        d = e.document.clone();
+        if let ObjectNode::Group { name, .. } = &mut d.object_tree.as_mut().unwrap()[0] {
+            *name = "Forbidden".into();
+        }
+        assert!(e
+            .execute("commit", &serde_json::to_string(&d).unwrap(), 1)
+            .is_err());
+        d = e.document.clone();
+        d.object_tree = Some(vec![ObjectNode::Object { id: "a".into() }]);
+        e.execute("commit", &serde_json::to_string(&d).unwrap(), 1)
+            .unwrap();
+        d.shapes[0].name = "Allowed".into();
+        e.execute("commit", &serde_json::to_string(&d).unwrap(), 2)
+            .unwrap();
+        e.execute("undo", "", 3).unwrap();
+        e.execute("undo", "", 4).unwrap();
+        assert!(matches!(
+            e.document.object_tree.as_ref().unwrap()[0],
+            ObjectNode::Group { .. }
+        ));
+    }
+    #[test]
+    fn group_tree_rejects_duplicate_and_missing_members() {
+        let mut d: Document = serde_json::from_str(&sample()).unwrap();
+        d.object_tree = Some(vec![]);
+        assert!(d.validate().is_err());
+        d.object_tree = Some(vec![
+            ObjectNode::Object { id: "a".into() },
+            ObjectNode::Object { id: "a".into() },
+        ]);
+        assert!(d.validate().is_err());
+        d.object_tree = Some(vec![ObjectNode::Object {
+            id: "missing".into(),
+        }]);
+        assert!(d.validate().is_err());
+    }
+    #[test]
     fn history() {
         let mut e = Editor::new();
         e.execute("commit", &sample(), 0).unwrap();
@@ -867,7 +1081,14 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 12;
+        doc.version = 13;
+        doc.object_tree = Some(
+            doc.shapes
+                .iter()
+                .rev()
+                .map(|s| ObjectNode::Object { id: s.id.clone() })
+                .collect(),
+        );
         doc.shapes[0].transform = Some(Affine {
             a: 2.0,
             b: 0.3,

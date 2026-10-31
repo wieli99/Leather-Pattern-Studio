@@ -8,7 +8,7 @@ import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import Viewport from "./Viewport.vue";
 import ToolButton from "./ToolButton.vue";
-import ObjectRow from "./ObjectRow.vue";
+import ObjectPanel from "./ObjectPanel.vue";
 import Inspector from "./Inspector.vue";
 import Settings from "./Settings.vue";
 import StatusBar from "./StatusBar.vue";
@@ -259,16 +259,8 @@ onMounted(() => {
         <div v-if="!e.ready" class="loading">{{ e.message }}</div>
       </div>
       <aside v-if="panel">
-        <h2>Objects</h2>
-        <div class="objects">
-          <ObjectRow
-            v-for="shape in e.document.shapes"
-            :key="shape.id"
-            :shape="shape"
-            :selected="e.selected.includes(shape.id)"
-          />
-          <p v-if="!e.document.shapes.length">Your shapes will appear here.</p>
-        </div>
+        <ObjectPanel />
+        <hr class="sidebar-separator" />
         <h2>Properties</h2>
         <Inspector />
         <div class="inspector-hint">

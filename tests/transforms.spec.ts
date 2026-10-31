@@ -43,7 +43,7 @@ async function setup(page: any) {
     ),
   });
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
-  await page.locator(".objects .object-select").first().click();
+  await page.getByRole("button", { name: "Rounded", exact: true }).click();
 }
 test("numeric transforms, pivot, cancellation, history and affine file recovery", async ({
   page,
@@ -92,7 +92,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
     .click({ position: { x: 100, y: 100 } });
   await page.getByRole("button", { name: "Reset pivot", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await page.locator(".objects .object-select").nth(1).click();
+  await page.getByRole("button", { name: "Arc", exact: true }).click();
   await page.getByRole("button", { name: "Resize", exact: true }).click();
   await page.getByLabel("X factor", { exact: true }).fill("2");
   await page.getByLabel("Y factor", { exact: true }).fill("0");
@@ -111,7 +111,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const saved = (await (await downloading).path())!;
   const document = JSON.parse(await readFile(saved, "utf8"));
-  expect(document.version).toBe(11);
+  expect(document.version).toBe(13);
   expect(document.shapes[0].radius).toBe(8);
   expect(document.shapes.every((s: any) => s.transform)).toBe(true);
   expect(document.shapes[1].kind).toBe("arc");
@@ -137,7 +137,7 @@ test("shortcuts activate tools, selection resets sessions and compact viewport k
   await expect(page.getByLabel("X (mm)", { exact: true })).toBeVisible();
   await page.keyboard.press("s");
   await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
-  await page.locator(".objects .object-select").nth(1).click();
+  await page.getByRole("button", { name: "Arc", exact: true }).click();
   await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.setViewportSize({ width: 800, height: 600 });

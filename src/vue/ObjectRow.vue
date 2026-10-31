@@ -13,15 +13,32 @@ import { editor } from "../editor/instance";
 import { useEditorSelector } from "./useEditorSelector";
 import ModeIcon from "./ModeIcon.vue";
 
-const canToggleObjectState = useEditorSelector(editor, () => editor.canToggleObjectState);
-const hasCopiedStyling = useEditorSelector(editor, () => !!editor.copiedStyling);
 const props = defineProps<{ shape: Shape; selected: boolean }>();
+const inheritedState = useEditorSelector(
+  editor,
+  () =>
+    `${editor.isHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}`,
+);
+const canToggleObjectState = useEditorSelector(
+  editor,
+  () => editor.canToggleObjectState,
+);
+const hasCopiedStyling = useEditorSelector(
+  editor,
+  () => !!editor.copiedStyling,
+);
+
 const renaming = ref(false),
   draft = ref(props.shape.name),
   input = ref<HTMLInputElement | null>(null);
 let settled = false;
 async function rename() {
-  if (editor.transformTool || editor.stitchMode || props.shape.locked) return;
+  if (
+    editor.transformTool ||
+    editor.stitchMode ||
+    editor.isLocked(props.shape.id)
+  )
+    return;
   settled = false;
   draft.value = props.shape.name;
   renaming.value = true;
@@ -39,6 +56,8 @@ function finish(cancel = false) {
 }
 function select(event: MouseEvent) {
   if (editor.transformTool || editor.stitchMode) return;
+  editor.selectedGroups = [];
+  editor.panelRevision++;
   (event.currentTarget as HTMLButtonElement).focus();
   editor.cancel();
   editor.selected = event.shiftKey
@@ -51,6 +70,7 @@ function select(event: MouseEvent) {
 function openMenu() {
   if (!editor.canStyle) return;
   if (!editor.selected.includes(props.shape.id)) {
+    editor.selectedGroups = [];
     editor.selected = [props.shape.id];
     editor.notify();
   }
@@ -70,45 +90,141 @@ function openMenu() {
       @keydown.esc.prevent="finish(true)"
     />
   </div>
-  <div v-else class="object-row" :class="{ hidden: shape.hidden }">
-  <ContextMenuRoot>
-    <ContextMenuTrigger as-child @contextmenu="openMenu">
+  <div
+    v-else
+    class="object-row"
+    :class="{ hidden: editor.isHidden(shape.id) }"
+    :data-state-revision="inheritedState"
+  >
+    <ContextMenuRoot>
+      <ContextMenuTrigger as-child @contextmenu="openMenu">
+        <button
+          class="object-select"
+          :class="{ selected }"
+          @click="select"
+          title="Rename (F2 or double-click)"
+          @dblclick="rename"
+          @keydown.f2.prevent="rename"
+        >
+          <span>
+            <ModeIcon :mode="shape.kind === 'line' ? 'polyline' : shape.kind" />
+          </span>
+          {{ shape.name }}
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuPortal>
+        <ContextMenuContent class="object-context-menu" @keydown.esc.stop>
+          <ContextMenuItem
+            :disabled="!editor.canStyle"
+            @select="editor.newGroup(true)"
+            >Group Selection</ContextMenuItem
+          >
+          <ContextMenuItem
+            :disabled="!editor.canStyle"
+            @select="editor.duplicate()"
+            >Duplicate</ContextMenuItem
+          >
+          <ContextMenuItem
+            :disabled="!editor.canStyle || shapeArea(shape) === null"
+            @select="editor.copyStyling(shape.id)"
+            >Copy Styling</ContextMenuItem
+          >
+          <ContextMenuItem
+            v-if="hasCopiedStyling"
+            :disabled="
+              !editor.canStyle ||
+              editor.selectionLocked ||
+              !editor.active.some((s) => shapeArea(s) !== null)
+            "
+            @select="editor.pasteStyling()"
+            >Paste Styling</ContextMenuItem
+          >
+          <ContextMenuItem
+            :disabled="!editor.canStyle || editor.isLocked(shape.id)"
+            @select="rename"
+            >Rename</ContextMenuItem
+          >
+        </ContextMenuContent>
+      </ContextMenuPortal>
+    </ContextMenuRoot>
     <button
-      class="object-select"
-      :class="{ selected }"
-      @click="select"
-      title="Rename (F2 or double-click)"
-      @dblclick="rename"
-      @keydown.f2.prevent="rename"
+      class="object-state"
+      :disabled="!canToggleObjectState"
+      :aria-label="`${shape.hidden ? 'Show' : 'Hide'} ${shape.name}`"
+      :aria-pressed="!!shape.hidden"
+      :title="
+        editor.isHidden(shape.id) && !shape.hidden
+          ? `Hidden by ${editor.inheritedStateSource(shape.id, 'hidden')}; toggles local visibility`
+          : shape.hidden
+            ? 'Show object'
+            : 'Hide object'
+      "
+      @click="editor.toggleObjectState(shape.id, 'hidden')"
     >
-      <span>
-        <ModeIcon :mode="shape.kind === 'line' ? 'polyline' : shape.kind" />
-      </span>
-      {{ shape.name }}
+      <svg
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="M2 12 Q12 0 22 12 Q12 24 2 12Z" />
+        <circle cx="12" cy="12" r="3" />
+        <path v-if="shape.hidden" d="M3 3L21 21" />
+      </svg>
     </button>
-    </ContextMenuTrigger>
-    <ContextMenuPortal>
-      <ContextMenuContent class="object-context-menu" @keydown.esc.stop>
-      <ContextMenuItem :disabled="!editor.canStyle" @select="editor.duplicate()">Duplicate</ContextMenuItem>
-      <ContextMenuItem :disabled="!editor.canStyle || shapeArea(shape) === null" @select="editor.copyStyling(shape.id)">Copy Styling</ContextMenuItem>
-      <ContextMenuItem v-if="hasCopiedStyling" :disabled="!editor.canStyle || editor.active.some(s => s.locked) || !editor.active.some(s => shapeArea(s) !== null)" @select="editor.pasteStyling()">Paste Styling</ContextMenuItem>
-      <ContextMenuItem :disabled="!editor.canStyle || !!shape.locked" @select="rename">Rename</ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenuPortal>
-  </ContextMenuRoot>
-  <button class="object-state" :disabled="!canToggleObjectState" :aria-label="`${shape.hidden ? 'Show' : 'Hide'} ${shape.name}`" :aria-pressed="!!shape.hidden" :title="shape.hidden ? 'Show object' : 'Hide object'" @click="editor.toggleObjectState(shape.id, 'hidden')">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12 Q12 0 22 12 Q12 24 2 12Z"/><circle cx="12" cy="12" r="3"/><path v-if="shape.hidden" d="M3 3L21 21"/></svg>
-  </button>
-  <button class="object-state" :disabled="!canToggleObjectState" :aria-label="`${shape.locked ? 'Unlock' : 'Lock'} ${shape.name}`" :aria-pressed="!!shape.locked" :title="shape.locked ? 'Unlock object' : 'Lock object'" @click="editor.toggleObjectState(shape.id, 'locked')">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="11" rx="2"/><path :d="shape.locked ? 'M8 10V6a4 4 0 018 0v4' : 'M8 10V6a4 4 0 018 0'"/></svg>
-  </button>
+    <button
+      class="object-state"
+      :disabled="!canToggleObjectState"
+      :aria-label="`${shape.locked ? 'Unlock' : 'Lock'} ${shape.name}`"
+      :aria-pressed="!!shape.locked"
+      :title="
+        editor.isLocked(shape.id) && !shape.locked
+          ? `Locked by ${editor.inheritedStateSource(shape.id, 'locked')}; toggles local lock`
+          : shape.locked
+            ? 'Unlock object'
+            : 'Lock object'
+      "
+      @click="editor.toggleObjectState(shape.id, 'locked')"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <path
+          :d="shape.locked ? 'M8 10V6a4 4 0 018 0v4' : 'M8 10V6a4 4 0 018 0'"
+        />
+      </svg>
+    </button>
   </div>
 </template>
 
 <style>
-.object-row { display: flex; align-items: center; }
-.object-row.hidden { opacity: .55; }
-.objects .object-state { width: 30px; flex: 0 0 30px; padding: 6px; }
+.objects .object-select {
+  touch-action: none;
+  user-select: none;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.object-row {
+  display: flex;
+  align-items: center;
+}
+.object-row.hidden {
+  opacity: 0.55;
+}
+.objects .object-state {
+  width: 30px;
+  flex: 0 0 30px;
+  padding: 6px;
+}
 
 .object-context-menu {
   z-index: 100;
@@ -128,7 +244,7 @@ function openMenu() {
   background: color-mix(in srgb, var(--accent) 18%, var(--panel));
 }
 .object-context-menu [data-disabled] {
-  opacity: .45;
+  opacity: 0.45;
   cursor: default;
 }
 </style>

@@ -179,7 +179,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       } else if (!s.stitchOnly || selected || preview) ctx.stroke(path);
       ctx.restore();
     }
-    (editor.preview ?? editor.document).shapes.filter(s => !s.hidden).forEach((s) => shape(s));
+    (editor.preview ?? editor.document).shapes.filter(s => !editor.isHidden(s.id)).forEach((s) => shape(s));
     drawStitches(ctx,editor,color);
     if (editor.trimMode && editor.pointerInside && editor.trimHighlight) {
       const [a] = editor.trimHighlight;

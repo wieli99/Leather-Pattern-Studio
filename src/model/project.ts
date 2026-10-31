@@ -1,3 +1,4 @@
+import { objectTreeFromShapes, validateObjectTree, treeInDrawingOrder, type ObjectNode } from "./objectTree";
 import { validateStitchGroups } from "./stitchGeometry";
 import type { StitchGroup } from "./stitchGeometry";
 import type { StitchLink } from "../generated/StitchLink";
@@ -8,18 +9,19 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
-  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
   shapes: Shape[];
+  objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const emptyDocument = (): Doc => ({ version: 12, shapes: [] });
+export const emptyDocument = (): Doc => ({ version: 13, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -262,11 +264,13 @@ export function parseProject(text: string): Doc {
       members.add(member);
     }
   }
+  const objectTree = input.objectTree === undefined ? objectTreeFromShapes(result) : validateObjectTree(input.objectTree, result);
   return {
+    objectTree,
     stitchLinks,
     stitchGroups,
-    version: 12,
-    shapes: result,
+    version: 13,
+    shapes: treeInDrawingOrder(objectTree, result),
     guides: guides.map((g: Guide) => ({
       id: g.id,
       axis: g.axis,

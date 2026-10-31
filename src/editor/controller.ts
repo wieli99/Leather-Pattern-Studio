@@ -1,3 +1,4 @@
+import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
 import { trimAt } from "../model/trim";
@@ -69,8 +70,10 @@ import {
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
-const fingerprint = (doc: Doc) =>
-  JSON.stringify(parseProject(JSON.stringify(doc)));
+const fingerprint = (doc: Doc) => {
+  const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
+  return JSON.stringify(parseProject(JSON.stringify({ ...doc, objectTree: tree, shapes: treeInDrawingOrder(tree, doc.shapes) })));
+};
 export type Gesture = {
   kind: "move" | "scale" | "rotate" | "vertex" | "corner" | "marquee" | "pan";
   start: Point;
@@ -200,7 +203,7 @@ export class Controller {
     if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
     if (!this.preview) return !this.transformError;
     try {
-      parseProject(JSON.stringify(this.preview));
+      parseProject(JSON.stringify(this.normalizeTree(this.preview)));
       return !this.transformError;
     } catch {
       return false;
@@ -304,7 +307,7 @@ export class Controller {
     next = reconcileStitches(next, baseline);
     this.transformDraft = next;
     try {
-      parseProject(JSON.stringify(next));
+      parseProject(JSON.stringify(this.normalizeTree(next)));
       this.transformError = "";
       this.preview = next;
       void this.validatePreview(next);
@@ -429,6 +432,8 @@ export class Controller {
       this.lastPolygon,
       this.lastPolyline,
       this.selected.join(","),
+      this.selectedGroups.join(","),
+      this.panelRevision,
       this.pending.length,
       !!this.guideDrag,
       this.grid,
@@ -464,7 +469,7 @@ export class Controller {
     )
       return null;
     const raw = this.anchorPointer;
-    const hit = [...this.document.shapes.filter(s => !s.hidden)]
+    const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
       .reverse()
       .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
     let point: Point | null = null;
@@ -519,9 +524,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 12)
+      if (initial.document.version !== 13)
         throw Error(
-          `Application expects document version 12, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 13, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -555,9 +560,14 @@ export class Controller {
     this.revision = s.revision;
     this.canUndo = s.canUndo;
     this.canRedo = s.canRedo;
-    this.selected = this.selected.filter((id) =>
-      s.document.shapes.some((s) => s.id === id),
-    );
+    this.selectedGroups = this.selectedGroups.filter(id => findObjectNode(this.tree, id)?.kind === "group");
+    this.selected = [...new Set([
+      ...this.selected.filter(id => s.document.shapes.some(shape => shape.id === id)),
+      ...this.selectedGroups.flatMap(id => {
+        const node = findObjectNode(this.tree, id);
+        return node?.kind === "group" ? flattenObjectTree(node.children) : [];
+      }),
+    ])];
   }
   scheduleRecovery() {
     clearTimeout(this.timer);
@@ -566,6 +576,7 @@ export class Controller {
         document: this.stitchOriginal ?? this.document,
         name: this.name,
         time: Date.now(),
+        collapsedGroupIds: [...this.collapsedGroups],
       }).catch(() =>
         this.fail(Error("Recovery storage failed. Save a project file.")),
       );
@@ -691,7 +702,7 @@ export class Controller {
       target: StitchGroup | null = null;
     for (const group of this.stitchGroups) {
       const shape = this.document.shapes.find((s) => s.id === group.shapeId);
-      if (!shape || shape.hidden || shape.locked) continue;
+      if (!shape || this.isHidden(shape.id) || this.isLocked(shape.id)) continue;
       try {
         const points = stitchGeometry(shape, group).points;
         for (let i = 1; i < points.length; i++) {
@@ -713,7 +724,7 @@ export class Controller {
     let best = 24 / this.zoom,
       target: StitchGroup | null = null;
     for (const s of this.document.shapes.filter((s) =>
-      this.selected.includes(s.id),
+      this.selected.includes(s.id) && !this.isHidden(s.id) && !this.isLocked(s.id),
     )) {
       for (const edge of stitchEdges(s))
         for (let i = 1; i < edge.points.length; i++) {
@@ -876,7 +887,7 @@ export class Controller {
     this.notify();
   }
   async applyStitch() {
-    if (this.active.some(s => s.locked)) return;
+    if (this.selectionLocked) return;
     if (this.stitchOriginal) {
       if (this.busy || this.stitchError) return;
       const draft = this.stitchDraft;
@@ -1060,11 +1071,16 @@ export class Controller {
     this.stitchDraft = null;
     this.notify();
   }
+  normalizeTree(document: Doc): Doc {
+    const objectTree = reconcileObjectTree(document.objectTree ?? objectTreeFromShapes(document.shapes), document.shapes);
+    return { ...document, objectTree, shapes: treeInDrawingOrder(objectTree, document.shapes) };
+  }
   async commit(document: Doc) {
+    document = this.normalizeTree(document);
     if (this.stitchOriginal) {
       try {
         this.document = parseProject(
-          JSON.stringify(reconcileStitches(document, this.document)),
+          JSON.stringify(this.normalizeTree(reconcileStitches(document, this.document))),
         );
         this.notify();
         return true;
@@ -1076,7 +1092,7 @@ export class Controller {
     }
     try {
       const validated = parseProject(
-        JSON.stringify(reconcileStitches(document, this.document)),
+        JSON.stringify(this.normalizeTree(reconcileStitches(document, this.document))),
       );
       this.pendingDocument = validated;
       await this.transact("commit", validated);
@@ -1090,7 +1106,7 @@ export class Controller {
     }
   }
   async validatePreview(document: Doc) {
-    this.queuedPreview = reconcileStitches(document, this.document);
+    this.queuedPreview = reconcileStitches(this.normalizeTree(document), this.document);
     if (this.previewRunning) return;
     this.previewRunning = true;
     try {
@@ -1429,7 +1445,7 @@ export class Controller {
     }
   }
   beginProperty() {
-    if (this.active.some(s => s.locked)) return;
+    if (this.selectionLocked) return;
     if (this.transformTool || this.stitchMode) return;
     if (!this.propertySession)
       this.propertySession = {
@@ -1456,7 +1472,7 @@ export class Controller {
   mirrorTargetAt(point: Point) {
     const pivot = this.transformPivot;
     const candidates: { axis: string; line: [Point, Point]; distance: number }[] = [];
-    for (const shape of [...(this.transformOriginal?.shapes ?? [])].reverse()) {
+    for (const shape of [...(this.transformOriginal?.shapes ?? [])].filter(s => !this.isHidden(s.id)).reverse()) {
       for (const line of boundary(shape).lines) {
         if (distance(...line) > 1e-9)
           candidates.push({ axis: "edge", line, distance: distanceToSegment(point, ...line) });
@@ -1498,7 +1514,7 @@ export class Controller {
     });
   }
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
-    if (this.active.some(s => s.locked)) return;
+    if (this.selectionLocked) return;
     if (!this.ready || this.busy || !this.selected.length) return;
     if (tool === "corner" && !this.canEditCorners) return;
     if (this.propertySession) await this.finishProperty();
@@ -1561,7 +1577,7 @@ export class Controller {
   trimMode = false;
   trimDraft: Doc | null = null;
   async applyTrim() {
-    if (this.active.some(s => s.locked)) return;
+    if (this.selectionLocked) return;
     if (!this.trimDraft || this.transformError || this.busy) return;
     const next = this.trimDraft;
     const mergedId = this.mergeMode
@@ -1642,7 +1658,7 @@ export class Controller {
     const tolerance = 8 / this.zoom;
     if (this.objects) {
       let best = tolerance;
-      for (const s of this.document.shapes.filter(s => !s.hidden)) {
+      for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
         if (this.gesture?.selection.includes(s.id)) continue;
         for (const candidate of snapCandidates(s)) {
           const d = distance(candidate.point, p);
@@ -1665,7 +1681,7 @@ export class Controller {
         }
       }
       if (this.snapTarget) return this.snapTarget;
-      for (const s of this.document.shapes.filter(s => !s.hidden)) {
+      for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
         if (this.gesture?.selection.includes(s.id)) continue;
         const box = bounds([s]);
         if (
@@ -1735,8 +1751,100 @@ export class Controller {
     }
     return p;
   }
+  get tree(): ObjectNode[] { return this.document.objectTree ?? objectTreeFromShapes(this.document.shapes); }
+  inheritedStateSource(id: string, field: "hidden" | "locked") { return inheritedStateSource(this.tree, id, field); }
+  isHidden(id: string) { return objectState(this.document, id).hidden; }
+  isLocked(id: string) { return objectState(this.document, id).locked; }
+  selectedGroups: string[] = [];
+  collapsedGroups = new Set<string>();
+  panelRevision = 0;
+  selectGroup(id: string, additive = false) {
+    if (!this.canToggleObjectState) return;
+    const node = findObjectNode(this.tree, id);
+    if (!node || node.kind !== "group") return;
+    const ids = flattenObjectTree(node.children);
+    if (!additive) { this.selected = ids; this.selectedGroups = [id]; }
+    else if (this.selectedGroups.includes(id)) {
+      this.selectedGroups = this.selectedGroups.filter(x => x !== id);
+      this.selected = this.selected.filter(x => !ids.includes(x));
+    } else { this.selectedGroups.push(id); this.selected = [...new Set([...this.selected, ...ids])]; }
+    this.panelRevision++; this.notify();
+  }
+  toggleGroupExpanded(id: string) {
+    if (this.collapsedGroups.has(id)) this.collapsedGroups.delete(id); else this.collapsedGroups.add(id);
+    this.panelRevision++; this.scheduleRecovery(); this.notify();
+  }
+  async toggleGroupState(id: string, field: "hidden" | "locked") {
+    if (!this.canToggleObjectState) return;
+    const node = findObjectNode(this.tree, id);
+    if (!node || node.kind !== "group") return;
+    const tree = mapObjectTree(this.tree, n => n.id === id && n.kind === "group" ? { ...n, [field]: !n[field] } : n);
+    if (await this.commit({ ...this.document, objectTree: tree })) {
+      this.selected = this.selected.filter(x => !this.isHidden(x));
+      this.selectedGroups = this.selectedGroups.filter(x => !this.isHidden(x));
+      this.panelRevision++; this.notify();
+    }
+  }
+  async renameGroup(id: string, name: string) {
+    if (!this.canToggleObjectState || this.isLocked(id) || !name.trim() || name.trim().length > 200) return;
+    await this.commit({ ...this.document, objectTree: mapObjectTree(this.tree, n => n.id === id && n.kind === "group" ? { ...n, name: name.trim() } : n) });
+  }
+  panelSelection(dragged: string): string[] {
+    if (!this.selected.includes(dragged) && !this.selectedGroups.includes(dragged)) return [dragged];
+    return [...this.selectedGroups, ...this.selected];
+  }
+  async movePanelItems(ids: string[], parent: string | null, index: number, revision = this.revision) {
+    if (!this.canToggleObjectState || revision !== this.revision) return;
+    try { await this.commit({ ...this.document, objectTree: moveObjectNodes(this.tree, ids, parent, index) }); }
+    catch (error) { this.fail(error); }
+  }
+  async newGroup(fromSelection = !!(this.selected.length || this.selectedGroups.length)): Promise<string | undefined> {
+    if (!this.canToggleObjectState) return;
+    const id = crypto.randomUUID();
+    let tree = this.tree;
+    const selected = new Set([...this.selectedGroups, ...this.selected]);
+    if (fromSelection && !selected.size) return;
+    const picked: ObjectNode[] = [];
+    function take(nodes: ObjectNode[]): ObjectNode[] {
+      return nodes.flatMap(n => {
+        if (selected.has(n.id)) { picked.push(n); return []; }
+        return [n.kind === "group" ? { ...n, children: take(n.children) } : n];
+      });
+    }
+    // Find the lowest common ancestor before extracting the selected roots.
+    let parent: string | null = null;
+    let siblings = tree;
+    if (fromSelection) {
+      while (true) {
+        const containing = siblings.find(n => n.kind === "group" &&
+          [...selected].every(x => !!findObjectNode(n.children, x)));
+        if (!containing || containing.kind !== "group") break;
+        parent = containing.id; siblings = containing.children;
+      }
+    }
+    const first = fromSelection ? siblings.findIndex(n => selected.has(n.id) ||
+      (n.kind === "group" && [...selected].some(x => !!findObjectNode(n.children, x)))) : 0;
+    tree = fromSelection ? take(tree) : tree;
+    const group: ObjectNode = { kind: "group", id, name: "Group", children: picked };
+    function insert(nodes: ObjectNode[], current: string | null): ObjectNode[] {
+      if (current === parent) return [...nodes.slice(0, Math.max(0, first)), group, ...nodes.slice(Math.max(0, first))];
+      return nodes.map(n => n.kind === "group" ? { ...n, children: insert(n.children, n.id) } : n);
+    }
+    if (await this.commit({ ...this.document, objectTree: insert(tree, null) })) {
+      this.selectedGroups = [id]; this.selected = flattenObjectTree(picked); this.panelRevision++; this.notify(); return id;
+    }
+  }
+  async ungroup(id: string) {
+    if (!this.canToggleObjectState) return;
+    function remove(nodes: ObjectNode[]): ObjectNode[] {
+      return nodes.flatMap(n => n.id === id && n.kind === "group" ? n.children :
+        [n.kind === "group" ? { ...n, children: remove(n.children) } : n]);
+    }
+    await this.commit({ ...this.document, objectTree: remove(this.tree) });
+    this.selectedGroups = this.selectedGroups.filter(x => x !== id); this.panelRevision++; this.notify();
+  }
   get selectionLocked() {
-    return this.document.shapes.some(s => s.locked && this.selected.includes(s.id));
+    return this.document.shapes.some(s => this.isLocked(s.id) && this.selected.includes(s.id));
   }
   get active() {
     return (
@@ -1757,7 +1865,7 @@ export class Controller {
     handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
-    if (!this.active.length || this.active.some(s => s.locked || s.hidden) || this.transformTool === "mirror") return [];
+    if (!this.active.length || this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id)) || this.transformTool === "mirror") return [];
     if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
     if (
@@ -1826,7 +1934,7 @@ export class Controller {
     return [...result, ...curveHandles];
   }
   handleAt(raw: Point) {
-    if (this.active.some(s => s.locked || s.hidden)) return;
+    if (this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id))) return;
     if (
       this.transformTool === "rotate" &&
       Math.abs(distance(raw, this.transformPivot) * this.zoom - 60) < 9
@@ -1885,7 +1993,7 @@ export class Controller {
       const tolerance = 8 / this.zoom;
       const candidates = this.objects
         ? this.document.shapes.flatMap((shape) =>
-            (shape.hidden ? [] : snapCandidates(shape)).map((candidate) => ({
+            (this.isHidden(shape.id) ? [] : snapCandidates(shape)).map((candidate) => ({
               shape,
               candidate,
               coordinate: candidate.point[axis],
@@ -1931,7 +2039,7 @@ export class Controller {
         this.snapKind = nearest.candidate.kind;
       } else {
         const result = this.objects
-          ? smartSnap(raw, this.document.shapes.filter(s => !s.hidden), tolerance)
+          ? smartSnap(raw, this.document.shapes.filter(s => !this.isHidden(s.id)), tolerance)
           : null;
         const guide = result?.guides.find((v) => v.axis === axis);
         if (guide) {
@@ -1957,6 +2065,7 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
+    this.selectedGroups = []; this.panelRevision++;
     this.clipboardPixel = { ...pixel };
     this.pointerInside = true;
     const raw = this.world(pixel);
@@ -1965,12 +2074,14 @@ export class Controller {
     if (this.trimMode && button === 2) { void this.applyTrim(); return; }
     if (this.trimMode && !this.mergeMode && button === 0 && !this.space) {
       const baseline = this.trimDraft ?? this.document;
-      const shapes = trimAt(baseline.shapes, raw, 8 / this.zoom);
+      const visible = baseline.shapes.filter(s => !this.isHidden(s.id));
+      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => !this.isLocked(s.id));
+      const shapes = trimmed ? [...trimmed, ...baseline.shapes.filter(s => this.isHidden(s.id))] : null;
       this.trimHighlight = null;
       if (shapes) {
         try {
           const next = reconcileStitches({ ...baseline, shapes }, baseline);
-          parseProject(JSON.stringify(next));
+          parseProject(JSON.stringify(this.normalizeTree(next)));
           this.trimDraft = next;
           this.preview = next;
           this.transformError = "";
@@ -2085,7 +2196,7 @@ export class Controller {
     }
     const handle = this.handleAt(raw);
     if (alt && !this.transformTool && !handle) {
-      const hit = [...this.document.shapes.filter(s => !s.hidden)]
+      const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
         .reverse()
         .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
       if (hit) {
@@ -2183,8 +2294,8 @@ export class Controller {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
       this.trimHighlight = null;
-      trimAt((this.trimDraft ?? this.document).shapes, this.anchorPointer, 8 / this.zoom,
-        span => { this.trimHighlight = span; });
+      trimAt((this.trimDraft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
+        span => { this.trimHighlight = span; }, s => !this.isLocked(s.id));
       this.notify();
       return;
     }
@@ -2515,7 +2626,7 @@ export class Controller {
       this.hoverHandle =
         this.tool === "select" ? (this.handleAt(raw)?.kind ?? "") : "";
       this.hover =
-        [...this.document.shapes.filter(s => !s.hidden)]
+        [...this.document.shapes.filter(s => !this.isHidden(s.id))]
           .reverse()
           .find((s) => hitTest(s, raw, 8 / this.zoom))?.id ?? "";
     }
@@ -2612,7 +2723,7 @@ export class Controller {
           ...g.selection,
           ...this.document.shapes
             .filter((s) => {
-              if (s.hidden) return false;
+              if (this.isHidden(s.id)) return false;
               const b = bounds([s]);
               return g.crossing || ctrl
                 ? intersectsBox(
@@ -2661,7 +2772,7 @@ export class Controller {
         ...this.document,
         shapes: [...this.document.shapes, shape],
       };
-      parseProject(JSON.stringify(next));
+      parseProject(JSON.stringify(this.normalizeTree(next)));
       this.pending = [];
       this.pendingHandles = [];
       this.smartGuides = [];
@@ -2696,7 +2807,7 @@ export class Controller {
     if (next !== shape) await this.edit(id, { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
-    if (this.document.shapes.some(s => this.selected.includes(s.id) && s.locked)) return;
+    if (this.selectionLocked) return;
     if (this.stitchMode) return;
     const source =
       this.propertySession?.next ?? this.pendingDocument ?? this.document;
@@ -2735,11 +2846,16 @@ export class Controller {
     }
   }
   delete() {
-    if (this.active.some(s => s.locked)) return;
+    if (this.selectionLocked) return;
     this.cancel();
-    if (this.selected.length)
+    if (this.selectedGroups.some(id => this.isLocked(id))) return;
+    const groups = new Set(this.selectedGroups);
+    function removeGroups(nodes: ObjectNode[]): ObjectNode[] {
+      return nodes.flatMap(n => groups.has(n.id) ? [] : [n.kind === "group" ? { ...n, children: removeGroups(n.children) } : n]);
+    }
+    if (this.selected.length || groups.size)
       void this.commit({
-        ...this.document,
+        ...this.document, objectTree: removeGroups(this.tree),
         shapes: this.document.shapes.filter(
           (s) => !this.selected.includes(s.id),
         ),
@@ -2758,7 +2874,14 @@ export class Controller {
     if (!shape) return;
     const success = await this.commit({ ...this.document, shapes: this.document.shapes.map(s =>
       s.id === id ? { ...s, [field]: !s[field] } : s) });
-    if (success && field === "hidden" && !shape.hidden) this.selected = this.selected.filter(x => x !== id);
+    if (success && field === "hidden" && !shape.hidden) {
+      this.selected = this.selected.filter(x => x !== id);
+      this.selectedGroups = this.selectedGroups.filter(groupId => {
+        const node = findObjectNode(this.tree, groupId);
+        return node?.kind !== "group" || !flattenObjectTree(node.children).includes(id);
+      });
+      this.panelRevision++;
+    }
     this.notify();
   }
   get canStyle() {
@@ -2786,7 +2909,7 @@ export class Controller {
   }
 
   async pasteStyling(text?: string) {
-    if (this.active.some(s => s.locked)) return;
+    if (this.selectionLocked) return;
     if (!this.canStyle) return;
     const ids = [...this.selected], revision = this.revision;
     try {
@@ -2815,7 +2938,7 @@ export class Controller {
       !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   copyObjects(): string | null {
-    if (!this.canUseClipboard || !this.active.length) return null;
+    if (!this.canUseClipboard || (!this.active.length && !this.selectedGroups.length)) return null;
     this.copiedStyling = null;
     this.stylingClipboardFallback = false;
     this.notify();
@@ -2825,7 +2948,7 @@ export class Controller {
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
-      document: { version: 12, shapes: this.active, stitchGroups: groups,
+      document: { version: 13, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
         })).filter(l => l.members.length >= 2) },
@@ -2841,16 +2964,19 @@ export class Controller {
       if (payload.version !== 1 || !Number.isFinite(payload.anchor?.x) ||
           !Number.isFinite(payload.anchor?.y)) throw Error("Invalid or unsupported object clipboard");
       const source = parseProject(JSON.stringify(payload.document));
-      if (!source.shapes.length) return;
+      if (!source.shapes.length && !source.objectTree?.length) return;
       const ids = new Map(source.shapes.map(s => [s.id, crypto.randomUUID()]));
       const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, crypto.randomUUID()]));
       const copies = source.shapes.map(s => ({
         ...moveShape(s, anchor.x - payload.anchor.x, anchor.y - payload.anchor.y),
         id: ids.get(s.id)!, name: `${s.name} copy`, locked: false,
       }));
+      const remap = (nodes: ObjectNode[]): ObjectNode[] => nodes.map(n => n.kind === "object"
+        ? { ...n, id: ids.get(n.id)! } : { ...n, id: crypto.randomUUID(), locked: false, children: remap(n.children) });
+      const copiedTree = remap(source.objectTree ?? objectTreeFromShapes(source.shapes));
       let linkId = Math.max(0, ...(this.document.stitchLinks ?? []).map(l => l.id));
       const success = await this.commit({
-        ...this.document, shapes: [...this.document.shapes, ...copies],
+        ...this.document, objectTree: [...copiedTree, ...this.tree], shapes: [...this.document.shapes, ...copies],
         stitchGroups: [...this.stitchGroups, ...(source.stitchGroups ?? []).map(g => ({
           ...g, id: groupIds.get(g.id)!, shapeId: ids.get(g.shapeId)!,
         }))],
@@ -2858,20 +2984,31 @@ export class Controller {
           ...l, id: ++linkId, members: l.members.map(id => groupIds.get(id)!),
         }))],
       });
-      if (success) { this.selected = copies.map(s => s.id); this.notify(); }
+      if (success) { this.selectedGroups = []; this.selected = copies.map(s => s.id); this.notify(); }
     } catch (error) { this.fail(error); }
   }
-  duplicate() {
+  async duplicate() {
     this.cancel();
     const copies = this.active.map((s) => ({
       ...moveShape(s, 10, 10),
       id: crypto.randomUUID(),
       name: `${s.name} copy`, locked: false,
     }));
-    if (!copies.length) return;
-    void this.commit({
+    if (!copies.length && !this.selectedGroups.length) return;
+    const ids = new Map(this.active.map((s, i) => [s.id, copies[i].id]));
+    const chosen = new Set([...this.selectedGroups, ...this.selected]);
+    function copyNode(n: ObjectNode): ObjectNode {
+      return n.kind === "object" ? { ...n, id: ids.get(n.id)! } :
+        { ...n, id: crypto.randomUUID(), name: `${n.name} copy`, locked: false, children: n.children.map(copyNode) };
+    }
+    function duplicateNodes(nodes: ObjectNode[]): ObjectNode[] {
+      return nodes.flatMap(n => chosen.has(n.id) ? [copyNode(n), n] :
+        [n.kind === "group" ? { ...n, children: duplicateNodes(n.children) } : n]);
+    }
+    const success = await this.commit({
       ...this.document,
       shapes: [...this.document.shapes, ...copies],
+      objectTree: duplicateNodes(this.tree),
       stitchGroups: [
         ...this.stitchGroups,
         ...this.active.flatMap((source, i) =>
@@ -2886,13 +3023,15 @@ export class Controller {
             })),
         ),
       ],
-    }).then(() => {
+    });
+    if (success) {
+      this.selectedGroups = [];
       this.selected = copies.map((s) => s.id);
       this.notify();
-    });
+    }
   }
   fit(selection = false) {
-    const shapes = (selection ? this.active : this.document.shapes).filter(s => !s.hidden);
+    const shapes = (selection ? this.active : this.document.shapes).filter(s => !this.isHidden(s.id));
     if (!shapes.length) return;
     const b = bounds(shapes);
     this.zoom = Math.max(
@@ -2932,6 +3071,7 @@ export class Controller {
     this.cancel();
     await this.transact("load", emptyDocument());
     this.files.handle = null;
+    this.collapsedGroups.clear(); this.selectedGroups = []; this.panelRevision++;
     this.name = "Untitled.leather.json";
     this.savedBaseline = fingerprint(this.document);
     this.dirty = false;
@@ -2946,6 +3086,8 @@ export class Controller {
       if (!file) return;
       this.cancel();
       await this.transact("load", file.document);
+      this.collapsedGroups = new Set(file.collapsedGroupIds ?? []);
+      this.selectedGroups = []; this.panelRevision++;
       this.name = file.name;
       this.savedBaseline = fingerprint(this.document);
       this.dirty = false;
@@ -2979,7 +3121,7 @@ export class Controller {
       await this.finishProperty();
       await this.transactionQueue;
       const doc = this.document,
-        result = await this.files.save(doc, this.name);
+        result = await this.files.save(doc, this.name, [...this.collapsedGroups]);
       if (result.outcome === "cancelled") return;
       this.name = result.name;
       this.savedBaseline = fingerprint(doc);
@@ -3002,6 +3144,8 @@ export class Controller {
     this.restore = undefined;
     this.cancel();
     await this.transact("load", parseProject(JSON.stringify(value.document)));
+    this.collapsedGroups = new Set(value.collapsedGroupIds ?? []);
+    this.selectedGroups = []; this.panelRevision++;
     this.files.handle = null;
     this.name = value.name;
     this.savedBaseline = "";

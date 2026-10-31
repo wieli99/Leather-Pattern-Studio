@@ -31,7 +31,7 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   await page.getByRole("button", { name: "Redo", exact: true }).click();
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
-  await page.locator(".objects .object-select").last().click();
+  await page.getByRole("button", { name: "Control point curve 2", exact: true }).click();
   await page.getByText("Vertex coordinates", { exact: true }).click();
   const x = page.getByLabel("Vertex 1 X", { exact: true });
   const before = Number(await x.inputValue());
@@ -66,7 +66,7 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await (await chooser).setFiles(path);
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
-  await page.locator(".objects .object-select").last().click();
+  await page.getByRole("button", { name: "Control point curve 2", exact: true }).click();
   await expect(page.getByLabel("Vertex 1 X", { exact: true })).toHaveValue(
     String(before + 10),
   );

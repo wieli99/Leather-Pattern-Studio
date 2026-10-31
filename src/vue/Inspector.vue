@@ -182,7 +182,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
   <p v-if="e.transformTool || e.stitchMode">
     Apply or cancel to edit properties.
   </p>
-  <fieldset v-if="s" class="object-properties" :disabled="!!s.locked">
+  <fieldset v-if="s" class="object-properties" :disabled="editor.isLocked(s.id)">
     <template v-if="s.kind === 'text'">
       <Field
         label="Text"
@@ -318,7 +318,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
   </template>
   <div v-if="selected.length" class="actions">
     <button :disabled="!e.ready" @click="editor.duplicate()">Duplicate</button>
-    <button :disabled="!e.ready || editor.active.some(s => s.locked)" @click="editor.delete()">Delete</button>
+    <button :disabled="!e.ready || editor.selectionLocked" @click="editor.delete()">Delete</button>
   </div>
 </template>
 

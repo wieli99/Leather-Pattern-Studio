@@ -1008,3 +1008,17 @@ input[type="number"]::-webkit-outer-spin-button {
   align-items: center;
   gap: 4px;
 }
+
+/* Use the shortcuts divider style throughout the right sidebar. */
+aside hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  height: 0;
+  margin: 16px 0;
+}
+aside .inspector-hint {
+  border-top: 1px solid var(--border);
+}
+aside .sidebar-separator {
+  margin: 0 0 24px;
+}
