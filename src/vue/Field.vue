@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { editableLength, formatLength, parseLength } from "../model/units";
 import { ref, watch } from "vue";
 import { useEditor } from "./useEditor";
 import { editor } from "../editor/instance";
@@ -6,6 +7,7 @@ const e = useEditor();
 const props = withDefaults(
   defineProps<{
     label: string;
+    dimension?: boolean;
     value: string | number;
     min?: number;
     max?: number;
@@ -16,15 +18,15 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ commit: [value: string] }>();
 const format = (v: string | number) =>
-  typeof v === "number" ? String(+v.toFixed(props.precision)) : v;
+  typeof v === "number" ? (props.dimension ? formatLength(v, e.value.units, props.precision) : String(+v.toFixed(props.precision))) : v;
 const draft = ref(format(props.value)),
   invalid = ref(false);
 let focused = false,
   initial = props.value,
   last = draft.value;
 watch(
-  () => props.value,
-  (value) => {
+  () => [props.value, e.value.units] as const,
+  ([value]) => {
     if (!focused) {
       draft.value = format(value);
       last = draft.value;
@@ -34,7 +36,7 @@ watch(
 function change(event: Event) {
   const text = (event.target as HTMLInputElement).value;
   draft.value = text;
-  const n = Number(text);
+  const n = props.dimension ? (parseLength(text, e.value.units) ?? NaN) : Number(text);
   if (
     typeof props.value === "number" &&
     (!text.trim() ||
@@ -48,12 +50,17 @@ function change(event: Event) {
   invalid.value = false;
   if (text !== last) {
     last = text;
-    emit("commit", text);
+    emit("commit", props.dimension ? String(n) : text);
   }
 }
-function focus() {
+function focus(event: FocusEvent) {
   focused = true;
   initial = props.value;
+  if (props.dimension && typeof props.value === "number") draft.value = editableLength(props.value, e.value.units);
+  last = draft.value;
+  const input = event.target as HTMLInputElement;
+  input.value = draft.value;
+  if (props.dimension) input.select();
   editor.beginProperty();
 }
 function blur() {
@@ -74,12 +81,12 @@ function key(event: KeyboardEvent) {
 </script>
 <template>
   <label class="field" data-hint-edit="property">
-    <span>{{ label }}</span>
+    <span>{{ dimension ? label.replace(/mm/g, e.unitSymbol) : label }}</span>
     <input
-      :aria-label="label"
+      :aria-label="dimension ? label.replace(/mm/g, e.unitSymbol) : label"
       :disabled="!e.ready || !!e.transformTool || e.stitchMode"
       :aria-invalid="invalid"
-      :type="typeof value === 'number' ? 'number' : 'text'"
+      :type="typeof value === 'number' && (!dimension || e.units === 'mm') ? 'number' : 'text'"
       :min="min"
       :max="max"
       :maxlength="typeof value === 'string' ? 200 : undefined"
@@ -91,7 +98,7 @@ function key(event: KeyboardEvent) {
       @keydown="key"
     />
     <small v-if="invalid" role="alert">
-      Enter a valid value{{ min !== undefined ? ` ≥ ${min}` : "" }}.
+      Enter a valid value{{ min !== undefined ? ` ≥ ${dimension ? formatLength(min, e.units) : min}` : "" }}.
     </small>
   </label>
 </template>

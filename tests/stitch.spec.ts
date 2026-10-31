@@ -1,3 +1,4 @@
+import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 const shape = {
@@ -60,7 +61,7 @@ test("place, merge and split within a session, then save", async ({
   await page.getByRole("button", { name: "Split all", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await saved(page);
-  expect(doc.version).toBe(15);
+  expect(doc.version).toBe(DOCUMENT_VERSION);
   expect(doc.stitchGroups).toHaveLength(2);
   expect(
     doc.stitchGroups.every((g: any) => g.settings.style === "japanese"),

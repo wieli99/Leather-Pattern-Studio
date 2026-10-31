@@ -1,3 +1,4 @@
+import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 const rectangle = {
@@ -111,7 +112,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const saved = (await (await downloading).path())!;
   const document = JSON.parse(await readFile(saved, "utf8"));
-  expect(document.version).toBe(15);
+  expect(document.version).toBe(DOCUMENT_VERSION);
   expect(document.shapes[0].radius).toBe(8);
   expect(document.shapes.every((s: any) => s.transform)).toBe(true);
   expect(document.shapes[1].kind).toBe("arc");

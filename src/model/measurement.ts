@@ -1,8 +1,9 @@
+import { formatLength, unitSymbol, type UnitMode } from "./units";
 import type { Point, Shape } from "./project";
 import { applyMatrix, shapeMatrix } from "./geometry";
 
 /** Derive dimension strokes from endpoints and a signed local offset. */
-export function measurementGeometry(s: Shape) {
+export function measurementGeometry(s: Shape, units: UnitMode = "mm") {
   const matrix = shapeMatrix(s);
   const [a, b] = s.points.map((p) => applyMatrix(matrix, p));
   const length = Math.hypot(b.x - a.x, b.y - a.y);
@@ -21,7 +22,7 @@ export function measurementGeometry(s: Shape) {
   const offset = offsetScale * (s.measurementOffset ?? 0);
   const start = { x: a.x - uy * offset, y: a.y + ux * offset };
   const end = { x: b.x - uy * offset, y: b.y + ux * offset };
-  const label = `${length.toFixed(2)} mm`;
+  const label = `${units === "mm" ? length.toFixed(2) : formatLength(length, units)} ${unitSymbol(units)}`;
   const fontSize = 3;
   const halfWidth = label.length * fontSize * 0.62 / 2;
   const gap = Math.min(length / 2, halfWidth + 1);

@@ -9,10 +9,10 @@ All variants support two clicks or click-and-drag. Snapping works as for other d
 - **Arrow:** click the tip, then the tail. The open head has a default length of 3 mm. Properties edits Length and Head size (local mm).
 - **Bodyless arrow:** click the tip, then set the pointing direction. Pointer distance does not resize the head; new heads are 3 mm. Change Head size (mm) in Properties afterward.
 - **Crosshair:** click the center, then a point whose distance from the center sets the arm radius. A drag starts at the center. The second point also sets orientation. Properties edits overall end-to-end size and rotation.
-- **Square size guide:** click a corner, then its opposite corner. Grid and object snapping use the same Cartesian coordinates as rectangles. The larger horizontal or vertical pointer distance sets both sides. Properties edits Side length in millimetres. Resizing a selection containing a square guide always scales uniformly.
-- **Ruler size guide:** click zero, then the end. It follows that direction, with millimetre ticks, longer ticks at 5 mm, numbers every 10 mm, and a total length label. Properties edits Length in millimetres.
+- **Square size guide:** click a corner, then its opposite corner. Grid and object snapping use the same Cartesian coordinates as rectangles. The larger horizontal or vertical pointer distance sets both sides. Properties edits Side length in the selected units. Resizing a selection containing a square guide always scales uniformly.
+- **Ruler size guide:** click zero, then the end. It follows that direction, with millimetre ticks (longer at 5 mm and numbered every 10 mm) or 1/16-inch ticks (longer at half inches and numbered every inch), and a total length label. Properties edits Length in the selected units.
 
-Square guides display dimensions outside two adjacent edges. Size guides always display dimensions calculated from their current geometry in document millimetres. Moving, rotating, mirroring, and resizing update the display. Ruler ticks and lettering retain their physical sizes when the guide is resized. Dimension labels show up to two decimal places; ≈ means the displayed value was rounded. For exceptionally long rulers above 10,000 mm, tick spacing increases to keep the editor responsive.
+Square guides display dimensions outside two adjacent edges. Size guides always display dimensions calculated from their current geometry in the selected units. Moving, rotating, mirroring, and resizing update the display. Ruler ticks and lettering retain their physical sizes when the guide is resized. Millimetre labels show up to two decimal places; ≈ means the displayed value was rounded. For exceptionally long rulers above 10,000 mm, tick spacing increases to keep the editor responsive.
 
 Indicators support ordinary selection, grouping, duplication, visibility, locking, and outline styling. They do not support stitching, trimming, corner radii, or area measurement. Saved projects preserve their editable indicator types and dimensions.
 
@@ -23,3 +23,5 @@ Outline width (mm) in Appearance applies to all outlined shapes. The default is 
 Hold Shift while placing arrows, bodyless arrows, ruler size guides, or measurement endpoints to constrain direction to 45° increments. Alt bypasses grid/object snapping while retaining this angle constraint. The third measurement click still sets the dimension-line offset.
 
 For crosshairs, click the center, then an arm endpoint: distance sets radius and direction sets rotation. Hold Shift for 45° increments. Both two-click placement and dragging support this behavior. Square-guide placement retains its rectangle-style Shift behavior.
+
+Measurement labels and ruler divisions follow Settings → Units. Fractional inches use 1/16-inch ruler ticks and labels rounded to 1/64 inch with ≈ for approximate values. Changing units preserves the physical guide dimensions.

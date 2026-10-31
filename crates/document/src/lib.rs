@@ -746,9 +746,9 @@ impl Document {
                 || group.edges.is_empty()
                 || group.edges.len() > 20000
                 || !matches!(group.side, -1 | 1)
-                || [v.start_clearance, v.end_clearance].iter().any(|n| {
-                    !n.is_finite() || *n < 0.0 || (n * 100.0 - (n * 100.0).round()).abs() > 1e-7
-                })
+                || [v.start_clearance, v.end_clearance]
+                    .iter()
+                    .any(|n| !n.is_finite() || *n < 0.0)
                 || [v.round_diameter, v.flat_length]
                     .into_iter()
                     .flatten()
@@ -757,9 +757,6 @@ impl Document {
                 || v.spacing < 0.01
                 || !v.inset.is_finite()
                 || v.inset < 0.0
-                || [v.spacing, v.inset]
-                    .iter()
-                    .any(|n| (n * 100.0 - (n * 100.0).round()).abs() > 1e-7)
                 || group
                     .edges
                     .iter()
@@ -1020,8 +1017,10 @@ mod tests {
         bad.stitch_groups[0].settings.spacing = 0.0;
         assert!(bad.validate().is_err());
         let mut bad = doc.clone();
-        bad.stitch_groups[0].settings.inset = 1.001;
-        assert!(bad.validate().is_err());
+        bad.stitch_groups[0].settings.inset = 25.4 / 64.0;
+        bad.stitch_groups[0].settings.spacing = 25.4 / 16.0;
+        bad.stitch_groups[0].settings.start_clearance = 25.4 / 32.0;
+        assert!(bad.validate().is_ok());
         let mut bad = doc.clone();
         let mut duplicate = bad.stitch_groups[0].clone();
         duplicate.id = "copy".into();

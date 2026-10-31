@@ -108,13 +108,15 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       color = (name: string) => css.getPropertyValue("--" + name).trim();
     const z = editor.zoom,
       pan = editor.pan,
+      gridFactor = editor.units === "mm" ? 10 : 2,
       spacing =
         editor.gridSize *
         Math.max(
           1,
-          Math.pow(10, Math.ceil(Math.log10(18 / (z * editor.gridSize)))),
+          Math.pow(gridFactor, Math.ceil(Math.log(18 / (z * editor.gridSize)) / Math.log(gridFactor))),
         ),
       step = spacing * z;
+    const rulerStep = editor.units === "mm" ? step : 25.4 * Math.pow(2, Math.ceil(Math.log2(60 / (z * 25.4)))) * z;
     ctx.fillStyle = color("grid");
     ctx.strokeStyle = color("grid");
     ctx.lineWidth = 0.5;
@@ -249,7 +251,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         }
       }
       if (isIndicator(s.kind)) {
-        const g = indicatorGeometry(s);
+        const g = indicatorGeometry(s, editor.units);
         ctx.beginPath();
         if (s.kind === "arrow" || s.kind === "arrow-head") {
           ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -270,7 +272,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           ctx.fillText(l.text,0,0); ctx.restore();
         }
       } else if (s.kind === "measurement") {
-        const g = measurementGeometry(s);
+        const g = measurementGeometry(s, editor.units);
         ctx.lineWidth = s.strokeWidth ?? 0.35;
         ctx.beginPath();
         for (const [a, b] of g.lines) {
@@ -428,7 +430,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.fill();
     }
     if (editor.active.length) {
-      const b = editor.selectionBounds;
+      const b = bounds(editor.active, editor.units);
       ctx.strokeStyle = color("accent");
       ctx.lineWidth = 1 / z;
       ctx.setLineDash([4 / z, 4 / z]);
@@ -689,7 +691,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     ctx.font = "11px system-ui";
     ctx.fillStyle = color("muted");
     ctx.fillText(
-      `${editor.gridSize} mm grid${spacing !== editor.gridSize ? ` · shown every ${spacing} mm` : ""}`,
+      `${editor.formatLength(editor.gridSize)} ${editor.unitSymbol} grid${spacing !== editor.gridSize ? ` · shown every ${editor.formatLength(spacing)} ${editor.unitSymbol}` : ""}`,
       editor.rulers ? 30 : 14,
       h - 10,
     );
@@ -726,7 +728,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     }
     ctx.restore();
     if (editor.guideDrag) {
-      const text = `${editor.guideDrag.coordinate.toFixed(2)} mm${editor.guideSnapLabel ? " · " + editor.guideSnapLabel : ""}`;
+      const text = `${editor.formatLength(editor.guideDrag.coordinate)} ${editor.unitSymbol}${editor.guideSnapLabel ? " · " + editor.guideSnapLabel : ""}`;
       const point = editor.screen(editor.cursor);
       const width = ctx.measureText(text).width + 16;
       const left = Math.max(26, Math.min(w - width - 4, point.x + 14));
@@ -744,18 +746,18 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.strokeStyle = color("muted");
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let x = ((pan.x % step) + step) % step; x < w; x += step) {
+      for (let x = ((pan.x % rulerStep) + rulerStep) % rulerStep; x < w; x += rulerStep) {
         ctx.moveTo(x, 16);
         ctx.lineTo(x, 22);
-        ctx.fillText((+((x - pan.x) / z).toFixed(1)).toString(), x + 3, 12);
+        ctx.fillText(editor.formatLength((x - pan.x) / z), x + 3, 12);
       }
-      for (let y = ((pan.y % step) + step) % step; y < h; y += step) {
+      for (let y = ((pan.y % rulerStep) + rulerStep) % rulerStep; y < h; y += rulerStep) {
         ctx.moveTo(16, y);
         ctx.lineTo(22, y);
         ctx.save();
         ctx.translate(11, y - 3);
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText((+((y - pan.y) / z).toFixed(1)).toString(), 0, 0);
+        ctx.fillText(editor.formatLength((y - pan.y) / z), 0, 0);
         ctx.restore();
       }
       ctx.stroke();

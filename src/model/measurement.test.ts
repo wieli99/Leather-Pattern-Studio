@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { construct } from '../editor/construction';
 import { measurementGeometry } from './measurement';
-import { bounds, hitTest, transformShape } from './geometry';
+import { intersectsBox, boundary, bounds, hitTest, transformShape } from './geometry';
 import { parseProject } from './project';
 import { stitchEdges } from './stitchGeometry';
 const measurement = () => ({ ...construct('measurement', [{x:0,y:0},{x:40,y:0},{x:10,y:12}]), id:'dimension', name:'Measurement' });
@@ -61,4 +61,22 @@ test('reversing short endpoints keeps the label above the readable dimension', (
   const g = measurementGeometry(s);
   expect(g.middle.y).toBeLessThan(g.start.y);
   expect(g.angle).toBeCloseTo(2 * Math.PI);
+});
+
+test('inch labels and hit testing use the same presentation geometry', () => {
+  const s = measurement();
+  const g = measurementGeometry(s, 'in-fractional');
+  expect(g.label).toBe('≈1 37/64 in');
+  expect(hitTest(s, g.middle, 0.1, 'in-fractional')).toBe(true);
+  expect(measurementGeometry(s).length).toBe(g.length);
+});
+
+test('crossing selection respects inch measurement label gaps', () => {
+  const s = measurement();
+  const box = {x: 9.99, y: 11.99, width: .02, height: .02};
+  expect(intersectsBox(s, box)).toBe(true);
+  expect(intersectsBox(s, box, .001, 'in-fractional')).toBe(false);
+  for (const units of ['mm', 'in-fractional', 'in-decimal'] as const) {
+    expect(boundary(s, units).lines).toEqual(measurementGeometry(s, units).lines);
+  }
 });

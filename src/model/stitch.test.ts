@@ -44,7 +44,7 @@ test("world-space offset supports either side and rejects collapsed geometry", (
   ).toThrow();
 });
 test("invalid settings and unbounded hole generation fail explicitly", () => {
-  for (const spacing of [0, -1, NaN, Infinity, 1.001])
+  for (const spacing of [0, -1, NaN, Infinity])
     expect(() => validateStitchSettings({ ...settings, spacing })).toThrow();
   expect(() => validateStitchSettings({ ...settings, inset: -1 })).toThrow();
   expect(() => stitchDistances(0, settings)).toThrow();
@@ -73,4 +73,8 @@ test("marker dimensions validate independently and preserve hole positions", () 
       expect(stitchDistances(20, sized)).toEqual(stitchDistances(20, settings));
     }
   }
+});
+
+test("fractional inch spacing and clearance retain sub-centimillimetre precision", () => {
+  expect(() => validateStitchSettings({ ...settings, spacing: 25.4 / 16, inset: 25.4 / 64, startClearance: 25.4 / 32 })).not.toThrow();
 });

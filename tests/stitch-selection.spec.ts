@@ -67,3 +67,26 @@ test("clicking the visible inset stitching selects its group without selecting i
   await canvas.click({ position: { x: 155, y: 240 } });
   await expect(page.locator(".stitch-options")).toContainText("1 selected");
 });
+
+test('selecting a stitch group clears validity from previous displayed settings', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Open', exact: true })).toBeEnabled();
+  await page.evaluate(() => { delete (window as any).showOpenFilePicker; });
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
+  await (await chooser).setFiles({ name: 'validity.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({
+    version: 9,
+    shapes: [{ id: 'r', name: 'Piece', kind: 'rectangle', points: [{x:15,y:20},{x:95,y:85}], radius: 0, rotation: 0 }],
+    stitchGroups: [{id:'row', shapeId:'r', edges:['rectangle:2:edge:0'], side:1, closed:false, settings:{style:'round',spacing:3.85,inset:10,alignment:'center'}}],
+  })) });
+  await expect(page.locator('.objects .object-select')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Piece', exact: true }).click();
+  await page.getByRole('button', { name: 'Stitch line', exact: true }).click();
+  await page.getByLabel('Stitch spacing', { exact: true }).fill('');
+  const apply = page.getByRole('button', { name: 'Apply', exact: true });
+  await expect(apply).toBeDisabled();
+  await page.getByLabel('Pattern drawing canvas').click({position:{x:155,y:240}});
+  await expect(page.getByLabel('Stitch spacing', { exact: true })).toHaveAttribute('aria-invalid', 'false');
+  await page.getByLabel('Stitch inset', { exact: true }).fill('9');
+  await expect(apply).toBeEnabled();
+});

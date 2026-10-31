@@ -84,3 +84,7 @@ Each member shows a chain and link number while the Stitch line tool is active o
 The selection information shows the master line’s hole count. For a broken link with exactly two members it also shows how many holes are missing or too many compared with the other line. Larger links show counts without differences. Unlink is available only when the selection includes a linked line.
 
 Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
+
+All dimensional settings and preset labels follow Settings → Units. Inch mode accepts fractions and decimals, including for marker diameter and length. Physical preset sizes and validity limits are preserved; spacing, inset, and clearances accept finer precision than 0.01 mm. See [Measurements and snapping](#measurements).
+
+Switching to another stitch group resets field validity to that group’s displayed settings; invalid drafts from the previous group do not block valid edits on the new group.

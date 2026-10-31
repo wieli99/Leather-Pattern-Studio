@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LengthInput from "./LengthInput.vue";
 import StitchPresets from "./StitchPresets.vue";
 import { computed, ref, watch } from "vue";
 import { editor } from "../editor/instance";
@@ -23,50 +24,40 @@ const junction = ref(1);
 watch(selected, () => {
   junction.value = selected.value?.closed ? 0 : 1;
 });
-type NumericField = "spacing" | "inset" | "startClearance" | "endClearance";
-const focused = ref<NumericField | null>(null);
-const drafts = ref({
-  spacing: "",
-  inset: "",
-  startClearance: "",
-  endClearance: "",
-});
-function focusNumber(key: NumericField, event: Event) {
-  focused.value = key;
-  drafts.value[key] = (event.target as HTMLInputElement).value;
-}
-function draftNumber(key: NumericField, event: Event) {
-  drafts.value[key] = (event.target as HTMLInputElement).value;
-}
 function cancelDraft() {
-  focused.value = null;
+  invalidFields.clear();
   editor.cancel();
 }
 function edgeLabel(key: string) {
   const parts = key.split(":");
   return `${parts.at(-2) === "corner" ? "Rounded corner" : "Edge"} ${Number(parts.at(-1)) + 1}`;
 }
-function chooseNumber(key: "spacing" | "inset", value: number) {
-  focused.value = null;
-  drafts.value[key] = value.toFixed(2);
+const invalidFields = new Set<keyof StitchSettings>();
+watch(() => e.value.stitchMode, () => invalidFields.clear());
+watch(() => selected.value?.id, () => invalidFields.clear());
+function numberValue(key: keyof StitchSettings, value: number) {
+  if (Number.isFinite(value)) invalidFields.delete(key);
+  else invalidFields.add(key);
   editor.setStitchSettings({ ...settings.value, [key]: value });
+  if (invalidFields.size) {
+    editor.stitchError = "Enter valid stitch dimensions before applying.";
+    editor.notify();
+  }
+}
+function chooseNumber(key: "spacing" | "inset", value: number) {
+  numberValue(key, value);
 }
 function update(key: keyof StitchSettings, event: Event) {
   const raw = (event.target as HTMLInputElement).value;
-  editor.setStitchSettings({
-    ...settings.value,
-    [key]:
-      key === "roundDiameter" ||
-      key === "flatLength" ||
-      key === "spacing" ||
-      key === "inset" ||
-      key === "startClearance" ||
-      key === "endClearance"
-        ? raw.trim()
-          ? Number(raw)
-          : NaN
-        : raw,
-  });
+  if (key === "roundDiameter" || key === "flatLength") {
+    numberValue(key, raw.trim() ? Number(raw) : NaN);
+    return;
+  }
+  editor.setStitchSettings({ ...settings.value, [key]: raw });
+  if (invalidFields.size) {
+    editor.stitchError = "Enter valid stitch dimensions before applying.";
+    editor.notify();
+  }
 }
 const warnings = computed(() =>
   e.value.stitchGroups.flatMap((g) => {
@@ -91,6 +82,7 @@ const warnings = computed(() =>
 <template>
   <section
     v-if="e.stitchMode"
+    :key="selected?.id ?? 'defaults'"
     class="transform-options stitch-options"
     aria-label="Stitch line settings"
     data-hint-edit="stitch"
@@ -127,40 +119,15 @@ const warnings = computed(() =>
       </select></label
     >
     <label v-if="settings.style === 'round' || settings.style === 'flat'">
-      {{ settings.style === 'round' ? 'Diameter (mm)' : 'Length (mm)' }}
-      <input
-        type="range"
-        min="0.1"
-        max="5"
-        step="0.1"
-        :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'"
-        :disabled="e.busy"
-        :value="settings.style === 'round' ? (settings.roundDiameter ?? 0.8) : (settings.flatLength ?? 1.4)"
-        @input="update(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
-      <output>{{ (settings.style === 'round' ? (settings.roundDiameter ?? 0.8) : (settings.flatLength ?? 1.4)).toFixed(1) }} mm</output>
+      {{ settings.style === 'round' ? `Diameter (${e.unitSymbol})` : `Length (${e.unitSymbol})` }}
+      <input v-if="e.units === 'mm'" type="range" min="0.1" max="5" step="0.1" :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'" :value="settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)" @input="update(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
+      <output v-if="e.units === 'mm'">{{ (settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)).toFixed(1) }} mm</output>
+      <LengthInput v-else :value="settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)" :min=".1" :max="5" :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'" @invalid="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', NaN)" @commit="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
     </label>
     <label
-      >Spacing (mm)
+      >Spacing ({{ e.unitSymbol }})
       <span class="stitch-value"
-        ><input
-          aria-label="Stitch spacing"
-          :disabled="e.busy"
-          type="text"
-          inputmode="decimal"
-          min="0.01"
-          step="0.01"
-          :value="
-            focused === 'spacing'
-              ? drafts.spacing
-              : Number.isFinite(settings.spacing)
-                ? settings.spacing.toFixed(2)
-                : ''
-          "
-          @focus="focusNumber('spacing', $event)"
-          @input="draftNumber('spacing', $event)"
-          @blur="focused = null"
-          @change="update('spacing', $event)"
-          @keydown.enter="update('spacing', $event)" /><StitchPresets
+        > <LengthInput fixed aria-label="Stitch spacing" :disabled="e.busy" :value="settings.spacing" :min=".01" @invalid="numberValue('spacing', NaN)" @commit="numberValue('spacing', $event)" /><StitchPresets
           label="Spacing"
           :values="stitchSpacingPresets"
           :disabled="e.busy"
@@ -168,27 +135,9 @@ const warnings = computed(() =>
     ></label>
 
     <label
-      >Inset (mm)
+      >Inset ({{ e.unitSymbol }})
       <span class="stitch-value"
-        ><input
-          aria-label="Stitch inset"
-          :disabled="e.busy"
-          type="text"
-          inputmode="decimal"
-          min="0"
-          step="0.01"
-          :value="
-            focused === 'inset'
-              ? drafts.inset
-              : Number.isFinite(settings.inset)
-                ? settings.inset.toFixed(2)
-                : ''
-          "
-          @focus="focusNumber('inset', $event)"
-          @input="draftNumber('inset', $event)"
-          @blur="focused = null"
-          @change="update('inset', $event)"
-          @keydown.enter="update('inset', $event)" /><StitchPresets
+        > <LengthInput fixed aria-label="Stitch inset" :disabled="e.busy" :value="settings.inset" :min="0" @invalid="numberValue('inset', NaN)" @commit="numberValue('inset', $event)" /><StitchPresets
           label="Inset"
           :values="stitchInsetPresets"
           :disabled="e.busy"
@@ -213,26 +162,9 @@ const warnings = computed(() =>
       :key="field"
       >{{
         field === "startClearance"
-          ? "Start clearance (mm)"
-          : "End clearance (mm)"
-      }}<input
-        type="number"
-        min="0"
-        step="0.01"
-        :disabled="e.busy"
-        :value="
-          focused === field
-            ? drafts[field]
-            : Number.isFinite(settings[field] ?? 0)
-              ? (settings[field] ?? 0).toFixed(2)
-              : ''
-        "
-        @focus="focusNumber(field, $event)"
-        @input="draftNumber(field, $event)"
-        @blur="focused = null"
-        @change="update(field, $event)"
-        @keydown.enter="update(field, $event)"
-    /></label>
+          ? `Start clearance (${e.unitSymbol})`
+          : `End clearance (${e.unitSymbol})`
+      }}<LengthInput fixed :value="settings[field] ?? 0" :min="0" :disabled="e.busy" @invalid="numberValue(field, NaN)" @commit="numberValue(field, $event)" /></label>
     <p v-if="selected">
       {{ e.stitchSelected.length }} selected. Master:
       {{ selected.edges.map(edgeLabel).join(", ") }} · {{ editor.stitchHoleInfo }}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useEditor } from "./useEditor";
 import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
@@ -6,6 +7,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "reka-ui";
+const e = useEditor();
 defineProps<{ label: string; values: readonly number[]; disabled: boolean }>();
 const emit = defineEmits<{ choose: [number] }>();
 </script>
@@ -31,7 +33,7 @@ const emit = defineEmits<{ choose: [number] }>();
           :key="value"
           class="stitch-preset-item"
           @select="emit('choose', value)"
-          >{{ value.toFixed(2) }} mm</DropdownMenuItem
+          >{{ e.units === 'mm' ? value.toFixed(2) : e.formatLength(value) }} {{ e.unitSymbol }}</DropdownMenuItem
         >
       </DropdownMenuContent></DropdownMenuPortal
     >
@@ -41,6 +43,7 @@ const emit = defineEmits<{ choose: [number] }>();
 <style scoped>
 :global(.tool-menu.stitch-preset-menu) {
   position: relative;
+  z-index: 30;
   top: auto;
   left: auto;
   width: max-content;

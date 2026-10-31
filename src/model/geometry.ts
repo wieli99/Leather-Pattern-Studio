@@ -1,3 +1,4 @@
+import type { UnitMode } from "./units";
 import { isIndicator, indicatorGeometry } from "./indicators";
 import { measurementGeometry } from "./measurement";
 import {
@@ -103,8 +104,8 @@ export function rotatePoint(p: Point, c: Point, degrees: number): Point {
 export function worldPoints(s: Shape): Point[] {
   return s.points.map((p) => applyMatrix(shapeMatrix(s), p));
 }
-export function bounds(shapes: Shape[]): Bounds {
-  const points = shapes.flatMap(outlineBounds);
+export function bounds(shapes: Shape[], units: UnitMode = "mm"): Bounds {
+  const points = shapes.flatMap(s => outlineBounds(s, units));
   if (!points.length) return { x: 0, y: 0, width: 100, height: 100 };
   const xs = points.map((p) => p.x),
     ys = points.map((p) => p.y),
@@ -254,10 +255,10 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
     );
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
-export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
+export function hitTest(s: Shape, point: Point, tolerance: number, units: UnitMode = "mm"): boolean {
   tolerance += (s.strokeWidth ?? 0.35)/2;
   if (isIndicator(s.kind)) {
-    const g = indicatorGeometry(s);
+    const g = indicatorGeometry(s, units);
     return g.lines.some(([a,b]) => distanceToSegment(point,a,b) <= tolerance) || g.labels.some(l=>{
       const dx=point.x-l.point.x,dy=point.y-l.point.y;
       return Math.abs(dx*Math.cos(l.angle)+dy*Math.sin(l.angle)) <= l.text.length*l.fontSize*0.62/2+tolerance &&
@@ -265,7 +266,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
     });
   }
   if (s.kind === "measurement") {
-    const g = measurementGeometry(s);
+    const g = measurementGeometry(s, units);
     const dx = point.x - g.middle.x, dy = point.y - g.middle.y;
     const x = dx * Math.cos(g.angle) + dy * Math.sin(g.angle);
     const y = -dx * Math.sin(g.angle) + dy * Math.cos(g.angle);
@@ -565,15 +566,15 @@ export function contains(s: Shape, p: Point): boolean {
 }
 // Parametric boundary pieces retain exact circular and elliptical geometry.
 type Curve = { c: Point; u: Point; v: Point; start: number; span: number };
-export function boundary(s: Shape): {
+export function boundary(s: Shape, units: UnitMode = "mm"): {
   lines: [Point, Point][];
   curves: Curve[];
 } {
-  if (isIndicator(s.kind)) return { lines: indicatorGeometry(s).lines, curves: [] };
-  if (s.kind === "measurement") return { lines: measurementGeometry(s).lines, curves: [] };
+  if (isIndicator(s.kind)) return { lines: indicatorGeometry(s, units).lines, curves: [] };
+  if (s.kind === "measurement") return { lines: measurementGeometry(s, units).lines, curves: [] };
   if (s.transform) {
     const m = s.transform,
-      q = boundary({ ...s, transform: undefined }),
+      q = boundary({ ...s, transform: undefined }, units),
       vector = (p: Point) => ({
         x: m.a * p.x + m.c * p.y,
         y: m.b * p.x + m.d * p.y,
@@ -679,10 +680,10 @@ export function worldCubics(s: Shape): Cubic[] {
   const m = shapeMatrix(s);
   return cubicSegments(s).map((c) => c.map((p) => applyMatrix(m, p)) as Cubic);
 }
-export function outlineBounds(s: Shape): Point[] {
-  if (isIndicator(s.kind)) { const g=indicatorGeometry(s); return [...g.lines.flat(),...g.labels.flatMap(l=>l.bounds)]; }
+export function outlineBounds(s: Shape, units: UnitMode = "mm"): Point[] {
+  if (isIndicator(s.kind)) { const g=indicatorGeometry(s, units); return [...g.lines.flat(),...g.labels.flatMap(l=>l.bounds)]; }
   if (s.kind === "measurement") {
-    const g = measurementGeometry(s);
+    const g = measurementGeometry(s, units);
     return [...g.lines.flat(), ...g.labelBounds];
   }
   if (isCurve(s)) return worldCubics(s).flatMap(cubicExtrema);
@@ -754,13 +755,13 @@ export function nearestOutline(s: Shape, p: Point, tolerance = 0.001): Point {
   }
   return best;
 }
-export function intersectsBox(s: Shape, b: Bounds, tolerance = 0.001): boolean {
+export function intersectsBox(s: Shape, b: Bounds, tolerance = 0.001, units: UnitMode = "mm"): boolean {
   const inside = (p: Point) =>
     p.x >= b.x - 1e-9 &&
     p.x <= b.x + b.width + 1e-9 &&
     p.y >= b.y - 1e-9 &&
     p.y <= b.y + b.height + 1e-9;
-  const q = isCurve(s) ? curveBoundary(s, tolerance) : boundary(s);
+  const q = isCurve(s) ? curveBoundary(s, tolerance) : boundary(s, units);
   for (const [a, c] of q.lines) {
     if (inside(a) || inside(c)) return true;
     for (const [axis, value] of [

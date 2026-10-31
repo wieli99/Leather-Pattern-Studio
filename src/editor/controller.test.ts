@@ -2038,3 +2038,37 @@ test("initialization rejects a stale worker document version", async () => {
   expect(e.ready).toBe(false);
   expect(e.message).toContain("expects document version 17, but geometry worker returned 15");
 });
+
+test("unit preferences leave document, grid and history unchanged", () => {
+  const e = editor();
+  const document = JSON.stringify(e.document), revision = e.revision, dirty = e.dirty;
+  const grid = e.gridSize;
+  for (const units of ["in-fractional", "in-decimal", "mm"] as const) {
+    const before = e.uiSnapshot();
+    e.units = units;
+    e.preferences();
+    expect(e.uiSnapshot()).not.toBe(before);
+    expect(JSON.stringify(e.document)).toBe(document);
+    expect(e.revision).toBe(revision);
+    expect(e.dirty).toBe(dirty);
+    expect(e.gridSize).toBe(grid);
+  }
+});
+
+test("annotation selection bounds and reset pivots follow displayed units", async () => {
+  const { construct } = await import("./construction");
+  const { bounds } = await import("../model/geometry");
+  for (const kind of ["measurement", "size-ruler"] as const) {
+    const e = editor();
+    const shape = { ...construct(kind, [{x:0,y:0},{x:50.8,y:0},{x:10,y:12}]), id: "annotation", name: "Annotation" };
+    e.document = { ...emptyDocument(), shapes: [shape] };
+    e.selected = [shape.id];
+    for (const units of ["mm", "in-fractional", "in-decimal"] as const) {
+      e.units = units;
+      const expected = bounds([shape], units);
+      expect(e.selectionBounds).toEqual(expected);
+      e.resetPivot();
+      expect(e.transformPivot).toEqual({x:expected.x + expected.width/2, y:expected.y + expected.height/2});
+    }
+  }
+});

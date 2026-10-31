@@ -1,11 +1,12 @@
+import { formatLength, unitSymbol, type UnitMode } from "./units";
 import { isIndicator } from "./indicators";
 import { boundary, distance, worldCubics } from "./geometry";
 import { cubicAt, isCurve } from "./curves";
 import type { Point, Shape } from "./project";
 
 export type EdgeMeasurement = { length: number; point: Point; angle: number };
-export const formatEdgeLength = (length: number) =>
-  `${Number(length.toFixed(2))} mm`;
+export const formatEdgeLength = (length: number, units: UnitMode = "mm") =>
+  `${formatLength(length, units)} ${unitSymbol(units)}`;
 
 // Progressively refined world-space sampling keeps measurement independent of viewport zoom.
 function measure(at: (t: number) => Point): EdgeMeasurement | undefined {

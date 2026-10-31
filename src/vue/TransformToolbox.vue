@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { parseLength } from "../model/units";
+import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import { computed, ref } from "vue";
 import { cornerRadii } from "../model/geometry";
@@ -13,17 +15,12 @@ const radii = computed(() =>
   cornerShape.value ? cornerRadii(cornerShape.value) : [],
 );
 const squareSelection = computed(() => e.value.active.some(s => s.kind === "size-square"));
-const uniformRadius = computed(() =>
-  radii.value.length && radii.value.every((r) => r === radii.value[0])
-    ? +radii.value[0].toFixed(2)
-    : "",
-);
 const focusedFactor = ref<string | null>(null);
 const drafts = ref<Record<string, string>>({});
 function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
   const text = (event.target as HTMLInputElement).value;
   drafts.value[key] = text;
-  const n = text.trim() ? Number(text) : NaN;
+  const n = key === "x" || key === "y" ? (parseLength(text, e.value.units) ?? NaN) : text.trim() ? Number(text) : NaN;
   editor.setTransformValues({ [key]: n });
 }
 </script>
@@ -69,42 +66,16 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       <div v-if="e.transformTool === 'corner'" class="transform-inputs">
 
         <template v-if="cornerShape">
-          <label
-            >Corner radius (mm)<input
-              type="number"
-              :aria-invalid="!!e.transformError"
-              min="0"
-              step="0.01"
-              :value="+radii[e.selectedCorner!.index].toFixed(2)"
-              @input="
-                editor.setCornerValue(
-                  +($event.target as HTMLInputElement).value,
-                )
-              "
-          /></label>
-          <label
-            >All corners (mm)<input
-              type="number"
-              :aria-invalid="!!e.transformError"
-              min="0"
-              step="0.01"
-              placeholder="Mixed"
-              :value="uniformRadius"
-              @input="
-                editor.setCornerValue(
-                  +($event.target as HTMLInputElement).value,
-                  true,
-                )
-              "
-          /></label>
+          <label>Corner radius ({{ e.unitSymbol }})<LengthInput clamp :value="radii[e.selectedCorner!.index]" :min="0" @invalid="editor.setCornerValue(NaN)" @commit="editor.setCornerValue($event)" /></label>
+          <label>All corners ({{ e.unitSymbol }})<LengthInput clamp placeholder="Mixed" :mixed="!radii.every(r => r === radii[0])" :value="radii[0] ?? 0" :min="0" @invalid="editor.setCornerValue(NaN, true)" @commit="editor.setCornerValue($event, true)" /></label>
         </template>
       </div>
       <div v-else-if="e.transformTool !== 'mirror'" class="transform-inputs" data-hint-edit="transform">
         <template
           v-for="item in e.transformTool === 'move'
             ? [
-                ['x', 'X (mm)'],
-                ['y', 'Y (mm)'],
+                ['x', `X (${e.unitSymbol})`],
+                ['y', `Y (${e.unitSymbol})`],
               ]
             : e.transformTool === 'rotate'
               ? [['angle', 'Angle (°)']]
@@ -114,40 +85,10 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
                 ]"
           :key="item[0]"
         >
-          <label
-            >{{ item[1]
-            }}<input
-              type="number"
-              :aria-label="item[1]"
-              :title="squareSelection && e.transformTool === 'scale' ? 'Square guides require uniform resizing; both factors change together.' : undefined"
-              :aria-invalid="!!e.transformError"
-              :step="e.transformTool !== 'rotate' ? 0.01 : 0.1"
-              :value="
-                focusedFactor === item[0]
-                  ? drafts[item[0]]
-                  : e.transformTool !== 'rotate'
-                    ? e.transformValues[
-                        item[0] as keyof typeof e.transformValues
-                      ].toFixed(2)
-                    : e.transformValues[
-                        item[0] as keyof typeof e.transformValues
-                      ]
-              "
-              @focus="
-                drafts[item[0]] = ($event.target as HTMLInputElement).value;
-                focusedFactor = item[0];
-              "
-              @blur="
-                focusedFactor = null;
-                ($event.target as HTMLInputElement).value =
-                  e.transformTool !== 'rotate'
-                    ? e.transformValues[
-                        item[0] as keyof typeof e.transformValues
-                      ].toFixed(2)
-                    : ($event.target as HTMLInputElement).value;
-              "
-              @input="value(item[0] as keyof typeof e.transformValues, $event)"
-          /></label>
+          <label>{{ item[1] }}
+            <LengthInput fixed v-if="e.transformTool === 'move'" :aria-label="item[1]" :value="e.transformValues[item[0] as 'x' | 'y']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
+            <input v-else type="number" :aria-label="item[1]" step="0.01" :value="focusedFactor === item[0] ? drafts[item[0]] : e.transformTool === 'rotate' ? e.transformValues.angle : e.transformValues[item[0] as keyof typeof e.transformValues].toFixed(2)" @focus="focusedFactor = item[0]; drafts[item[0]] = ($event.target as HTMLInputElement).value" @blur="focusedFactor = null" @input="value(item[0] as keyof typeof e.transformValues, $event)" />
+          </label>
         </template>
       </div>
       <label v-if="e.active.length === 1 && e.transformTool !== 'corner'"

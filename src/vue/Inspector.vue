@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatArea } from "../model/units";
 import { isIndicator, indicatorGeometry } from "../model/indicators";
 import { measurementGeometry } from "../model/measurement";
 import { shapeArea } from "../model/area";
@@ -208,7 +209,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         :value="s.text ?? ''"
         @commit="edit({ text: $event })"
       />
-      <Field
+      <Field dimension
         label="Font size"
         :value="s.fontSize ?? 5"
         @commit="edit({ fontSize: +$event })"
@@ -216,16 +217,16 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     </template>
     </PanelSection>
     <PanelSection class="property-section" section-key="geometry" title="Geometry" :level="3" :disabled="editor.isLocked(s.id)">
-      <p class="geometry-units">mm unless indicated</p>
+      <p class="geometry-units">{{ e.unitSymbol }} unless indicated</p>
     <div class="field-row">
-      <Field
+      <Field dimension
         label="Position X"
-        :value="+c.x.toFixed(1)"
+        :value="c.x"
         @commit="position('x', $event)"
       />
-      <Field
+      <Field dimension
         label="Position Y"
-        :value="+c.y.toFixed(1)"
+        :value="c.y"
         @commit="position('y', $event)"
       />
     </div>
@@ -233,23 +234,23 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       v-if="['image', 'rectangle', 'ellipse', 'curve', 'control-curve'].includes(s.kind)"
       class="field-row"
     >
-      <Field
+      <Field dimension
         label="Width"
-        :value="+width.toFixed(1)"
+        :value="width"
         :min="0.001"
         @commit="size('x', $event)"
       />
-      <Field
+      <Field dimension
         label="Height"
-        :value="+height.toFixed(1)"
+        :value="height"
         :min="0.001"
         @commit="size('y', $event)"
       />
     </div>
-    <Field
+    <Field dimension
       v-if="s.kind === 'circle' || s.kind === 'arc'"
       :label="s.transform ? 'Radius (local)' : 'Radius'"
-      :value="+distance(a, b).toFixed(1)"
+      :value="distance(a, b)"
       :min="0.001"
       @commit="radius"
     />
@@ -267,27 +268,27 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       @commit="edit(rotateShape(s, +$event - angle, c))"
     />
     <template v-if="isIndicator(s.kind)">
-      <Field :label="s.kind === 'size-square' ? 'Side length (mm)' : s.kind === 'crosshair' ? 'Overall size (mm)' : s.kind === 'arrow-head' ? 'Head size (mm)' : 'Length (mm)'"
+      <Field dimension :label="s.kind === 'size-square' ? 'Side length (mm)' : s.kind === 'crosshair' ? 'Overall size (mm)' : s.kind === 'arrow-head' ? 'Head size (mm)' : 'Length (mm)'"
         :value="indicatorGeometry(s).size" :min="0.001" @commit="indicatorSize" />
-      <Field v-if="s.kind === 'arrow'" label="Head size (local mm)"
+      <Field dimension v-if="s.kind === 'arrow'" label="Head size (local mm)"
         :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
     </template>
     <label v-if="s.kind === 'image'"><input v-model="imageAspectLocked" type="checkbox" /> Lock aspect ratio</label>
     <Field v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
-      <Field
+      <Field dimension
         label="Offset (mm)"
         :value="measurementGeometry(s).offset"
         @commit="edit({ measurementOffset: +$event / measurementGeometry(s).offsetScale })"
       />
       <div class="field">
-        <span>Distance (mm)</span>
-        <output aria-label="Distance (mm)">{{ measurementGeometry(s).length.toFixed(2) }}</output>
+        <span>Distance ({{ e.unitSymbol }})</span>
+        <output :aria-label="`Distance (${e.unitSymbol})`">{{ e.units === 'mm' ? measurementGeometry(s).length.toFixed(2) : e.formatLength(measurementGeometry(s).length) }}</output>
       </div>
     </template>
     <div v-if="area !== null" class="field">
-      <span>Area (mm²)</span>
-      <output role="note" aria-label="Area (mm²)">{{ area.toFixed(2) }}</output>
+      <span>Area ({{ e.unitSymbol }}²)</span>
+      <output role="note" :aria-label="`Area (${e.unitSymbol}²)`">{{ formatArea(area, e.units) }}</output>
     </div>
     </PanelSection>
     <PanelSection class="property-section" section-key="appearance" title="Appearance" :level="3" :disabled="editor.isLocked(s.id)">
@@ -306,7 +307,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         :min="0" :max="100" :step="1"
         @commit="edit({ strokeOpacity: +$event / 100 })" />
     </div>
-    <Field v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
+    <Field dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
     <template v-if="area !== null">
       <label class="field">
         <span>Fill mode</span>
@@ -365,12 +366,12 @@ function vertex(i: number, axis: "x" | "y", v: string) {
             Smooth
           </button>
         </div>
-        <Field
+        <Field dimension
           :label="`Vertex ${i + 1} X`"
           :value="point.x"
           @commit="vertex(i, 'x', $event)"
         />
-        <Field
+        <Field dimension
           :label="`Vertex ${i + 1} Y`"
           :value="point.y"
           @commit="vertex(i, 'y', $event)"

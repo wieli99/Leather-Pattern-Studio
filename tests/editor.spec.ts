@@ -1,3 +1,4 @@
+import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 async function ready(page: any) {
   await page.goto("/");
@@ -259,7 +260,7 @@ test("native save writes editable project and cancelled save preserves dirty sta
   );
   expect(
     await page.evaluate(() => JSON.parse((window as any).savedProject).version),
-  ).toBe(15);
+  ).toBe(DOCUMENT_VERSION);
   await page.getByLabel("Width", { exact: true }).fill("120");
   await page.getByLabel("Width", { exact: true }).press("Enter");
   await expect(page.locator(".document-name")).toContainText("•");
@@ -296,6 +297,7 @@ test("corner tool previews, edits numerically and applies once", async ({
   const corner = page.getByLabel("Corner radius (mm)", { exact: true });
   await expect(corner).toBeVisible();
   await corner.fill("999");
+  await canvas.focus();
   await expect(corner).toHaveValue("70");
   await corner.fill("8.12");
   await canvas.focus();

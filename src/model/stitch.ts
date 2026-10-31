@@ -1,3 +1,4 @@
+import { fromMillimetres, unitSymbol, type UnitMode } from "./units";
 import type { Point } from "./project";
 
 import type { StitchSettings as CoreStitchSettings } from "../generated/StitchSettings";
@@ -21,13 +22,12 @@ export const stitchMarks = {
   flat: { width: 1.4, height: 0.3, angle: 0 },
 } as const;
 
-export function validateStitchSettings(settings: StitchSettings): void {
+export function validateStitchSettings(settings: StitchSettings, units: UnitMode = "mm"): void {
   if (
     [settings.startClearance ?? 0, settings.endClearance ?? 0].some(
       (n) =>
         !Number.isFinite(n) ||
-        n < 0 ||
-        Math.abs(n * 100 - Math.round(n * 100)) > 1e-7,
+        n < 0,
     ) ||
     [settings.roundDiameter, settings.flatLength].some(
       (n) => n !== undefined && (!Number.isFinite(n) || n < 0.1 || n > 5),
@@ -37,13 +37,10 @@ export function validateStitchSettings(settings: StitchSettings): void {
     !Number.isFinite(settings.spacing) ||
     settings.spacing < 0.01 ||
     !Number.isFinite(settings.inset) ||
-    settings.inset < 0 ||
-    [settings.spacing, settings.inset].some(
-      (value) => Math.abs(value * 100 - Math.round(value * 100)) > 1e-7,
-    )
+    settings.inset < 0
   ) {
     throw new Error(
-      "Marker sizes must be between 0.1 and 5 mm. Stitch spacing must be at least 0.01 mm and inset non-negative, with at most two decimals.",
+      `Marker sizes must be between ${Number(fromMillimetres(0.1, units).toPrecision(8))} and ${Number(fromMillimetres(5, units).toPrecision(8))} ${unitSymbol(units)}. Stitch spacing must be at least ${Number(fromMillimetres(0.01, units).toPrecision(8))} ${unitSymbol(units)} and inset and clearances non-negative.`,
     );
   }
 }

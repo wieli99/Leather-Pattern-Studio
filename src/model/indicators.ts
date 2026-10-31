@@ -1,3 +1,4 @@
+import { formatLength, unitSymbol, type UnitMode } from "./units";
 import type { Point, Shape } from "./project";
 import { applyMatrix, shapeMatrix, distance } from "./geometry";
 
@@ -11,7 +12,7 @@ export function dimension(value: number): string {
 }
 type Label = { text: string; point: Point; angle: number; fontSize: number; bounds: Point[] };
 /** All geometry is in world millimetres; ticks and lettering retain physical size. */
-export function indicatorGeometry(s: Shape) {
+export function indicatorGeometry(s: Shape, units: UnitMode = "mm") {
   const m = shapeMatrix(s), world = (p: Point) => applyMatrix(m,p);
   const [a,b] = s.points, start = world(a), end = world(b);
   const length = distance(start,end);
@@ -49,19 +50,22 @@ export function indicatorGeometry(s: Shape) {
     for (const [i,j] of [[0,1],[3,0]]) {
       const p=corners[i],q=corners[j], mid={x:(p.x+q.x)/2,y:(p.y+q.y)/2};
       const d=distance(mid,center)||1;
-      label(`${dimension(distance(p,q))} mm`,{x:mid.x+(mid.x-center.x)*4/d,y:mid.y+(mid.y-center.y)*4/d},Math.atan2(q.y-p.y,q.x-p.x));
+      label(`${units === "mm" ? dimension(distance(p,q)) : formatLength(distance(p,q), units)} ${unitSymbol(units)}`,{x:mid.x+(mid.x-center.x)*4/d,y:mid.y+(mid.y-center.y)*4/d},Math.atan2(q.y-p.y,q.x-p.x));
     }
   } else if (s.kind === "size-ruler") {
     lines.push([start,end]);
     // Bound work for extreme imported documents; ordinary guides show every mm.
-    const step = length <= 10000 ? 1 : Math.ceil(length/100000)*10;
+    const base = units === "mm" ? 1 : 25.4/16;
+    const step = length <= 10000 ? base : Math.ceil(length/100000)*10*base;
     for (let i=0;i<=length+1e-9;i+=step) {
-      const p = at(start,i), tick = i%10===0 ? 4 : i%5===0 ? 3 : 2;
+      const index = Math.round(i/base);
+      const major = units === "mm" ? index%10===0 : index%16===0;
+      const p = at(start,i), tick = major ? 4 : index%(units === "mm" ? 5 : 8)===0 ? 3 : 2;
       lines.push([p,at(p,0,tick)]);
-      if (i%10===0) label(String(i),at(p,0,6),Math.atan2(uy,ux),2);
+      if (major) label(units === "mm" ? String(i) : formatLength(i, units),at(p,0,6),Math.atan2(uy,ux),2);
     }
-    if (Math.abs(length-Math.round(length)) > 1e-9) lines.push([end,at(end,0,4)]);
-    label(`${dimension(length)} mm`,at(start,length/2,-4),Math.atan2(uy,ux));
+    if (Math.abs(length/step-Math.round(length/step)) > 1e-9) lines.push([end,at(end,0,4)]);
+    label(`${units === "mm" ? dimension(length) : formatLength(length, units)} ${unitSymbol(units)}`,at(start,length/2,-4),Math.atan2(uy,ux));
   }
   return {lines,labels,size,length,anchors: s.kind === "crosshair" ? [start,...lines.flat()] : s.kind === "size-square" ? lines.map(l=>l[0]) : [start,end]};
 }

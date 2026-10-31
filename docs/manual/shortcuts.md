@@ -32,11 +32,11 @@ Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the poi
 
 See [selection](#selection), [drawing](#drawing), and [transforms](#transforms) for modifier gestures.
 
-While dragging a [guideline](#measurements), the shortcut list in the right inspector shows its controls: default 1 mm steps, Ctrl for 10 mm steps, Shift for 5 mm steps, and Alt for free placement. Esc cancels the drag; dropping on a ruler removes the guideline.
+While dragging a [guideline](#measurements), the shortcut list in the right inspector shows its controls: in millimetre mode, default 1 mm steps, Ctrl for 10 mm steps, Shift for 5 mm steps, and Alt for free placement. Esc cancels the drag; dropping on a ruler removes the guideline.
 
 Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
 
-Choose Corner radius (B) for selected rectangles and closed polygons. Drag in 1 mm steps; Shift uses 5 mm, Ctrl 10 mm, and Alt applies to all corners of the targeted shape. Enter/right-click applies; Esc cancels. See [corner radii](#transforms).
+Choose Corner radius (B) for selected rectangles and closed polygons. In millimetre mode, drag in 1 mm steps; Shift uses 5 mm, Ctrl 10 mm, and Alt applies to all corners of the targeted shape. Enter/right-click applies; Esc cancels. See [corner radii](#transforms).
 
 In [Stitch line](#stitching), Shift-click selects a second line for merging; the first selection is master. Enter/right-click commits the session and exits; Esc discards the session and exits, and Delete removes selected stitching when the canvas is focused. The tool button is beside Corner radius and uses **I**. Use **K** for Trim (cut) and **J** for Merge (join); **M** remains Mirror. These tool shortcuts require a selection in Select mode. Merge requires compatible selected objects and opens a preview; Enter applies it and Esc cancels.
 
@@ -60,3 +60,5 @@ Trim and Stitch line are disabled when only text is selected, including their ke
 Press D with the canvas focused, or select Measurement from the toolbar below Text. After placing its two endpoints, Tab edits the signed Offset; Enter confirms placement. Esc cancels an unfinished measurement. See [Persistent measurements](#measurements).
 
 Indicators share the Measurement submenu. D and Shift+D cycle its variants; right-click, hold the button, or press Down while it is focused to choose a variant. Escape cancels unfinished placement.
+
+In inch mode, guide and corner distance steps are 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. See [Measurements and snapping](#measurements) for fractional entry. Rotation steps remain in degrees.

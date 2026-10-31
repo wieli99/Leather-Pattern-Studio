@@ -1,3 +1,4 @@
+import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 
 test("indicator variants, gestures, edits, undo and saved roundtrip",async({page})=>{
@@ -29,7 +30,7 @@ test("indicator variants, gestures, edits, undo and saved roundtrip",async({page
   const path=(await download.path())!;
   const {readFile}=await import("node:fs/promises");
   const doc=JSON.parse(await readFile(path,"utf8"));
-  expect(doc.version).toBe(15);
+  expect(doc.version).toBe(DOCUMENT_VERSION);
   expect(doc.shapes.map((s:any)=>s.kind)).toEqual(["arrow","arrow-head","crosshair","size-square","size-ruler"]);
   await page.getByRole("button",{name:"Undo",exact:true}).click();
   await page.getByRole("button",{name:"Redo",exact:true}).click();

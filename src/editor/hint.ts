@@ -3,6 +3,7 @@ import { variants, pointCount, type Mode } from "./construction";
 import { groupKeys, transformShortcuts } from "../vue/tools";
 export interface HintState {
   mode: Mode;
+  units?: string;
   stitchMode?: boolean;
   pending: readonly unknown[];
   selected: readonly string[];
@@ -74,9 +75,9 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
   const n = s.pending.length;
   if (s.guideDrag) {
     action = "Drag to position the guideline.";
-    add("guide-step", "Drag", "1 mm steps");
-    add("guide-coarse", "Ctrl", "10 mm steps");
-    add("guide-medium", "Shift", "5 mm steps");
+    add("guide-step", "Drag", s.units && s.units !== "mm" ? "1/16 in steps" : "1 mm steps");
+    add("guide-coarse", "Ctrl", s.units && s.units !== "mm" ? "1 in steps" : "10 mm steps");
+    add("guide-medium", "Shift", s.units && s.units !== "mm" ? "1/4 in steps" : "5 mm steps");
     add("snap", "Alt", "Free placement");
     add("guide-remove", "Drop on ruler", "Remove guideline");
     add("cancel", "Esc", "Cancel guideline drag");
@@ -96,7 +97,7 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     if (s.transformTool !== "mirror" && s.transformTool !== "rotate" && s.transformTool !== "corner")
       add("axis", "X / Y", "Constrain axis");
     if (s.transformTool === "corner")
-      add("corner-steps", "Ctrl / Shift / Alt", "10 mm / 5 mm / all corners");
+      add("corner-steps", "Ctrl / Shift / Alt", s.units && s.units !== "mm" ? "1 in / 1/4 in / all corners" : "10 mm / 5 mm / all corners");
     if (s.transformTool === "rotate") {
       add("rotation", "Drag", "Rotate in 1° steps");
       add("rotation-step", "Ctrl / Shift / Alt", "10° / 5° / free rotation");

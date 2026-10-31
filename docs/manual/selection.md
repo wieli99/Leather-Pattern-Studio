@@ -37,3 +37,5 @@ Drag an object or group row to reorder it. An insertion line indicates before/af
 For keyboard organization, focus a row and use Alt+Shift+Up/Down to reorder, Alt+Shift+Right to move into the preceding group, or Alt+Shift+Left to move out to the parent level.
 
 ![Nested object groups](/manual/images/object-groups.png)
+
+Crossing selection follows the visible ruler ticks and measurement strokes in the selected units, including inch-specific label gaps and arrow placement.

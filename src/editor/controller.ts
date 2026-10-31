@@ -1,3 +1,4 @@
+import { formatLength, unitSymbol, type UnitMode } from "../model/units";
 import { resizeText } from "../model/text";
 import type { ImportedImage } from "./imageImport";
 import { DOCUMENT_VERSION } from "../model/project";
@@ -355,6 +356,9 @@ export class Controller {
   smartGuides: SmartGuide[] = [];
   grid = true;
   objects = true;
+  units: UnitMode = "mm";
+  formatLength(value: number) { return formatLength(value, this.units); }
+  get unitSymbol() { return unitSymbol(this.units); }
   gridSize = 1;
   guideDrag: { id: string; axis: "x" | "y"; coordinate: number } | null = null;
   gridStyle: "dots" | "lines" = "dots";
@@ -378,6 +382,7 @@ export class Controller {
   constructor() {
     try {
       const p = JSON.parse(localStorage.getItem("leather-ui") ?? "{}");
+      if (["mm", "in-fractional", "in-decimal"].includes(p.units)) this.units = p.units;
       for (const key of ["grid", "objects", "rulers"] as const)
         if (typeof p[key] === "boolean") this[key] = p[key];
       if (["world", "local"].includes(p.transformOrientation))
@@ -398,6 +403,7 @@ export class Controller {
           transformOrientation: this.transformOrientation,
           grid: this.grid,
           objects: this.objects,
+          units: this.units,
           gridSize: this.gridSize,
           gridStyle: this.gridStyle,
           rulers: this.rulers,
@@ -448,6 +454,7 @@ export class Controller {
       !!this.guideDrag,
       this.grid,
       this.objects,
+      this.units,
       this.gridSize,
       this.gridStyle,
       this.rulers,
@@ -456,7 +463,7 @@ export class Controller {
       this.propertySession ? this.version : 0,
     ].join("|");
   cursorSnapshot = () =>
-    `${this.cursor.x.toFixed(1)}, ${this.cursor.y.toFixed(1)} mm|${this.message}|${this.zoom}`;
+    `${this.formatLength(this.cursor.x)}, ${this.formatLength(this.cursor.y)} ${this.unitSymbol}|${this.message}|${this.zoom}`;
   hoverSnapshot = () =>
     `${this.tool}|${this.placingPivot}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
   private anchorAlt = false;
@@ -481,7 +488,7 @@ export class Controller {
     const raw = this.anchorPointer;
     const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
       .reverse()
-      .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
+      .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom, this.units));
     let point: Point | null = null;
     if (hit)
       insertAnchor(hit, raw, 8 / this.zoom, (p) => {
@@ -792,10 +799,10 @@ export class Controller {
         JSON.stringify([
           g.settings.style,
           g.settings.alignment,
-          Math.round(g.settings.spacing * 100),
-          Math.round(g.settings.inset * 100),
-          Math.round((g.settings.startClearance ?? 0) * 100),
-          Math.round((g.settings.endClearance ?? 0) * 100),
+          g.settings.spacing,
+          g.settings.inset,
+          g.settings.startClearance ?? 0,
+          g.settings.endClearance ?? 0,
         ]);
       if (
         neighbors.length === 2 &&
@@ -878,7 +885,7 @@ export class Controller {
     const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
     if (g) this.stitchDraft = { ...g, settings: { ...settings } };
     try {
-      validateStitchSettings(settings);
+      validateStitchSettings(settings, this.units);
       if (!g) this.stitchSettings = { ...settings };
       if (this.stitchDraft)
         stitchGeometry(
@@ -1922,7 +1929,7 @@ export class Controller {
     ).shapes.filter((s) => this.selected.includes(s.id));
   }
   get selectionBounds() {
-    return bounds(this.active);
+    return bounds(this.active, this.units);
   }
   handles(): {
     kind: "move" | "scale" | "rotate" | "vertex" | "corner";
@@ -2114,7 +2121,7 @@ export class Controller {
           this.smartGuides = [guide];
           this.snapKind = "alignment";
         } else {
-          const step = ctrl ? 10 : shift ? 5 : 1;
+          const step = this.units === "mm" ? (ctrl ? 10 : shift ? 5 : 1) : 25.4 * (ctrl ? 1 : shift ? 1/4 : 1/16);
           coordinate = Math.round(coordinate / step) * step;
         }
       }
@@ -2265,7 +2272,7 @@ export class Controller {
     if (alt && !this.transformTool && !handle) {
       const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
         .reverse()
-        .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
+        .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom, this.units));
       if (hit) {
         const shape = insertAnchor(hit, raw, 8 / this.zoom);
         if (shape) {
@@ -2307,7 +2314,7 @@ export class Controller {
     const hit = [...(this.preview ?? this.document).shapes]
       .reverse()
       .find(
-        (s) => hitTest(s, raw, 8 / this.zoom) || (ctrl && contains(s, raw)),
+        (s) => hitTest(s, raw, 8 / this.zoom, this.units) || (ctrl && contains(s, raw)),
       );
     if (
       this.transformTool &&
@@ -2515,7 +2522,7 @@ export class Controller {
             dx * Math.sin(orientation) +
             dy * Math.cos(orientation),
         };
-        this.message = `Move ${this.transformValues.x.toFixed(1)}, ${this.transformValues.y.toFixed(1)} mm`;
+        this.message = `Move ${this.formatLength(this.transformValues.x)}, ${this.formatLength(this.transformValues.y)} ${this.unitSymbol}`;
         this.smartGuides = g.axis ? [] : targetGuides;
         this.snapTarget = g.axis ? null : target;
         this.snapKind = g.axis ? null : targetKind;
@@ -2612,7 +2619,7 @@ export class Controller {
           ((((end.x - start.x) * dx + (end.y - start.y) * dy) / (len || 1)) *
             Math.sin(angle / 2)) /
           (1 - Math.sin(angle / 2) || 1);
-        const step = ctrl ? 10 : shift ? 5 : 1;
+        const step = this.units === "mm" ? (ctrl ? 10 : shift ? 5 : 1) : 25.4 * (ctrl ? 1 : shift ? 1/4 : 1/16);
         const initialRadius = cornerRadii(original)[index];
         const value =
           distance(g.start, raw) * this.zoom < 2
@@ -2622,7 +2629,7 @@ export class Controller {
           distance(g.start, raw) * this.zoom < 2 && !alt
             ? original
             : setCornerRadius(original, index, value, alt);
-        this.message = `Corner radius ${cornerRadii(next)[index].toFixed(2)} mm${alt ? " (all corners)" : ""}`;
+        this.message = `Corner radius ${this.formatLength(cornerRadii(next)[index])} ${this.unitSymbol}${alt ? " (all corners)" : ""}`;
         document = {
           ...g.original,
           shapes: g.original.shapes.map((s) =>
@@ -2696,7 +2703,7 @@ export class Controller {
       this.hover =
         [...this.document.shapes.filter(s => !this.isHidden(s.id))]
           .reverse()
-          .find((s) => hitTest(s, raw, 8 / this.zoom))?.id ?? "";
+          .find((s) => hitTest(s, raw, 8 / this.zoom, this.units))?.id ?? "";
     }
     this.notifyPointer();
   }
@@ -2793,7 +2800,7 @@ export class Controller {
           ...this.document.shapes
             .filter((s) => {
               if (this.isHidden(s.id)) return false;
-              const b = bounds([s]);
+              const b = bounds([s], this.units);
               return g.crossing || ctrl
                 ? intersectsBox(
                     s,
@@ -2804,6 +2811,7 @@ export class Controller {
                       height: bottom - y,
                     },
                     0.25 / this.zoom,
+                    this.units,
                   )
                 : b.x >= x &&
                     b.y >= y &&

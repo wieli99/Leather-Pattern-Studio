@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { construct } from "../editor/construction";
 import { indicatorGeometry, dimension, indicatorKinds } from "./indicators";
-import { bounds, hitTest, stretchShape, rotateShape, center } from "./geometry";
+import { intersectsBox, bounds, hitTest, stretchShape, rotateShape, center } from "./geometry";
 import { parseProject, emptyDocument } from "./project";
 import { stitchEdges } from "./stitchGeometry";
 import { shapeArea } from "./area";
@@ -55,4 +55,24 @@ describe("indicator geometry",()=>{
     expect(()=>parse(stretchShape(s,2,1,a))).toThrow(/uniform/);
     expect(()=>parse({...s,headSize:0})).toThrow(/arrowhead/);
   });
+});
+
+test("inch size rulers show fractional ticks and physical inch labels", () => {
+  const shape = construct("size-ruler", [a, { x: 50.8, y: 0 }]);
+  const g = indicatorGeometry(shape, "in-fractional");
+  expect(g.labels.map(label => label.text)).toEqual(["0", "1", "2", "2 in"]);
+  expect(g.lines).toHaveLength(34);
+  expect(indicatorGeometry(shape).length).toBe(g.length);
+});
+
+test("crossing selection uses rendered ruler ticks in each unit mode", () => {
+  const ruler = construct("size-ruler", [a, {x: 50.8, y: 0}]);
+  const millimetreTick = {x: .99, y: 1, width: .02, height: .2};
+  const inchTick = {x: 25.4/16-.01, y: 1, width: .02, height: .2};
+  expect(intersectsBox(ruler, millimetreTick)).toBe(true);
+  expect(intersectsBox(ruler, inchTick)).toBe(false);
+  for (const units of ["in-fractional", "in-decimal"] as const) {
+    expect(intersectsBox(ruler, millimetreTick, .001, units)).toBe(false);
+    expect(intersectsBox(ruler, inchTick, .001, units)).toBe(true);
+  }
 });

@@ -22,7 +22,7 @@ Transforms remain previews until applied. Selection changes are restricted while
 
 ## Individual corner radii
 
-Select rectangles or closed straight-sided polygons, then choose Corner radius (B) beside Move, Rotate and Resize. Drag the dots inward to round a corner or outward to sharpen it. Click a dot to use the numeric corner-radius and all-corners fields in the tool panel. Displayed corner radii are rounded to two decimal places; saved geometry retains full precision. Values use local millimetres: default 1 mm steps, Shift 5 mm, Ctrl 10 mm (Ctrl takes precedence).
+Select rectangles or closed straight-sided polygons, then choose Corner radius (B) beside Move, Rotate and Resize. Drag the dots inward to round a corner or outward to sharpen it. Click a dot to use the numeric corner-radius and all-corners fields in the tool panel. Displayed corner radii follow the selected units; saved geometry retains full precision. Values use local lengths. In millimetre mode, default steps are 1 mm, Shift 5 mm, Ctrl 10 mm (Ctrl takes precedence).
 
 Alt applies the radius to every corner of the targeted shape and combines with Shift or Ctrl. Adjust several corners in one preview; Enter, right-click or Apply commits one undo step. Esc or Cancel discards the preview. Radii stop at available edge lengths. Ctrl shows measurements outside this tool. Open paths and curves have no radius dots.
 
@@ -55,3 +55,7 @@ Merge also joins two or more Curve and Control point curve objects at matching e
 ![Connected curves in the Merge preview, with only Merge highlighted and Apply/Cancel controls](/manual/images/merge.png)
 
 Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
+
+In inch mode, guide and corner distance steps are 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. See [Measurements and snapping](#measurements) for fractional entry. Rotation steps remain in degrees.
+
+Annotation selection bounds and reset pivots follow the displayed measurement units, including ruler ticks and measurement labels.

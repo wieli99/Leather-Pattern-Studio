@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { editableLength, parseLength } from "../model/units";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
 import { editor } from "../editor/instance";
@@ -78,7 +79,7 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   active.value = item.id;
   pinned.value = item.point;
   pinnedAngle.value = item.angle;
-  draft.value = String(Number(item.value.toFixed(3)));
+  draft.value = ["Angle", "Sweep"].includes(item.key) ? String(item.value) : editableLength(item.value, editor.units);
   error.value = "";
   // Select after Vue replaces the display value with the editable draft.
   await nextTick();
@@ -101,13 +102,13 @@ function input(item: (typeof items.value)[number], event: Event) {
         editor.measurementLocks[signKey] ??=
           Math.sign(editor.cursor[axis] - editor.pending.at(-1)![axis]) || 1;
       }
-      editor.measurementLocks[item.key] = Number(draft.value);
+      editor.measurementLocks[item.key] = (["Angle", "Sweep"].includes(item.key) ? Number(draft.value) : (parseLength(draft.value, editor.units) ?? NaN));
     }
     editor.notify();
   }
 }
 async function confirm(item: (typeof items.value)[number]) {
-  const value = Number(draft.value);
+  const value = (["Angle", "Sweep"].includes(item.key) ? Number(draft.value) : (parseLength(draft.value, editor.units) ?? NaN));
   if (
     !draft.value.trim() ||
     !Number.isFinite(value) ||
@@ -192,17 +193,17 @@ function style(item: (typeof items.value)[number]) {
       }}</span>
       <input
         :readonly="!!editor.gesture"
-        type="number"
+        :type="editor.units === 'mm' || ['Angle', 'Sweep'].includes(item.key) ? 'number' : 'text'"
         step="any"
         :aria-label="item.key || 'Edge length'"
-        :value="active === item.id ? draft : Number(item.value.toFixed(2))"
+        :value="active === item.id ? draft : (['Angle', 'Sweep'].includes(item.key) ? Number(item.value.toFixed(2)) : editor.formatLength(item.value))"
         @focus="focus(item, $event)"
         @input="input(item, $event)"
         @keydown.tab="cycleField"
         @keydown.enter.prevent="!$event.isComposing && confirm(item)"
         @keydown.esc.prevent="cancel()"
       />
-      <span>{{ ["Angle", "Sweep"].includes(item.key) ? "°" : "mm" }}</span>
+      <span>{{ ["Angle", "Sweep"].includes(item.key) ? "°" : editor.unitSymbol }}</span>
       <small v-if="active === item.id && error" role="alert">{{ error }}</small>
     </label>
   </div>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import StitchPresets from "./StitchPresets.vue";
+import LengthInput from "./LengthInput.vue";
+import type { UnitMode } from "../model/units";
 import { ref } from "vue";
 import {
   PopoverRoot,
@@ -10,13 +13,6 @@ import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 const e = useEditor(),
   open = ref(false);
-function spacing(event: Event) {
-  const n = +(event.target as HTMLInputElement).value;
-  if (Number.isFinite(n) && n > 0) {
-    editor.gridSize = n;
-    editor.preferences();
-  }
-}
 </script>
 <template>
   <PopoverRoot v-model:open="open" :modal="false">
@@ -61,16 +57,16 @@ function spacing(event: Event) {
             <option value="lines">Lines</option>
           </select>
         </label>
-        <label>
-          Grid spacing (mm)
-          <input
-            aria-label="Grid spacing (mm)"
-            type="number"
-            min=".001"
-            step=".1"
-            :value="e.gridSize"
-            @input="spacing"
-          />
+        <label>Units
+          <select aria-label="Units" :value="e.units" @change="editor.units = ($event.target as HTMLSelectElement).value as UnitMode; editor.preferences()">
+            <option value="mm">Millimetres</option><option value="in-fractional">Inches (fractional)</option><option value="in-decimal">Inches (decimal)</option>
+          </select>
+        </label>
+        <label>Grid spacing ({{ e.unitSymbol }})
+          <span class="grid-spacing-value">
+            <LengthInput :step=".1" :aria-label="`Grid spacing (${e.unitSymbol})`" :value="e.gridSize" :min=".001" @commit="editor.gridSize = $event; editor.preferences()" />
+            <StitchPresets label="Grid spacing" :values="e.units === 'mm' ? [0.5, 1, 5, 10, 50, 100] : [1/64, 1/32, 1/16, 1/8, 1/4, 1/2, 1].map(n => n * 25.4)" :disabled="false" @choose="editor.gridSize = $event; editor.preferences()" />
+          </span>
         </label>
         <label>
           Theme
@@ -105,3 +101,8 @@ function spacing(event: Event) {
     </PopoverPortal>
   </PopoverRoot>
 </template>
+
+<style scoped>
+.grid-spacing-value { display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.grid-spacing-value :deep(input) { width: 0; min-width: 0; flex: 1; border: 0; border-radius: 0; }
+</style>
