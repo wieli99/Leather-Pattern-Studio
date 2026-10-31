@@ -1,3 +1,4 @@
+import { resizeText } from "../model/text";
 import type { ImportedImage } from "./imageImport";
 import { DOCUMENT_VERSION } from "../model/project";
 import { isIndicator } from "../model/indicators";
@@ -2884,9 +2885,14 @@ export class Controller {
       const next = parseProject(
         JSON.stringify({
           ...source,
-          shapes: source.shapes.map((s) =>
-            s.id === id ? { ...s, ...changes } : s,
-          ),
+          shapes: source.shapes.map((s) => {
+            if (s.id !== id) return s;
+            const updated = { ...s, ...changes };
+            return s.kind === "text" &&
+              (changes.fontSize !== undefined || changes.text !== undefined)
+              ? resizeText(updated)
+              : updated;
+          }),
         }),
       );
       if (this.propertySession) {

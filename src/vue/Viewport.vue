@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { measureText } from "../model/text";
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { editor } from "../editor/instance";
 import { attachRenderer } from "../editor/renderer";
@@ -45,25 +46,19 @@ async function saveText() {
       return;
     }
     const size = d.original?.fontSize ?? 5;
-    const ctx = document.createElement("canvas").getContext("2d")!;
-    ctx.font = `${size}px sans-serif`;
-    const lines = d.text.replace(/\r\n?/g, "\n").split("\n");
-    const width = Math.max(
-      size / 2,
-      ...lines.map((line) => ctx.measureText(line).width),
-    );
+    const layout = measureText(d.text, size);
     const shape: Shape = {
       ...(d.original ?? {}),
       id: d.original?.id ?? crypto.randomUUID(),
       name: d.original?.name ?? "Text",
       kind: "text",
-      text: lines.join("\n"),
+      text: layout.text,
       fontSize: size,
       radius: 0,
       rotation: d.original?.rotation ?? 0,
       points: [
         d.point,
-        { x: d.point.x + width, y: d.point.y + lines.length * size * 1.2 },
+        { x: d.point.x + layout.width, y: d.point.y + layout.height },
       ],
     };
     if (d.original) {
@@ -93,17 +88,11 @@ const textStyle = computed(() => {
     ? shapeMatrix(d.original)
     : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
   const p = applyMatrix(m, d.point);
-  const ctx = document.createElement("canvas").getContext("2d")!;
   const size = d.original?.fontSize ?? 5;
-  ctx.font = `${size}px sans-serif`;
-  const lines = d.text.split("\n");
-  const width = Math.max(
-    size / 2,
-    ...lines.map((line) => ctx.measureText(line).width),
-  );
+  const layout = measureText(d.text, size);
   return {
-    width: `${width * state.zoom}px`,
-    height: `${lines.length * size * 1.2 * state.zoom}px`,
+    width: `${layout.width * state.zoom}px`,
+    height: `${layout.height * state.zoom}px`,
     left: `${state.pan.x + p.x * state.zoom}px`,
     top: `${state.pan.y + p.y * state.zoom}px`,
     fontSize: `${(d.original?.fontSize ?? 5) * state.zoom}px`,

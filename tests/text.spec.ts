@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 
 test("text is created and edited on canvas without dialogs", async ({
@@ -40,4 +41,34 @@ test("text is created and edited on canvas without dialogs", async ({
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await canvas.dblclick({ position: { x: 245, y: 245 } });
   await expect(input).toHaveValue("Front\nLeather");
+});
+
+test("font size updates text dimensions and undo restores them", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Text (T)", exact: true }).click();
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 240, y: 240 } });
+  const input = page.getByRole("textbox", { name: "Label text", exact: true });
+  await input.fill("Front\nLeather");
+  await input.press("Control+Enter");
+  await page.evaluate(() => {
+    delete (window as any).showSaveFilePicker;
+  });
+  async function dimensions() {
+    const downloading = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    const path = (await (await downloading).path())!;
+    const project = JSON.parse(await readFile(path, "utf8"));
+    const [a, b] = project.shapes[0].points;
+    return { width: b.x - a.x, height: b.y - a.y };
+  }
+  const original = await dimensions();
+  const size = page.getByLabel("Font size", { exact: true });
+  await size.fill("10");
+  await size.press("Enter");
+  const enlarged = await dimensions();
+  expect(enlarged.width).toBeCloseTo(original.width * 2, 1);
+  expect(enlarged.height).toBeCloseTo(original.height * 2, 1);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(size).toHaveValue("5");
+  expect(await dimensions()).toEqual(original);
 });
