@@ -11,3 +11,5 @@ Converted stitching paths can be selected in Select mode to edit their geometry.
 Double-click a polyline anchor to make it smooth with handles; double-click again to make it sharp. Hold Alt while dragging a curve handle to move it independently. Drag without Alt to mirror both handles again.
 
 Selected rectangles expose four corner anchors. Dragging one freely converts the rectangle to a closed polygon; double-clicking makes that corner smooth. Other rounded corners retain their rounding. Clicking alone leaves the rectangle unchanged.
+
+Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste works across tabs and sessions and creates one undo step. Finish active edits before copying or pasting.

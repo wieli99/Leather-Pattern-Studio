@@ -164,3 +164,24 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     }
   }
 }
+
+
+export function handleClipboard(event: ClipboardEvent) {
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (event.defaultPrevented || !target || target.closest(
+    "input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=menu]",
+  ) || document.querySelector("[role=dialog]") || !event.clipboardData) return;
+  if (!editor.canUseClipboard) return;
+  if (event.type === "copy") {
+    const text = editor.copyObjects();
+    if (text) {
+      event.clipboardData.setData("text/plain", text);
+      event.preventDefault();
+    }
+  } else {
+    const text = event.clipboardData.getData("text/plain");
+    if (!text.includes('"leather-pattern-designer-clipboard"')) return;
+    event.preventDefault();
+    void editor.pasteObjects(text);
+  }
+}

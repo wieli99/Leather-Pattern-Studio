@@ -14,7 +14,7 @@ import Settings from "./Settings.vue";
 import StatusBar from "./StatusBar.vue";
 
 import { tools } from "./tools";
-import { handleShortcut } from "./shortcuts";
+import { handleShortcut, handleClipboard } from "./shortcuts";
 const nativeSaving = "showSaveFilePicker" in window;
 const renaming = ref(false);
 const draftName = ref("");
@@ -109,12 +109,16 @@ onMounted(() => {
   };
   window.addEventListener("focusout", releasePan);
   window.addEventListener("keydown", key);
+  window.addEventListener("copy", handleClipboard);
+  window.addEventListener("paste", handleClipboard);
   window.addEventListener("keyup", up);
   window.addEventListener("blur", blur);
   window.addEventListener("beforeunload", leave);
   onUnmounted(() => {
     window.removeEventListener("focusout", releasePan);
     window.removeEventListener("keydown", key);
+    window.removeEventListener("copy", handleClipboard);
+    window.removeEventListener("paste", handleClipboard);
     window.removeEventListener("keyup", up);
     window.removeEventListener("blur", blur);
     window.removeEventListener("beforeunload", leave);

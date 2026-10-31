@@ -10,9 +10,12 @@ const editor = vi.hoisted(() => ({
   fit: vi.fn(),
   setTool: vi.fn(),
   save: vi.fn(),
+  canUseClipboard: true,
+  copyObjects: vi.fn(() => "clipboard snapshot"),
+  pasteObjects: vi.fn(),
 }));
 vi.mock("../editor/instance", () => ({ editor }));
-import { handleShortcut } from "./shortcuts";
+import { handleShortcut, handleClipboard } from "./shortcuts";
 // The dispatcher only needs element identity and closest() for its focus guard.
 class ElementStub {
   constructor(
@@ -80,4 +83,20 @@ test("controls, composition, repeats and handled events suppress tools", () => {
   ])
     press("r", overrides);
   expect(editor.cycle).not.toHaveBeenCalled();
+});
+
+test("native clipboard writes snapshots and leaves text fields alone", () => {
+  const clipboardData = { setData: vi.fn(), getData: vi.fn(() => '{"format":"leather-pattern-designer-clipboard"}') };
+  const event = {
+    type: "copy", target: new ElementStub(), clipboardData,
+    defaultPrevented: false, preventDefault: vi.fn(),
+  };
+  handleClipboard(event as unknown as ClipboardEvent);
+  expect(clipboardData.setData).toHaveBeenCalledWith("text/plain", "clipboard snapshot");
+  handleClipboard({ ...event, type: "paste" } as unknown as ClipboardEvent);
+  expect(editor.pasteObjects).toHaveBeenCalledOnce();
+  vi.clearAllMocks();
+  handleClipboard({ ...event, target: new ElementStub("INPUT", true) } as unknown as ClipboardEvent);
+  expect(editor.copyObjects).not.toHaveBeenCalled();
+  expect(event.preventDefault).not.toHaveBeenCalled();
 });

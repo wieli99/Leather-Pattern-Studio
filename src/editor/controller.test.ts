@@ -1798,3 +1798,42 @@ test("Trim synchronizes drawing mode and hides removed selection handles", async
   expect(e.selected).toEqual([]);
   expect(e.mode).toBe("select");
 });
+
+test("clipboard preserves cursor offsets across viewports and snapshots copied geometry", async () => {
+  const source = editor();
+  await source.commit({ version: 11, shapes: [{
+    id: "source", name: "Original", kind: "rectangle",
+    points: [{ x: 10, y: 20 }, { x: 30, y: 40 }], radius: 0, rotation: 0,
+  }] });
+  source.selected = ["source"];
+  source.pointerMove(source.screen({ x: 5, y: 7 }), false);
+  const text = source.copyObjects()!;
+  source.document.shapes[0].points[0].x = 99;
+  const target = editor();
+  target.pan = { x: -35, y: 82 };
+  target.zoom = 7;
+  target.pointerMove(target.screen({ x: -2.5, y: 12.5 }), false);
+  await target.pasteObjects(text);
+  expect(target.document.shapes[0].points).toEqual([
+    { x: 2.5, y: 25.5 }, { x: 22.5, y: 45.5 },
+  ]);
+  expect(target.selected).toEqual([target.document.shapes[0].id]);
+  expect(target.selected[0]).not.toBe("source");
+  await target.pasteObjects(text);
+  expect(target.document.shapes).toHaveLength(2);
+  expect(target.document.shapes[1].id).not.toBe(target.document.shapes[0].id);
+  await target.transact("undo");
+  expect(target.document.shapes).toHaveLength(1);
+});
+test("clipboard ignores unrelated text and requires an idle canvas pointer", async () => {
+  const e = editor();
+  expect(e.copyObjects()).toBeNull();
+  e.pointerMove({ x: 100, y: 100 }, false);
+  await e.pasteObjects("ordinary text");
+  expect(e.document.shapes).toHaveLength(0);
+  e.leavePointer();
+  expect(e.canUseClipboard).toBe(false);
+  e.pointerMove({ x: 100, y: 100 }, false);
+  e.busy = true;
+  expect(e.canUseClipboard).toBe(false);
+});

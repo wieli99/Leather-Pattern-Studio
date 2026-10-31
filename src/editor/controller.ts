@@ -338,6 +338,7 @@ export class Controller {
   snapTarget: Point | null = null;
   snapKind: SnapKind | null = null;
   pointerInside = false;
+  private clipboardPixel: Point | null = null;
   smartGuides: SmartGuide[] = [];
   grid = true;
   objects = true;
@@ -1943,6 +1944,8 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
+    this.clipboardPixel = { ...pixel };
+    this.pointerInside = true;
     const raw = this.world(pixel);
     this.anchorPointer = raw;
     if (this.mergeMode && button === 0 && !this.space) return;
@@ -2154,6 +2157,7 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    this.clipboardPixel = { ...pixel };
     this.mirrorHover = null;
     if (this.transformTool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
       this.pointerInside = true;
@@ -2724,6 +2728,55 @@ export class Controller {
           (s) => !this.selected.includes(s.id),
         ),
       });
+  }
+  get canUseClipboard() {
+    return this.ready && !this.busy && this.pointerInside && !!this.clipboardPixel &&
+      !this.gesture && !this.pending.length && !this.transformTool &&
+      !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
+  }
+  copyObjects(): string | null {
+    if (!this.canUseClipboard || !this.active.length) return null;
+    const ids = new Set(this.active.map(s => s.id));
+    const groups = this.stitchGroups.filter(g => ids.has(g.shapeId));
+    const groupIds = new Set(groups.map(g => g.id));
+    return JSON.stringify({
+      format: "leather-pattern-designer-clipboard", version: 1,
+      anchor: this.world(this.clipboardPixel!),
+      document: { version: 11, shapes: this.active, stitchGroups: groups,
+        stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
+          ...l, members: l.members.filter(id => groupIds.has(id)),
+        })).filter(l => l.members.length >= 2) },
+    });
+  }
+  async pasteObjects(text: string) {
+    if (!this.canUseClipboard) return;
+    const anchor = this.world(this.clipboardPixel!);
+    try {
+      let payload;
+      try { payload = JSON.parse(text); } catch { return; }
+      if (payload?.format !== "leather-pattern-designer-clipboard") return;
+      if (payload.version !== 1 || !Number.isFinite(payload.anchor?.x) ||
+          !Number.isFinite(payload.anchor?.y)) throw Error("Invalid or unsupported object clipboard");
+      const source = parseProject(JSON.stringify(payload.document));
+      if (!source.shapes.length) return;
+      const ids = new Map(source.shapes.map(s => [s.id, crypto.randomUUID()]));
+      const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, crypto.randomUUID()]));
+      const copies = source.shapes.map(s => ({
+        ...moveShape(s, anchor.x - payload.anchor.x, anchor.y - payload.anchor.y),
+        id: ids.get(s.id)!, name: `${s.name} copy`,
+      }));
+      let linkId = Math.max(0, ...(this.document.stitchLinks ?? []).map(l => l.id));
+      const success = await this.commit({
+        ...this.document, shapes: [...this.document.shapes, ...copies],
+        stitchGroups: [...this.stitchGroups, ...(source.stitchGroups ?? []).map(g => ({
+          ...g, id: groupIds.get(g.id)!, shapeId: ids.get(g.shapeId)!,
+        }))],
+        stitchLinks: [...(this.document.stitchLinks ?? []), ...(source.stitchLinks ?? []).map(l => ({
+          ...l, id: ++linkId, members: l.members.map(id => groupIds.get(id)!),
+        }))],
+      });
+      if (success) { this.selected = copies.map(s => s.id); this.notify(); }
+    } catch (error) { this.fail(error); }
   }
   duplicate() {
     this.cancel();
