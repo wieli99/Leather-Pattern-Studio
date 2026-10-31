@@ -15,7 +15,7 @@ import {
   reconcileStitches,
   type StitchGroup,
 } from "../model/stitchGeometry";
-import { sharpAnchor, toggleAnchor } from "../model/sharpAnchor";
+import { rectanglePath, sharpAnchor, toggleAnchor } from "../model/sharpAnchor";
 import { insertAnchor } from "../model/insertAnchor";
 import { isCurve, zeroHandles, mirroredHandles } from "../model/curves";
 import type { CurveHandles } from "../generated/CurveHandles";
@@ -1773,9 +1773,11 @@ export class Controller {
     if (!this.transformTool) {
       if (
         this.active.length === 1 &&
-        ["line", "polyline"].includes(this.active[0].kind)
+        ["line", "polyline", "rectangle"].includes(this.active[0].kind)
       )
-        worldPoints(this.active[0]).forEach((point, vertex) =>
+        (this.active[0].kind === "rectangle"
+          ? cornerPoints(this.active[0]).map(p => applyMatrix(shapeMatrix(this.active[0]), p))
+          : worldPoints(this.active[0])).forEach((point, vertex) =>
           curveHandles.push({ kind: "vertex", point, vertex }),
         );
       return curveHandles;
@@ -1801,9 +1803,11 @@ export class Controller {
     if (
       this.transformTool === "move" &&
       this.active.length === 1 &&
-      ["line", "polyline"].includes(this.active[0].kind)
+      ["line", "polyline", "rectangle"].includes(this.active[0].kind)
     )
-      worldPoints(this.active[0]).forEach((point, vertex) =>
+      (this.active[0].kind === "rectangle"
+          ? cornerPoints(this.active[0]).map(p => applyMatrix(shapeMatrix(this.active[0]), p))
+          : worldPoints(this.active[0])).forEach((point, vertex) =>
         result.push({ kind: "vertex", point, vertex }),
       );
     return [...result, ...curveHandles];
@@ -2063,7 +2067,8 @@ export class Controller {
       this.notify();
       return;
     }
-    if (alt && !this.transformTool && this.handleAt(raw)?.kind !== "corner") {
+    const handle = this.handleAt(raw);
+    if (alt && !this.transformTool && !handle) {
       const hit = [...this.document.shapes]
         .reverse()
         .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
@@ -2081,7 +2086,6 @@ export class Controller {
       }
       return;
     }
-    const handle = this.handleAt(raw);
     if (handle) {
       if (handle.kind === "corner") {
         this.selectedCorner = {
@@ -2431,7 +2435,7 @@ export class Controller {
         };
       }
       if (g.kind === "vertex") {
-        const original = g.original.shapes.find((s) => selected(s))!;
+        const original = rectanglePath(g.original.shapes.find((s) => selected(s))!);
         const local = applyMatrix(inverse(shapeMatrix(original)), g.end);
         const closed =
           (original.kind === "polyline" || isCurve(original)) &&
@@ -2442,7 +2446,7 @@ export class Controller {
           ) < 1e-9;
         const points = original.points.map((p, i) =>
           (!g.handleSide && i === g.vertex) ||
-          (closed &&
+          (closed && !g.handleSide &&
             (g.vertex === 0 || g.vertex === original.points.length - 1) &&
             (i === 0 || i === original.points.length - 1))
             ? local
@@ -2455,11 +2459,12 @@ export class Controller {
             ...(g.handleSide && original.handles
               ? {
                   handles: original.handles.map((h, i) => {
-                    if (i !== g.vertex) return h;
+                    if (i !== g.vertex && !(closed && (g.vertex === 0 || g.vertex === original.points.length - 1) && (i === 0 || i === original.points.length - 1))) return h;
                     const v = {
                       x: local.x - original.points[i].x,
                       y: local.y - original.points[i].y,
                     };
+                    if (alt) return { ...h, [g.handleSide!]: v };
                     return mirroredHandles(
                       g.handleSide === "incoming" ? { x: -v.x, y: -v.y } : v,
                     );
@@ -2663,7 +2668,7 @@ export class Controller {
     const shape = this.document.shapes.find((s) => s.id === id);
     if (!shape) return;
     const next = toggleAnchor(shape, index);
-    if (next !== shape) await this.edit(id, { handles: next.handles });
+    if (next !== shape) await this.edit(id, next);
   }
   async makeAnchorSharp(id: string, index: number) {
     if (this.gesture || this.transformTool || this.busy) return;

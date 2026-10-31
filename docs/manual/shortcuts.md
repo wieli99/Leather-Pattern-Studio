@@ -36,3 +36,5 @@ Choose Corner radius (B) for selected rectangles and closed polygons. Drag in 1 
 In [Stitch line](#stitching), Shift-click selects a second line for merging; the first selection is master. Enter/right-click commits the session and exits; Esc discards the session and exits, and Delete removes selected stitching when the canvas is focused. The tool button is beside Corner radius and has no dedicated letter shortcut.
 
 Hold Ctrl to show healthy stitch-link chain indicators. Broken links remain visible without Ctrl.
+
+In Select, double-click a polyline or rectangle anchor to make it smooth; double-click a curve anchor to toggle sharp/smooth. Alt+drag a curve handle moves it independently; dragging without Alt mirrors the handles.

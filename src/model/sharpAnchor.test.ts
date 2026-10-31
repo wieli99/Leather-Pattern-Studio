@@ -54,3 +54,26 @@ test("smooth endpoints have finite handles and coincident neighbours are a no-op
   const flat = { ...open, points: open.points.map(() => ({ x: 0, y: 0 })) };
   expect(toggleAnchor(flat, 0)).toBe(flat);
 });
+
+test("polyline smoothing keeps other vertices sharp and preserves identity", () => {
+  const path: Shape = { ...s, kind: "polyline", handles: undefined,
+    points: [{ x: 0, y: 0 }, { x: 20, y: 10 }, { x: 40, y: 0 }] };
+  const result = toggleAnchor(path, 1);
+  expect(result.kind).toBe("control-curve");
+  expect(result.id).toBe(path.id);
+  expect(result.points).toEqual(path.points);
+  expect(result.handles![0].outgoing).toEqual({ x: 0, y: 0 });
+  expect(result.handles![1].outgoing.x).toBeGreaterThan(0);
+  expect(sharpAnchor(result, 1).handles![1].outgoing).toEqual({ x: 0, y: 0 });
+});
+
+test("rectangle smoothing expands four corners and retains closure", () => {
+  const rectangle: Shape = { ...s, kind: "rectangle", handles: undefined,
+    points: [{ x: 0, y: 0 }, { x: 40, y: 30 }] };
+  const result = toggleAnchor(rectangle, 2);
+  expect(result.kind).toBe("control-curve");
+  expect(result.points).toHaveLength(5);
+  expect(result.points[0]).toEqual(result.points[4]);
+  expect(result.handles![2].outgoing).not.toEqual({ x: 0, y: 0 });
+  expect(result.rotation).toBe(rectangle.rotation);
+});

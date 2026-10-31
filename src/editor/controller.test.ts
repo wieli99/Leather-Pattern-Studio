@@ -449,7 +449,7 @@ test("selection is inert and transform previews apply once or cancel completely"
   e.pointerMove(e.screen({ x: 10, y: 15 }), true);
   e.pointerUp();
   expect(e.preview).toBeNull();
-  expect(e.handles()).toEqual([]);
+  expect(e.handles().filter(h => h.kind === "vertex")).toHaveLength(4);
   const revision = e.revision;
   e.activateTransform("scale");
   e.setTransformValues({ sx: 2, sy: 0.5 });
@@ -680,7 +680,7 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
   e.pointerDown(e.screen(h.point), 0, false, false);
   e.pointerMove(e.screen({ x: 20, y: 30 }), true);
   expect(e.preview!.shapes[0].handles![0]).toEqual({
-    incoming: { x: -20, y: -30 },
+    incoming: { x: -10, y: 0 },
     outgoing: { x: 20, y: 30 },
   });
   e.cancel();
@@ -746,7 +746,7 @@ test.each(["curve", "control-curve"] as const)(
   },
 );
 
-test("Alt-click inserts once in Select and ignores empty space and existing anchors", async () => {
+test("Alt-click inserts once in Select and can drag existing anchors", async () => {
   const e = editor();
   e.setMode("polyline");
   e.addPoint({ x: 0, y: 0 });
@@ -763,9 +763,18 @@ test("Alt-click inserts once in Select and ignores empty space and existing anch
   expect(e.selected).toEqual([id]);
   expect(e.document.shapes[0].points).toHaveLength(3);
   e.pointerDown(e.screen({ x: 50, y: 0 }), 0, false, true);
+  expect(e.gesture?.kind).toBe("vertex");
+  e.pointerUp();
+  expect(e.revision).toBe(2);
+  e.pointerDown(e.screen({ x: 50, y: 0 }), 0, false, true);
+  e.pointerMove(e.screen({ x: 50, y: 20 }), true);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(3));
+  expect(e.document.shapes[0].points).toHaveLength(3);
+  expect(e.document.shapes[0].points[1]).toEqual({ x: 50, y: 20 });
   e.pointerDown(e.screen({ x: 50, y: 100 }), 0, false, true);
   expect(e.gesture).toBeNull();
-  expect(e.revision).toBe(2);
+  expect(e.revision).toBe(3);
   expect(e.selected).toEqual([id]);
 });
 
@@ -1661,4 +1670,28 @@ test('merge previews, cancels, and commits one selected object', async () => {
   expect(e.selected).toEqual(['a']);
   await e.transact('undo');
   expect(e.document.shapes).toHaveLength(2);
+});
+
+test("rectangle corner dragging converts only on commit and can be cancelled", async () => {
+  const e = editor();
+  e.setMode("rectangle");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 40, y: 30 });
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  const corner = e.handles().find(h => h.vertex === 0)!;
+  e.pointerDown(e.screen(corner.point), 0, false, true);
+  e.pointerUp();
+  expect(e.document.shapes[0].kind).toBe("rectangle");
+  e.pointerDown(e.screen(corner.point), 0, false, true);
+  e.pointerMove(e.screen({ x: -10, y: -5 }), true);
+  expect(e.preview!.shapes[0].kind).toBe("polyline");
+  e.cancel();
+  expect(e.document.shapes[0].kind).toBe("rectangle");
+  e.pointerDown(e.screen(corner.point), 0, false, true);
+  e.pointerMove(e.screen({ x: -10, y: -5 }), true);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.document.shapes[0].points[0]).toEqual({ x: -10, y: -5 });
+  expect(e.document.shapes[0].points[4]).toEqual({ x: -10, y: -5 });
 });

@@ -1,5 +1,14 @@
 import type { Shape } from "./project";
-import { distance } from "./geometry";
+import { insertAnchor } from "./insertAnchor";
+import { zeroHandles } from "./curves";
+import { cornerPoints, cornerRadii, worldPoints, distance } from "./geometry";
+/** Expand a rectangle without changing its local bounds or transform. */
+export function rectanglePath(shape: Shape): Shape {
+  if (shape.kind !== "rectangle") return shape;
+  const points = cornerPoints(shape);
+  return { ...shape, kind: "polyline", points: [...points, { ...points[0] }] };
+}
+
 export function sharpAnchor(shape: Shape, index: number): Shape {
   if (shape.kind !== "control-curve" || !shape.handles || !shape.points[index])
     return shape;
@@ -26,6 +35,35 @@ export function sharpAnchor(shape: Shape, index: number): Shape {
 
 /** Toggle sharp anchors to mirrored tangents derived from their neighbours. */
 export function toggleAnchor(shape: Shape, index: number): Shape {
+  if (shape.kind === "rectangle") return toggleAnchor(rectanglePath(shape), index);
+  if (shape.kind === "polyline" && shape.points[index]) {
+    const radii = cornerRadii(shape);
+    if (radii.some((r) => r > 0)) {
+      const target = worldPoints(shape)[index];
+      const last = shape.points.length - 1;
+      const i =
+        index === last && distance(shape.points[0], shape.points[last]) < 1e-9
+          ? 0 : index;
+      const rounded = {
+        ...shape,
+        radius: 0,
+        cornerRadii: radii.map((r, j) => j === i ? 0 : r),
+      };
+      const converted = insertAnchor(rounded, target, Infinity, undefined, true);
+      if (!converted) return shape;
+      const vertex = converted.points.findIndex(p => distance(p, target) < 1e-7);
+      return vertex < 0
+        ? shape
+        : toggleAnchor(sharpAnchor(converted, vertex), vertex);
+    }
+    return toggleAnchor({
+      ...shape,
+      kind: "control-curve",
+      radius: 0,
+      cornerRadii: undefined,
+      handles: shape.points.map(zeroHandles),
+    }, index);
+  }
   const h = shape.handles?.[index];
   if (shape.kind !== "control-curve" || !h || !shape.points[index])
     return shape;

@@ -13,6 +13,7 @@ export function insertAnchor(
   point: Point,
   tolerance: number,
   onPoint?: (point: Point) => void,
+  convertOnly = false,
 ): Shape | null {
   let segments: Cubic[];
   if (isCurve(shape)) segments = worldCubics(shape);
@@ -75,7 +76,7 @@ export function insertAnchor(
       : boundary(shape).lines.flat();
   if (
     !segments.length ||
-    existingAnchors.some((p) => distance(p, point) < tolerance)
+    (!convertOnly && existingAnchors.some((p) => distance(p, point) < tolerance))
   )
     return null;
   let best = Infinity,
@@ -110,7 +111,7 @@ export function insertAnchor(
     f = lerp(b, d, t),
     p = lerp(e, f, t);
   onPoint?.(p);
-  segments.splice(index, 1, [c[0], a, e, p], [p, f, d, c[3]]);
+  if (!convertOnly) segments.splice(index, 1, [c[0], a, e, p], [p, f, d, c[3]]);
   const points = [segments[0][0], ...segments.map((c) => c[3])];
   if (distance(points[0], points[points.length - 1]) < 1e-9)
     points[points.length - 1] = { ...points[0] };

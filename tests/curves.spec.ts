@@ -41,8 +41,8 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   // The anchor moved 10 mm (30 pixels); drag its outgoing handle.
   await page.mouse.move(box.x + 230, box.y + 350);
   await expect(canvas).toHaveCSS("cursor", "move");
-  await page.mouse.down();
   await page.keyboard.down("Alt");
+  await page.mouse.down();
   await page.mouse.move(box.x + 250, box.y + 320, { steps: 5 });
   await page.mouse.up();
   await page.keyboard.up("Alt");
@@ -59,8 +59,8 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   expect(saved.shapes[0].points).toHaveLength(3);
   const h = saved.shapes[1].handles[0];
   expect(h.outgoing.x).toBeGreaterThan(20);
-  expect(h.incoming.x).toBeCloseTo(-h.outgoing.x);
-  expect(h.incoming.y).toBeCloseTo(-h.outgoing.y);
+  expect(h.incoming.x).toBeCloseTo(-17);
+  expect(h.incoming.y).toBeCloseTo(50 / 3);
   page.on("dialog", (d) => void d.accept());
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -139,4 +139,24 @@ test("Polyline groups straight and curved paths and remembers its variant", asyn
   const before = await tool.locator(".tool-icon").innerHTML();
   await page.keyboard.press("b");
   expect(await tool.locator(".tool-icon").innerHTML()).toBe(before);
+});
+
+test("rectangle corners can be smoothed and their handles dragged with Alt", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 200, y: 200 } });
+  await canvas.click({ position: { x: 400, y: 350 } });
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  await canvas.dblclick({ position: { x: 200, y: 200 } });
+  await page.getByText("Vertex coordinates", { exact: true }).click();
+  await expect(page.getByRole("group", { name: "Vertex 1 corner type", exact: true })).toBeVisible();
+  const box = (await canvas.boundingBox())!;
+  await page.keyboard.down("Alt");
+  await page.mouse.move(box.x + 235.35, box.y + 164.65);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 250, box.y + 170);
+  await page.mouse.up();
+  await page.keyboard.up("Alt");
+  await expect(page.getByLabel("Vertex 1 X", { exact: true })).toBeVisible();
 });
