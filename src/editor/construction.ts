@@ -2,6 +2,7 @@ import type { Point, Shape } from "../model/project";
 import { zeroHandles } from "../model/curves";
 import { distance } from "../model/geometry";
 export const variants = {
+  indicator: ["measurement", "size-square", "size-ruler", "arrow", "arrow-head", "crosshair"],
   polygon: ["polygon", "polygon-box"],
   polyline: ["polyline", "curve", "control-curve"],
   rectangle: ["rectangle", "rectangle-center", "rectangle-three"],
@@ -17,6 +18,7 @@ export const variants = {
 } as const;
 export type Mode =
   | (typeof variants.polygon)[number]
+  | (typeof variants.indicator)[number]
   | "text"
   | "measurement"
   | "select"
@@ -24,6 +26,11 @@ export type Mode =
   | (typeof variants.rectangle)[number]
   | (typeof variants.circle)[number];
 export const labels: Record<Mode, string> = {
+  arrow: "Arrow",
+  "arrow-head": "Bodyless arrow",
+  crosshair: "Crosshair",
+  "size-square": "Square size guide",
+  "size-ruler": "Ruler size guide",
   polygon: "Center polygon",
   "polygon-box": "Bounding-box polygon",
   curve: "Curve",
@@ -82,6 +89,20 @@ export function construct(
     out = points,
     rotation = 0;
   if (!a || !b) throw Error("Place another point");
+  if (mode !== "measurement" && (variants.indicator as readonly string[]).includes(mode)) {
+    if (distance(a,b) < 1e-9) throw Error("Indicator must have positive size");
+    if (mode === "crosshair") {
+      const radius = distance(a,b);
+      return {id:"",name:"",kind:"crosshair",points:[a,{x:a.x+radius,y:a.y}],
+        rotation:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI,radius:0};
+    }
+    const side = Math.max(Math.abs(b.x-a.x), Math.abs(b.y-a.y));
+    return { id: "", name: "", kind: mode as Shape["kind"],
+      points: [a, mode === "size-square" ? { x: a.x+(b.x<a.x?-side:side), y:a.y+(b.y<a.y?-side:side) } : b],
+      rotation: 0, radius: 0,
+      ...(["arrow", "arrow-head"].includes(mode) ? { headSize: 3 } : {}),
+    };
+  }
   if (mode === "measurement") {
     const len = distance(a, b);
     if (len < 1e-9) throw Error("Choose distinct measurement endpoints");

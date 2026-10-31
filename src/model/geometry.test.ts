@@ -98,7 +98,7 @@ test("affine curves retain exact extrema, containment and screen-space picking",
   expect(contains(ellipse, { x: 29, y: 0 })).toBe(true);
   expect(contains(ellipse, { x: 0, y: 6 })).toBe(false);
   expect(hitTest(ellipse, { x: 30.5, y: 0 }, 0.6)).toBe(true);
-  expect(hitTest(ellipse, { x: 0, y: 5.5 }, 0.4)).toBe(false);
+  expect(hitTest(ellipse, { x: 0, y: 5.7 }, 0.4)).toBe(false);
   const arc = stretchShape({ ...circle, kind: "arc", sweep: 90 }, 3, 0.5, {
     x: 0,
     y: 0,

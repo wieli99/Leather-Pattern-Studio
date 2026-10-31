@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isIndicator, indicatorGeometry } from "../model/indicators";
 import { measurementGeometry } from "../model/measurement";
 import { shapeArea } from "../model/area";
 import { computed } from "vue";
@@ -85,6 +86,14 @@ function position(axis: "x" | "y", v: string) {
       axis === "y" ? +v - c.value.y : 0,
     ),
   );
+}
+function indicatorSize(value: string) {
+  const shape = s.value!;
+  const current = indicatorGeometry(shape).size;
+  if (+value > 0 && current > 0) {
+    if (shape.kind === "arrow-head") { const local = distance(shape.points[0],shape.points[1]); const world = indicatorGeometry(shape).length; edit({headSize:+value * local/world}); }
+    else edit(stretchShape(shape,+value/current,+value/current,c.value));
+  }
 }
 function size(axis: "x" | "y", v: string) {
   if (["curve", "control-curve"].includes(s.value!.kind)) {
@@ -251,6 +260,12 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       :value="+angle.toFixed(1)"
       @commit="edit(rotateShape(s, +$event - angle, c))"
     />
+    <template v-if="isIndicator(s.kind)">
+      <Field :label="s.kind === 'size-square' ? 'Side length (mm)' : s.kind === 'crosshair' ? 'Overall size (mm)' : s.kind === 'arrow-head' ? 'Head size (mm)' : 'Length (mm)'"
+        :value="indicatorGeometry(s).size" :min="0.001" @commit="indicatorSize" />
+      <Field v-if="s.kind === 'arrow'" label="Head size (local mm)"
+        :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
+    </template>
     <template v-if="s.kind === 'measurement'">
       <Field
         label="Offset (mm)"
@@ -283,6 +298,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         :min="0" :max="100" :step="1"
         @commit="edit({ strokeOpacity: +$event / 100 })" />
     </div>
+    <Field v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
     <template v-if="area !== null">
       <label class="field">
         <span>Fill mode</span>
@@ -312,7 +328,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       </div>
     </template>
     <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-      @click="edit({ fillColor: undefined, fillOpacity: undefined, fillMode: undefined, strokeColor: undefined, strokeOpacity: undefined })">Reset styling</button>
+      @click="edit({ fillColor: undefined, fillOpacity: undefined, fillMode: undefined, strokeColor: undefined, strokeOpacity: undefined, strokeWidth: undefined })">Reset styling</button>
     </PanelSection>
     <fieldset :disabled="editor.isLocked(s.id)" class="vertex-properties">
     <details

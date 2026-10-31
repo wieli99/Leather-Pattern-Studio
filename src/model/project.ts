@@ -9,19 +9,19 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
-  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
+  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const emptyDocument = (): Doc => ({ version: 14, shapes: [] });
+export const emptyDocument = (): Doc => ({ version: 15, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -67,6 +67,7 @@ export function parseProject(text: string): Doc {
       ![
         "text",
         "measurement",
+        "arrow", "arrow-head", "crosshair", "size-square", "size-ruler",
         "line",
         "polyline",
         "curve",
@@ -217,6 +218,18 @@ export function parseProject(text: string): Doc {
           Math.abs(s.measurementOffset) > 1e7 ||
           Math.hypot(s.points[1].x - s.points[0].x, s.points[1].y - s.points[0].y) < 1e-9))
       throw Error("Invalid measurement");
+    if (s.headSize !== undefined && (!Number.isFinite(s.headSize) || s.headSize <= 0 || s.headSize > 1e7))
+      throw Error("Invalid arrowhead size");
+    if (s.kind === "size-square") {
+      const dx = Math.abs(b.x-a.x), dy = Math.abs(b.y-a.y);
+      if (dx < 1e-9 || Math.abs(dx-dy) > 1e-8*Math.max(1,dx)) throw Error("Size guide must be square");
+      if (s.transform) {
+        const m = s.transform, x = Math.hypot(m.a,m.b), y = Math.hypot(m.c,m.d);
+        if (Math.abs(x-y) > 1e-8*Math.max(x,y) || Math.abs(m.a*m.c+m.b*m.d) > 1e-8*x*y)
+          throw Error("Size guide requires uniform scaling");
+      }
+    }
+    if (s.strokeWidth !== undefined && (!Number.isFinite(s.strokeWidth) || s.strokeWidth <= 0)) throw Error("Invalid outline width");
     ids.add(s.id);
     result.push({
       id: s.id,
@@ -229,6 +242,8 @@ export function parseProject(text: string): Doc {
       ...(s.fillColor !== undefined ? { fillColor: s.fillColor } : {}),
       ...(s.fillOpacity !== undefined ? { fillOpacity: s.fillOpacity } : {}),
       kind: s.kind,
+      ...(s.strokeWidth !== undefined ? {strokeWidth:s.strokeWidth} : {}),
+      ...(s.headSize !== undefined ? { headSize: s.headSize } : {}),
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize } : {}),
@@ -282,7 +297,7 @@ export function parseProject(text: string): Doc {
     objectTree,
     stitchLinks,
     stitchGroups,
-    version: 14,
+    version: 15,
     shapes: treeInDrawingOrder(objectTree, result),
     guides: guides.map((g: Guide) => ({
       id: g.id,

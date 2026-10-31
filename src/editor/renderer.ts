@@ -1,3 +1,4 @@
+import { isIndicator, indicatorGeometry } from "../model/indicators";
 import { measurementGeometry } from "../model/measurement";
 import { isClosedShape } from "../model/closedShape";
 import { drawStitches } from "./stitchRenderer";
@@ -16,6 +17,7 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
   const a = s.points[0],
     b = s.points[s.points.length - 1];
   if ("beginPath" in ctx) ctx.beginPath();
+  if (isIndicator(s.kind)) return;
   if (isCurve(s)) {
     ctx.moveTo(a.x, a.y);
     for (const [, c1, c2, end] of cubicSegments(s))
@@ -149,7 +151,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         m = shapeMatrix(s);
       path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
       const selected = editor.selected.includes(s.id);
-      ctx.lineWidth = (selected ? 1.7 : 1.2) / z;
+      ctx.lineWidth = s.strokeWidth ?? 0.35;
       ctx.strokeStyle = preview
         ? color("preview")
         : selected
@@ -198,9 +200,30 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           ctx.restore();
         }
       }
-      if (s.kind === "measurement") {
+      if (isIndicator(s.kind)) {
+        const g = indicatorGeometry(s);
+        ctx.beginPath();
+        if (s.kind === "arrow" || s.kind === "arrow-head") {
+          ctx.lineCap = "round"; ctx.lineJoin = "round";
+          const head = g.lines.slice(-2);
+          if (s.kind === "arrow") { const [a,b]=g.lines[0]; ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y); }
+          ctx.moveTo(head[0][0].x,head[0][0].y); ctx.lineTo(head[0][1].x,head[0][1].y);ctx.lineTo(head[1][1].x,head[1][1].y);
+        } else if (s.kind === "size-square") {
+          ctx.lineJoin = "round";
+          ctx.moveTo(g.lines[0][0].x,g.lines[0][0].y);
+          for (const [,b] of g.lines) ctx.lineTo(b.x,b.y);
+          ctx.closePath();
+        } else { ctx.lineCap = "round"; for (const [a,b] of g.lines) { ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); } }
+        ctx.stroke();
+        ctx.fillStyle = ctx.strokeStyle;
+        for (const l of g.labels) {
+          ctx.save(); ctx.translate(l.point.x,l.point.y); ctx.rotate(l.angle);
+          ctx.font = `${l.fontSize}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(l.text,0,0); ctx.restore();
+        }
+      } else if (s.kind === "measurement") {
         const g = measurementGeometry(s);
-        ctx.lineWidth = 0.35;
+        ctx.lineWidth = s.strokeWidth ?? 0.35;
         ctx.beginPath();
         for (const [a, b] of g.lines) {
           ctx.moveTo(a.x, a.y);

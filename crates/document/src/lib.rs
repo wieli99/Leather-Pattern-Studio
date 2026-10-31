@@ -32,6 +32,14 @@ pub enum Kind {
     Arc,
     Text,
     Measurement,
+    Arrow,
+    #[serde(rename = "arrow-head")]
+    ArrowHead,
+    Crosshair,
+    #[serde(rename = "size-square")]
+    SizeSquare,
+    #[serde(rename = "size-ruler")]
+    SizeRuler,
 }
 // Handle vectors are relative to their anchor, in local millimetres.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
@@ -93,6 +101,16 @@ pub struct Shape {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub text: Option<String>,
+    #[serde(default, rename = "headSize", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub head_size: Option<f64>,
+    #[serde(
+        default,
+        rename = "strokeWidth",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stroke_width: Option<f64>,
     #[serde(
         default,
         rename = "measurementOffset",
@@ -369,7 +387,16 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
         }
     } else if matches!(shape.kind, Kind::Circle | Kind::Ellipse | Kind::Arc) {
         keys.push(format!("{prefix}edge:0"));
-    } else if !matches!(shape.kind, Kind::Text | Kind::Measurement) {
+    } else if !matches!(
+        shape.kind,
+        Kind::Text
+            | Kind::Measurement
+            | Kind::Arrow
+            | Kind::ArrowHead
+            | Kind::Crosshair
+            | Kind::SizeSquare
+            | Kind::SizeRuler
+    ) {
         let mut pts = shape.points.clone();
         if shape.kind == Kind::Curve {
             pts.dedup_by(|a, b| (a.x - b.x).hypot(a.y - b.y) <= 1e-9);
@@ -392,9 +419,12 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
 
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14) {
+        if !matches!(
+            self.version,
+            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
+        ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15). Reload the application.",
                 self.version
             ));
         }
@@ -593,6 +623,14 @@ impl Document {
                     return Err("Transformed coordinate exceeds limit".into());
                 }
             }
+            if s.stroke_width.is_some_and(|v| !v.is_finite() || v <= 0.0) {
+                return Err("Invalid outline width".into());
+            }
+            if s.head_size
+                .is_some_and(|v| !v.is_finite() || v <= 0.0 || v > 1e7)
+            {
+                return Err("Invalid arrowhead size".into());
+            }
             let a = &s.points[0];
             let b = s.points.last().unwrap();
             if s.points.iter().all(|p| p == a) {
@@ -600,6 +638,22 @@ impl Document {
             }
             if matches!(s.kind, Kind::Rectangle | Kind::Ellipse) && (a.x == b.x || a.y == b.y) {
                 return Err("Width and height must be positive".into());
+            }
+            if s.kind == Kind::SizeSquare {
+                let dx = (a.x - b.x).abs();
+                let dy = (a.y - b.y).abs();
+                if dx < 1e-9 || (dx - dy).abs() > 1e-8 * dx.max(1.0) {
+                    return Err("Size guide must be square".into());
+                }
+                if let Some(m) = &s.transform {
+                    let x = m.a.hypot(m.b);
+                    let y = m.c.hypot(m.d);
+                    if (x - y).abs() > 1e-8 * x.max(y)
+                        || (m.a * m.c + m.b * m.d).abs() > 1e-8 * x * y
+                    {
+                        return Err("Size guide requires uniform scaling".into());
+                    }
+                }
             }
             if s.kind == Kind::Rectangle
                 && s.radius > ((a.x - b.x).abs().min((a.y - b.y).abs()) / 2.0)
@@ -649,7 +703,17 @@ impl Document {
             if group.id.is_empty()
                 || !stitch_ids.insert(&group.id)
                 || !self.shapes.iter().any(|s| {
-                    s.id == group.shape_id && !matches!(s.kind, Kind::Text | Kind::Measurement)
+                    s.id == group.shape_id
+                        && !matches!(
+                            s.kind,
+                            Kind::Text
+                                | Kind::Measurement
+                                | Kind::Arrow
+                                | Kind::ArrowHead
+                                | Kind::Crosshair
+                                | Kind::SizeSquare
+                                | Kind::SizeRuler
+                        )
                 })
                 || group.edges.is_empty()
                 || group.edges.len() > 20000
@@ -690,7 +754,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 14,
+                version: 15,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -710,7 +774,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -822,7 +886,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 14;
+                next.version = 15;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -867,9 +931,37 @@ impl Editor {
 mod tests {
     use super::*;
     #[test]
+    fn indicators_validate_roundtrip_and_history() {
+        for kind in [
+            "arrow",
+            "arrow-head",
+            "crosshair",
+            "size-square",
+            "size-ruler",
+        ] {
+            let json = serde_json::json!({"version":15,"shapes":[{
+                "id":"i","name":"Indicator","kind":kind,"points":[{"x":0,"y":0},{"x":20,"y":20}],
+                "rotation":0,"radius":0,"headSize":3
+            }]});
+            let mut doc: Document = serde_json::from_value(json).unwrap();
+            doc.validate().unwrap();
+            assert!(stitch_boundary(&doc.shapes[0]).0.is_empty());
+            let mut editor = Editor::new();
+            let text = serde_json::to_string(&doc).unwrap();
+            editor.execute("commit", &text, 0).unwrap();
+            editor.execute("undo", "", 1).unwrap();
+            assert!(editor.document.shapes.is_empty());
+            editor.execute("redo", "", 2).unwrap();
+            assert_eq!(editor.document.shapes, doc.shapes);
+            doc.shapes[0].head_size = Some(0.0);
+            assert!(doc.validate().is_err());
+        }
+    }
+
+    #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 14;
+        doc.version = 15;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -954,7 +1046,9 @@ mod tests {
     #[test]
     fn capabilities_and_version_errors() {
         let editor = Editor::default();
-        assert!(editor.capabilities().contains("[5,6,7,8,9,10,11,12,13,14]"));
+        assert!(editor
+            .capabilities()
+            .contains("[5,6,7,8,9,10,11,12,13,14,15]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -986,7 +1080,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 14;
+        d.version = 15;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -1145,7 +1239,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 14;
+        doc.version = 15;
         doc.object_tree = Some(
             doc.shapes
                 .iter()

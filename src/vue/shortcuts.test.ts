@@ -143,7 +143,7 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
 
 test("D selects Measurement without taking over text fields or modified shortcuts", () => {
   press("d");
-  expect(editor.setTool).toHaveBeenLastCalledWith("measurement");
+  expect(editor.cycle).toHaveBeenLastCalledWith("indicator", 1);
   vi.clearAllMocks();
   press("d", { target: new ElementStub("INPUT", true) });
   press("d", { ctrlKey: true });

@@ -13,6 +13,7 @@ const center = computed(
 const points = computed(() => {
   const m = props.mode;
   if (
+    ["arrow", "arrow-head", "crosshair", "size-square", "size-ruler"].includes(m) ||
     m === "text" ||
     m === "measurement" ||
     m === "select" ||
@@ -113,6 +114,11 @@ const points = computed(() => {
       stroke="currentColor"
       stroke-width="1.2"
     />
+    <path v-else-if="mode === 'arrow'" d="M3 21L21 3M10 3H21V14" />
+    <path v-else-if="mode === 'arrow-head'" d="M17 4L7 12L17 20" />
+    <path v-else-if="mode === 'crosshair'" d="M2 12H22M12 2V22" />
+    <path v-else-if="mode === 'size-square'" d="M3 3H21V21H3ZM6 8H18M6 6V10M18 6V10M8 13H16M8 16H16" />
+    <path v-else-if="mode === 'size-ruler'" d="M2 6H22M2 6V18M7 6V12M12 6V16M17 6V12M22 6V18" />
     <path v-else-if="mode === 'measurement'" d="M3 7H21V17H3ZM7 7V12M10 7V10M13 7V12M16 7V10M19 7V12" />
     <path v-else-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
     <path v-else-if="mode === 'curve'" d="M3 18C8 18 16 6 21 6" />

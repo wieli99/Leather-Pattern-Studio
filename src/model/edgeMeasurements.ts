@@ -1,3 +1,4 @@
+import { isIndicator } from "./indicators";
 import { boundary, distance, worldCubics } from "./geometry";
 import { cubicAt, isCurve } from "./curves";
 import type { Point, Shape } from "./project";
@@ -38,7 +39,7 @@ function measure(at: (t: number) => Point): EdgeMeasurement | undefined {
 }
 
 export function edgeMeasurements(shape: Shape): EdgeMeasurement[] {
-  if (shape.kind === "text" || shape.kind === "measurement") return [];
+  if (isIndicator(shape.kind) || shape.kind === "text" || shape.kind === "measurement") return [];
   if (isCurve(shape))
     return worldCubics(shape)
       .map((c) => measure((t) => cubicAt(c, t)))

@@ -1,3 +1,4 @@
+import { isIndicator } from "./indicators";
 import type { Point, Shape } from "./project";
 import { boundary, distanceToSegment, worldCubics } from "./geometry";
 import { mergeShapes } from "./merge";
@@ -33,7 +34,7 @@ export function trimAt(
 ): Shape[] | null {
   const pieces: Piece[] = [];
   for (const source of shapes) {
-    if (source.kind === "text" || source.kind === "measurement") continue;
+    if (isIndicator(source.kind) || source.kind === "text" || source.kind === "measurement") continue;
     const base = {
       ...source,
       rotation: 0,

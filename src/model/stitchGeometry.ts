@@ -1,3 +1,4 @@
+import { isIndicator } from "./indicators";
 import { isClosedShape as stitchClosed } from "./closedShape";
 export { stitchClosed };
 import type { StitchGroup as CoreStitchGroup } from "../generated/StitchGroup";
@@ -56,7 +57,7 @@ const edgeCache = new WeakMap<Shape, StitchEdge[]>();
 export function stitchEdges(s: Shape): StitchEdge[] {
   const cached = edgeCache.get(s);
   if (cached) return cached;
-  if (s.kind === "text" || s.kind === "measurement") return [];
+  if (isIndicator(s.kind) || s.kind === "text" || s.kind === "measurement") return [];
   const prefix = `${s.kind}:${s.points.length}:`;
   const edges: StitchEdge[] = [];
   const add = (key: string, points: Point[]) => {
@@ -447,7 +448,7 @@ export function validateStitchGroups(
     ids.add(g.id);
     validateStitchSettings(g.settings);
     const s = shapes.find((s) => s.id === g.shapeId);
-    if (!s || s.kind === "text") throw Error("Missing stitch parent.");
+    if (!s || isIndicator(s.kind) || s.kind === "text") throw Error("Missing stitch parent.");
     const keys = orderStitchEdges(s, g.edges, g.edges[0]);
     if (
       keys.some((k, i) => k !== g.edges[i]) ||

@@ -1964,3 +1964,61 @@ test('measurement commits once after three points and supports exact signed offs
   expect(e.pending).toHaveLength(0);
   expect(e.document.shapes).toHaveLength(0);
 });
+
+test("indicators support both placement gestures and one undo step", async () => {
+  for (const mode of ["arrow", "arrow-head", "crosshair", "size-square", "size-ruler"] as const) {
+    for (const drag of [false,true]) {
+      const e=editor(); e.setMode(mode);
+      const a={x:100,y:100}, b={x:200,y:180};
+      e.pointerDown(a,0,false,false);
+      if (drag) { e.pointerMove(b,false,false); e.pointerUp(b); }
+      else { e.pointerUp(a); e.pointerMove(b,false,false); e.pointerDown(b,0,false,false); e.pointerUp(b); }
+      await vi.waitFor(()=>expect(e.document.shapes).toHaveLength(1));
+      expect(e.document.shapes[0].kind).toBe(mode);
+      expect(e.mode).toBe(mode);
+      await e.transact("undo");
+      expect(e.document.shapes).toHaveLength(0);
+    }
+  }
+});
+
+test("cancel and switching modes discard pending indicators",()=>{
+  const e=editor(); e.setMode("crosshair");
+  e.pointerDown({x:100,y:100},0,false,false); e.pointerUp();
+  expect(e.pending).toHaveLength(1);
+  e.cancel(); expect(e.pending).toHaveLength(0);
+  e.pointerDown({x:100,y:100},0,false,false); e.pointerUp();
+  e.setMode("size-ruler");
+  expect(e.pending).toHaveLength(0); expect(e.document.shapes).toHaveLength(0);
+});
+
+test("square guides constrain numeric resizing for the whole selection", async()=>{
+  const e=editor(); e.setMode("size-square");
+  e.finish([{x:0,y:0},{x:20,y:10}]);
+  await vi.waitFor(()=>expect(e.document.shapes).toHaveLength(1));
+  e.setMode("select");
+  e.selected=[e.document.shapes[0].id];
+  await e.activateTransform("scale");
+  e.setTransformValues({sx:2});
+  expect(e.transformValues.sx).toBe(2);
+  expect(e.transformValues.sy).toBe(2);
+  expect(e.transformError).toBe("");
+  expect(e.canTrim).toBe(false); expect(e.canStitch).toBe(false);
+});
+
+test("measurement tool angles snap in eight directions without changing square placement",()=>{
+  const e=editor();
+  for (const mode of ["arrow","arrow-head","crosshair","size-ruler","measurement"] as const) {
+    e.setMode(mode); e.pending=[{x:10,y:20}];
+    for(let i=0;i<8;i++) {
+      const angle=i*Math.PI/4+0.1;
+      const p=e.drawingPoint({x:10+30*Math.cos(angle),y:20+30*Math.sin(angle)},true,true);
+      expect(p.x).toBeCloseTo(10+30*Math.cos(i*Math.PI/4));
+      expect(p.y).toBeCloseTo(20+30*Math.sin(i*Math.PI/4));
+    }
+    const raw={x:37,y:29};
+    expect(e.drawingPoint(raw,true,false)).toEqual(raw);
+  }
+  e.setMode("measurement"); e.pending=[{x:0,y:0},{x:20,y:10}];
+  expect(e.drawingPoint({x:30,y:18},true,true)).toEqual({x:30,y:18});
+});

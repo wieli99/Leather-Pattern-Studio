@@ -58,3 +58,5 @@ After Copy Styling in an object's context menu, Ctrl/⌘+V applies fill color, o
 Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
 
 Press D with the canvas focused, or select Measurement from the toolbar below Text. After placing its two endpoints, Tab edits the signed Offset; Enter confirms placement. Esc cancels an unfinished measurement. See [Persistent measurements](#measurements).
+
+Indicators share the Measurement submenu. D and Shift+D cycle its variants; right-click, hold the button, or press Down while it is focused to choose a variant. Escape cancels unfinished placement.

@@ -1,3 +1,4 @@
+import { isIndicator, indicatorGeometry } from "./indicators";
 import { measurementGeometry } from "./measurement";
 import {
   isCurve,
@@ -82,7 +83,7 @@ export type Bounds = { x: number; y: number; width: number; height: number };
 export const distance = (a: Point, b: Point) =>
   Math.hypot(a.x - b.x, a.y - b.y);
 export function localCenter(s: Shape): Point {
-  if (s.kind === "circle" || s.kind === "arc") return s.points[0];
+  if (s.kind === "arrow-head" || s.kind === "crosshair" || s.kind === "circle" || s.kind === "arc") return s.points[0];
   const xs = s.points.map((p) => p.x),
     ys = s.points.map((p) => p.y);
   return {
@@ -254,6 +255,15 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
+  tolerance += (s.strokeWidth ?? 0.35)/2;
+  if (isIndicator(s.kind)) {
+    const g = indicatorGeometry(s);
+    return g.lines.some(([a,b]) => distanceToSegment(point,a,b) <= tolerance) || g.labels.some(l=>{
+      const dx=point.x-l.point.x,dy=point.y-l.point.y;
+      return Math.abs(dx*Math.cos(l.angle)+dy*Math.sin(l.angle)) <= l.text.length*l.fontSize*0.62/2+tolerance &&
+        Math.abs(-dx*Math.sin(l.angle)+dy*Math.cos(l.angle)) <= l.fontSize/2+tolerance;
+    });
+  }
   if (s.kind === "measurement") {
     const g = measurementGeometry(s);
     const dx = point.x - g.middle.x, dy = point.y - g.middle.y;
@@ -365,7 +375,7 @@ export function rotateShape(
   };
 }
 export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
-  if (s.transform || s.kind === "measurement")
+  if (s.transform || isIndicator(s.kind) || s.kind === "measurement")
     return stretchShape(s, factor, factor, pivot);
   return {
     ...s,
@@ -388,6 +398,7 @@ export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
   };
 }
 export function anchors(s: Shape): Point[] {
+  if (isIndicator(s.kind)) return indicatorGeometry(s).anchors;
   if (s.transform)
     return anchors({ ...s, transform: undefined }).map((p) =>
       applyMatrix(s.transform!, p),
@@ -557,6 +568,7 @@ export function boundary(s: Shape): {
   lines: [Point, Point][];
   curves: Curve[];
 } {
+  if (isIndicator(s.kind)) return { lines: indicatorGeometry(s).lines, curves: [] };
   if (s.kind === "measurement") return { lines: measurementGeometry(s).lines, curves: [] };
   if (s.transform) {
     const m = s.transform,
@@ -667,6 +679,7 @@ export function worldCubics(s: Shape): Cubic[] {
   return cubicSegments(s).map((c) => c.map((p) => applyMatrix(m, p)) as Cubic);
 }
 export function outlineBounds(s: Shape): Point[] {
+  if (isIndicator(s.kind)) { const g=indicatorGeometry(s); return [...g.lines.flat(),...g.labels.flatMap(l=>l.bounds)]; }
   if (s.kind === "measurement") {
     const g = measurementGeometry(s);
     return [...g.lines.flat(), ...g.labelBounds];

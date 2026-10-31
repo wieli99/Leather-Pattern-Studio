@@ -1,3 +1,4 @@
+import { isIndicator } from "../model/indicators";
 import { variants, pointCount, type Mode } from "./construction";
 import { groupKeys, transformShortcuts } from "../vue/tools";
 export interface HintState {
@@ -126,9 +127,16 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
         if (kind === "text") add("text", "Double-click text", "Edit text");
       }
     }
+  } else if (isIndicator(s.mode)) {
+    action = n === 0
+      ? s.mode === "crosshair" ? "Click or drag from the center." : "Click the first point or drag."
+      : s.mode === "crosshair" ? "Click to set arm radius and direction." : "Click the second point to finish the indicator.";
+    add("snap", "Alt", "Bypass snapping");
+    if (s.mode !== "size-square") add("angle", "Shift", "Constrain to 45°");
   } else if (s.mode === "measurement") {
+    if (n === 1) add("angle", "Shift", "Constrain to 45°");
     action = n === 0 ? "Click point A." : n === 1 ? "Click point B."
-      : "Click to place the offset dimension line; Tab enters an exact offset.";
+      : "Click to place the dimension line; Tab edits its offset.";
   } else if (s.mode === "text") action = "Click to place text.";
   else {
     const path = ["polyline", "curve", "control-curve"].includes(s.mode);

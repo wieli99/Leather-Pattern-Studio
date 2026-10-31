@@ -11,8 +11,8 @@ export const tools: { id: Mode; key: string; label: string }[] = [
 
 export const groupKeys: Record<
   string,
-  "rectangle" | "circle" | "polyline" | "polygon"
-> = { r: "rectangle", c: "circle", p: "polyline", h: "polygon" };
+  "rectangle" | "circle" | "polyline" | "polygon" | "indicator"
+> = { r: "rectangle", c: "circle", p: "polyline", h: "polygon", d: "indicator" };
 export const transformShortcuts = [
   ["rotate", "Rotate", "E"],
   ["move", "Move", "G"],

@@ -19,6 +19,7 @@ const props = defineProps<{ tool: (typeof tools)[number] }>(),
   open = ref(false),
   trigger = ref<HTMLButtonElement | null>(null);
 const group = computed(() =>
+    props.tool.id === "measurement" ? "indicator" :
     props.tool.id === "polygon" ||
     props.tool.id === "rectangle" ||
     props.tool.id === "circle" ||
@@ -27,6 +28,7 @@ const group = computed(() =>
       : null,
   ),
   current = computed(() =>
+    group.value === "indicator" ? e.value.lastIndicator :
     group.value === "rectangle"
       ? e.value.lastRectangle
       : group.value === "circle"

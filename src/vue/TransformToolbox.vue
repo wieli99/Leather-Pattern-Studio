@@ -12,6 +12,7 @@ const cornerShape = computed(() =>
 const radii = computed(() =>
   cornerShape.value ? cornerRadii(cornerShape.value) : [],
 );
+const squareSelection = computed(() => e.value.active.some(s => s.kind === "size-square"));
 const uniformRadius = computed(() =>
   radii.value.length && radii.value.every((r) => r === radii.value[0])
     ? +radii.value[0].toFixed(2)
@@ -118,6 +119,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
             }}<input
               type="number"
               :aria-label="item[1]"
+              :title="squareSelection && e.transformTool === 'scale' ? 'Square guides require uniform resizing; both factors change together.' : undefined"
               :aria-invalid="!!e.transformError"
               :step="e.transformTool !== 'rotate' ? 0.01 : 0.1"
               :value="

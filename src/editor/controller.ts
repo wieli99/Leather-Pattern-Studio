@@ -1,3 +1,4 @@
+import { isIndicator } from "../model/indicators";
 import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
@@ -269,6 +270,10 @@ export class Controller {
       this.notify();
       return;
     }
+    if (this.transformTool === "scale" && this.active.some(s=>s.kind === "size-square") && v.sx !== v.sy) {
+      const factor = values.sx !== undefined ? v.sx : v.sy;
+      v.sx = factor; v.sy = factor;
+    }
     const t = (this.transformAngle * Math.PI) / 180;
     if (
       this.transformTool === "move" &&
@@ -319,6 +324,7 @@ export class Controller {
   tool: Tool = "select";
   mode: Mode = "select";
   lastRectangle: Mode = "rectangle";
+  lastIndicator: Mode = "measurement";
   lastPolygon: Mode = "polygon";
   lastCircle: Mode = "circle";
   lastPolyline: Mode = "polyline";
@@ -429,6 +435,7 @@ export class Controller {
       this.mode,
       this.lastRectangle,
       this.lastCircle,
+      this.lastIndicator,
       this.lastPolygon,
       this.lastPolyline,
       this.selected.join(","),
@@ -471,7 +478,7 @@ export class Controller {
     const raw = this.anchorPointer;
     const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
       .reverse()
-      .find((s) => s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
+      .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
     let point: Point | null = null;
     if (hit)
       insertAnchor(hit, raw, 8 / this.zoom, (p) => {
@@ -524,9 +531,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 14)
+      if (initial.document.version !== 15)
         throw Error(
-          `Application expects document version 14, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 15, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -1165,7 +1172,7 @@ export class Controller {
     this.cancel();
     this.mode = mode;
     this.tool =
-      mode === "measurement" || mode === "text"
+      isIndicator(mode) || mode === "measurement" || mode === "text"
         ? mode
         : mode === "select"
           ? "select"
@@ -1180,6 +1187,7 @@ export class Controller {
                   : mode.startsWith("arc")
                     ? "arc"
                     : "circle";
+    if (isIndicator(mode) || mode === "measurement") this.lastIndicator = mode;
     if ((variants.polygon as readonly string[]).includes(mode))
       this.lastPolygon = mode;
     if ((variants.polyline as readonly string[]).includes(mode))
@@ -1196,7 +1204,7 @@ export class Controller {
       current = list.indexOf(this.mode);
     this.setMode(
       current < 0
-        ? group === "rectangle"
+        ? group === "indicator" ? this.lastIndicator : group === "rectangle"
           ? this.lastRectangle
           : group === "circle"
             ? this.lastCircle
@@ -1243,7 +1251,7 @@ export class Controller {
       return [];
     if (this.mode === "measurement" && this.pending.length === 2) return ["Offset"];
     if (
-      ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
+      ["size-square", "rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
         this.mode,
       )
     )
@@ -1308,12 +1316,13 @@ export class Controller {
         y: a.y + ((b.x - a.x) / len) * h,
       };
     }
+    if (!Object.keys(locks).length) return p;
     let dx = p.x - a.x,
       dy = p.y - a.y;
     if (this.measurementFields.includes("Height")) {
       const square =
-        this.drawingShift &&
-        ["rectangle", "rectangle-center"].includes(this.mode);
+        (this.mode === "size-square" || this.drawingShift) &&
+        ["size-square", "rectangle", "rectangle-center"].includes(this.mode);
       const width = locks.Width ?? (square ? locks.Height : undefined);
       const height = locks.Height ?? (square ? locks.Width : undefined);
       const factor = this.mode === "rectangle-center" ? 2 : 1;
@@ -1346,7 +1355,7 @@ export class Controller {
     if (
       shift &&
       this.pending.length === 1 &&
-      ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
+      ["size-square", "rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
         this.mode,
       )
     ) {
@@ -1358,6 +1367,17 @@ export class Controller {
         x: a.x + (raw.x < a.x ? -size : size),
         y: a.y + (raw.y < a.y ? -size : size),
       };
+    }
+    const angleAnchor = this.pending[0] ?? this.drawingDown?.point;
+    if (shift && angleAnchor && this.pending.length <= 1 &&
+      ["arrow", "arrow-head", "crosshair", "size-ruler", "measurement"].includes(this.mode)) {
+      const theta = Math.round(Math.atan2(raw.y-angleAnchor.y,raw.x-angleAnchor.x)/(Math.PI/4))*Math.PI/4;
+      const radius = distance(angleAnchor,raw);
+      const point = {x:angleAnchor.x+radius*Math.cos(theta),y:angleAnchor.y+radius*Math.sin(theta)};
+      const snapped = this.snap(point,alt);
+      if (Math.abs((snapped.x-angleAnchor.x)*Math.sin(theta)-(snapped.y-angleAnchor.y)*Math.cos(theta)) < 1e-7) return snapped;
+      this.smartGuides=[]; this.snapTarget=null; this.snapKind=null;
+      return point;
     }
     if (
       shift &&
@@ -1608,7 +1628,7 @@ export class Controller {
     return (
       !this.selectionLocked &&
       (!this.selected.length ||
-        this.active.some((shape) => shape.kind !== "text" && shape.kind !== "measurement"))
+        this.active.some((shape) => !isIndicator(shape.kind) && shape.kind !== "text" && shape.kind !== "measurement"))
     );
   }
   activateTrim() {
@@ -2220,7 +2240,7 @@ export class Controller {
     if (alt && !this.transformTool && !handle) {
       const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
         .reverse()
-        .find((s) => s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
+        .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
       if (hit) {
         const shape = insertAnchor(hit, raw, 8 / this.zoom);
         if (shape) {
@@ -2496,8 +2516,9 @@ export class Controller {
             ? component(raw, g.axis) / (component(g.start, g.axis) || 1)
             : distance(raw, g.pivot) / (distance(g.start, g.pivot) || 1),
         ));
-        const sx = g.axis === "y" ? 1 : factor,
-          sy = g.axis === "x" ? 1 : factor;
+        const uniform = this.active.some(s=>s.kind === "size-square");
+        const sx = !uniform && g.axis === "y" ? 1 : factor,
+          sy = !uniform && g.axis === "x" ? 1 : factor;
         this.transformValues = {
           ...this.transformValues,
           sx: sx * (g.baseValues?.sx ?? 1),
@@ -2680,6 +2701,7 @@ export class Controller {
     }
     if (this.drawingDown) {
       const d = this.drawingDown;
+      if (d.initial && pixel && distance(pixel,d.pixel) >= 4 && ["arrow","arrow-head","crosshair","size-ruler"].includes(this.mode)) this.pending=[d.point];
       this.drawingDown = null;
       const p = pixel
         ? this.drawingPoint(this.world(pixel), alt, shift)
@@ -2790,7 +2812,7 @@ export class Controller {
       if (this.mode === "control-curve")
         shape.handles = this.pendingHandles.slice(0, points.length);
       shape.id = crypto.randomUUID();
-      shape.name = `${isCurveMode(this.mode) ? labels[this.mode] : shape.kind[0].toUpperCase() + shape.kind.slice(1)} ${this.document.shapes.length + 1}`;
+      shape.name = `${isCurveMode(this.mode) || isIndicator(this.mode) ? labels[this.mode] : shape.kind[0].toUpperCase() + shape.kind.slice(1)} ${this.document.shapes.length + 1}`;
       const next = {
         ...this.document,
         shapes: [...this.document.shapes, shape],
@@ -2974,7 +2996,7 @@ export class Controller {
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
-      document: { version: 14, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
+      document: { version: 15, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
         })).filter(l => l.members.length >= 2) },
