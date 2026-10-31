@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shapeArea } from "../model/area";
 import { computed } from "vue";
 import {
   isPolygon,
@@ -52,6 +53,7 @@ function isSharp(shape: Shape, index: number) {
     [handles.incoming, handles.outgoing].every((v) => v.x === 0 && v.y === 0)
   );
 }
+const area = computed(() => (s.value ? shapeArea(s.value) : null));
 const edit = (changes: Partial<Shape>) => {
   if (s.value) {
     const next = { ...s.value, ...changes };
@@ -180,6 +182,10 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         @commit="edit({ fontSize: +$event })"
       />
     </template>
+    <label v-if="area !== null" class="field">
+      <span>Area (mm²)</span>
+      <input aria-label="Area (mm²)" readonly :value="area.toFixed(2)" />
+    </label>
     <p class="units-hint">Dimensions in mm</p>
     <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <div class="field-row">

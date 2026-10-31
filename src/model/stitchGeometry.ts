@@ -1,3 +1,5 @@
+import { isClosedShape as stitchClosed } from "./closedShape";
+export { stitchClosed };
 import type { StitchGroup as CoreStitchGroup } from "../generated/StitchGroup";
 import {
   applyMatrix,
@@ -28,14 +30,6 @@ const lerp = (a: Point, b: Point, t: number): Point => ({
   x: a.x + (b.x - a.x) * t,
   y: a.y + (b.y - a.y) * t,
 });
-export function stitchClosed(s: Shape) {
-  return (
-    ["rectangle", "circle", "ellipse"].includes(s.kind) ||
-    (["polyline", "curve", "control-curve"].includes(s.kind) &&
-      distance(s.points[0], s.points.at(-1)!) < 1e-9) ||
-    (s.kind === "arc" && Math.abs(s.sweep ?? 0) === 360)
-  );
-}
 function sample(at: (t: number) => Point): Point[] {
   const result: Point[] = [at(0)];
   function visit(t: number, u: number, a: Point, b: Point, depth: number) {

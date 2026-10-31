@@ -1,3 +1,4 @@
+import { isClosedShape } from "../model/closedShape";
 import { drawStitches } from "./stitchRenderer";
 import { isCurve, cubicSegments } from "../model/curves";
 import { snappedAxes } from "./snapping";
@@ -154,7 +155,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           : editor.hover === s.id
             ? color("text")
             : color("shape");
-      if (["rectangle", "circle", "ellipse"].includes(s.kind)) {
+      if (isClosedShape(s)) {
         ctx.save();
         ctx.globalAlpha = selected ? 0.12 : 0.05;
         ctx.fillStyle = selected ? color("accent") : color("shape");
