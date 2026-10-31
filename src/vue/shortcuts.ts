@@ -18,7 +18,10 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   )
     return;
   const canvas = target.tagName === "CANVAS";
-  if (!(e.ctrlKey || e.metaKey) && !canvas) return;
+  const objectDelete =
+    target.closest(".objects button") !== null &&
+    ["Delete", "Backspace"].includes(e.key);
+  if (!(e.ctrlKey || e.metaKey) && !canvas && !objectDelete) return;
   if (e.altKey || (e.ctrlKey && e.metaKey)) return;
   const mod = e.ctrlKey || e.metaKey;
   if (!mod && e.code === "Space") {
@@ -56,6 +59,13 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     editor.cancel();
     editor.selected = editor.document.shapes.map((s) => s.id);
     editor.notify();
+    return;
+  }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === "v" &&
+      editor.stylingClipboardFallback && editor.copiedStyling &&
+      (canvas || target.closest(".objects button"))) {
+    e.preventDefault();
+    void editor.pasteStyling();
     return;
   }
   if (mod) return;
@@ -171,6 +181,14 @@ export function handleClipboard(event: ClipboardEvent) {
   if (event.defaultPrevented || !target || target.closest(
     "input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=menu]",
   ) || document.querySelector("[role=dialog]") || !event.clipboardData) return;
+  if (event.type === "paste" && (target.tagName === "CANVAS" || target.closest(".objects button"))) {
+    const text = event.clipboardData.getData("text/plain");
+    if (text.includes('"leather-pattern-designer-styling"')) {
+      event.preventDefault();
+      void editor.pasteStyling(text);
+      return;
+    }
+  }
   if (!editor.canUseClipboard) return;
   if (event.type === "copy") {
     const text = editor.copyObjects();

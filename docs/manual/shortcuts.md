@@ -42,3 +42,5 @@ Hold Ctrl to show healthy stitch-link chain indicators. Broken links remain visi
 In Select, double-click a polyline or rectangle anchor to make it smooth; double-click a curve anchor to toggle sharp/smooth. Alt+drag a curve handle moves it independently; dragging without Alt mirrors the handles.
 
 Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste works across tabs and sessions and creates one undo step. Finish active edits before copying or pasting.
+
+After Copy Styling in an object's context menu, Ctrl/⌘+V applies fill color and opacity to selected fillable objects when the canvas or an object row has focus.

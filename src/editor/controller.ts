@@ -1,3 +1,4 @@
+import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
 import { trimAt } from "../model/trim";
 import {
@@ -2729,6 +2730,55 @@ export class Controller {
         ),
       });
   }
+  copiedStyling: string | null = null;
+  stylingClipboardFallback = false;
+  get canStyle() {
+    return this.ready && !this.busy && !this.gesture && !this.pending.length &&
+      !this.transformTool && !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
+  }
+  async copyStyling(id: string) {
+    if (!this.canStyle) return;
+    const shape = this.document.shapes.find(s => s.id === id);
+    if (!shape || shapeArea(shape) === null) return;
+    const ctx = document.createElement("canvas").getContext("2d")!;
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--shape").trim();
+    const text = JSON.stringify({ format: "leather-pattern-designer-styling", version: 1,
+      fillColor: shape.fillColor ?? ctx.fillStyle, fillOpacity: shape.fillOpacity ?? 0.05 });
+    this.copiedStyling = text;
+    this.stylingClipboardFallback = false;
+    this.notify();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      this.stylingClipboardFallback = true;
+      this.message = "Styling copied in this editor; system clipboard unavailable";
+      this.notify();
+    }
+  }
+
+  async pasteStyling(text?: string) {
+    if (!this.canStyle) return;
+    const ids = [...this.selected], revision = this.revision;
+    try {
+      if (!text && !this.copiedStyling) return;
+      const payload = JSON.parse(text ?? this.copiedStyling!);
+      if (!this.canStyle || revision !== this.revision || ids.join() !== this.selected.join()) return;
+      if (payload?.format !== "leather-pattern-designer-styling") {
+        this.message = "No copied styling available"; this.notify(); return;
+      }
+      if (payload.version !== 1 || !/^#[0-9a-f]{6}$/i.test(payload.fillColor) ||
+          typeof payload.fillOpacity !== "number" || !Number.isFinite(payload.fillOpacity) ||
+          payload.fillOpacity < 0 || payload.fillOpacity > 1) throw Error("Invalid styling clipboard");
+      let changed = false;
+      const shapes = this.document.shapes.map(s => {
+        if (!ids.includes(s.id) || shapeArea(s) === null ||
+            (s.fillColor === payload.fillColor && s.fillOpacity === payload.fillOpacity)) return s;
+        changed = true;
+        return { ...s, fillColor: payload.fillColor, fillOpacity: payload.fillOpacity };
+      });
+      if (changed) await this.commit({ ...this.document, shapes });
+    } catch (error) { this.fail(error); }
+  }
   get canUseClipboard() {
     return this.ready && !this.busy && this.pointerInside && !!this.clipboardPixel &&
       !this.gesture && !this.pending.length && !this.transformTool &&
@@ -2736,6 +2786,9 @@ export class Controller {
   }
   copyObjects(): string | null {
     if (!this.canUseClipboard || !this.active.length) return null;
+    this.copiedStyling = null;
+    this.stylingClipboardFallback = false;
+    this.notify();
     const ids = new Set(this.active.map(s => s.id));
     const groups = this.stitchGroups.filter(g => ids.has(g.shapeId));
     const groupIds = new Set(groups.map(g => g.id));

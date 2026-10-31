@@ -252,6 +252,38 @@ test("light-theme dot grid and corrected construction icons", async ({
     .click({ button: "right" });
   await page.screenshot({ path: info.outputPath("rectangle-icons.png") });
 });
+for (const key of ["Delete", "Backspace"]) {
+  test(`Objects panel supports ${key} with undo and protects renaming`, async ({ page }) => {
+    await ready(page);
+    await mode(page, "Rectangle", "Corner rectangle");
+    await points(page, p.slice(0, 2));
+    const rows = page.locator(".objects button");
+    await expect(rows).toHaveCount(1);
+    await points(page, [{ x: 380, y: 220 }, { x: 480, y: 280 }]);
+    await expect(rows).toHaveCount(2);
+    await rows.first().click();
+    await expect(rows.first()).toBeFocused();
+    await page.keyboard.press(key);
+    await expect(rows).toHaveCount(1);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(rows).toHaveCount(2);
+    await rows.first().dblclick();
+    const name = page.getByRole("textbox", { name: "Rename object", exact: true });
+    await name.fill("Body");
+    await name.selectText();
+    await name.press(key);
+    await expect(name).toHaveValue("");
+    await name.press("Escape");
+    await expect(rows).toHaveCount(2);
+    await rows.first().click();
+    await rows.last().click({ modifiers: ["Shift"] });
+    await expect(page.locator(".objects button.selected")).toHaveCount(2);
+    await page.keyboard.press(key);
+    await expect(rows).toHaveCount(0);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(rows).toHaveCount(2);
+  });
+}
 test("objects rename in place with commit, cancel and undo", async ({
   page,
 }) => {
@@ -348,4 +380,44 @@ test("Settings closes on outside clicks without consuming the click", async ({
   await page.getByText("Settings", { exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(settings).not.toHaveAttribute("aria-expanded", "true");
+});
+
+test("object context menu duplicates, renames and captures styling", async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+      writeText: async (text: string) => { (window as any).copiedStyle = text; throw new Error("Clipboard denied"); },
+      readText: async () => (window as any).copiedStyle,
+    } });
+  });
+  await mode(page, "Rectangle", "Corner rectangle");
+  await points(page, p.slice(0, 2));
+  const rows = page.locator(".objects button");
+  await expect(rows).toHaveCount(1);
+  await rows.first().click();
+  const color = page.getByLabel("Fill color", { exact: true });
+  await color.fill("#ff0000");
+  await color.dispatchEvent("input");
+  await color.blur();
+  await rows.first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Paste Styling", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "public/manual/images/object-context-menu.png" });
+  await page.getByRole("menuitem", { name: "Copy Styling", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse((window as any).copiedStyle).fillOpacity)).toBe(0.05);
+  await rows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
+  await expect(rows).toHaveCount(2);
+  await page.getByRole("button", { name: "Reset fill", exact: true }).click();
+  await expect(color).not.toHaveValue("#ff0000");
+  await rows.last().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Paste Styling", exact: true }).click();
+  await expect(color).toHaveValue("#ff0000");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(color).not.toHaveValue("#ff0000");
+  await rows.last().click();
+  await page.keyboard.press("Control+v");
+  await expect(color).toHaveValue("#ff0000");
+  await rows.last().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Rename object", exact: true })).toBeFocused();
 });
