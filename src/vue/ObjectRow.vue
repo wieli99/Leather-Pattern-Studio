@@ -196,7 +196,7 @@ function openMenu() {
         stroke="currentColor"
         stroke-width="2"
       >
-        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <rect x="5" y="10" width="14" height="11" rx="2" :fill="shape.locked ? 'currentColor' : 'none'" />
         <path
           :d="shape.locked ? 'M8 10V6a4 4 0 018 0v4' : 'M8 10V6a4 4 0 018 0'"
         />

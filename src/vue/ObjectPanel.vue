@@ -436,7 +436,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
             stroke="currentColor"
             stroke-width="2"
           >
-            <rect x="5" y="10" width="14" height="11" rx="2" />
+            <rect x="5" y="10" width="14" height="11" rx="2" :fill="row.node.locked ? 'currentColor' : 'none'" />
             <path
               :d="
                 row.node.locked
