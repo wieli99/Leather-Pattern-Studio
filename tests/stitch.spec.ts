@@ -31,7 +31,7 @@ async function setup(page: any, stitchGroups: any[] = []) {
       JSON.stringify({ version: 8, shapes: [shape], stitchGroups }),
     ),
   });
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   await page.getByRole("button", { name: "Stitch line", exact: true }).click();
 }
 async function saved(page: any) {
@@ -83,7 +83,7 @@ test("sharp rectangles accept placement and editable preset values in the bottom
       JSON.stringify({ version: 8, shapes: [{ ...shape, radius: 0 }] }),
     ),
   });
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   const tool = page.getByRole("button", { name: "Stitch line", exact: true });
   await expect(tool).toHaveText("");
   await tool.click();
@@ -169,7 +169,7 @@ test("converted path stays stitched after inserting an anchor", async ({
       }),
     ),
   });
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   await page.getByRole("button", { name: "Stitch line", exact: true }).click();
   await page.getByRole("button", { name: "Convert to stitching line" }).click();
   await expect(page.getByLabel("Stitch inset", { exact: true })).toHaveValue(

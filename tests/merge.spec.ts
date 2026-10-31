@@ -12,8 +12,8 @@ async function load(page: Page, shapes: unknown[]) {
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify({ version: 11, shapes })),
   });
-  await expect(page.locator(".objects button")).toHaveCount(shapes.length);
-  await page.locator(".objects button").first().click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(shapes.length);
+  await page.locator(".objects .object-select").first().click();
   await expect(
     page.getByRole("button", { name: "Merge", exact: true }),
   ).toBeVisible();
@@ -21,7 +21,7 @@ async function load(page: Page, shapes: unknown[]) {
     page.getByRole("button", { name: "Merge", exact: true }),
   ).toBeDisabled();
   await page
-    .locator(".objects button")
+    .locator(".objects .object-select")
     .nth(1)
     .click({ modifiers: ["Shift"] });
 }
@@ -55,14 +55,14 @@ test("Merge alone highlights, cancels, applies and undoes an outline union", asy
     page.getByRole("region", { name: "Merge settings" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await merge.click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await page.getByRole("button", { name: "Redo", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
 });
 test("connected curves merge, cancel and round trip their handles", async ({
   page,
@@ -93,10 +93,10 @@ test("connected curves merge, cancel and round trip their handles", async ({
   )
     await page.screenshot({ path: "public/manual/images/merge.png" });
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await merge.click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.evaluate(() => {
     delete (window as any).showSaveFilePicker;
   });

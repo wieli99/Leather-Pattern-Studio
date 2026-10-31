@@ -53,7 +53,7 @@ test("all grouped variants create editable shapes and retain their tool", async 
           : 2,
       ),
     );
-    await expect(page.locator(".objects button")).toHaveCount(++count);
+    await expect(page.locator(".objects .object-select")).toHaveCount(++count);
     await expect(
       page.getByRole("button", { name: `${group} (${group[0]})`, exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -73,7 +73,7 @@ test("polyline right-click, double-click and initial drag do not append anchors"
   await page
     .getByLabel("Pattern drawing canvas")
     .dblclick({ position: { x: 400, y: 350 } });
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.getByText("Vertex coordinates", { exact: true }).click();
   await expect(page.getByLabel("Vertex 4 X", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Vertex 5 X", { exact: true })).toHaveCount(0);
@@ -81,13 +81,13 @@ test("polyline right-click, double-click and initial drag do not append anchors"
   await page
     .getByLabel("Pattern drawing canvas")
     .click({ button: "right", position: { x: 500, y: 400 } });
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
   const box = (await page.getByLabel("Pattern drawing canvas").boundingBox())!;
   await page.mouse.move(box.x + 200, box.y + 400);
   await page.mouse.down();
   await page.mouse.move(box.x + 400, box.y + 450);
   await page.mouse.up();
-  await expect(page.locator(".objects button")).toHaveCount(3);
+  await expect(page.locator(".objects .object-select")).toHaveCount(3);
   await expect(page.getByLabel("Vertex 3 X", { exact: true })).toHaveCount(0);
 });
 test("live properties group undo and Escape rolls back without rounding untouched geometry", async ({
@@ -169,7 +169,7 @@ test("keyboard cycling and long press open tool variants; info is accessible", a
   await page.keyboard.press("r");
   await page.keyboard.press("r");
   await points(page, p.slice(0, 2));
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page
     .getByRole("button", { name: "Rectangle (R)", exact: true })
     .hover();
@@ -199,9 +199,9 @@ test("Ctrl selects interiors and crossing outlines; transform handles change cur
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
   const canvas = page.getByLabel("Pattern drawing canvas");
   await canvas.click({ position: { x: 250, y: 250 } });
-  await expect(page.locator(".objects button.selected")).toHaveCount(0);
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(0);
   await canvas.click({ position: { x: 250, y: 250 }, modifiers: ["Control"] });
-  await expect(page.locator(".objects button.selected")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(1);
   await page.getByRole("button", { name: "Rotate", exact: true }).click();
   await canvas.hover({ position: { x: 315, y: 250 } });
   await expect(canvas).toHaveCSS("cursor", "grab");
@@ -214,14 +214,14 @@ test("Ctrl selects interiors and crossing outlines; transform handles change cur
   await page.mouse.down();
   await page.mouse.move(box.x + 200, box.y + 240);
   await page.mouse.up();
-  await expect(page.locator(".objects button.selected")).toHaveCount(0);
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(0);
   await page.keyboard.down("Control");
   await page.mouse.move(box.x + 140, box.y + 200);
   await page.mouse.down();
   await page.mouse.move(box.x + 200, box.y + 240);
   await page.mouse.up();
   await page.keyboard.up("Control");
-  await expect(page.locator(".objects button.selected")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(1);
   await page.getByRole("button", { name: "Rotate", exact: true }).click();
   await canvas.hover({ position: { x: 315, y: 250 } });
   await page.mouse.down();
@@ -257,7 +257,7 @@ for (const key of ["Delete", "Backspace"]) {
     await ready(page);
     await mode(page, "Rectangle", "Corner rectangle");
     await points(page, p.slice(0, 2));
-    const rows = page.locator(".objects button");
+    const rows = page.locator(".objects .object-select");
     await expect(rows).toHaveCount(1);
     await points(page, [{ x: 380, y: 220 }, { x: 480, y: 280 }]);
     await expect(rows).toHaveCount(2);
@@ -277,7 +277,7 @@ for (const key of ["Delete", "Backspace"]) {
     await expect(rows).toHaveCount(2);
     await rows.first().click();
     await rows.last().click({ modifiers: ["Shift"] });
-    await expect(page.locator(".objects button.selected")).toHaveCount(2);
+    await expect(page.locator(".objects .object-select.selected")).toHaveCount(2);
     await page.keyboard.press(key);
     await expect(rows).toHaveCount(0);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
@@ -290,7 +290,7 @@ test("objects rename in place with commit, cancel and undo", async ({
   await ready(page);
   await mode(page, "Rectangle", "Corner rectangle");
   await points(page, p.slice(0, 2));
-  const row = page.locator(".objects button");
+  const row = page.locator(".objects .object-select");
   await row.dblclick();
   const name = page.getByRole("textbox", {
     name: "Rename object",
@@ -330,7 +330,7 @@ test("keyboard menus, F2 rename, and manual link focus", async ({
   await expect(tool).toBeFocused();
   await mode(page, "Rectangle", "Corner rectangle");
   await points(page, p.slice(0, 2));
-  const row = page.locator(".objects button");
+  const row = page.locator(".objects .object-select");
   await row.focus();
   await page.keyboard.press("F2");
   await expect(
@@ -347,6 +347,8 @@ test("pointer motion does not rerender object rows", async ({ page }) => {
   await mode(page, "Rectangle", "Corner rectangle");
   await points(page, p.slice(0, 2));
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await page.evaluate(() => {
     (window as any).rowMutations = 0;
     const observer = new MutationObserver((records) => {
@@ -392,7 +394,7 @@ test("object context menu duplicates, renames and captures styling", async ({ pa
   });
   await mode(page, "Rectangle", "Corner rectangle");
   await points(page, p.slice(0, 2));
-  const rows = page.locator(".objects button");
+  const rows = page.locator(".objects .object-select");
   await expect(rows).toHaveCount(1);
   await rows.first().click();
   const color = page.getByLabel("Fill color", { exact: true });
@@ -420,4 +422,80 @@ test("object context menu duplicates, renames and captures styling", async ({ pa
   await rows.last().click({ button: "right" });
   await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Rename object", exact: true })).toBeFocused();
+});
+
+test("object visibility and locks persist and protect edits", async ({ page }) => {
+  await ready(page);
+  await mode(page, "Rectangle", "Corner rectangle");
+  await points(page, p.slice(0, 2));
+  const row = page.locator(".objects .object-select");
+  await expect(row).toHaveCount(1);
+  await page.getByRole("button", { name: "Hide Rectangle 1", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Show Rectangle 1", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Show Rectangle 1", exact: true }).click();
+  await page.getByRole("button", { name: "Lock Rectangle 1", exact: true }).click();
+  await row.click();
+  for (const name of ["Move", "Rotate", "Resize", "Mirror", "Corner radius", "Merge", "Trim", "Stitch line"]) {
+    await expect(page.getByRole("toolbar", { name: "Transform selection" }).getByRole("button", { name, exact: true })).toBeDisabled();
+  }
+  await page.screenshot({ path: "public/manual/images/object-states.png" });
+  await page.keyboard.press("Delete");
+  await expect(row).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => new Promise<boolean>((resolve, reject) => {
+    const request = indexedDB.open("leather-studio", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const read = db.transaction("recovery").objectStore("recovery").get("current");
+      read.onsuccess = () => { resolve(read.result?.document.shapes[0]?.locked === true); db.close(); };
+    };
+  }))).toBe(true);
+  await page.reload();
+  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Unlock Rectangle 1", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Unlock Rectangle 1", exact: true }).click();
+  await row.click();
+  await expect(page.getByRole("toolbar", { name: "Transform selection" }).getByRole("button", { name: "Move", exact: true })).toBeEnabled();
+  await page.keyboard.press("Delete");
+  await expect(row).toHaveCount(0);
+});
+
+test("state buttons work on unselected rows and recover after editing", async ({ page }) => {
+  await ready(page);
+  await mode(page, "Rectangle", "Corner rectangle");
+  await points(page, p.slice(0, 2));
+  const rows = page.locator(".objects .object-select");
+  await expect(rows).toHaveCount(1);
+  await points(page, [{ x: 380, y: 220 }, { x: 480, y: 280 }]);
+  await expect(rows).toHaveCount(2);
+  await rows.first().click();
+  const hide = page.getByRole("button", { name: "Hide Rectangle 2", exact: true });
+  const lock = page.getByRole("button", { name: "Lock Rectangle 2", exact: true });
+  await hide.click();
+  await expect(rows.first()).toHaveClass(/selected/);
+  await expect(rows.last()).not.toHaveClass(/selected/);
+  await page.getByRole("button", { name: "Show Rectangle 2", exact: true }).click();
+  await lock.click();
+  await expect(rows.first()).toHaveClass(/selected/);
+  await page.getByRole("button", { name: "Unlock Rectangle 2", exact: true }).click();
+  await rows.last().click({ modifiers: ["Shift"] });
+  await lock.click();
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(2);
+  await page.getByRole("button", { name: "Unlock Rectangle 2", exact: true }).click();
+  await rows.first().click();
+  await rows.first().click({ modifiers: ["Shift"] });
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(0);
+  await lock.click();
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(0);
+  await page.getByRole("button", { name: "Unlock Rectangle 2", exact: true }).click();
+  await rows.first().click();
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  await page.getByRole("toolbar", { name: "Transform selection" }).getByRole("button", { name: "Move", exact: true }).click();
+  await expect(hide).toBeDisabled();
+  await expect(lock).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(hide).toBeEnabled();
+  await expect(lock).toBeEnabled();
+  await hide.click();
+  await expect(rows.first()).toHaveClass(/selected/);
 });

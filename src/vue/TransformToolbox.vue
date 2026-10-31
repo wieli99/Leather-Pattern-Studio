@@ -191,7 +191,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       <button
         v-for="item in transformShortcuts"
         :key="item[0]"
-        :disabled="item[0] === 'corner' && !e.canEditCorners"
+        :disabled="e.selectionLocked || (item[0] === 'corner' && !e.canEditCorners)"
         :aria-label="item[1]"
         :title="`${item[1]} (${item[2]})`"
         :aria-pressed="e.transformTool === item[0]"
@@ -232,7 +232,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       <button
         aria-label="Merge"
         :title="e.mergeResult ? 'Merge' : 'Merge requires connected straight outlines or endpoint-connected paths of the same family, without stitches'"
-        :disabled="!e.mergeResult || e.busy"
+        :disabled="e.selectionLocked || !e.mergeResult || e.busy"
         :aria-pressed="e.mergeMode"
         @click="editor.activateMerge()"
       >
@@ -240,7 +240,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           <path d="M3 3h11v6h7v12H9v-7H3Z" />
         </svg>
       </button>
-      <button aria-label="Trim" title="Trim" :aria-pressed="e.trimMode && !e.mergeMode" @click="editor.activateTrim()">
+      <button :disabled="e.selectionLocked" aria-label="Trim" title="Trim" :aria-pressed="e.trimMode && !e.mergeMode" @click="editor.activateTrim()">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
           <circle cx="6" cy="6" r="3" />
           <circle cx="6" cy="18" r="3" />
@@ -248,6 +248,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
         </svg>
       </button>
       <button
+        :disabled="e.selectionLocked"
         aria-label="Stitch line"
         title="Stitch line"
         :aria-pressed="e.stitchMode"

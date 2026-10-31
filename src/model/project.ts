@@ -8,18 +8,18 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
-  version: 5 | 6 | 7 | 8 | 9 | 10 | 11;
+  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
   shapes: Shape[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const emptyDocument = (): Doc => ({ version: 11, shapes: [] });
+export const emptyDocument = (): Doc => ({ version: 12, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -196,6 +196,8 @@ export function parseProject(text: string): Doc {
         throw Error("Invalid corner radii");
     }
     if (
+      (s.hidden !== undefined && typeof s.hidden !== "boolean") ||
+      (s.locked !== undefined && typeof s.locked !== "boolean") ||
       (s.fillColor !== undefined &&
         (typeof s.fillColor !== "string" || !/^#[0-9a-f]{6}$/i.test(s.fillColor))) ||
       (s.fillOpacity !== undefined &&
@@ -208,6 +210,8 @@ export function parseProject(text: string): Doc {
     result.push({
       id: s.id,
       name: s.name,
+      ...(s.hidden !== undefined ? { hidden: s.hidden } : {}),
+      ...(s.locked !== undefined ? { locked: s.locked } : {}),
       ...(s.fillColor !== undefined ? { fillColor: s.fillColor } : {}),
       ...(s.fillOpacity !== undefined ? { fillOpacity: s.fillOpacity } : {}),
       kind: s.kind,
@@ -261,7 +265,7 @@ export function parseProject(text: string): Doc {
   return {
     stitchLinks,
     stitchGroups,
-    version: 11,
+    version: 12,
     shapes: result,
     guides: guides.map((g: Guide) => ({
       id: g.id,

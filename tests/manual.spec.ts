@@ -70,5 +70,5 @@ test("canvas help preserves unfinished drawing", async ({ page }) => {
     "Click the opposite corner.",
   );
   await canvas.click({ position: { x: 350, y: 300 } });
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
 });

@@ -39,7 +39,7 @@ test("triangle edges accept stitching through the real worker", async ({
       }),
     ),
   });
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   await page.getByRole("button", { name: "Stitch line", exact: true }).click();
   const canvas = page.getByLabel("Pattern drawing canvas");
   for (const position of [

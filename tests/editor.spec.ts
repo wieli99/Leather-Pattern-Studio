@@ -81,7 +81,7 @@ test("draw every primitive, multi-select and delete", async ({ page }) => {
     await canvas.click({ position: { x: 150, y: 180 } });
     await canvas.click({ position: { x: 350, y: 300 } });
     if (tool === "Polyline (P)") await page.keyboard.press("Enter");
-    await expect(page.locator(".objects button")).toHaveCount(++count);
+    await expect(page.locator(".objects .object-select")).toHaveCount(++count);
   }
   await page.getByRole("button", { name: "Polyline (P)", exact: true }).click();
   for (const p of [
@@ -91,13 +91,13 @@ test("draw every primitive, multi-select and delete", async ({ page }) => {
   ])
     await canvas.click({ position: p });
   await page.keyboard.press("Enter");
-  await expect(page.locator(".objects button")).toHaveCount(5);
+  await expect(page.locator(".objects .object-select")).toHaveCount(5);
   await canvas.focus();
   await page.keyboard.press("Control+a");
   await page.keyboard.press("Delete");
-  await expect(page.locator(".objects button")).toHaveCount(0);
+  await expect(page.locator(".objects .object-select")).toHaveCount(0);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(5);
+  await expect(page.locator(".objects .object-select")).toHaveCount(5);
 });
 test("cancellation creates no shape and recovery restores after reload", async ({
   page,
@@ -110,12 +110,12 @@ test("cancellation creates no shape and recovery restores after reload", async (
     .getByLabel("Pattern drawing canvas")
     .click({ position: { x: 150, y: 180 } });
   await page.keyboard.press("Escape");
-  await expect(page.locator(".objects button")).toHaveCount(0);
+  await expect(page.locator(".objects .object-select")).toHaveCount(0);
   await rect(page);
   await page.waitForTimeout(600);
   await page.reload();
   await page.getByRole("button", { name: "Restore", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
 });
 test("offline reload loads application and Wasm engine", async ({
   page,
@@ -192,7 +192,7 @@ test("move, cancel, scale, rotate and duplicate through the viewport", async ({
     .poll(async () => Math.abs(await value("Rotation (degrees)")))
     .toBeGreaterThan(1);
   await page.getByRole("button", { name: "Duplicate", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
 test("saved project opens and invalid file preserves current work", async ({
   page,
@@ -213,7 +213,7 @@ test("saved project opens and invalid file preserves current work", async ({
   let chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await (await chooser).setFiles(path);
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   await expectRadius(page, "8");
   chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open", exact: true }).click();
@@ -225,7 +225,7 @@ test("saved project opens and invalid file preserves current work", async ({
     buffer: Buffer.from('{"version":3,"shapes":[null]}'),
   });
   await expect(page.getByRole("status").first()).toContainText("Invalid shape");
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.screenshot({ path: info.outputPath("workspace.png") });
 });
 test("native save writes editable project and cancelled save preserves dirty state", async ({

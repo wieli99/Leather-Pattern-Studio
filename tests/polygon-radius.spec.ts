@@ -42,7 +42,7 @@ test("closed polygons expose tangent rounded corners", async ({
     buffer: Buffer.from(JSON.stringify({ version: 5, shapes })),
   });
   for (let i = 0; i < 2; i++) {
-    await page.locator(".objects button").nth(i).click();
+    await page.locator(".objects .object-select").nth(i).click();
     await expect(page.getByLabel("All corner radii", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Corner radius", exact: true }).click();
     await page.getByLabel("Pattern drawing canvas").click({

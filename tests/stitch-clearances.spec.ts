@@ -37,7 +37,7 @@ test("clearance typing survives rerenders and persists after Apply", async ({
       }),
     ),
   });
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   await page.getByRole("button", { name: "Stitch line", exact: true }).click();
   const start = page.getByLabel("Start clearance (mm)", { exact: true }),
     end = page.getByLabel("End clearance (mm)", { exact: true });

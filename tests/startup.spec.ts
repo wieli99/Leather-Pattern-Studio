@@ -6,7 +6,7 @@ test("new projects open on an empty canvas", async ({ page }, info) => {
     page.getByRole("button", { name: "Rectangle (R)", exact: true }),
   ).toBeEnabled();
   await expect(canvas).toBeVisible();
-  await expect(page.locator(".objects button")).toHaveCount(0);
+  await expect(page.locator(".objects .object-select")).toHaveCount(0);
   await expect(
     page.getByText("Start with a shape.", { exact: true }),
   ).toHaveCount(0);
@@ -15,10 +15,10 @@ test("new projects open on an empty canvas", async ({ page }, info) => {
   await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
   await canvas.click({ position: { x: 150, y: 180 } });
   await canvas.click({ position: { x: 350, y: 300 } });
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "New", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(0);
+  await expect(page.locator(".objects .object-select")).toHaveCount(0);
   await expect(page.locator(".empty")).toHaveCount(0);
 });
 

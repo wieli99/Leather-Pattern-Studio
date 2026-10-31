@@ -4,4 +4,4 @@ import type { CurveHandles } from "./CurveHandles";
 import type { Kind } from "./Kind";
 import type { Point } from "./Point";
 
-export type Shape = { id: string, stitchOnly?: boolean, fillColor?: string, fillOpacity?: number, name: string, kind: Kind, points: Array<Point>, handles?: Array<CurveHandles>, text?: string, fontSize?: number, cornerRadii?: Array<number>, radius: number, rotation: number, transform?: Affine, sweep?: number, legacyStitch?: unknown, };
+export type Shape = { id: string, hidden?: boolean, locked?: boolean, stitchOnly?: boolean, fillColor?: string, fillOpacity?: number, name: string, kind: Kind, points: Array<Point>, handles?: Array<CurveHandles>, text?: string, fontSize?: number, cornerRadii?: Array<number>, radius: number, rotation: number, transform?: Affine, sweep?: number, legacyStitch?: unknown, };

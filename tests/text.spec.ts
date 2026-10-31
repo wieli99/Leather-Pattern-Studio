@@ -28,7 +28,7 @@ test("text is created and edited on canvas without dialogs", async ({
   expect(grown.height).toBeGreaterThan(initial.height);
   await input.press("Control+Enter");
   await expect(input).toHaveCount(0);
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await canvas.dblclick({ position: { x: 245, y: 245 } });
   await expect(input).toHaveValue("Front\nLeather");
   await input.fill("Back");

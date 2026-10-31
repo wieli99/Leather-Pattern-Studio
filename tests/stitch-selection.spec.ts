@@ -52,7 +52,7 @@ test("clicking the visible inset stitching selects its group without selecting i
       }),
     ),
   });
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   const canvas = page.getByLabel("Pattern drawing canvas");
   await canvas.click({ position: { x: 155, y: 240 } });
   await expect(

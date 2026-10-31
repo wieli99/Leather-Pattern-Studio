@@ -13,7 +13,7 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   await canvas.click({ position: { x: 250, y: 280 } });
   await canvas.click({ position: { x: 400, y: 180 } });
   await page.keyboard.press("Enter");
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await tool.click({ button: "right" });
   await page
     .getByRole("menuitemradio", { name: "Control point curve", exact: true })
@@ -25,13 +25,13 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   await page.mouse.up();
   await canvas.click({ position: { x: 400, y: 400 } });
   await page.keyboard.press("Enter");
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.getByRole("button", { name: "Redo", exact: true }).click();
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
-  await page.locator(".objects button").last().click();
+  await page.locator(".objects .object-select").last().click();
   await page.getByText("Vertex coordinates", { exact: true }).click();
   const x = page.getByLabel("Vertex 1 X", { exact: true });
   const before = Number(await x.inputValue());
@@ -65,8 +65,8 @@ test("curve variants draw, edit, undo, save and reopen", async ({
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await (await chooser).setFiles(path);
-  await expect(page.locator(".objects button")).toHaveCount(2);
-  await page.locator(".objects button").last().click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
+  await page.locator(".objects .object-select").last().click();
   await expect(page.getByLabel("Vertex 1 X", { exact: true })).toHaveValue(
     String(before + 10),
   );
@@ -90,7 +90,7 @@ for (const mode of ["Curve", "Control point curve"]) {
     await canvas.click({ position: { x: 200, y: 200 } });
     await canvas.click({ position: { x: 500, y: 400 } });
     await page.keyboard.press("Enter");
-    await expect(page.locator(".objects button")).toHaveCount(1);
+    await expect(page.locator(".objects .object-select")).toHaveCount(1);
     const before = Number(
       await page.getByLabel("Position X", { exact: true }).inputValue(),
     );

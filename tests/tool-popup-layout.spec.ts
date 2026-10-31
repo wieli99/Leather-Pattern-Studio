@@ -35,7 +35,7 @@ test("all selection tool popups align with the right canvas edge", async ({
       }),
     ),
   });
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   for (const name of [
     "Move",
     "Rotate",

@@ -464,7 +464,7 @@ export class Controller {
     )
       return null;
     const raw = this.anchorPointer;
-    const hit = [...this.document.shapes]
+    const hit = [...this.document.shapes.filter(s => !s.hidden)]
       .reverse()
       .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
     let point: Point | null = null;
@@ -519,9 +519,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 11)
+      if (initial.document.version !== 12)
         throw Error(
-          `Application expects document version 11, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 12, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -674,6 +674,7 @@ export class Controller {
     this.notify();
   }
   activateStitch() {
+    if (this.selectionLocked) return;
     this.cancel();
     this.tool = "select";
     this.stitchOriginal = this.document;
@@ -690,7 +691,7 @@ export class Controller {
       target: StitchGroup | null = null;
     for (const group of this.stitchGroups) {
       const shape = this.document.shapes.find((s) => s.id === group.shapeId);
-      if (!shape) continue;
+      if (!shape || shape.hidden || shape.locked) continue;
       try {
         const points = stitchGeometry(shape, group).points;
         for (let i = 1; i < points.length; i++) {
@@ -875,6 +876,7 @@ export class Controller {
     this.notify();
   }
   async applyStitch() {
+    if (this.active.some(s => s.locked)) return;
     if (this.stitchOriginal) {
       if (this.busy || this.stitchError) return;
       const draft = this.stitchDraft;
@@ -1427,6 +1429,7 @@ export class Controller {
     }
   }
   beginProperty() {
+    if (this.active.some(s => s.locked)) return;
     if (this.transformTool || this.stitchMode) return;
     if (!this.propertySession)
       this.propertySession = {
@@ -1495,6 +1498,7 @@ export class Controller {
     });
   }
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+    if (this.active.some(s => s.locked)) return;
     if (!this.ready || this.busy || !this.selected.length) return;
     if (tool === "corner" && !this.canEditCorners) return;
     if (this.propertySession) await this.finishProperty();
@@ -1521,6 +1525,7 @@ export class Controller {
     result: ReturnType<typeof mergeShapes>;
   } | null = null;
   get mergeResult() {
+    if (this.selectionLocked) return null;
     if (this.stitchGroups.some((g) => this.selected.includes(g.shapeId))) return null;
     const key = JSON.stringify([this.revision, this.selected]);
     if (this.mergeCache?.key !== key) {
@@ -1534,6 +1539,7 @@ export class Controller {
     return this.mergeCache.result;
   }
   activateMerge() {
+    if (this.selectionLocked) return;
     const result = this.mergeResult;
     if (!result || this.busy) return;
     this.cancel();
@@ -1555,6 +1561,7 @@ export class Controller {
   trimMode = false;
   trimDraft: Doc | null = null;
   async applyTrim() {
+    if (this.active.some(s => s.locked)) return;
     if (!this.trimDraft || this.transformError || this.busy) return;
     const next = this.trimDraft;
     const mergedId = this.mergeMode
@@ -1567,6 +1574,7 @@ export class Controller {
     }
   }
   activateTrim() {
+    if (this.selectionLocked) return;
     this.cancel();
     this.tool = "select";
     this.mode = "select";
@@ -1634,7 +1642,7 @@ export class Controller {
     const tolerance = 8 / this.zoom;
     if (this.objects) {
       let best = tolerance;
-      for (const s of this.document.shapes) {
+      for (const s of this.document.shapes.filter(s => !s.hidden)) {
         if (this.gesture?.selection.includes(s.id)) continue;
         for (const candidate of snapCandidates(s)) {
           const d = distance(candidate.point, p);
@@ -1657,7 +1665,7 @@ export class Controller {
         }
       }
       if (this.snapTarget) return this.snapTarget;
-      for (const s of this.document.shapes) {
+      for (const s of this.document.shapes.filter(s => !s.hidden)) {
         if (this.gesture?.selection.includes(s.id)) continue;
         const box = bounds([s]);
         if (
@@ -1727,6 +1735,9 @@ export class Controller {
     }
     return p;
   }
+  get selectionLocked() {
+    return this.document.shapes.some(s => s.locked && this.selected.includes(s.id));
+  }
   get active() {
     return (
       this.propertySession?.next ??
@@ -1746,7 +1757,7 @@ export class Controller {
     handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
-    if (!this.active.length || this.transformTool === "mirror") return [];
+    if (!this.active.length || this.active.some(s => s.locked || s.hidden) || this.transformTool === "mirror") return [];
     if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
     if (
@@ -1815,6 +1826,7 @@ export class Controller {
     return [...result, ...curveHandles];
   }
   handleAt(raw: Point) {
+    if (this.active.some(s => s.locked || s.hidden)) return;
     if (
       this.transformTool === "rotate" &&
       Math.abs(distance(raw, this.transformPivot) * this.zoom - 60) < 9
@@ -1873,7 +1885,7 @@ export class Controller {
       const tolerance = 8 / this.zoom;
       const candidates = this.objects
         ? this.document.shapes.flatMap((shape) =>
-            snapCandidates(shape).map((candidate) => ({
+            (shape.hidden ? [] : snapCandidates(shape)).map((candidate) => ({
               shape,
               candidate,
               coordinate: candidate.point[axis],
@@ -1919,7 +1931,7 @@ export class Controller {
         this.snapKind = nearest.candidate.kind;
       } else {
         const result = this.objects
-          ? smartSnap(raw, this.document.shapes, tolerance)
+          ? smartSnap(raw, this.document.shapes.filter(s => !s.hidden), tolerance)
           : null;
         const guide = result?.guides.find((v) => v.axis === axis);
         if (guide) {
@@ -2073,7 +2085,7 @@ export class Controller {
     }
     const handle = this.handleAt(raw);
     if (alt && !this.transformTool && !handle) {
-      const hit = [...this.document.shapes]
+      const hit = [...this.document.shapes.filter(s => !s.hidden)]
         .reverse()
         .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
       if (hit) {
@@ -2503,7 +2515,7 @@ export class Controller {
       this.hoverHandle =
         this.tool === "select" ? (this.handleAt(raw)?.kind ?? "") : "";
       this.hover =
-        [...this.document.shapes]
+        [...this.document.shapes.filter(s => !s.hidden)]
           .reverse()
           .find((s) => hitTest(s, raw, 8 / this.zoom))?.id ?? "";
     }
@@ -2600,6 +2612,7 @@ export class Controller {
           ...g.selection,
           ...this.document.shapes
             .filter((s) => {
+              if (s.hidden) return false;
               const b = bounds([s]);
               return g.crossing || ctrl
                 ? intersectsBox(
@@ -2683,6 +2696,7 @@ export class Controller {
     if (next !== shape) await this.edit(id, { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
+    if (this.document.shapes.some(s => this.selected.includes(s.id) && s.locked)) return;
     if (this.stitchMode) return;
     const source =
       this.propertySession?.next ?? this.pendingDocument ?? this.document;
@@ -2721,6 +2735,7 @@ export class Controller {
     }
   }
   delete() {
+    if (this.active.some(s => s.locked)) return;
     this.cancel();
     if (this.selected.length)
       void this.commit({
@@ -2732,6 +2747,20 @@ export class Controller {
   }
   copiedStyling: string | null = null;
   stylingClipboardFallback = false;
+  get canToggleObjectState() {
+    return this.ready && !this.busy && !this.gesture && !this.pending.length &&
+      !this.drawingDown && !this.transformTool && !this.propertySession &&
+      !this.stitchMode && !this.trimMode && !this.mergeMode;
+  }
+  async toggleObjectState(id: string, field: "hidden" | "locked") {
+    if (!this.canToggleObjectState) return;
+    const shape = this.document.shapes.find(s => s.id === id);
+    if (!shape) return;
+    const success = await this.commit({ ...this.document, shapes: this.document.shapes.map(s =>
+      s.id === id ? { ...s, [field]: !s[field] } : s) });
+    if (success && field === "hidden" && !shape.hidden) this.selected = this.selected.filter(x => x !== id);
+    this.notify();
+  }
   get canStyle() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
       !this.transformTool && !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
@@ -2757,6 +2786,7 @@ export class Controller {
   }
 
   async pasteStyling(text?: string) {
+    if (this.active.some(s => s.locked)) return;
     if (!this.canStyle) return;
     const ids = [...this.selected], revision = this.revision;
     try {
@@ -2795,7 +2825,7 @@ export class Controller {
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
-      document: { version: 11, shapes: this.active, stitchGroups: groups,
+      document: { version: 12, shapes: this.active, stitchGroups: groups,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
         })).filter(l => l.members.length >= 2) },
@@ -2816,7 +2846,7 @@ export class Controller {
       const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, crypto.randomUUID()]));
       const copies = source.shapes.map(s => ({
         ...moveShape(s, anchor.x - payload.anchor.x, anchor.y - payload.anchor.y),
-        id: ids.get(s.id)!, name: `${s.name} copy`,
+        id: ids.get(s.id)!, name: `${s.name} copy`, locked: false,
       }));
       let linkId = Math.max(0, ...(this.document.stitchLinks ?? []).map(l => l.id));
       const success = await this.commit({
@@ -2836,7 +2866,7 @@ export class Controller {
     const copies = this.active.map((s) => ({
       ...moveShape(s, 10, 10),
       id: crypto.randomUUID(),
-      name: `${s.name} copy`,
+      name: `${s.name} copy`, locked: false,
     }));
     if (!copies.length) return;
     void this.commit({
@@ -2862,7 +2892,7 @@ export class Controller {
     });
   }
   fit(selection = false) {
-    const shapes = selection ? this.active : this.document.shapes;
+    const shapes = (selection ? this.active : this.document.shapes).filter(s => !s.hidden);
     if (!shapes.length) return;
     const b = bounds(shapes);
     this.zoom = Math.max(

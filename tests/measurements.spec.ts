@@ -25,7 +25,7 @@ test("construction measurements cycle and retain typed sizes", async ({
     path: info.outputPath("construction-measurements.png"),
   });
   await height.press("Enter");
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
   await expect(page.getByLabel("Width", { exact: true })).toHaveValue("60");
   await expect(page.getByLabel("Height", { exact: true })).toHaveValue("40");
@@ -46,7 +46,7 @@ test("anchor toggles share state and remain undoable", async ({ page }) => {
   ])
     await canvas.click({ position: point });
   await canvas.press("Enter");
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
   await page.getByText("Vertex coordinates", { exact: true }).click();
   const group = page.getByRole("group", {

@@ -13,7 +13,7 @@ test("object snapping persists and shows reference guides while drawing", async 
   const canvas = page.getByLabel("Pattern drawing canvas");
   await canvas.click({ position: { x: 250, y: 200 } });
   await canvas.click({ position: { x: 450, y: 400 } });
-  await expect(page.locator(".objects button")).toHaveCount(1);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + 350, box.y + 300);
   await page.screenshot({ path: info.outputPath("smart-center-guides.png") });

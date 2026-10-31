@@ -18,7 +18,7 @@ test("linked stitching loads and displays controls", async ({ page }, info) => {
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", {name: "Open", exact: true}).click();
   await (await chooser).setFiles({name: "links.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(doc))});
-  await page.locator(".objects button").first().click();
+  await page.locator(".objects .object-select").first().click();
   await page.getByRole("button", {name: "Stitch line", exact: true}).click();
   await expect(page.getByRole("button", {name: "Link", exact: true})).toBeVisible();
   await expect(page.getByRole("button", {name: "Unlink", exact: true})).toBeVisible();

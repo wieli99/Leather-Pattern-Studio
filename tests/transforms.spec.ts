@@ -42,8 +42,8 @@ async function setup(page: any) {
       JSON.stringify({ version: 4, shapes: [rectangle, arc] }),
     ),
   });
-  await expect(page.locator(".objects button")).toHaveCount(2);
-  await page.locator(".objects button").first().click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
+  await page.locator(".objects .object-select").first().click();
 }
 test("numeric transforms, pivot, cancellation, history and affine file recovery", async ({
   page,
@@ -92,7 +92,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
     .click({ position: { x: 100, y: 100 } });
   await page.getByRole("button", { name: "Reset pivot", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await page.locator(".objects button").nth(1).click();
+  await page.locator(".objects .object-select").nth(1).click();
   await page.getByRole("button", { name: "Resize", exact: true }).click();
   await page.getByLabel("X factor", { exact: true }).fill("2");
   await page.getByLabel("Y factor", { exact: true }).fill("0");
@@ -123,7 +123,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await page.reload();
   const restore = page.getByRole("button", { name: /Restore/ });
   await restore.click();
-  await expect(page.locator(".objects button")).toHaveCount(2);
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
 test("shortcuts activate tools, selection resets sessions and compact viewport keeps toolbox accessible", async ({
   page,
@@ -137,7 +137,7 @@ test("shortcuts activate tools, selection resets sessions and compact viewport k
   await expect(page.getByLabel("X (mm)", { exact: true })).toBeVisible();
   await page.keyboard.press("s");
   await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
-  await page.locator(".objects button").nth(1).click();
+  await page.locator(".objects .object-select").nth(1).click();
   await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.setViewportSize({ width: 800, height: 600 });

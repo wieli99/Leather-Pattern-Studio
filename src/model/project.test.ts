@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { parseProject } from "./project";
 test("empty project round-trips", () =>
   expect(parseProject('{"version":3,"shapes":[]}')).toEqual({
-    version: 11,
+    version: 12,
     stitchGroups: [],
     stitchLinks: [],
     shapes: [],
@@ -43,7 +43,7 @@ const line = {
 };
 test("migrates v2 without changing coordinates", () => {
   const d = parseProject(JSON.stringify({ version: 2, shapes: [line] }));
-  expect(d.version).toBe(11);
+  expect(d.version).toBe(12);
   expect(d.shapes[0].points).toEqual(line.points);
 });
 test.each([
@@ -79,7 +79,7 @@ test("v3 migration retains precision, rotation, and inactive stitch metadata", (
     legacyStitch: { offset: 3, spacing: 2 },
   };
   const project = parseProject(JSON.stringify({ version: 3, shapes: [shape] }));
-  expect(project.version).toBe(11);
+  expect(project.version).toBe(12);
   expect(project.shapes[0].points).toEqual(shape.points);
   expect(project.shapes[0].rotation).toBeCloseTo(shape.rotation);
   expect(project.shapes[0].legacyStitch).toEqual(shape.legacyStitch);
@@ -115,7 +115,7 @@ test("v5 retains exact matrices and metadata, rejects singular and nonfinite tra
     ).toThrow();
   expect(
     parseProject(JSON.stringify({ version: 4, shapes: [line] })).version,
-  ).toBe(11);
+  ).toBe(12);
 });
 
 test("rejects links referencing missing stitch lines", () => {

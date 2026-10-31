@@ -43,6 +43,12 @@ pub struct CurveHandles {
 #[ts(export, export_to = "../../../src/generated/")]
 pub struct Shape {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hidden: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub locked: Option<bool>,
     #[serde(
         default,
         rename = "stitchOnly",
@@ -287,9 +293,9 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
 
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10 | 11) {
+        if !matches!(self.version, 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12). Reload the application.",
                 self.version
             ));
         }
@@ -529,7 +535,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 11,
+                version: 12,
                 shapes: vec![],
                 guides: vec![],
                 stitch_groups: vec![],
@@ -548,7 +554,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -572,7 +578,65 @@ impl Editor {
             "commit" | "load" | "preview" => {
                 let mut next: Document = serde_json::from_str(json).map_err(|e| e.to_string())?;
                 next.validate()?;
-                next.version = 11;
+                if op != "load" {
+                    for old in self
+                        .document
+                        .shapes
+                        .iter()
+                        .filter(|s| s.locked == Some(true))
+                    {
+                        let mut candidate = next
+                            .shapes
+                            .iter()
+                            .find(|s| s.id == old.id)
+                            .ok_or("Cannot delete a locked object")?
+                            .clone();
+                        candidate.locked = old.locked;
+                        candidate.hidden = old.hidden;
+                        if candidate != *old
+                            || self
+                                .document
+                                .stitch_groups
+                                .iter()
+                                .filter(|g| g.shape_id == old.id)
+                                .collect::<Vec<_>>()
+                                != next
+                                    .stitch_groups
+                                    .iter()
+                                    .filter(|g| g.shape_id == old.id)
+                                    .collect::<Vec<_>>()
+                            || self
+                                .document
+                                .stitch_links
+                                .iter()
+                                .filter(|l| {
+                                    l.members.iter().any(|id| {
+                                        self.document
+                                            .stitch_groups
+                                            .iter()
+                                            .any(|g| g.id == *id && g.shape_id == old.id)
+                                    })
+                                })
+                                .collect::<Vec<_>>()
+                                != next
+                                    .stitch_links
+                                    .iter()
+                                    .filter(|l| {
+                                        l.members.iter().any(|id| {
+                                            self.document
+                                                .stitch_groups
+                                                .iter()
+                                                .any(|g| g.id == *id && g.shape_id == old.id)
+                                        })
+                                    })
+                                    .collect::<Vec<_>>()
+                        {
+                            return Err("Unlock the object before editing it".into());
+                        }
+                    }
+                }
+
+                next.version = 12;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -619,7 +683,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 11;
+        doc.version = 12;
         let group:StitchGroup=serde_json::from_str(r#"{"id":"st","shapeId":"a","edges":["line:2:edge:0"],"side":1,"settings":{"style":"french","spacing":3.85,"inset":3.0,"alignment":"center"},"closed":false}"#).unwrap();
         doc.stitch_groups.push(group);
         let mut editor = Editor::new();
@@ -676,7 +740,7 @@ mod tests {
     #[test]
     fn capabilities_and_version_errors() {
         let editor = Editor::default();
-        assert!(editor.capabilities().contains("[5,6,7,8,9,10,11]"));
+        assert!(editor.capabilities().contains("[5,6,7,8,9,10,11,12]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -708,7 +772,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 11;
+        d.version = 12;
         d.shapes[0].kind = Kind::ControlCurve;
         d.shapes[0].handles = Some(vec![
             CurveHandles {
@@ -744,6 +808,32 @@ mod tests {
         assert!(d.validate().is_ok());
     }
     #[test]
+    fn object_states_and_lock_protection() {
+        let mut e = Editor::new();
+        let mut d: Document = serde_json::from_str(&sample()).unwrap();
+        d.shapes[0].locked = Some(true);
+        e.execute("commit", &serde_json::to_string(&d).unwrap(), 0)
+            .unwrap();
+        d.shapes[0].name = "Blocked".into();
+        assert!(e
+            .execute("preview", &serde_json::to_string(&d).unwrap(), 1)
+            .is_err());
+        assert!(e
+            .execute("commit", &serde_json::to_string(&d).unwrap(), 1)
+            .is_err());
+        d = e.document.clone();
+        d.shapes[0].hidden = Some(true);
+        e.execute("commit", &serde_json::to_string(&d).unwrap(), 1)
+            .unwrap();
+        e.execute("undo", "", 2).unwrap();
+        assert_ne!(e.document.shapes[0].hidden, Some(true));
+        d = e.document.clone();
+        d.shapes.clear();
+        assert!(e
+            .execute("commit", &serde_json::to_string(&d).unwrap(), 3)
+            .is_err());
+    }
+    #[test]
     fn history() {
         let mut e = Editor::new();
         e.execute("commit", &sample(), 0).unwrap();
@@ -777,7 +867,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 11;
+        doc.version = 12;
         doc.shapes[0].transform = Some(Affine {
             a: 2.0,
             b: 0.3,
