@@ -51,3 +51,5 @@ Choose Merge or press **J** with the canvas focused in Select mode to preview, t
 Merge also joins two or more Curve and Control point curve objects at matching endpoints. Select only curves forming one open, unbranched chain. The result is a Control point curve that preserves the existing segments and any corner at a join; it does not smooth them. Curves may be reversed automatically. Interior crossings are not connections. Closed loops, branches, curves mixed with straight objects, circles, ellipses and arcs are unsupported.
 
 ![Connected curves in the Merge preview, with only Merge highlighted and Apply/Cancel controls](/manual/images/merge.png)
+
+Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.

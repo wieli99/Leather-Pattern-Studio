@@ -1917,3 +1917,29 @@ test("hidden group outlines are excluded from mirror references", async () => {
   await e.toggleGroupState(group!, "hidden");
   expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).not.toBe("edge");
 });
+
+test("outline tools reject text without cancelling and allow mixed selections", () => {
+  const e = editor();
+  e.document.shapes = [{ ...shape, id: "text", kind: "text", text: "Label" }, shape];
+  e.selected = ["text"];
+  e.transformTool = "move";
+  expect(e.canTrim).toBe(false);
+  expect(e.canStitch).toBe(false);
+  e.activateTrim();
+  e.activateStitch();
+  expect(e.transformTool).toBe("move");
+  expect(e.trimMode).toBe(false);
+  expect(e.stitchMode).toBe(false);
+  expect(e.canUndo).toBe(false);
+  e.selected = ["text", shape.id];
+  expect(e.canTrim).toBe(true);
+  expect(e.canStitch).toBe(true);
+  e.document = {
+    ...e.document,
+    shapes: e.document.shapes.map((s) =>
+      s.id === shape.id ? { ...s, locked: true } : s,
+    ),
+  };
+  expect(e.canTrim).toBe(false);
+  expect(e.canStitch).toBe(false);
+});

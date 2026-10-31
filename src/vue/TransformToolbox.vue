@@ -241,7 +241,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           <path d="M3 3h11v6h7v12H9v-7H3Z" />
         </svg>
       </button>
-      <button :disabled="e.selectionLocked" aria-label="Trim" title="Trim (K)" aria-keyshortcuts="k" :aria-pressed="e.trimMode && !e.mergeMode" @click="editor.activateTrim()">
+      <button :disabled="!e.canTrim" aria-label="Trim" title="Trim (K)" aria-keyshortcuts="k" :aria-pressed="e.trimMode && !e.mergeMode" @click="editor.activateTrim()">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
           <circle cx="6" cy="6" r="3" />
           <circle cx="6" cy="18" r="3" />
@@ -249,7 +249,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
         </svg>
       </button>
       <button
-        :disabled="e.selectionLocked"
+        :disabled="!e.canStitch"
         aria-label="Stitch line"
         title="Stitch line (I)"
         aria-keyshortcuts="i"

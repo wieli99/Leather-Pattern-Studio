@@ -5,3 +5,5 @@ Choose Text (T), then click to place a label. Double-click existing text to edit
 Properties edits text and font size. Text shapes support selection and transforms. Object names are separate from text contents.
 
 Rename through double-click or F2 in the Objects list. Enter or leaving the name field applies; Esc cancels.
+
+Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.

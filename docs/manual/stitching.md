@@ -82,3 +82,5 @@ Each member shows a chain and link number while the Stitch line tool is active o
 ![Linked stitch lines with numbered chain indicators](/manual/images/stitch-links.png)
 
 The selection information shows the master line’s hole count. For a broken link with exactly two members it also shows how many holes are missing or too many compared with the other line. Larger links show counts without differences. Unlink is available only when the selection includes a linked line.
+
+Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.

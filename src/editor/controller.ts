@@ -684,8 +684,15 @@ export class Controller {
     }
     this.notify();
   }
+  get canStitch() {
+    return (
+      !this.selectionLocked &&
+      (!this.selected.length ||
+        this.active.some((shape) => stitchEdges(shape).length > 0))
+    );
+  }
   activateStitch() {
-    if (this.selectionLocked) return;
+    if (!this.canStitch) return;
     this.cancel();
     this.tool = "select";
     this.stitchOriginal = this.document;
@@ -1589,8 +1596,15 @@ export class Controller {
       this.notify();
     }
   }
+  get canTrim() {
+    return (
+      !this.selectionLocked &&
+      (!this.selected.length ||
+        this.active.some((shape) => shape.kind !== "text"))
+    );
+  }
   activateTrim() {
-    if (this.selectionLocked) return;
+    if (!this.canTrim) return;
     this.cancel();
     this.tool = "select";
     this.mode = "select";

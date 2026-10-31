@@ -53,3 +53,5 @@ After Copy Styling in an object's context menu, Ctrl/⌘+V applies fill color an
 | Alt+Shift+Up / Down | Move focused row before / after its sibling |
 | Alt+Shift+Right | Move focused row into preceding group |
 | Alt+Shift+Left | Move focused row out of its parent group |
+
+Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
