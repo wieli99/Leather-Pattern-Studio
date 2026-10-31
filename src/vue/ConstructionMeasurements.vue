@@ -145,6 +145,21 @@ function cancel() {
   error.value = "";
   document.querySelector<HTMLCanvasElement>("canvas")?.focus();
 }
+function cycleField(event: KeyboardEvent) {
+  if (
+    !editor.measurementFields.length || event.isComposing || event.ctrlKey ||
+    event.metaKey || event.altKey
+  ) return;
+  const input = event.target as HTMLInputElement;
+  const fields = Array.from(
+    input.closest(".construction-measurements")!
+      .querySelectorAll<HTMLInputElement>("input"),
+  );
+  const index = fields.indexOf(input);
+  if (index < 0 || !fields.length) return;
+  event.preventDefault();
+  fields[(index + (event.shiftKey ? -1 : 1) + fields.length) % fields.length].focus();
+}
 function style(item: (typeof items.value)[number]) {
   const p = active.value === item.id ? pinned.value : item.point;
   let angle = active.value === item.id ? pinnedAngle.value : item.angle;
@@ -179,6 +194,7 @@ function style(item: (typeof items.value)[number]) {
           ($event.target as HTMLInputElement).select();
         "
         @input="input(item, $event)"
+        @keydown.tab="cycleField"
         @keydown.enter.prevent="!$event.isComposing && confirm(item)"
         @keydown.esc.prevent="cancel()"
       />

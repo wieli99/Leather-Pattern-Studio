@@ -2,7 +2,7 @@
 
 Geometry is stored in millimetres. Zoom changes the view, not saved dimensions.
 
-While constructing a shape, Tab enters available dimension fields. Type a value and press Enter to confirm; Esc returns to the canvas. Tab and Shift+Tab move between fields. Empty construction fields clear their locks. Invalid values remain uncommitted.
+While constructing a shape, Tab enters available dimension fields. Type a value and press Enter to confirm; Esc returns to the canvas. Tab and Shift+Tab cycle forward and backward through the construction fields, wrapping at either end without moving to other page controls. A single field retains focus. Empty construction fields clear their locks. Invalid values remain uncommitted.
 
 Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Enter applies the edit; Esc leaves the field.
 

@@ -17,6 +17,16 @@ test("construction measurements cycle and retain typed sizes", async ({
   const height = page.getByRole("spinbutton", { name: "Height", exact: true });
   await expect(height).toBeFocused();
   await height.fill("40");
+  for (let i = 0; i < 3; i++) {
+    await height.press("Tab");
+    await expect(width).toBeFocused();
+    await width.press("Shift+Tab");
+    await expect(height).toBeFocused();
+  }
+  await height.press("Shift+Tab");
+  await expect(width).toBeFocused();
+  await width.press("Tab");
+  await expect(height).toBeFocused();
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + 550, box.y + 400);
   await expect(width).toHaveValue("60");
