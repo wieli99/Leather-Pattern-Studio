@@ -6,6 +6,7 @@ export const tools: { id: Mode; key: string; label: string }[] = [
   { id: "circle", key: "C", label: "Circle" },
   { id: "polygon", key: "H", label: "Shapes" },
   { id: "text", key: "T", label: "Text" },
+  { id: "measurement", key: "D", label: "Measurement" },
 ];
 
 export const groupKeys: Record<

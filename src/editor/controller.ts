@@ -471,7 +471,7 @@ export class Controller {
     const raw = this.anchorPointer;
     const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
       .reverse()
-      .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
+      .find((s) => s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
     let point: Point | null = null;
     if (hit)
       insertAnchor(hit, raw, 8 / this.zoom, (p) => {
@@ -524,9 +524,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 13)
+      if (initial.document.version !== 14)
         throw Error(
-          `Application expects document version 13, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version 14, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -1165,8 +1165,8 @@ export class Controller {
     this.cancel();
     this.mode = mode;
     this.tool =
-      mode === "text"
-        ? "text"
+      mode === "measurement" || mode === "text"
+        ? mode
         : mode === "select"
           ? "select"
           : isCurveMode(mode)
@@ -1241,6 +1241,7 @@ export class Controller {
   get measurementFields() {
     if (!this.pending.length || this.mode === "select" || this.mode === "text")
       return [];
+    if (this.mode === "measurement" && this.pending.length === 2) return ["Offset"];
     if (
       ["rectangle", "rectangle-center", "ellipse", "polygon-box"].includes(
         this.mode,
@@ -1297,10 +1298,11 @@ export class Controller {
       return p;
     }
     if (this.measurementFields.length === 1) {
-      if (locks.Height === undefined) return p;
+      const offset = this.mode === "measurement" ? locks.Offset : locks.Height;
+      if (offset === undefined) return p;
       const [a, b] = this.pending,
         len = distance(a, b);
-      const h = locks.Height / (this.mode === "ellipse-center" ? 2 : 1);
+      const h = offset / (this.mode === "ellipse-center" ? 2 : 1);
       return {
         x: a.x - ((b.y - a.y) / len) * h,
         y: a.y + ((b.x - a.x) / len) * h,
@@ -1394,6 +1396,12 @@ export class Controller {
   }
   addPoint(p: Point) {
     p = this.constrainMeasurement(p);
+    if (this.mode === "measurement" && this.pending.length === 1 &&
+        distance(p, this.pending[0]) < 1e-9) {
+      this.message = "Choose distinct measurement endpoints";
+      this.notify();
+      return;
+    }
     this.measurementLocks = {};
     if (isCurveMode(this.mode)) {
       if (!this.pending.length || distance(p, this.pending.at(-1)!) > 1e-9) {
@@ -1600,7 +1608,7 @@ export class Controller {
     return (
       !this.selectionLocked &&
       (!this.selected.length ||
-        this.active.some((shape) => shape.kind !== "text"))
+        this.active.some((shape) => shape.kind !== "text" && shape.kind !== "measurement"))
     );
   }
   activateTrim() {
@@ -2212,7 +2220,7 @@ export class Controller {
     if (alt && !this.transformTool && !handle) {
       const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
         .reverse()
-        .find((s) => s.kind !== "text" && hitTest(s, raw, 8 / this.zoom));
+        .find((s) => s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom));
       if (hit) {
         const shape = insertAnchor(hit, raw, 8 / this.zoom);
         if (shape) {
@@ -2769,6 +2777,7 @@ export class Controller {
     this.notify();
   }
   finish(points = this.pending) {
+    if (this.mode === "measurement" && points.length < 3) return;
     if (points.length < 2) return;
     if (this.mode === "select") return;
     try {
@@ -2962,7 +2971,7 @@ export class Controller {
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
-      document: { version: 13, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
+      document: { version: 14, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
         })).filter(l => l.members.length >= 2) },

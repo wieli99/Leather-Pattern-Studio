@@ -35,3 +35,13 @@ Guideline increments update when modifiers change without moving the pointer, in
 Select one closed shape to see its read-only **Area (mm²)** in Properties, displayed to two decimal places. The measurement follows rounded corners, curves, and transforms and updates after edits and undo/redo. Zoom does not affect area. Open paths, text, and multiple selections do not show an area.
 
 Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in Properties. Opacity ranges from 0% (transparent) to 100%. These settings affect only the interior. **Reset fill** restores the subtle theme fill. A divider below this button separates fill controls from the other settings. The calculated area is shown as read-only text, not an editable field.
+
+## Persistent measurements
+
+Choose **Measurement** (the ruler icon) below Text in the toolbar, or press **D** with the canvas focused. Click point A, click point B, then move the pointer perpendicular to A–B and click a third time to place the indicator. The preview shows the direct A–B distance in millimetres, with closed arrowheads and extension lines reaching the measurement points. Place the indicator on either side of the endpoints. Short dimensions put arrowheads outside the endpoints and the label above the line to keep them readable.
+
+After choosing B, press Tab to enter a signed **Offset** in millimetres. A positive value places the indicator to the left of the A-to-B direction; a negative value places it on the other side. Enter confirms placement, or click the canvas to place it with the entered offset. Clearing the field restores pointer control. Esc or changing tools cancels an unfinished measurement. The tool stays active after placement for another measurement.
+
+With Select, select the annotation by its label or strokes. Properties provides **Offset (mm)**, read-only **Distance (mm)**, and endpoint positions under **Vertex coordinates**. Move, rotate, mirror, resize, duplicate, hide, lock, or delete it like other objects. Undo removes a completed measurement in one step. Measurements are saved with the project and recovered after reload. Their endpoints stay where placed even if the objects used for snapping change. Measurements do not support stitching or path editing.
+
+![Persistent measurement with arrowheads and offset properties](/manual/images/persistent-measurement.png)

@@ -33,7 +33,7 @@ export function trimAt(
 ): Shape[] | null {
   const pieces: Piece[] = [];
   for (const source of shapes) {
-    if (source.kind === "text") continue;
+    if (source.kind === "text" || source.kind === "measurement") continue;
     const base = {
       ...source,
       rotation: 0,

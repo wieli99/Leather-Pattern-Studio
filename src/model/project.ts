@@ -9,19 +9,19 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
-  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const emptyDocument = (): Doc => ({ version: 13, shapes: [] });
+export const emptyDocument = (): Doc => ({ version: 14, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -66,6 +66,7 @@ export function parseProject(text: string): Doc {
       s.name.length > 200 ||
       ![
         "text",
+        "measurement",
         "line",
         "polyline",
         "curve",
@@ -208,6 +209,11 @@ export function parseProject(text: string): Doc {
           s.fillOpacity < 0 || s.fillOpacity > 1))
     )
       throw Error("Invalid fill");
+    if (s.kind === "measurement" &&
+        (!Number.isFinite(s.measurementOffset) ||
+          Math.abs(s.measurementOffset) > 1e7 ||
+          Math.hypot(s.points[1].x - s.points[0].x, s.points[1].y - s.points[0].y) < 1e-9))
+      throw Error("Invalid measurement");
     ids.add(s.id);
     result.push({
       id: s.id,
@@ -220,6 +226,7 @@ export function parseProject(text: string): Doc {
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize } : {}),
+      ...(s.kind === "measurement" ? { measurementOffset: s.measurementOffset } : {}),
       radius: s.radius,
       ...(s.cornerRadii ? { cornerRadii: [...s.cornerRadii] } : {}),
       ...(s.handles
@@ -269,7 +276,7 @@ export function parseProject(text: string): Doc {
     objectTree,
     stitchLinks,
     stitchGroups,
-    version: 13,
+    version: 14,
     shapes: treeInDrawingOrder(objectTree, result),
     guides: guides.map((g: Guide) => ({
       id: g.id,

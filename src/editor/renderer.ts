@@ -1,3 +1,4 @@
+import { measurementGeometry } from "../model/measurement";
 import { isClosedShape } from "../model/closedShape";
 import { drawStitches } from "./stitchRenderer";
 import { isCurve, cubicSegments } from "../model/curves";
@@ -162,7 +163,32 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.fill(path);
         ctx.restore();
       }
-      if (s.kind === "text") {
+      if (s.kind === "measurement") {
+        const g = measurementGeometry(s);
+        ctx.lineWidth = 0.35;
+        ctx.beginPath();
+        for (const [a, b] of g.lines) {
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = ctx.strokeStyle;
+        for (const [tip, left, right] of g.arrowheads) {
+          ctx.beginPath();
+          ctx.moveTo(tip.x, tip.y);
+          ctx.lineTo(left.x, left.y);
+          ctx.lineTo(right.x, right.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.translate(g.middle.x, g.middle.y);
+        ctx.rotate(g.angle);
+        ctx.font = `${g.fontSize}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.fillText(g.label, 0, 0);
+      } else if (s.kind === "text") {
         ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
         ctx.font = `${s.fontSize ?? 5}px sans-serif`;
         ctx.textBaseline = "top";

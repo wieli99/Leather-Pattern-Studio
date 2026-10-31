@@ -18,6 +18,7 @@ export const variants = {
 export type Mode =
   | (typeof variants.polygon)[number]
   | "text"
+  | "measurement"
   | "select"
   | (typeof variants.polyline)[number]
   | (typeof variants.rectangle)[number]
@@ -29,6 +30,7 @@ export const labels: Record<Mode, string> = {
   "control-curve": "Control point curve",
   select: "Select",
   text: "Text",
+  measurement: "Measurement",
   polyline: "Polyline",
   rectangle: "Corner rectangle",
   "rectangle-center": "Center rectangle",
@@ -47,6 +49,7 @@ export const pointCount = (mode: Mode) =>
   isCurveMode(mode)
     ? Infinity
     : [
+          "measurement",
           "rectangle-three",
           "circle-three",
           "ellipse-center",
@@ -79,6 +82,16 @@ export function construct(
     out = points,
     rotation = 0;
   if (!a || !b) throw Error("Place another point");
+  if (mode === "measurement") {
+    const len = distance(a, b);
+    if (len < 1e-9) throw Error("Choose distinct measurement endpoints");
+    return {
+      id: "", name: "", kind: "measurement", points: [a, b], rotation: 0, radius: 0,
+      measurementOffset: c
+        ? ((c.x - a.x) * -(b.y - a.y) + (c.y - a.y) * (b.x - a.x)) / len
+        : 0,
+    };
+  }
   if (mode === "polygon" || mode === "polygon-box") {
     const radius = distance(a, b);
     if (radius < 1e-9) throw Error("Shape must have positive size");

@@ -126,6 +126,9 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
         if (kind === "text") add("text", "Double-click text", "Edit text");
       }
     }
+  } else if (s.mode === "measurement") {
+    action = n === 0 ? "Click point A." : n === 1 ? "Click point B."
+      : "Click to place the offset dimension line; Tab enters an exact offset.";
   } else if (s.mode === "text") action = "Click to place text.";
   else {
     const path = ["polyline", "curve", "control-curve"].includes(s.mode);

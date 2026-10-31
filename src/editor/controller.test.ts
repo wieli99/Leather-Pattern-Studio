@@ -1943,3 +1943,24 @@ test("outline tools reject text without cancelling and allow mixed selections", 
   expect(e.canTrim).toBe(false);
   expect(e.canStitch).toBe(false);
 });
+
+test('measurement commits once after three points and supports exact signed offset and cancellation', async () => {
+  const e = editor();
+  e.setMode('measurement');
+  e.addPoint({x:0,y:0});
+  e.addPoint({x:40,y:0});
+  expect(e.document.shapes).toHaveLength(0);
+  expect(e.measurementFields).toEqual(['Offset']);
+  e.measurementLocks.Offset = -15;
+  e.addPoint({x:20,y:50});
+  await vi.waitFor(() => expect(e.document.shapes).toHaveLength(1));
+  expect(e.document.shapes[0].measurementOffset).toBe(-15);
+  await e.transact('undo');
+  expect(e.document.shapes).toHaveLength(0);
+  e.addPoint({x:0,y:0});
+  e.addPoint({x:0,y:0});
+  expect(e.pending).toHaveLength(1);
+  e.cancel();
+  expect(e.pending).toHaveLength(0);
+  expect(e.document.shapes).toHaveLength(0);
+});

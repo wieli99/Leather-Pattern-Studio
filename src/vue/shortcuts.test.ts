@@ -13,6 +13,7 @@ const editor = vi.hoisted(() => ({
   fit: vi.fn(),
   setTool: vi.fn(),
   save: vi.fn(),
+  duplicate: vi.fn(),
   canUseClipboard: true,
   copyObjects: vi.fn(() => "clipboard snapshot"),
   pasteObjects: vi.fn(),
@@ -138,4 +139,15 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
   expect(editor.activateStitch).not.toHaveBeenCalled();
   expect(editor.activateTrim).not.toHaveBeenCalled();
   expect(editor.activateMerge).not.toHaveBeenCalled();
+});
+
+test("D selects Measurement without taking over text fields or modified shortcuts", () => {
+  press("d");
+  expect(editor.setTool).toHaveBeenLastCalledWith("measurement");
+  vi.clearAllMocks();
+  press("d", { target: new ElementStub("INPUT", true) });
+  press("d", { ctrlKey: true });
+  press("d", { metaKey: true });
+  expect(editor.setTool).not.toHaveBeenCalled();
+  expect(editor.duplicate).toHaveBeenCalledTimes(2);
 });

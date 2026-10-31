@@ -107,7 +107,7 @@ async function confirm(item: (typeof items.value)[number]) {
   if (
     !draft.value.trim() ||
     !Number.isFinite(value) ||
-    (!["Angle", "Sweep"].includes(item.key) && value <= 0)
+    (!["Angle", "Sweep", "Offset"].includes(item.key) && value <= 0)
   ) {
     error.value = "Enter a positive finite measurement";
     return;

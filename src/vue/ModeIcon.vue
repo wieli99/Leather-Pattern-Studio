@@ -14,6 +14,7 @@ const points = computed(() => {
   const m = props.mode;
   if (
     m === "text" ||
+    m === "measurement" ||
     m === "select" ||
     m === "ellipse" ||
     m.startsWith("polygon")
@@ -112,6 +113,7 @@ const points = computed(() => {
       stroke="currentColor"
       stroke-width="1.2"
     />
+    <path v-else-if="mode === 'measurement'" d="M3 7H21V17H3ZM7 7V12M10 7V10M13 7V12M16 7V10M19 7V12" />
     <path v-else-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
     <path v-else-if="mode === 'curve'" d="M3 18C8 18 16 6 21 6" />
     <template v-else-if="mode === 'control-curve'">

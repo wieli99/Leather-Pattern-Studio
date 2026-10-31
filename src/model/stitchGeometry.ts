@@ -56,7 +56,7 @@ const edgeCache = new WeakMap<Shape, StitchEdge[]>();
 export function stitchEdges(s: Shape): StitchEdge[] {
   const cached = edgeCache.get(s);
   if (cached) return cached;
-  if (s.kind === "text") return [];
+  if (s.kind === "text" || s.kind === "measurement") return [];
   const prefix = `${s.kind}:${s.points.length}:`;
   const edges: StitchEdge[] = [];
   const add = (key: string, points: Point[]) => {

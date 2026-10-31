@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { measurementGeometry } from "../model/measurement";
 import { shapeArea } from "../model/area";
 import { computed } from "vue";
 import {
@@ -183,6 +184,17 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     Apply or cancel to edit properties.
   </p>
   <fieldset v-if="s" class="object-properties" :disabled="editor.isLocked(s.id)">
+    <template v-if="s.kind === 'measurement'">
+      <Field
+        label="Offset (mm)"
+        :value="measurementGeometry(s).offset"
+        @commit="edit({ measurementOffset: +$event / measurementGeometry(s).offsetScale })"
+      />
+      <div class="field">
+        <span>Distance (mm)</span>
+        <output aria-label="Distance (mm)">{{ measurementGeometry(s).length.toFixed(2) }}</output>
+      </div>
+    </template>
     <template v-if="s.kind === 'text'">
       <Field
         label="Text"
@@ -270,7 +282,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       @commit="edit(rotateShape(s, +$event - angle, c))"
     />
     <details
-      v-if="['line', 'polyline', 'curve', 'control-curve'].includes(s.kind)"
+      v-if="['measurement', 'line', 'polyline', 'curve', 'control-curve'].includes(s.kind)"
     >
       <summary>Vertex coordinates</summary>
       <div v-for="(point, i) in vertices" :key="i" class="field-row">

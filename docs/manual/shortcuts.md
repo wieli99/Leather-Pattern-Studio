@@ -8,6 +8,7 @@ Single-letter editor shortcuts require canvas focus. Click the canvas first. Inp
 | P / R / C / H | Path / rectangle / circle / polygon group |
 | Shift+group key | Previous variant |
 | T | Text |
+| D | Measurement (dimension) |
 | G / E / S / B | Move / Rotate / Resize / Corner radius selection tools |
 | M | Mirror selection |
 | I / K / J | Stitch line / Trim / Merge selection |
@@ -55,3 +56,5 @@ After Copy Styling in an object's context menu, Ctrl/⌘+V applies fill color an
 | Alt+Shift+Left | Move focused row out of its parent group |
 
 Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
+
+Press D with the canvas focused, or select Measurement from the toolbar below Text. After placing its two endpoints, Tab edits the signed Offset; Enter confirms placement. Esc cancels an unfinished measurement. See [Persistent measurements](#measurements).

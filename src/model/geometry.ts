@@ -1,3 +1,4 @@
+import { measurementGeometry } from "./measurement";
 import {
   isCurve,
   cubicSegments,
@@ -253,6 +254,17 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
+  if (s.kind === "measurement") {
+    const g = measurementGeometry(s);
+    const dx = point.x - g.middle.x, dy = point.y - g.middle.y;
+    const x = dx * Math.cos(g.angle) + dy * Math.sin(g.angle);
+    const y = -dx * Math.sin(g.angle) + dy * Math.cos(g.angle);
+    return (
+      (Math.abs(x) <= g.label.length * g.fontSize * 0.62 / 2 + tolerance &&
+        Math.abs(y) <= g.fontSize / 2 + tolerance) ||
+      g.lines.some(([a, b]) => distanceToSegment(point, a, b) <= tolerance)
+    );
+  }
   if (
     s.transform ||
     s.kind === "arc" ||
@@ -353,7 +365,8 @@ export function rotateShape(
   };
 }
 export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
-  if (s.transform) return stretchShape(s, factor, factor, pivot);
+  if (s.transform || s.kind === "measurement")
+    return stretchShape(s, factor, factor, pivot);
   return {
     ...s,
     points: s.points.map((p) => ({
@@ -544,6 +557,7 @@ export function boundary(s: Shape): {
   lines: [Point, Point][];
   curves: Curve[];
 } {
+  if (s.kind === "measurement") return { lines: measurementGeometry(s).lines, curves: [] };
   if (s.transform) {
     const m = s.transform,
       q = boundary({ ...s, transform: undefined }),
@@ -653,6 +667,10 @@ export function worldCubics(s: Shape): Cubic[] {
   return cubicSegments(s).map((c) => c.map((p) => applyMatrix(m, p)) as Cubic);
 }
 export function outlineBounds(s: Shape): Point[] {
+  if (s.kind === "measurement") {
+    const g = measurementGeometry(s);
+    return [...g.lines.flat(), ...g.labelBounds];
+  }
   if (isCurve(s)) return worldCubics(s).flatMap(cubicExtrema);
   const q = boundary(s);
   return [
