@@ -34,7 +34,9 @@ Guideline increments update when modifiers change without moving the pointer, in
 
 Select one closed shape to see its read-only **Area (mm²)** in Properties, displayed to two decimal places. The measurement follows rounded corners, curves, and transforms and updates after edits and undo/redo. Zoom does not affect area. Open paths, text, and multiple selections do not show an area.
 
-Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in Properties. Opacity ranges from 0% (transparent) to 100%. These settings affect only the interior. **Reset fill** restores the subtle theme fill. A divider below this button separates fill controls from the other settings. The calculated area is shown as read-only text, not an editable field.
+Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in Properties. Opacity ranges from 0% (transparent) to 100%. These settings affect only the interior. **Reset styling** restores the subtle theme fill. A divider below this button separates fill controls from the other settings. The calculated area is shown as read-only text, not an editable field.
+
+Closed shapes offer a **Fill mode** select: **Solid**, **Skiving** (full-length angled lines), **Glueing** (waves), and **Cutout** (crosshatched full-length diagonal lines). Markings overlay the fill and ignore fill opacity. **Outline color** and **Outline opacity (%)** control both outlines and markings. Pattern spacing is fixed in millimetres. **Reset styling** restores Solid, default fill settings, and theme outline styling. Outline controls also apply to open paths, text, and measurements.
 
 ## Persistent measurements
 

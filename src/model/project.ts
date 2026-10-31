@@ -199,6 +199,9 @@ export function parseProject(text: string): Doc {
         throw Error("Invalid corner radii");
     }
     if (
+      (s.fillMode !== undefined && !["solid", "skiving", "glueing", "cutout"].includes(s.fillMode)) ||
+      (s.strokeColor !== undefined && (typeof s.strokeColor !== "string" || !/^#[0-9a-f]{6}$/i.test(s.strokeColor))) ||
+      (s.strokeOpacity !== undefined && (typeof s.strokeOpacity !== "number" || !Number.isFinite(s.strokeOpacity) || s.strokeOpacity < 0 || s.strokeOpacity > 1)) ||
       (s.hidden !== undefined && typeof s.hidden !== "boolean") ||
       (s.locked !== undefined && typeof s.locked !== "boolean") ||
       (s.fillColor !== undefined &&
@@ -218,6 +221,9 @@ export function parseProject(text: string): Doc {
     result.push({
       id: s.id,
       name: s.name,
+      ...(s.fillMode !== undefined ? { fillMode: s.fillMode } : {}),
+      ...(s.strokeColor !== undefined ? { strokeColor: s.strokeColor } : {}),
+      ...(s.strokeOpacity !== undefined ? { strokeOpacity: s.strokeOpacity } : {}),
       ...(s.hidden !== undefined ? { hidden: s.hidden } : {}),
       ...(s.locked !== undefined ? { locked: s.locked } : {}),
       ...(s.fillColor !== undefined ? { fillColor: s.fillColor } : {}),

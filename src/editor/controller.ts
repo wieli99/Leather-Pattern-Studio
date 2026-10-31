@@ -2918,7 +2918,7 @@ export class Controller {
     const ctx = document.createElement("canvas").getContext("2d")!;
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--shape").trim();
     const text = JSON.stringify({ format: "leather-pattern-designer-styling", version: 1,
-      fillColor: shape.fillColor ?? ctx.fillStyle, fillOpacity: shape.fillOpacity ?? 0.05 });
+      fillMode: shape.fillMode ?? "solid", strokeColor: shape.strokeColor ?? ctx.fillStyle, strokeOpacity: shape.strokeOpacity ?? 1, fillColor: shape.fillColor ?? ctx.fillStyle, fillOpacity: shape.fillOpacity ?? 0.05 });
     this.copiedStyling = text;
     this.stylingClipboardFallback = false;
     this.notify();
@@ -2945,12 +2945,15 @@ export class Controller {
       if (payload.version !== 1 || !/^#[0-9a-f]{6}$/i.test(payload.fillColor) ||
           typeof payload.fillOpacity !== "number" || !Number.isFinite(payload.fillOpacity) ||
           payload.fillOpacity < 0 || payload.fillOpacity > 1) throw Error("Invalid styling clipboard");
+      if (payload.fillMode !== undefined && !["solid", "skiving", "glueing", "cutout"].includes(payload.fillMode)) throw Error("Invalid fill mode");
+      if (payload.strokeColor !== undefined && (typeof payload.strokeColor !== "string" || !/^#[0-9a-f]{6}$/i.test(payload.strokeColor))) throw Error("Invalid outline color");
+      if (payload.strokeOpacity !== undefined && (typeof payload.strokeOpacity !== "number" || !Number.isFinite(payload.strokeOpacity) || payload.strokeOpacity < 0 || payload.strokeOpacity > 1)) throw Error("Invalid outline opacity");
       let changed = false;
       const shapes = this.document.shapes.map(s => {
         if (!ids.includes(s.id) || shapeArea(s) === null ||
-            (s.fillColor === payload.fillColor && s.fillOpacity === payload.fillOpacity)) return s;
+            (s.fillColor === payload.fillColor && s.fillOpacity === payload.fillOpacity && s.fillMode === payload.fillMode && s.strokeColor === payload.strokeColor && s.strokeOpacity === payload.strokeOpacity)) return s;
         changed = true;
-        return { ...s, fillColor: payload.fillColor, fillOpacity: payload.fillOpacity };
+        return { ...s, fillColor: payload.fillColor, fillOpacity: payload.fillOpacity, fillMode: payload.fillMode, strokeColor: payload.strokeColor, strokeOpacity: payload.strokeOpacity };
       });
       if (changed) await this.commit({ ...this.document, shapes });
     } catch (error) { this.fail(error); }

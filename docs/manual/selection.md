@@ -16,7 +16,7 @@ Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes th
 
 Right-click an object in the Objects panel for **Duplicate**, **Copy Styling**, **Paste Styling**, and **Rename**. Right-clicking a selected row keeps the multiple selection; otherwise it selects that row. Duplicate and Paste Styling affect the selection, while Copy Styling and Rename use the clicked object.
 
-Copy Styling copies the base fill color and opacity to the system clipboard. Ctrl/⌘+V on the canvas or an object row, or Paste Styling in the menu, applies it to selected objects with a fillable area in one undo step. Open paths and text are skipped. Default styling copies the current theme color and 5% opacity, excluding selection highlighting. Paste Styling appears only after Copy Styling has stored styling in this editor. Menu paste uses that stored copy without clipboard-read permission. If system clipboard writing is blocked, copying and Ctrl/⌘+V still work inside this editor. Copying objects again restores normal object paste.
+Copy Styling copies the base fill color, opacity, fill mode, and outline styling to the system clipboard. Ctrl/⌘+V on the canvas or an object row, or Paste Styling in the menu, applies it to selected objects with a fillable area in one undo step. Open paths and text are skipped. Default styling copies the current theme color and 5% opacity, excluding selection highlighting. Paste Styling appears only after Copy Styling has stored styling in this editor. Menu paste uses that stored copy without clipboard-read permission. If system clipboard writing is blocked, copying and Ctrl/⌘+V still work inside this editor. Copying objects again restores normal object paste.
 
 ![Object context menu](/manual/images/object-context-menu.png)
 

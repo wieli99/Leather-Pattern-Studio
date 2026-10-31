@@ -67,6 +67,23 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub fill_opacity: Option<f64>,
+    #[serde(default, rename = "fillMode", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fill_mode: Option<String>,
+    #[serde(
+        default,
+        rename = "strokeColor",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stroke_color: Option<String>,
+    #[serde(
+        default,
+        rename = "strokeOpacity",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stroke_opacity: Option<f64>,
     pub name: String,
     pub kind: Kind,
     pub points: Vec<Point>,
@@ -455,6 +472,19 @@ impl Document {
         }
         let mut ids = HashSet::new();
         for s in &self.shapes {
+            if s.fill_mode
+                .as_ref()
+                .is_some_and(|v| !matches!(v.as_str(), "solid" | "skiving" | "glueing" | "cutout"))
+                || s.stroke_opacity
+                    .is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
+                || s.stroke_color.as_ref().is_some_and(|v| {
+                    v.len() != 7
+                        || !v.starts_with('#')
+                        || !v.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+                })
+            {
+                return Err("Invalid outline or fill mode".into());
+            }
             if s.fill_color.as_ref().is_some_and(|c| {
                 c.len() != 7
                     || !c.starts_with('#')

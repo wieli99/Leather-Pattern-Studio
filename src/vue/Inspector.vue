@@ -211,7 +211,33 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       <span>Area (mm²)</span>
       <output role="note" aria-label="Area (mm²)">{{ area.toFixed(2) }}</output>
     </div>
+    <div class="field-row">
+      <label class="field">
+        <span>Outline color</span>
+        <input type="color" aria-label="Outline color"
+          :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+          :value="s.strokeColor ?? defaultFillColor()"
+          @focus="editor.beginProperty()"
+          @input="edit({ strokeColor: ($event.target as HTMLInputElement).value })"
+          @blur="editor.finishProperty()"
+          @keydown.esc.stop="editor.finishProperty(true)" />
+      </label>
+      <Field label="Outline opacity (%)" :value="(s.strokeOpacity ?? 1) * 100"
+        :min="0" :max="100" :step="1"
+        @commit="edit({ strokeOpacity: +$event / 100 })" />
+    </div>
     <template v-if="area !== null">
+      <label class="field">
+        <span>Fill mode</span>
+        <select aria-label="Fill mode" :value="s.fillMode ?? 'solid'"
+          :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+          @change="edit({ fillMode: ($event.target as HTMLSelectElement).value })">
+          <option value="solid">Solid</option>
+          <option value="skiving">Skiving</option>
+          <option value="glueing">Glueing</option>
+          <option value="cutout">Cutout</option>
+        </select>
+      </label>
       <div class="field-row">
         <label class="field">
           <span>Fill color</span>
@@ -227,10 +253,10 @@ function vertex(i: number, axis: "x" | "y", v: string) {
           :min="0" :max="100" :step="1"
           @commit="fill({ fillOpacity: +$event / 100 })" />
       </div>
-      <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-        @click="edit({ fillColor: undefined, fillOpacity: undefined })">Reset fill</button>
-      <hr />
     </template>
+    <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+      @click="edit({ fillColor: undefined, fillOpacity: undefined, fillMode: undefined, strokeColor: undefined, strokeOpacity: undefined })">Reset styling</button>
+    <hr />
     <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <div class="field-row">
       <Field

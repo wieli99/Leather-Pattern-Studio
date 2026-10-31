@@ -5,6 +5,7 @@ import { isCurve, cubicSegments } from "../model/curves";
 import { snappedAxes } from "./snapping";
 import type { Controller } from "./controller";
 import {
+  bounds,
   shapeMatrix,
   applyMatrix,
   isPolygon,
@@ -156,12 +157,46 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           : editor.hover === s.id
             ? color("text")
             : color("shape");
+      if (!selected && !preview && editor.hover !== s.id) {
+        ctx.strokeStyle = s.strokeColor ?? color("shape");
+        ctx.globalAlpha = s.strokeOpacity ?? 1;
+      }
       if (isClosedShape(s)) {
         ctx.save();
         ctx.globalAlpha = s.fillOpacity ?? (selected ? 0.12 : 0.05);
         ctx.fillStyle = s.fillColor ?? (selected ? color("accent") : color("shape"));
         ctx.fill(path);
         ctx.restore();
+        if (s.fillMode === "skiving" || s.fillMode === "glueing" || s.fillMode === "cutout") {
+          ctx.save();
+          ctx.clip(path);
+          ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+          ctx.strokeStyle = s.strokeColor ?? color("shape");
+          ctx.globalAlpha = s.strokeOpacity ?? 1;
+          const box = bounds([{ ...s, transform: undefined, rotation: 0 }]);
+          ctx.beginPath();
+          if (s.fillMode === "skiving" || s.fillMode === "cutout") {
+            const spacing = 4 * Math.SQRT2;
+            for (let offset = -box.height; offset <= box.width; offset += spacing) {
+              ctx.moveTo(box.x + offset, box.y + box.height);
+              ctx.lineTo(box.x + offset + box.height, box.y);
+              if (s.fillMode === "cutout") {
+                ctx.moveTo(box.x + offset, box.y);
+                ctx.lineTo(box.x + offset + box.height, box.y + box.height);
+              }
+            }
+          } else {
+            for (let y = box.y + 2; y <= box.y + box.height - 2; y += 4) {
+              ctx.moveTo(box.x, y);
+              for (let x = box.x; x < box.x + box.width; x += 3) {
+                const amplitude = Math.round((x - box.x) / 3) % 2 ? -1.33 : 1.33;
+                ctx.bezierCurveTo(x + 1, y + amplitude, x + 2, y + amplitude, x + 3, y);
+              }
+            }
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
       }
       if (s.kind === "measurement") {
         const g = measurementGeometry(s);
