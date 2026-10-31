@@ -78,6 +78,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
   let frame = 0,
     dirty = true;
   const images = new Map<string, HTMLImageElement>();
+  const svgRasters = new Map<string, { canvas: HTMLCanvasElement; width: number; height: number }>();
   const unsubscribe = editor.subscribe(() => {
     dirty = true;
   });
@@ -87,7 +88,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
   observer.observe(canvas);
   function draw() {
     const sources = new Set((editor.preview ?? editor.document).shapes.map(s => s.image));
-    for (const source of images.keys()) if (!sources.has(source)) images.delete(source);
+    for (const source of images.keys()) if (!sources.has(source)) { images.delete(source); svgRasters.delete(source); }
     const rect = canvas.getBoundingClientRect(),
       dpr = devicePixelRatio || 1,
       w = rect.width,
@@ -160,7 +161,28 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           const m = shapeMatrix(s), a = s.points[0], b = s.points[1];
           ctx.transform(m.a,m.b,m.c,m.d,m.e,m.f);
           ctx.globalAlpha = s.fillOpacity ?? 1;
-          ctx.drawImage(bitmap, a.x,a.y,b.x-a.x,b.y-a.y);
+          let source: CanvasImageSource = bitmap;
+          if (s.image.startsWith("data:image/svg+xml;")) {
+            // Resolve the SVG viewport at its original aspect ratio first.
+            // Drawing the resulting pixels cannot reapply SVG aspect fitting.
+            const resolution = Math.max(
+              Math.abs(b.x - a.x) * Math.hypot(m.a, m.b),
+              Math.abs(b.y - a.y) * Math.hypot(m.c, m.d) * bitmap.naturalWidth / bitmap.naturalHeight,
+            ) * z * dpr;
+            const width = Math.max(1, Math.min(4096, Math.ceil(resolution)));
+            const height = Math.max(1, Math.min(4096, Math.ceil(width * bitmap.naturalHeight / bitmap.naturalWidth)));
+            let raster = svgRasters.get(s.image);
+            if (!raster || raster.width !== width || raster.height !== height) {
+              const canvas = document.createElement("canvas");
+              canvas.width = width;
+              canvas.height = height;
+              canvas.getContext("2d")!.drawImage(bitmap, 0, 0, width, height);
+              raster = { canvas, width, height };
+              svgRasters.set(s.image, raster);
+            }
+            source = raster.canvas;
+          }
+          ctx.drawImage(source, a.x, a.y, b.x - a.x, b.y - a.y);
           if (editor.selected.includes(s.id) || editor.hover === s.id) {
             ctx.globalAlpha = 1;
             ctx.strokeStyle = color("accent");

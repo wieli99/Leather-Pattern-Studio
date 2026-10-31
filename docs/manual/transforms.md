@@ -12,11 +12,13 @@ Move and Resize support X/Y axis constraints. For a single object, choose Local 
 Dragging rotates in 1° steps. Ctrl uses 10°, Shift uses 5°, and Alt allows free rotation. Numeric angles allow exact entry.
 
 ## Resize
-Drag for proportional sizing, use an axis handle to resize one direction, or enter independent X/Y factors. A factor of 1 preserves that dimension.
+Drag for proportional sizing, use an axis handle to resize one direction, or enter independent X/Y factors. A factor of 1 preserves that dimension. This also stretches imported SVG artwork: use X with Y set to 1 to change only width, or Y with X set to 1 to change only height. The Properties aspect-ratio checkbox controls Width/Height fields separately.
 
 Transforms remain previews until applied. Selection changes are restricted while a transform is active. Apply or cancel before editing Properties.
 
 ![Transforms](/manual/images/transforms.png)
+
+![SVG artwork resized independently along X and Y](/manual/images/svg-resize.png)
 
 ## Individual corner radii
 

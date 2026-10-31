@@ -28,3 +28,35 @@ for (const mimeType of ["image/svg+xml", ""]) {
     await expect(page.locator(".object-select")).toHaveCount(0);
   });
 }
+
+for (const aspect of ['width="120" height="60"', 'viewBox="0 0 120 60"', 'viewBox="0 0 120 60" preserveAspectRatio="xMidYMid meet"']) {
+  test(`SVG artwork stretches independently ${aspect || "default"}`, async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", {name:"Import image",exact:true})).toBeEnabled();
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", {name:"Import image",exact:true}).click();
+    await (await chooser).setFiles({name:"stretch.svg",mimeType:"image/svg+xml",buffer:Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" ${aspect}><rect width="120" height="60" fill="#ff0000"/></svg>`)});
+    await expect(page.locator(".object-select")).toHaveCount(1);
+    const artwork = () => page.locator("canvas").first().evaluate((canvas: HTMLCanvasElement) => {
+      const {data} = canvas.getContext("2d")!.getImageData(0,0,canvas.width,canvas.height);
+      let left=Infinity,right=-1,top=Infinity,bottom=-1;
+      for(let y=0;y<canvas.height;y++) for(let x=0;x<canvas.width;x++) {
+        const i=(y*canvas.width+x)*4;
+        if(data[i]>220 && data[i+1]<40 && data[i+2]<40) {left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
+      }
+      return {width:right-left+1,height:bottom-top+1};
+    });
+    await expect.poll(async () => (await artwork()).width).toBeGreaterThan(10);
+    const before=await artwork();
+    await page.getByRole("button",{name:"Resize",exact:true}).click();
+    await page.getByRole("spinbutton",{name:"X factor",exact:true}).fill("1.4");
+    await page.getByRole("button",{name:"Apply",exact:true}).click();
+    await expect.poll(async () => (await artwork()).width/before.width).toBeCloseTo(1.4,1);
+    expect((await artwork()).height).toBeCloseTo(before.height,0);
+    await page.getByRole("button",{name:"Resize",exact:true}).click();
+    await page.getByRole("spinbutton",{name:"Y factor",exact:true}).fill("1.2");
+    await page.getByRole("button",{name:"Apply",exact:true}).click();
+    await expect.poll(async () => (await artwork()).height/before.height).toBeCloseTo(1.2,1);
+    await page.screenshot({path:"test-results/svg-resize.png"});
+  });
+}
