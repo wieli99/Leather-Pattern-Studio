@@ -77,6 +77,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
   const ctx = canvas.getContext("2d")!;
   let frame = 0,
     dirty = true;
+  const images = new Map<string, HTMLImageElement>();
   const unsubscribe = editor.subscribe(() => {
     dirty = true;
   });
@@ -85,6 +86,8 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
   });
   observer.observe(canvas);
   function draw() {
+    const sources = new Set((editor.preview ?? editor.document).shapes.map(s => s.image));
+    for (const source of images.keys()) if (!sources.has(source)) images.delete(source);
     const rect = canvas.getBoundingClientRect(),
       dpr = devicePixelRatio || 1,
       w = rect.width,
@@ -145,6 +148,29 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     function shape(s: Shape, preview = false) {
       if (s.id === editor.editingTextId) return;
       ctx.save();
+      if (s.kind === "image" && s.image) {
+        let bitmap = images.get(s.image);
+        if (!bitmap) {
+          bitmap = new Image();
+          bitmap.onload = () => { dirty = true; };
+          bitmap.src = s.image;
+          images.set(s.image, bitmap);
+        }
+        if (bitmap.complete && bitmap.naturalWidth) {
+          const m = shapeMatrix(s), a = s.points[0], b = s.points[1];
+          ctx.transform(m.a,m.b,m.c,m.d,m.e,m.f);
+          ctx.globalAlpha = s.fillOpacity ?? 1;
+          ctx.drawImage(bitmap, a.x,a.y,b.x-a.x,b.y-a.y);
+          if (editor.selected.includes(s.id) || editor.hover === s.id) {
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = color("accent");
+            ctx.lineWidth = 1/editor.zoom;
+            ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y);
+          }
+        }
+        ctx.restore();
+        return;
+      }
       const primitive = new Path2D();
       shapePath(primitive, s);
       const path = new Path2D(),

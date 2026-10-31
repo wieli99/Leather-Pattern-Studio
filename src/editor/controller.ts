@@ -1,3 +1,5 @@
+import type { ImportedImage } from "./imageImport";
+import { DOCUMENT_VERSION } from "../model/project";
 import { isIndicator } from "../model/indicators";
 import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
@@ -531,9 +533,9 @@ export class Controller {
   async initialize() {
     try {
       const initial = await this.core.request("snapshot", 0);
-      if (initial.document.version !== 15)
+      if (initial.document.version !== DOCUMENT_VERSION)
         throw Error(
-          `Application expects document version 15, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
+          `Application expects document version ${DOCUMENT_VERSION}, but geometry worker returned ${initial.document.version}. Reload the page (Ctrl+Shift+R).`,
         );
       this.accept(initial);
       this.ready = true;
@@ -1084,6 +1086,28 @@ export class Controller {
     this.stitchSelected = [];
     this.stitchDraft = null;
     this.notify();
+  }
+  async insertImage(image: ImportedImage) {
+    this.cancel();
+    const scale = Math.min(this.width / image.width, this.height / image.height) / this.zoom / 2;
+    const width = image.width * scale, height = image.height * scale;
+    const x = (this.width / 2 - this.pan.x) / this.zoom;
+    const y = (this.height / 2 - this.pan.y) / this.zoom;
+    const id = crypto.randomUUID();
+    const shape: Shape = {
+      id, name: image.name, kind: "image", image: image.data,
+      points: [{ x: x - width / 2, y: y - height / 2 },
+        { x: x + width / 2, y: y + height / 2 }],
+      radius: 0, rotation: 0, fillOpacity: 1,
+    };
+    if (await this.commit({ ...this.document,
+      shapes: [shape, ...this.document.shapes],
+      objectTree: [...this.tree, { id, kind: "object" }],
+    })) {
+      this.setMode("select");
+      this.selected = [id];
+      this.notify();
+    }
   }
   normalizeTree(document: Doc): Doc {
     const objectTree = reconcileObjectTree(document.objectTree ?? objectTreeFromShapes(document.shapes), document.shapes);
@@ -2996,7 +3020,7 @@ export class Controller {
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
-      document: { version: 15, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
+      document: { version: DOCUMENT_VERSION, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
         })).filter(l => l.members.length >= 2) },

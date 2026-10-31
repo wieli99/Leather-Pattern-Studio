@@ -324,6 +324,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number): boolean {
     }
     return best <= tolerance;
   }
+  if (s.kind === "image") return p.x >= Math.min(a.x,b.x)-tolerance && p.x <= Math.max(a.x,b.x)+tolerance && p.y >= Math.min(a.y,b.y)-tolerance && p.y <= Math.max(a.y,b.y)+tolerance;
   if (s.kind === "rectangle") {
     const c = localCenter(s),
       r = s.radius,
@@ -449,7 +450,7 @@ export function anchors(s: Shape): Point[] {
         { x: c.x, y: b.y },
       ].map((p) => rotatePoint(p, c, s.rotation)),
     ];
-  if (s.kind === "rectangle")
+  if (s.kind === "rectangle" || s.kind === "image")
     return [
       c,
       ...[
@@ -519,7 +520,7 @@ export function contains(s: Shape, p: Point): boolean {
         ((q.y - c.y) / (Math.abs(b.y - a.y) / 2)) ** 2 <=
       1
     );
-  if (s.kind === "rectangle" && !s.cornerRadii) {
+  if ((s.kind === "rectangle" || s.kind === "image") && !s.cornerRadii) {
     const r = s.radius,
       x = Math.abs(q.x - c.x) - Math.abs(b.x - a.x) / 2 + r,
       y = Math.abs(q.y - c.y) - Math.abs(b.y - a.y) / 2 + r;
@@ -621,7 +622,7 @@ export function boundary(s: Shape): {
     );
   } else if (s.kind === "ellipse")
     curve(c, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, Math.PI * 2);
-  else if (s.kind === "rectangle" && !s.cornerRadii) {
+  else if ((s.kind === "rectangle" || s.kind === "image") && !s.cornerRadii) {
     const l = Math.min(a.x, b.x),
       t = Math.min(a.y, b.y),
       right = Math.max(a.x, b.x),

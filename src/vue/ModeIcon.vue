@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Mode } from "../editor/construction";
-const props = defineProps<{ mode: Mode }>();
+const props = defineProps<{ mode: Mode | "image" }>();
 const center = computed(
     () =>
       props.mode.includes("center") ||
@@ -119,6 +119,7 @@ const points = computed(() => {
     <path v-else-if="mode === 'crosshair'" d="M2 12H22M12 2V22" />
     <path v-else-if="mode === 'size-square'" d="M3 3H21V21H3ZM6 8H18M6 6V10M18 6V10M8 13H16M8 16H16" />
     <path v-else-if="mode === 'size-ruler'" d="M2 6H22M2 6V18M7 6V12M12 6V16M17 6V12M22 6V18" />
+    <path v-else-if="mode === 'image'" d="M3 3H21V21H3ZM4 18L9 11L13 15L17 9L20 18M7 7H8" />
     <path v-else-if="mode === 'measurement'" d="M3 7H21V17H3ZM7 7V12M10 7V10M13 7V12M16 7V10M19 7V12" />
     <path v-else-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
     <path v-else-if="mode === 'curve'" d="M3 18C8 18 16 6 21 6" />

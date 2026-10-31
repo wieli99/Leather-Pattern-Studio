@@ -9,19 +9,20 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
-  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
+  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const emptyDocument = (): Doc => ({ version: 15, shapes: [] });
+export const DOCUMENT_VERSION = 16;
+export const emptyDocument = (): Doc => ({ version: DOCUMENT_VERSION, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -65,6 +66,7 @@ export function parseProject(text: string): Doc {
       typeof s.name !== "string" ||
       s.name.length > 200 ||
       ![
+        "image",
         "text",
         "measurement",
         "arrow", "arrow-head", "crosshair", "size-square", "size-ruler",
@@ -105,6 +107,7 @@ export function parseProject(text: string): Doc {
         s.fontSize <= 0)
     )
       throw Error("Invalid text");
+    if (s.kind === "image" && (s.points[0].x === s.points[1].x || s.points[0].y === s.points[1].y || typeof s.image !== "string" || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(s.image))) throw Error("Invalid image");
     if (s.kind === "control-curve") {
       if (!Array.isArray(s.handles) || s.handles.length !== s.points.length)
         throw Error("Invalid curve handle count");
@@ -242,6 +245,7 @@ export function parseProject(text: string): Doc {
       ...(s.fillColor !== undefined ? { fillColor: s.fillColor } : {}),
       ...(s.fillOpacity !== undefined ? { fillOpacity: s.fillOpacity } : {}),
       kind: s.kind,
+      ...(s.kind === "image" ? {image:s.image} : {}),
       ...(s.strokeWidth !== undefined ? {strokeWidth:s.strokeWidth} : {}),
       ...(s.headSize !== undefined ? { headSize: s.headSize } : {}),
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
@@ -297,7 +301,7 @@ export function parseProject(text: string): Doc {
     objectTree,
     stitchLinks,
     stitchGroups,
-    version: 15,
+    version: DOCUMENT_VERSION,
     shapes: treeInDrawingOrder(objectTree, result),
     guides: guides.map((g: Guide) => ({
       id: g.id,

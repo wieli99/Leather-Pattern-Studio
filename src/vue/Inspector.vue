@@ -2,7 +2,7 @@
 import { isIndicator, indicatorGeometry } from "../model/indicators";
 import { measurementGeometry } from "../model/measurement";
 import { shapeArea } from "../model/area";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import {
   isPolygon,
   polygonFillets,
@@ -95,7 +95,13 @@ function indicatorSize(value: string) {
     else edit(stretchShape(shape,+value/current,+value/current,c.value));
   }
 }
+const imageAspectLocked = ref(true);
 function size(axis: "x" | "y", v: string) {
+  if (s.value!.kind === "image" && imageAspectLocked.value) {
+    const factor = +v / (axis === "x" ? width.value : height.value);
+    edit(stretchShape(s.value!,factor,factor,c.value));
+    return;
+  }
   if (["curve", "control-curve"].includes(s.value!.kind)) {
     const length = axis === "x" ? width.value : height.value;
     if (length > 0)
@@ -224,7 +230,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       />
     </div>
     <div
-      v-if="['rectangle', 'ellipse', 'curve', 'control-curve'].includes(s.kind)"
+      v-if="['image', 'rectangle', 'ellipse', 'curve', 'control-curve'].includes(s.kind)"
       class="field-row"
     >
       <Field
@@ -266,6 +272,8 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       <Field v-if="s.kind === 'arrow'" label="Head size (local mm)"
         :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
     </template>
+    <label v-if="s.kind === 'image'"><input v-model="imageAspectLocked" type="checkbox" /> Lock aspect ratio</label>
+    <Field v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
       <Field
         label="Offset (mm)"

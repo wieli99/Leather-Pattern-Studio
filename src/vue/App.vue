@@ -7,6 +7,7 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import Viewport from "./Viewport.vue";
+import ModeIcon from "./ModeIcon.vue";
 import ToolButton from "./ToolButton.vue";
 import ObjectPanel from "./ObjectPanel.vue";
 import Inspector from "./Inspector.vue";
@@ -14,8 +15,22 @@ import PanelSection from "./PanelSection.vue";
 import Settings from "./Settings.vue";
 import StatusBar from "./StatusBar.vue";
 
+import { decodeImageFile } from "../editor/imageImport";
 import { tools } from "./tools";
 import { handleShortcut, handleClipboard } from "./shortcuts";
+const imagePicker = ref<HTMLInputElement | null>(null);
+async function importImage(event: Event) {
+  const input = event.target as HTMLInputElement, file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  const original = editor.document;
+  try {
+    const image = await decodeImageFile(file);
+    if (editor.document !== original)
+      throw Error("Project changed during image import; please try again");
+    await editor.insertImage(image);
+  } catch (error) { editor.message = String(error); editor.notify(); }
+}
 const nativeSaving = "showSaveFilePicker" in window;
 const renaming = ref(false);
 const draftName = ref("");
@@ -204,6 +219,8 @@ onMounted(() => {
           />
           <ToolButton :tool="tool" />
         </template>
+        <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="importImage" />
+        <button title="Import image" aria-label="Import image" :disabled="!e.ready" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></button>
         <div class="rail-divider" />
         <button
           title="Undo (Ctrl/⌘+Z)"

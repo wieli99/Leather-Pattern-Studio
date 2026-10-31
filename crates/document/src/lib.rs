@@ -31,6 +31,7 @@ pub enum Kind {
     Ellipse,
     Arc,
     Text,
+    Image,
     Measurement,
     Arrow,
     #[serde(rename = "arrow-head")]
@@ -92,6 +93,9 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub stroke_opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub image: Option<String>,
     pub name: String,
     pub kind: Kind,
     pub points: Vec<Point>,
@@ -419,12 +423,35 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
 
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
+        for s in &self.shapes {
+            if s.kind == Kind::Image
+                && (s.points.len() != 2
+                    || s.points[0].x == s.points[1].x
+                    || s.points[0].y == s.points[1].y)
+            {
+                return Err("Invalid image dimensions".into());
+            }
+            if s.kind == Kind::Image
+                && !s.image.as_ref().is_some_and(|data| {
+                    data.len() <= 10_000_000
+                        && [
+                            "data:image/png;base64,",
+                            "data:image/jpeg;base64,",
+                            "data:image/webp;base64,",
+                        ]
+                        .iter()
+                        .any(|prefix| data.starts_with(prefix))
+                })
+            {
+                return Err("Invalid image".into());
+            }
+        }
         if !matches!(
             self.version,
-            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
+            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16). Reload the application.",
                 self.version
             ));
         }
@@ -754,7 +781,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 15,
+                version: 16,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -774,7 +801,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -886,7 +913,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 15;
+                next.version = 16;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -961,7 +988,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 15;
+        doc.version = 16;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1048,7 +1075,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1080,7 +1107,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 15;
+        d.version = 16;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -1239,7 +1266,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 15;
+        doc.version = 16;
         doc.object_tree = Some(
             doc.shapes
                 .iter()

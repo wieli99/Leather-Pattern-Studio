@@ -2022,3 +2022,19 @@ test("measurement tool angles snap in eight directions without changing square p
   e.setMode("measurement"); e.pending=[{x:0,y:0},{x:20,y:10}];
   expect(e.drawingPoint({x:30,y:18},true,true)).toEqual({x:30,y:18});
 });
+
+test("initialization accepts the current worker document version", async () => {
+  const e = new Controller();
+  await e.initialize();
+  expect(e.ready).toBe(true);
+  expect(e.document.version).toBe(emptyDocument().version);
+  expect(e.message).not.toContain("expects document version");
+});
+
+test("initialization rejects a stale worker document version", async () => {
+  const e = new Controller();
+  vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
+  await e.initialize();
+  expect(e.ready).toBe(false);
+  expect(e.message).toContain("expects document version 16, but geometry worker returned 15");
+});

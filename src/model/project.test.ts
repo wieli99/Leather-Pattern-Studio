@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { parseProject } from "./project";
 test("empty project round-trips", () =>
   expect(parseProject('{"version":3,"shapes":[]}')).toEqual({
-    version: 15,
+    version: 16,
     objectTree: [],
     stitchGroups: [],
     stitchLinks: [],
@@ -44,7 +44,7 @@ const line = {
 };
 test("migrates v2 without changing coordinates", () => {
   const d = parseProject(JSON.stringify({ version: 2, shapes: [line] }));
-  expect(d.version).toBe(15);
+  expect(d.version).toBe(16);
   expect(d.shapes[0].points).toEqual(line.points);
 });
 test.each([
@@ -80,7 +80,7 @@ test("v3 migration retains precision, rotation, and inactive stitch metadata", (
     legacyStitch: { offset: 3, spacing: 2 },
   };
   const project = parseProject(JSON.stringify({ version: 3, shapes: [shape] }));
-  expect(project.version).toBe(15);
+  expect(project.version).toBe(16);
   expect(project.shapes[0].points).toEqual(shape.points);
   expect(project.shapes[0].rotation).toBeCloseTo(shape.rotation);
   expect(project.shapes[0].legacyStitch).toEqual(shape.legacyStitch);
@@ -116,7 +116,7 @@ test("v5 retains exact matrices and metadata, rejects singular and nonfinite tra
     ).toThrow();
   expect(
     parseProject(JSON.stringify({ version: 4, shapes: [line] })).version,
-  ).toBe(15);
+  ).toBe(16);
 });
 
 test("rejects links referencing missing stitch lines", () => {
@@ -132,4 +132,11 @@ test("fill overrides survive round trips and reject invalid values", () => {
   expect(parseProject(JSON.stringify(doc)).shapes[0]).toMatchObject(shape);
   for (const changes of [{ fillMode: "invalid" }, { strokeColor: "red" }, { strokeOpacity: -1 }, { strokeOpacity: 1.1 }, { fillOpacity: -1 }, { fillOpacity: 1.01 }, { fillColor: "red" }])
     expect(() => parseProject(encode(changes))).toThrow("Invalid fill");
+});
+
+test("embedded images round trip and reject external sources", () => {
+  const shape = {id:"image",name:"Reference",kind:"image",image:"data:image/png;base64,AAAA",points:[{x:0,y:0},{x:20,y:10}],radius:0,rotation:0,fillOpacity:0.5};
+  const parsed = parseProject(JSON.stringify({version:16,shapes:[shape]}));
+  expect(parsed.shapes[0]).toMatchObject(shape);
+  expect(() => parseProject(JSON.stringify({version:16,shapes:[{...shape,image:"https://example.com/image.png"}]}))).toThrow("Invalid image");
 });
