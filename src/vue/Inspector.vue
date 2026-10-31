@@ -24,6 +24,7 @@ import type { Shape } from "../model/project";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import Field from "./Field.vue";
+import PanelSection from "./PanelSection.vue";
 const e = useEditor(),
   selected = computed(() => e.value.active),
   s = computed(() => (selected.value.length === 1 ? selected.value[0] : null)),
@@ -183,18 +184,9 @@ function vertex(i: number, axis: "x" | "y", v: string) {
   <p v-if="e.transformTool || e.stitchMode">
     Apply or cancel to edit properties.
   </p>
-  <fieldset v-if="s" class="object-properties" :disabled="editor.isLocked(s.id)">
-    <template v-if="s.kind === 'measurement'">
-      <Field
-        label="Offset (mm)"
-        :value="measurementGeometry(s).offset"
-        @commit="edit({ measurementOffset: +$event / measurementGeometry(s).offsetScale })"
-      />
-      <div class="field">
-        <span>Distance (mm)</span>
-        <output aria-label="Distance (mm)">{{ measurementGeometry(s).length.toFixed(2) }}</output>
-      </div>
-    </template>
+  <fieldset v-if="s" class="object-properties">
+    <PanelSection class="property-section" section-key="object" title="Object" :level="3" :disabled="editor.isLocked(s.id)">
+    <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <template v-if="s.kind === 'text'">
       <Field
         label="Text"
@@ -207,57 +199,9 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         @commit="edit({ fontSize: +$event })"
       />
     </template>
-    <div v-if="area !== null" class="field">
-      <span>Area (mm²)</span>
-      <output role="note" aria-label="Area (mm²)">{{ area.toFixed(2) }}</output>
-    </div>
-    <div class="field-row">
-      <label class="field">
-        <span>Outline color</span>
-        <input type="color" aria-label="Outline color"
-          :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-          :value="s.strokeColor ?? defaultFillColor()"
-          @focus="editor.beginProperty()"
-          @input="edit({ strokeColor: ($event.target as HTMLInputElement).value })"
-          @blur="editor.finishProperty()"
-          @keydown.esc.stop="editor.finishProperty(true)" />
-      </label>
-      <Field label="Outline opacity (%)" :value="(s.strokeOpacity ?? 1) * 100"
-        :min="0" :max="100" :step="1"
-        @commit="edit({ strokeOpacity: +$event / 100 })" />
-    </div>
-    <template v-if="area !== null">
-      <label class="field">
-        <span>Fill mode</span>
-        <select aria-label="Fill mode" :value="s.fillMode ?? 'solid'"
-          :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-          @change="edit({ fillMode: ($event.target as HTMLSelectElement).value })">
-          <option value="solid">Solid</option>
-          <option value="skiving">Skiving</option>
-          <option value="glueing">Glueing</option>
-          <option value="cutout">Cutout</option>
-        </select>
-      </label>
-      <div class="field-row">
-        <label class="field">
-          <span>Fill color</span>
-          <input type="color" aria-label="Fill color"
-            :value="s.fillColor ?? defaultFillColor()"
-            :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-            @focus="editor.beginProperty()"
-            @input="fill({ fillColor: ($event.target as HTMLInputElement).value })"
-            @blur="editor.finishProperty()"
-            @keydown.esc.stop="editor.finishProperty(true)" />
-        </label>
-        <Field label="Fill opacity (%)" :value="(s.fillOpacity ?? 0.05) * 100"
-          :min="0" :max="100" :step="1"
-          @commit="fill({ fillOpacity: +$event / 100 })" />
-      </div>
-    </template>
-    <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-      @click="edit({ fillColor: undefined, fillOpacity: undefined, fillMode: undefined, strokeColor: undefined, strokeOpacity: undefined })">Reset styling</button>
-    <hr />
-    <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
+    </PanelSection>
+    <PanelSection class="property-section" section-key="geometry" title="Geometry" :level="3" :disabled="editor.isLocked(s.id)">
+      <p class="geometry-units">mm unless indicated</p>
     <div class="field-row">
       <Field
         label="Position X"
@@ -307,6 +251,70 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       :value="+angle.toFixed(1)"
       @commit="edit(rotateShape(s, +$event - angle, c))"
     />
+    <template v-if="s.kind === 'measurement'">
+      <Field
+        label="Offset (mm)"
+        :value="measurementGeometry(s).offset"
+        @commit="edit({ measurementOffset: +$event / measurementGeometry(s).offsetScale })"
+      />
+      <div class="field">
+        <span>Distance (mm)</span>
+        <output aria-label="Distance (mm)">{{ measurementGeometry(s).length.toFixed(2) }}</output>
+      </div>
+    </template>
+    <div v-if="area !== null" class="field">
+      <span>Area (mm²)</span>
+      <output role="note" aria-label="Area (mm²)">{{ area.toFixed(2) }}</output>
+    </div>
+    </PanelSection>
+    <PanelSection class="property-section" section-key="appearance" title="Appearance" :level="3" :disabled="editor.isLocked(s.id)">
+    <div class="field-row">
+      <label class="field">
+        <span>Outline color</span>
+        <input type="color" aria-label="Outline color"
+          :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+          :value="s.strokeColor ?? defaultFillColor()"
+          @focus="editor.beginProperty()"
+          @input="edit({ strokeColor: ($event.target as HTMLInputElement).value })"
+          @blur="editor.finishProperty()"
+          @keydown.esc.stop="editor.finishProperty(true)" />
+      </label>
+      <Field label="Outline opacity (%)" :value="(s.strokeOpacity ?? 1) * 100"
+        :min="0" :max="100" :step="1"
+        @commit="edit({ strokeOpacity: +$event / 100 })" />
+    </div>
+    <template v-if="area !== null">
+      <label class="field">
+        <span>Fill mode</span>
+        <select aria-label="Fill mode" :value="s.fillMode ?? 'solid'"
+          :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+          @change="edit({ fillMode: ($event.target as HTMLSelectElement).value })">
+          <option value="solid">Solid</option>
+          <option value="skiving">Skiving</option>
+          <option value="glueing">Glueing</option>
+          <option value="cutout">Cutout</option>
+        </select>
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>Fill color</span>
+          <input type="color" aria-label="Fill color"
+            :value="s.fillColor ?? defaultFillColor()"
+            :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+            @focus="editor.beginProperty()"
+            @input="fill({ fillColor: ($event.target as HTMLInputElement).value })"
+            @blur="editor.finishProperty()"
+            @keydown.esc.stop="editor.finishProperty(true)" />
+        </label>
+        <Field label="Fill opacity (%)" :value="(s.fillOpacity ?? 0.05) * 100"
+          :min="0" :max="100" :step="1"
+          @commit="fill({ fillOpacity: +$event / 100 })" />
+      </div>
+    </template>
+    <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+      @click="edit({ fillColor: undefined, fillOpacity: undefined, fillMode: undefined, strokeColor: undefined, strokeOpacity: undefined })">Reset styling</button>
+    </PanelSection>
+    <fieldset :disabled="editor.isLocked(s.id)" class="vertex-properties">
     <details
       v-if="['measurement', 'line', 'polyline', 'curve', 'control-curve'].includes(s.kind)"
     >
@@ -345,6 +353,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         />
       </div>
     </details>
+    </fieldset>
   </fieldset>
   <template v-else>
     <h2>Selection</h2>
@@ -361,5 +370,6 @@ function vertex(i: number, axis: "x" | "y", v: string) {
 </template>
 
 <style scoped>
-.object-properties { border: 0; padding: 0; margin: 0; min-width: 0; }
+.object-properties,
+.vertex-properties { border: 0; padding: 0; margin: 0; min-width: 0; }
 </style>

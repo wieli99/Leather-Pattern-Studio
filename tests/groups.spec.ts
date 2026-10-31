@@ -251,7 +251,7 @@ test("icons show local state and sidebar dividers share styling", async ({
   ).toHaveCount(0);
   await page.getByRole("button", { name: "A", exact: true }).click();
   const dividers = await page
-    .locator("aside hr, aside .inspector-hint")
+    .locator("aside .property-section")
     .evaluateAll((elements) =>
       elements.map((el) => {
         const s = getComputedStyle(el);
@@ -264,7 +264,7 @@ test("icons show local state and sidebar dividers share styling", async ({
     document.documentElement.dataset.theme = "light";
   });
   const lightDividers = await page
-    .locator("aside hr, aside .inspector-hint")
+    .locator("aside .property-section")
     .evaluateAll((elements) =>
       elements.map((el) => {
         const s = getComputedStyle(el);

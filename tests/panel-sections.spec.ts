@@ -1,0 +1,35 @@
+import { test, expect } from "@playwright/test";
+
+test("panel disclosures remain independent and persist across reload", async ({ page }, info) => {
+  await page.goto("/");
+  const rectangle = page.getByRole("button", { name: "Rectangle (R)", exact: true });
+  await expect(rectangle).toBeEnabled();
+  await rectangle.click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.click({ position: { x: 300, y: 280 } });
+  const appearance = page.getByRole("button", { name: "Appearance", exact: true });
+  await appearance.click();
+  await expect(appearance).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByLabel("Outline color", { exact: true })).toBeHidden();
+  await expect(page.getByLabel("Position X", { exact: true })).toBeVisible();
+  const properties = page.getByRole("button", { name: "Properties", exact: true });
+  await properties.focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByLabel("Position X", { exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "New Group", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(rectangle).toBeEnabled();
+  await rectangle.click();
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.click({ position: { x: 300, y: 280 } });
+  await expect(properties).toHaveAttribute("aria-expanded", "false");
+  await properties.click();
+  await expect(appearance).toHaveAttribute("aria-expanded", "false");
+  await appearance.click();
+  const help = page.getByRole("button", { name: "Tool help", exact: true });
+  await help.focus();
+  await page.keyboard.press("Enter");
+  await expect(help).toHaveAttribute("aria-expanded", "false");
+  await page.screenshot({ path: info.outputPath("collapsible-panel.png") });
+});

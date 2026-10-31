@@ -536,7 +536,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
 }
 .tree-root-drop {
   min-height: 28px;
-  margin-top: -24px;
-  margin-bottom: 24px;
+  margin-top: 4px;
+  margin-bottom: 0;
 }
 </style>

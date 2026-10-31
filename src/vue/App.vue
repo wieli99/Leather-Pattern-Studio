@@ -10,6 +10,7 @@ import Viewport from "./Viewport.vue";
 import ToolButton from "./ToolButton.vue";
 import ObjectPanel from "./ObjectPanel.vue";
 import Inspector from "./Inspector.vue";
+import PanelSection from "./PanelSection.vue";
 import Settings from "./Settings.vue";
 import StatusBar from "./StatusBar.vue";
 
@@ -258,14 +259,15 @@ onMounted(() => {
         <Viewport />
         <div v-if="!e.ready" class="loading">{{ e.message }}</div>
       </div>
-      <aside v-if="panel">
-        <ObjectPanel />
-        <template v-if="e.active.length">
-          <hr class="sidebar-separator" />
-          <h2>Properties</h2>
+      <aside v-if="panel" aria-label="Objects and properties">
+        <section class="sidebar-section" aria-label="Objects">
+          <ObjectPanel />
+        </section>
+        <PanelSection v-if="e.active.length" class="sidebar-section" section-key="properties" title="Properties">
+          <p class="selection-summary">{{ e.active.length === 1 ? e.active[0].kind.replaceAll("-", " ") : `${e.active.length} objects selected` }}</p>
           <Inspector />
-        </template>
-        <div class="inspector-hint">
+        </PanelSection>
+        <PanelSection class="inspector-hint" section-key="help" title="Tool help">
           <p>{{ hint.action }}</p>
           <dl>
             <template v-for="control in hint.controls" :key="control.id"
@@ -273,7 +275,7 @@ onMounted(() => {
               <dd>{{ control.action }}</dd></template
             >
           </dl>
-        </div>
+        </PanelSection>
       </aside>
     </section>
     <div v-if="e.restore" class="notice" role="status">

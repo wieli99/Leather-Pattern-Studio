@@ -1009,16 +1009,53 @@ input[type="number"]::-webkit-outer-spin-button {
   gap: 4px;
 }
 
-/* Use the shortcuts divider style throughout the right sidebar. */
-aside hr {
-  border: 0;
-  border-top: 1px solid var(--border);
-  height: 0;
-  margin: 16px 0;
+
+/* Structured inspector surfaces share the active theme. */
+aside {
+  width: 310px;
+  padding: 0;
+}
+.sidebar-section,
+aside .inspector-hint {
+  padding: 16px;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
 }
 aside .inspector-hint {
+  border-top: 0;
+  background: color-mix(in srgb, var(--text) 3%, var(--panel));
+}
+aside h2 { margin: 0 0 12px; }
+.objects-heading { margin-bottom: 8px; }
+.objects-heading h2 { margin: 0; }
+aside .objects { margin: 0; }
+.selection-summary {
+  margin: -4px 0 16px;
+  text-transform: capitalize;
+  font-size: 12px;
+}
+.property-section {
+  padding: 14px 0;
   border-top: 1px solid var(--border);
 }
-aside .sidebar-separator {
-  margin: 0 0 24px;
+.property-section h3 {
+  font-size: 12px;
+  margin: 0 0 14px;
+  font-weight: 600;
 }
+.geometry-units { font-size: 10px; margin: -8px 0 14px; }
+.property-section > :last-child { margin-bottom: 0; }
+aside .field-row > * { min-width: 0; }
+aside .field select { width: 100%; }
+aside input[type="color"] { height: 34px; padding: 3px; }
+aside output {
+  display: block;
+  padding: 8px 0;
+  font-variant-numeric: tabular-nums;
+}
+aside .actions {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+aside .inspector-hint > p { font-weight: 600; }
+aside .inspector-hint dd { opacity: .8; }
