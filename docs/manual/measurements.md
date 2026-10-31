@@ -33,3 +33,5 @@ While dragging a guideline, object snaps highlight the reference shape and show 
 Guideline increments update when modifiers change without moving the pointer, including while a drawing tool is selected.
 
 Select one closed shape to see its read-only **Area (mm²)** in Properties, displayed to two decimal places. The measurement follows rounded corners, curves, and transforms and updates after edits and undo/redo. Zoom does not affect area. Open paths, text, and multiple selections do not show an area.
+
+Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in Properties. Opacity ranges from 0% (transparent) to 100%. These settings affect only the interior. **Reset fill** restores the subtle theme fill. A divider below this button separates fill controls from the other settings. The calculated area is shown as read-only text, not an editable field.

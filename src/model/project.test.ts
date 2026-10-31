@@ -123,3 +123,12 @@ test("rejects links referencing missing stitch lines", () => {
     version: 11, shapes: [], stitchLinks: [{id: 1, members: ["a", "b"]}],
   }))).toThrow("Invalid stitch link member");
 });
+
+test("fill overrides survive round trips and reject invalid values", () => {
+  const shape = { id: "fill", name: "Fill", kind: "rectangle", points: [{ x: 0, y: 0 }, { x: 20, y: 10 }], radius: 0, rotation: 0, fillColor: "#ab12EF", fillOpacity: 0 };
+  const encode = (changes = {}) => JSON.stringify({ version: 11, shapes: [{ ...shape, ...changes }] });
+  const doc = parseProject(encode());
+  expect(parseProject(JSON.stringify(doc)).shapes[0]).toMatchObject(shape);
+  for (const changes of [{ fillOpacity: -1 }, { fillOpacity: 1.01 }, { fillColor: "red" }])
+    expect(() => parseProject(encode(changes))).toThrow("Invalid fill");
+});

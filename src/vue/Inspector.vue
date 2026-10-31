@@ -53,6 +53,19 @@ function isSharp(shape: Shape, index: number) {
     [handles.incoming, handles.outgoing].every((v) => v.x === 0 && v.y === 0)
   );
 }
+function defaultFillColor() {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--shape").trim();
+  const ctx = document.createElement("canvas").getContext("2d")!;
+  ctx.fillStyle = value;
+  return ctx.fillStyle;
+}
+function fill(changes: Partial<Shape>) {
+  edit({
+    fillColor: s.value?.fillColor ?? defaultFillColor(),
+    fillOpacity: s.value?.fillOpacity ?? 0.05,
+    ...changes,
+  });
+}
 const area = computed(() => (s.value ? shapeArea(s.value) : null));
 const edit = (changes: Partial<Shape>) => {
   if (s.value) {
@@ -182,11 +195,30 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         @commit="edit({ fontSize: +$event })"
       />
     </template>
-    <label v-if="area !== null" class="field">
+    <div v-if="area !== null" class="field">
       <span>Area (mm²)</span>
-      <input aria-label="Area (mm²)" readonly :value="area.toFixed(2)" />
-    </label>
-    <p class="units-hint">Dimensions in mm</p>
+      <output role="note" aria-label="Area (mm²)">{{ area.toFixed(2) }}</output>
+    </div>
+    <template v-if="area !== null">
+      <div class="field-row">
+        <label class="field">
+          <span>Fill color</span>
+          <input type="color" aria-label="Fill color"
+            :value="s.fillColor ?? defaultFillColor()"
+            :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+            @focus="editor.beginProperty()"
+            @input="fill({ fillColor: ($event.target as HTMLInputElement).value })"
+            @blur="editor.finishProperty()"
+            @keydown.esc.stop="editor.finishProperty(true)" />
+        </label>
+        <Field label="Fill opacity (%)" :value="(s.fillOpacity ?? 0.05) * 100"
+          :min="0" :max="100" :step="1"
+          @commit="fill({ fillOpacity: +$event / 100 })" />
+      </div>
+      <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+        @click="edit({ fillColor: undefined, fillOpacity: undefined })">Reset fill</button>
+      <hr />
+    </template>
     <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <div class="field-row">
       <Field

@@ -195,10 +195,21 @@ export function parseProject(text: string): Doc {
       )
         throw Error("Invalid corner radii");
     }
+    if (
+      (s.fillColor !== undefined &&
+        (typeof s.fillColor !== "string" || !/^#[0-9a-f]{6}$/i.test(s.fillColor))) ||
+      (s.fillOpacity !== undefined &&
+        (typeof s.fillOpacity !== "number" ||
+          !Number.isFinite(s.fillOpacity) ||
+          s.fillOpacity < 0 || s.fillOpacity > 1))
+    )
+      throw Error("Invalid fill");
     ids.add(s.id);
     result.push({
       id: s.id,
       name: s.name,
+      ...(s.fillColor !== undefined ? { fillColor: s.fillColor } : {}),
+      ...(s.fillOpacity !== undefined ? { fillOpacity: s.fillOpacity } : {}),
       kind: s.kind,
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),

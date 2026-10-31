@@ -157,8 +157,8 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
             : color("shape");
       if (isClosedShape(s)) {
         ctx.save();
-        ctx.globalAlpha = selected ? 0.12 : 0.05;
-        ctx.fillStyle = selected ? color("accent") : color("shape");
+        ctx.globalAlpha = s.fillOpacity ?? (selected ? 0.12 : 0.05);
+        ctx.fillStyle = s.fillColor ?? (selected ? color("accent") : color("shape"));
         ctx.fill(path);
         ctx.restore();
       }

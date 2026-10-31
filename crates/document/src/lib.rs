@@ -50,6 +50,16 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub stitch_only: Option<bool>,
+    #[serde(default, rename = "fillColor", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fill_color: Option<String>,
+    #[serde(
+        default,
+        rename = "fillOpacity",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub fill_opacity: Option<f64>,
     pub name: String,
     pub kind: Kind,
     pub points: Vec<Point>,
@@ -319,6 +329,16 @@ impl Document {
         }
         let mut ids = HashSet::new();
         for s in &self.shapes {
+            if s.fill_color.as_ref().is_some_and(|c| {
+                c.len() != 7
+                    || !c.starts_with('#')
+                    || !c.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+            }) || s
+                .fill_opacity
+                .is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
+            {
+                return Err("Invalid fill".into());
+            }
             if s.id.is_empty()
                 || !ids.insert(&s.id)
                 || s.name.len() > 800
