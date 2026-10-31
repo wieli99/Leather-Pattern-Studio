@@ -115,3 +115,32 @@ test("connected curves merge, cancel and round trip their handles", async ({
   await load(page, [...saved.shapes, curve("Disconnected", 160)]);
   await expect(merge).toBeDisabled();
 });
+
+test("canvas shortcuts open stitching, trim and merge previews", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Open", exact: true }),
+  ).toBeEnabled();
+  await load(page, [rectangle("First", 20), rectangle("Second", 45)]);
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  for (const [key, name] of [
+    ["i", "Stitch line"],
+    ["k", "Trim"],
+    ["j", "Merge"],
+  ]) {
+    await canvas.focus();
+    await page.keyboard.press(key);
+    await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(page.locator(".objects .object-select")).toHaveCount(2);
+  }
+});

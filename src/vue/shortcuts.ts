@@ -92,6 +92,13 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   }
   if (!e.shiftKey && editor.tool === "select" && editor.selected.length) {
     const k = e.key.toLowerCase();
+    if (k === "i" || k === "k" || k === "j") {
+      e.preventDefault();
+      if (k === "i") editor.activateStitch();
+      else if (k === "k") editor.activateTrim();
+      else editor.activateMerge();
+      return;
+    }
     if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
       e.preventDefault();
       editor.activateTransform(

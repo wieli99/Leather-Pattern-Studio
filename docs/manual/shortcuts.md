@@ -9,6 +9,8 @@ Single-letter editor shortcuts require canvas focus. Click the canvas first. Inp
 | Shift+group key | Previous variant |
 | T | Text |
 | G / E / S / B | Move / Rotate / Resize / Corner radius selection tools |
+| M | Mirror selection |
+| I / K / J | Stitch line / Trim / Merge selection |
 | X / Y | Move or Resize axis constraint |
 | Enter | Finish path or apply transform |
 | Esc | Cancel and return to Select |
@@ -35,7 +37,7 @@ Shift constrains corner/center rectangles and bounding-box ellipses/polygons to 
 
 Choose Corner radius (B) for selected rectangles and closed polygons. Drag in 1 mm steps; Shift uses 5 mm, Ctrl 10 mm, and Alt applies to all corners of the targeted shape. Enter/right-click applies; Esc cancels. See [corner radii](#transforms).
 
-In [Stitch line](#stitching), Shift-click selects a second line for merging; the first selection is master. Enter/right-click commits the session and exits; Esc discards the session and exits, and Delete removes selected stitching when the canvas is focused. The tool button is beside Corner radius and has no dedicated letter shortcut.
+In [Stitch line](#stitching), Shift-click selects a second line for merging; the first selection is master. Enter/right-click commits the session and exits; Esc discards the session and exits, and Delete removes selected stitching when the canvas is focused. The tool button is beside Corner radius and uses **I**. Use **K** for Trim (cut) and **J** for Merge (join); **M** remains Mirror. These tool shortcuts require a selection in Select mode. Merge requires compatible selected objects and opens a preview; Enter applies it and Esc cancels.
 
 Hold Ctrl to show healthy stitch-link chain indicators. Broken links remain visible without Ctrl.
 

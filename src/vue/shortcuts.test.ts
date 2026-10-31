@@ -7,6 +7,9 @@ const editor = vi.hoisted(() => ({
   mode: "select",
   cycle: vi.fn(),
   activateTransform: vi.fn(),
+  activateStitch: vi.fn(),
+  activateTrim: vi.fn(),
+  activateMerge: vi.fn(),
   fit: vi.fn(),
   setTool: vi.fn(),
   save: vi.fn(),
@@ -99,4 +102,40 @@ test("native clipboard writes snapshots and leaves text fields alone", () => {
   handleClipboard({ ...event, target: new ElementStub("INPUT", true) } as unknown as ClipboardEvent);
   expect(editor.copyObjects).not.toHaveBeenCalled();
   expect(event.preventDefault).not.toHaveBeenCalled();
+});
+
+test("I stitches, K trims, J merges, and M still mirrors", () => {
+  press("i");
+  press("k");
+  press("j");
+  press("m");
+  expect(editor.activateStitch).toHaveBeenCalledOnce();
+  expect(editor.activateTrim).toHaveBeenCalledOnce();
+  expect(editor.activateMerge).toHaveBeenCalledOnce();
+  expect(editor.activateTransform).toHaveBeenCalledWith("mirror");
+});
+
+test("selection tool shortcuts respect focus, modifiers and selection", () => {
+  for (const key of ["i", "k", "j"]) {
+    for (const overrides of [
+      { target: new ElementStub("INPUT", true) },
+      { target: new ElementStub("BUTTON") },
+      { ctrlKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { repeat: true },
+      { isComposing: true },
+      { defaultPrevented: true },
+    ]) press(key, overrides);
+  }
+  editor.selected = [];
+  for (const key of ["i", "k", "j"]) press(key);
+  editor.selected = ["a"];
+  editor.tool = "rectangle";
+  for (const key of ["i", "k", "j"]) press(key);
+  editor.tool = "select";
+  expect(editor.activateStitch).not.toHaveBeenCalled();
+  expect(editor.activateTrim).not.toHaveBeenCalled();
+  expect(editor.activateMerge).not.toHaveBeenCalled();
 });
