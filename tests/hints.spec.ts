@@ -1,4 +1,27 @@
 import { test, expect } from "@playwright/test";
+test("properties follows the selection", async ({ page }, info) => {
+  await page.goto("/");
+  const rectangle = page.getByRole("button", { name: "Rectangle (R)", exact: true });
+  await expect(rectangle).toBeEnabled();
+  const properties = page.getByRole("heading", { name: "Properties", exact: true });
+  await expect(properties).toHaveCount(0);
+  await expect(page.locator(".object-properties")).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("empty-canvas.png") });
+  await rectangle.click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.click({ position: { x: 300, y: 280 } });
+  await expect(properties).toBeVisible();
+  await expect(page.locator(".object-properties")).toBeVisible();
+  await canvas.focus();
+  await page.keyboard.press("Escape");
+  await canvas.click({ position: { x: 450, y: 380 } });
+  await expect(properties).toHaveCount(0);
+  await expect(page.locator(".object-properties")).toHaveCount(0);
+  await expect(page.locator("aside .inspector-hint")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("no-selection-properties.png") });
+});
+
 test("inspector owns contextual guidance", async ({ page }, info) => {
   await page.goto("/");
   const canvas = page.getByLabel("Pattern drawing canvas");

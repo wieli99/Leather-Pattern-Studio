@@ -260,9 +260,11 @@ onMounted(() => {
       </div>
       <aside v-if="panel">
         <ObjectPanel />
-        <hr class="sidebar-separator" />
-        <h2>Properties</h2>
-        <Inspector />
+        <template v-if="e.active.length">
+          <hr class="sidebar-separator" />
+          <h2>Properties</h2>
+          <Inspector />
+        </template>
         <div class="inspector-hint">
           <p>{{ hint.action }}</p>
           <dl>
