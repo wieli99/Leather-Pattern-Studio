@@ -438,6 +438,7 @@ impl Document {
                             "data:image/png;base64,",
                             "data:image/jpeg;base64,",
                             "data:image/webp;base64,",
+                            "data:image/svg+xml;base64,",
                         ]
                         .iter()
                         .any(|prefix| data.starts_with(prefix))
@@ -448,10 +449,10 @@ impl Document {
         }
         if !matches!(
             self.version,
-            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
+            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17). Reload the application.",
                 self.version
             ));
         }
@@ -781,7 +782,7 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 16,
+                version: 17,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -801,7 +802,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -913,7 +914,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 16;
+                next.version = 17;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -988,7 +989,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 16;
+        doc.version = 17;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1075,7 +1076,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15,16]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1107,7 +1108,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 16;
+        d.version = 17;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -1266,7 +1267,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 16;
+        doc.version = 17;
         doc.object_tree = Some(
             doc.shapes
                 .iter()

@@ -219,7 +219,7 @@ onMounted(() => {
           />
           <ToolButton :tool="tool" />
         </template>
-        <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="importImage" />
+        <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importImage" />
         <button title="Import image" aria-label="Import image" :disabled="!e.ready" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></button>
         <div class="rail-divider" />
         <button

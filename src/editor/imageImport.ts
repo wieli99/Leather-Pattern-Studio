@@ -6,8 +6,10 @@ export type ImportedImage = {
 };
 
 export async function decodeImageFile(file: File): Promise<ImportedImage> {
-  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
-    throw Error("Choose a PNG, JPEG or WebP image");
+  if (!file.type && /\.svg$/i.test(file.name))
+    file = new File([file], file.name, { type: "image/svg+xml" });
+  if (!["image/png", "image/jpeg", "image/webp", "image/svg+xml"].includes(file.type))
+    throw Error("Choose a PNG, JPEG, WebP or SVG image");
   if (file.size > 7_000_000)
     throw Error("Image is too large for the 10 MB project limit");
   const data = await new Promise<string>((resolve, reject) => {

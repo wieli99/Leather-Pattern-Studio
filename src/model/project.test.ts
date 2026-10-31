@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { parseProject } from "./project";
 test("empty project round-trips", () =>
   expect(parseProject('{"version":3,"shapes":[]}')).toEqual({
-    version: 16,
+    version: 17,
     objectTree: [],
     stitchGroups: [],
     stitchLinks: [],
@@ -44,7 +44,7 @@ const line = {
 };
 test("migrates v2 without changing coordinates", () => {
   const d = parseProject(JSON.stringify({ version: 2, shapes: [line] }));
-  expect(d.version).toBe(16);
+  expect(d.version).toBe(17);
   expect(d.shapes[0].points).toEqual(line.points);
 });
 test.each([
@@ -80,7 +80,7 @@ test("v3 migration retains precision, rotation, and inactive stitch metadata", (
     legacyStitch: { offset: 3, spacing: 2 },
   };
   const project = parseProject(JSON.stringify({ version: 3, shapes: [shape] }));
-  expect(project.version).toBe(16);
+  expect(project.version).toBe(17);
   expect(project.shapes[0].points).toEqual(shape.points);
   expect(project.shapes[0].rotation).toBeCloseTo(shape.rotation);
   expect(project.shapes[0].legacyStitch).toEqual(shape.legacyStitch);
@@ -116,7 +116,7 @@ test("v5 retains exact matrices and metadata, rejects singular and nonfinite tra
     ).toThrow();
   expect(
     parseProject(JSON.stringify({ version: 4, shapes: [line] })).version,
-  ).toBe(16);
+  ).toBe(17);
 });
 
 test("rejects links referencing missing stitch lines", () => {
@@ -139,4 +139,13 @@ test("embedded images round trip and reject external sources", () => {
   const parsed = parseProject(JSON.stringify({version:16,shapes:[shape]}));
   expect(parsed.shapes[0]).toMatchObject(shape);
   expect(() => parseProject(JSON.stringify({version:16,shapes:[{...shape,image:"https://example.com/image.png"}]}))).toThrow("Invalid image");
+});
+
+test("SVG image data survives project migration and round trips", () => {
+  const image = "data:image/svg+xml;base64,PHN2Zy8+";
+  const input = {version:16,shapes:[{id:"svg",name:"SVG",kind:"image",image,points:[{x:0,y:0},{x:20,y:10}],radius:0,rotation:0}]};
+  const migrated = parseProject(JSON.stringify(input));
+  expect(migrated.version).toBe(17);
+  expect(migrated.shapes[0].image).toBe(image);
+  expect(parseProject(JSON.stringify(migrated))).toEqual(migrated);
 });

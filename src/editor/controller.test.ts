@@ -2036,5 +2036,5 @@ test("initialization rejects a stale worker document version", async () => {
   vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
   await e.initialize();
   expect(e.ready).toBe(false);
-  expect(e.message).toContain("expects document version 16, but geometry worker returned 15");
+  expect(e.message).toContain("expects document version 17, but geometry worker returned 15");
 });
