@@ -427,7 +427,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           ["move", "scale", "vertex"].includes(editor.gesture.kind)
         ? editor.snapTarget
         : null;
-    if ((editor.smart || editor.guideDrag) && editor.snapTarget) {
+    if ((editor.objects || editor.guideDrag) && editor.snapTarget) {
       ctx.save();
       ctx.strokeStyle = color("preview");
       ctx.lineWidth = 1 / z;
@@ -528,7 +528,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.lineTo(point.x, point.y + 10);
       }
       ctx.stroke();
-      const smartLabel = editor.smart
+      const smartLabel = editor.objects
         ? editor.smartGuides
             .map((guide) => {
               const name =

@@ -310,7 +310,7 @@ onMounted(() => {
           />
           Grid snap
         </label>
-        <label>
+        <label title="Snap to object points and align with object edges and centers">
           <input
             type="checkbox"
             :checked="e.objects"
@@ -320,17 +320,6 @@ onMounted(() => {
             "
           />
           Object snap
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            :checked="e.smart"
-            @change="
-              editor.smart = ($event.target as HTMLInputElement).checked;
-              editor.preferences();
-            "
-          />
-          Smart snapping
         </label>
         <Settings />
       </div>

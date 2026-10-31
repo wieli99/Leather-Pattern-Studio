@@ -338,7 +338,6 @@ export class Controller {
   snapTarget: Point | null = null;
   snapKind: SnapKind | null = null;
   pointerInside = false;
-  smart = true;
   smartGuides: SmartGuide[] = [];
   grid = true;
   objects = true;
@@ -365,7 +364,7 @@ export class Controller {
   constructor() {
     try {
       const p = JSON.parse(localStorage.getItem("leather-ui") ?? "{}");
-      for (const key of ["grid", "objects", "smart", "rulers"] as const)
+      for (const key of ["grid", "objects", "rulers"] as const)
         if (typeof p[key] === "boolean") this[key] = p[key];
       if (["world", "local"].includes(p.transformOrientation))
         this.transformOrientation = p.transformOrientation;
@@ -377,13 +376,12 @@ export class Controller {
     } catch {}
   }
   preferences() {
-    if (!this.smart) this.smartGuides = [];
+    if (!this.objects) this.smartGuides = [];
     try {
       localStorage.setItem(
         "leather-ui",
         JSON.stringify({
           transformOrientation: this.transformOrientation,
-          smart: this.smart,
           grid: this.grid,
           objects: this.objects,
           gridSize: this.gridSize,
@@ -431,7 +429,6 @@ export class Controller {
       this.selected.join(","),
       this.pending.length,
       !!this.guideDrag,
-      this.smart,
       this.grid,
       this.objects,
       this.gridSize,
@@ -1644,7 +1641,7 @@ export class Controller {
             this.snapTarget = candidate.point;
             this.snapKind = candidate.kind;
             this.smartGuides =
-              this.smart && candidate.kind === "center"
+              candidate.kind === "center"
                 ? (["x", "y"] as const).map((axis) => ({
                     axis,
                     coordinate: candidate.point[axis],
@@ -1700,7 +1697,7 @@ export class Controller {
         return q;
       }
     }
-    if (this.smart) {
+    if (this.objects) {
       const result = smartSnap(
         p,
         this.document.shapes.filter(
@@ -1919,7 +1916,7 @@ export class Controller {
         ];
         this.snapKind = nearest.candidate.kind;
       } else {
-        const result = this.smart
+        const result = this.objects
           ? smartSnap(raw, this.document.shapes, tolerance)
           : null;
         const guide = result?.guides.find((v) => v.axis === axis);

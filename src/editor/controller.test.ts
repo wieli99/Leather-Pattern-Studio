@@ -856,7 +856,6 @@ test("every grouped mode cycles both ways and remembers its last variant", async
 
 test("object center snap shows both reference axes and clears on bypass", () => {
   const e = editor();
-  e.smart = true;
   e.objects = true;
   e.document.shapes = [
     {
@@ -878,7 +877,11 @@ test("object center snap shows both reference axes and clears on bypass", () => 
   ]);
   e.snap({ x: 30, y: 20 }, true);
   expect(e.smartGuides).toEqual([]);
-  e.smart = false;
+  expect(e.snap({ x: 30.1, y: 60 })).toEqual({ x: 30, y: 60 });
+  expect(e.smartGuides).toHaveLength(1);
+  e.objects = false;
+  e.grid = false;
+  expect(e.snap({ x: 30.1, y: 60 })).toEqual({ x: 30.1, y: 60 });
   e.snap({ x: 30, y: 20 });
   expect(e.smartGuides).toEqual([]);
 });
@@ -942,7 +945,7 @@ test("Shift release refreshes rectangle without pointer movement", () => {
 test("ruler guideline persists after release with final modifier increments", async () => {
   const e = editor();
   e.rulers = true;
-  e.smart = false;
+  e.objects = false;
   e.width = 800;
   e.height = 600;
   e.pan = { x: 0, y: 0 };
@@ -965,7 +968,6 @@ test("ruler guideline persists after release with final modifier increments", as
 
 test("guideline snaps explain object alignment and clear feedback", () => {
   const e = editor();
-  e.smart = false;
   e.objects = true;
   e.zoom = 1;
   e.pan = { x: 0, y: 0 };
@@ -996,7 +998,7 @@ test.each(["x", "y"] as const)(
   (axis) => {
     const e = editor();
     e.setMode("rectangle");
-    e.smart = false;
+    e.objects = false;
     e.rulers = true;
     e.pan = { x: 0, y: 0 };
     e.zoom = 1;

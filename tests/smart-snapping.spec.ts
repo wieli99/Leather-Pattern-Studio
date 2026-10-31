@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-test("smart snapping persists and shows reference guides while drawing", async ({ page }, info) => {
+test("object snapping persists and shows reference guides while drawing", async ({ page }, info) => {
   await page.goto("/");
-  const smart = page.getByRole("checkbox", { name: "Smart snapping", exact: true });
-  await expect(smart).toBeChecked();
-  await smart.uncheck();
+  const objects = page.getByRole("checkbox", { name: "Object snap", exact: true });
+  await expect(objects).toBeChecked();
+  await objects.uncheck();
   await page.reload();
-  await expect(smart).not.toBeChecked();
-  await smart.check();
+  await expect(objects).not.toBeChecked();
+  await objects.check();
   await page.getByRole("checkbox", { name: "Grid snap", exact: true }).uncheck();
   await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
   const canvas = page.getByLabel("Pattern drawing canvas");
@@ -17,6 +17,9 @@ test("smart snapping persists and shows reference guides while drawing", async (
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + 350, box.y + 300);
   await page.screenshot({ path: info.outputPath("smart-center-guides.png") });
-  await smart.uncheck();
-  await expect(smart).not.toBeChecked();
+  if (info.project.name === "chromium") {
+    await page.screenshot({ path: "public/manual/images/smart-snapping.png" });
+  }
+  await objects.uncheck();
+  await expect(objects).not.toBeChecked();
 });
