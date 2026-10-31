@@ -1695,3 +1695,104 @@ test("rectangle corner dragging converts only on commit and can be cancelled", a
   expect(e.document.shapes[0].points[0]).toEqual({ x: -10, y: -5 });
   expect(e.document.shapes[0].points[4]).toEqual({ x: -10, y: -5 });
 });
+
+test("curved trim previews cancel, accumulate and commit as one undo step", async () => {
+  const e = editor();
+  const circle = {
+    id: "circle",
+    name: "Circle",
+    kind: "circle" as const,
+    points: [
+      { x: 40, y: 40 },
+      { x: 60, y: 40 },
+    ],
+    radius: 0,
+    rotation: 0,
+  };
+  const line = {
+    id: "cut",
+    name: "Cut",
+    kind: "line" as const,
+    points: [
+      { x: 40, y: 10 },
+      { x: 40, y: 70 },
+    ],
+    radius: 0,
+    rotation: 0,
+  };
+  const { stitchEdges } = await import("../model/stitchGeometry");
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [circle, line],
+    stitchGroups: [
+      {
+        id: "stitch",
+        shapeId: circle.id,
+        edges: stitchEdges(circle).map((edge) => edge.key),
+        side: 1,
+        closed: true,
+        settings: { style: "round", spacing: 4, inset: 2, alignment: "center" },
+      },
+    ],
+  });
+  const original = JSON.stringify(e.document);
+  e.activateTrim();
+  e.pointerMove(e.screen({ x: 60, y: 40 }), false);
+  expect(e.trimHighlight!.length).toBeGreaterThan(2);
+  const beforeCut = e.uiSnapshot();
+  e.pointerDown(e.screen({ x: 60, y: 40 }), 0, false, false);
+  expect(e.uiSnapshot()).not.toBe(beforeCut);
+  expect(e.trimDraft!.shapes[0].kind).toBe("arc");
+  expect(e.trimDraft!.stitchGroups ?? []).toHaveLength(0);
+  const validDraft = e.uiSnapshot();
+  e.transformError = "Invalid geometry";
+  expect(e.uiSnapshot()).not.toBe(validDraft);
+  e.transformError = "";
+  expect(JSON.stringify(e.document)).toBe(original);
+  e.cancel();
+  expect(JSON.stringify(e.document)).toBe(original);
+  e.activateTrim();
+  e.pointerDown(e.screen({ x: 60, y: 40 }), 0, false, false);
+  e.pointerDown(e.screen({ x: 20, y: 40 }), 0, false, false);
+  expect(e.trimDraft!.shapes).toHaveLength(1);
+  await e.applyTrim();
+  expect(e.document.shapes).toHaveLength(1);
+  await e.transact("undo");
+  expect(JSON.stringify(e.document)).toBe(original);
+});
+
+test("Trim synchronizes drawing mode and hides removed selection handles", async () => {
+  const e = editor();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [
+      {
+        id: "c",
+        name: "Circle",
+        kind: "circle",
+        points: [
+          { x: 40, y: 40 },
+          { x: 60, y: 40 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  });
+  e.setMode("circle");
+  e.selected = ["c"];
+  e.activateTrim();
+  expect(e.mode).toBe("select");
+  expect(e.tool).toBe("select");
+  e.pointerDown(e.screen({ x: 60, y: 40 }), 0, false, false);
+  expect(e.active).toHaveLength(0);
+  expect(e.handles()).toEqual([]);
+  e.cancel();
+  expect(e.active).toHaveLength(1);
+  expect(e.mode).toBe("select");
+  e.activateTrim();
+  e.pointerDown(e.screen({ x: 60, y: 40 }), 0, false, false);
+  await e.applyTrim();
+  expect(e.selected).toEqual([]);
+  expect(e.mode).toBe("select");
+});

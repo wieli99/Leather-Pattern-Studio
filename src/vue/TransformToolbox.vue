@@ -35,7 +35,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
     <section v-if="e.trimMode" class="transform-options" :aria-label="e.mergeMode ? 'Merge settings' : 'Trim settings'"
       @keydown.enter.prevent="editor.applyTrim()" @keydown.esc.stop.prevent="editor.cancel()">
       <strong>{{ e.mergeMode ? "Merge" : "Trim" }}</strong>
-      <small>{{ e.mergeMode ? "Apply to merge the selected objects." : "Click a highlighted straight outline portion to trim it." }}</small>
+      <small>{{ e.mergeMode ? "Apply to merge the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
         <button :disabled="!e.trimDraft || !!e.transformError || e.busy" @click="editor.applyTrim()">Apply</button>

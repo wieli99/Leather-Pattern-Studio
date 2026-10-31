@@ -407,6 +407,8 @@ export class Controller {
   uiSnapshot = () =>
     [
       this.trimMode,
+      JSON.stringify(this.trimDraft),
+      this.trimMode ? this.transformError : "",
       this.stitchMode,
       this.stitchMode ? this.version : 0,
       this.stitchSelected.join(","),
@@ -1550,7 +1552,7 @@ export class Controller {
     this.notify();
   }
   mergeMode = false;
-  trimHighlight: [Point, Point] | null = null;
+  trimHighlight: Point[] | null = null;
   trimMode = false;
   trimDraft: Doc | null = null;
   async applyTrim() {
@@ -1568,6 +1570,7 @@ export class Controller {
   activateTrim() {
     this.cancel();
     this.tool = "select";
+    this.mode = "select";
     this.trimMode = true;
     this.notify();
   }
@@ -1744,7 +1747,7 @@ export class Controller {
     handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
-    if (!this.selected.length || this.transformTool === "mirror") return [];
+    if (!this.active.length || this.transformTool === "mirror") return [];
     if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
     if (

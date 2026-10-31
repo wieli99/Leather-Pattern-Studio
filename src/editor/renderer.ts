@@ -181,12 +181,12 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     (editor.preview ?? editor.document).shapes.forEach((s) => shape(s));
     drawStitches(ctx,editor,color);
     if (editor.trimMode && editor.pointerInside && editor.trimHighlight) {
-      const [a, b] = editor.trimHighlight;
+      const [a] = editor.trimHighlight;
       ctx.save();
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
+      for (const p of editor.trimHighlight.slice(1)) ctx.lineTo(p.x, p.y);
       ctx.strokeStyle = color("canvas");
       ctx.lineWidth = 9 / z;
       ctx.stroke();
@@ -294,7 +294,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.arc(p.x, p.y, 3 / z, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (editor.selected.length) {
+    if (editor.active.length) {
       const b = editor.selectionBounds;
       ctx.strokeStyle = color("accent");
       ctx.lineWidth = 1 / z;

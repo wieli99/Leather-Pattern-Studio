@@ -30,7 +30,9 @@ Tool settings open in a compact popup at the bottom right of the drawing canvas,
 
 ## Trim
 
-Choose the scissors icon to activate Trim. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over a straight outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to preview removing that portion between corners or crossings. Make multiple cuts, then Apply, Enter, or right-click to save them as one undo step. Cancel or Escape discards all cuts and exits Trim. Curved outlines are not yet supported.
+Choose the scissors icon to activate Trim. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over an outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to preview removing that portion between corners or crossings. Make multiple cuts, then Apply, Enter, or right-click to save them as one undo step. Cancel or Escape discards all cuts and exits Trim. Curves, circles, ellipses, arcs, and rounded corners can also be trimmed. Cuts stop at crossings, open endpoints, or sharp corners; Curve and Control Curve anchors also stop cuts, including smooth anchors. For other outlines, smooth joins and closed seams do not stop a cut. Clicking an isolated circle or ellipse removes it entirely. Trim switches to Select; Apply and Cancel leave Select active. Retained curves remain editable; interpolated curves become control curves after trimming.
+
+![Curved portion highlighted for trimming between crossings](/manual/images/trim.png)
 
 ## Mirror
 
