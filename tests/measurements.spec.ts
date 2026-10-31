@@ -9,19 +9,25 @@ test("construction measurements cycle and retain typed sizes", async ({
     .click();
   const canvas = page.getByLabel("Pattern drawing canvas");
   await canvas.click({ position: { x: 250, y: 200 } });
+  const initialBox = (await canvas.boundingBox())!;
+  await page.mouse.move(initialBox.x + 363, initialBox.y + 287);
   await canvas.press("Tab");
   const width = page.getByRole("spinbutton", { name: "Width", exact: true });
   await expect(width).toBeFocused();
-  await width.fill("60");
+  await width.pressSequentially("60");
   await width.press("Tab");
   const height = page.getByRole("spinbutton", { name: "Height", exact: true });
   await expect(height).toBeFocused();
-  await height.fill("40");
+  await height.pressSequentially("40");
   for (let i = 0; i < 3; i++) {
     await height.press("Tab");
     await expect(width).toBeFocused();
+    await width.pressSequentially("60");
+    await expect(width).toHaveValue("60");
     await width.press("Shift+Tab");
     await expect(height).toBeFocused();
+    await height.pressSequentially("40");
+    await expect(height).toHaveValue("40");
   }
   await height.press("Shift+Tab");
   await expect(width).toBeFocused();

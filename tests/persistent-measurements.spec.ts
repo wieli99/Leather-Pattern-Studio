@@ -16,10 +16,13 @@ test('three-click measurements persist, edit, undo and cancel', async ({page}, i
   await canvas.press('Tab');
   const constructionOffset = page.getByRole('spinbutton',{name:'Offset',exact:true});
   await expect(constructionOffset).toBeFocused();
-  await constructionOffset.fill('-15');
+  await constructionOffset.pressSequentially('-15');
   await constructionOffset.press('Tab');
   await expect(constructionOffset).toBeFocused();
+  await constructionOffset.pressSequentially('12');
+  await expect(constructionOffset).toHaveValue('12');
   await constructionOffset.press('Shift+Tab');
+  await constructionOffset.pressSequentially('-15');
   await expect(constructionOffset).toBeFocused();
   await expect(constructionOffset).toHaveValue('-15');
   await constructionOffset.press('Escape');

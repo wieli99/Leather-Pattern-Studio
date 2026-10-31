@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { segmentLabelPoint } from "../editor/constructionLabels";
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { editor } from "../editor/instance";
 import { useEditorSelector } from "./useEditorSelector";
 import { edgeMeasurements } from "../model/edgeMeasurements";
@@ -73,12 +73,16 @@ const items = computed(() => {
       })),
     );
 });
-function focus(item: (typeof items.value)[number]) {
+async function focus(item: (typeof items.value)[number], event: FocusEvent) {
+  const field = event.target as HTMLInputElement;
   active.value = item.id;
   pinned.value = item.point;
   pinnedAngle.value = item.angle;
   draft.value = String(Number(item.value.toFixed(3)));
   error.value = "";
+  // Select after Vue replaces the display value with the editable draft.
+  await nextTick();
+  if (document.activeElement === field) field.select();
 }
 function input(item: (typeof items.value)[number], event: Event) {
   draft.value = (event.target as HTMLInputElement).value;
@@ -158,7 +162,10 @@ function cycleField(event: KeyboardEvent) {
   const index = fields.indexOf(input);
   if (index < 0 || !fields.length) return;
   event.preventDefault();
-  fields[(index + (event.shiftKey ? -1 : 1) + fields.length) % fields.length].focus();
+  const next =
+    fields[(index + (event.shiftKey ? -1 : 1) + fields.length) % fields.length];
+  next.focus();
+  if (next === input) next.select();
 }
 function style(item: (typeof items.value)[number]) {
   const p = active.value === item.id ? pinned.value : item.point;
@@ -189,10 +196,7 @@ function style(item: (typeof items.value)[number]) {
         step="any"
         :aria-label="item.key || 'Edge length'"
         :value="active === item.id ? draft : Number(item.value.toFixed(2))"
-        @focus="
-          focus(item);
-          ($event.target as HTMLInputElement).select();
-        "
+        @focus="focus(item, $event)"
         @input="input(item, $event)"
         @keydown.tab="cycleField"
         @keydown.enter.prevent="!$event.isComposing && confirm(item)"
