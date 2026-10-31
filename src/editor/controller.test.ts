@@ -1642,3 +1642,23 @@ test("renaming disconnects files and requires saving without changing geometry",
   e.rename("Other");
   expect(e.name).toBe("Wallet.leather.json");
 });
+
+test('merge previews, cancels, and commits one selected object', async () => {
+  const e = editor();
+  const shape = (id: string, x: number) => ({id, name:id, kind:'rectangle' as const, points:[{x,y:0},{x:x+10,y:10}], radius:0, rotation:0});
+  await e.commit({...e.document, shapes:[shape('a',0),shape('b',5)]});
+  e.selected = ['a','b'];
+  const original = JSON.stringify(e.document);
+  e.activateMerge();
+  expect(e.preview?.shapes).toHaveLength(1);
+  expect(JSON.stringify(e.document)).toBe(original);
+  e.cancel();
+  expect(e.preview).toBeNull();
+  expect(e.selected).toEqual(['a','b']);
+  e.activateMerge();
+  await e.applyTrim();
+  expect(e.document.shapes).toHaveLength(1);
+  expect(e.selected).toEqual(['a']);
+  await e.transact('undo');
+  expect(e.document.shapes).toHaveLength(2);
+});

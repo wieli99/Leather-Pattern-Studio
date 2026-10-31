@@ -32,10 +32,10 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
     class="transform-overlay"
   >
     <StitchToolbox />
-    <section v-if="e.trimMode" class="transform-options" aria-label="Trim settings"
+    <section v-if="e.trimMode" class="transform-options" :aria-label="e.mergeMode ? 'Merge settings' : 'Trim settings'"
       @keydown.enter.prevent="editor.applyTrim()" @keydown.esc.stop.prevent="editor.cancel()">
-      <strong>Trim</strong>
-      <small>Click a highlighted straight outline portion to trim it.</small>
+      <strong>{{ e.mergeMode ? "Merge" : "Trim" }}</strong>
+      <small>{{ e.mergeMode ? "Apply to merge the selected objects." : "Click a highlighted straight outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
         <button :disabled="!e.trimDraft || !!e.transformError || e.busy" @click="editor.applyTrim()">Apply</button>
@@ -229,7 +229,18 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           />
         </svg>
       </button>
-      <button aria-label="Trim" title="Trim" :aria-pressed="e.trimMode" @click="editor.activateTrim()">
+      <button
+        aria-label="Merge"
+        :title="e.mergeResult ? 'Merge' : 'Merge requires connected straight outlines or endpoint-connected paths of the same family, without stitches'"
+        :disabled="!e.mergeResult || e.busy"
+        :aria-pressed="e.mergeMode"
+        @click="editor.activateMerge()"
+      >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="M3 3h11v6h7v12H9v-7H3Z" />
+        </svg>
+      </button>
+      <button aria-label="Trim" title="Trim" :aria-pressed="e.trimMode && !e.mergeMode" @click="editor.activateTrim()">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
           <circle cx="6" cy="6" r="3" />
           <circle cx="6" cy="18" r="3" />

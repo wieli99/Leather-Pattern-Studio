@@ -39,3 +39,13 @@ Select objects and choose Mirror (M), next to Resize. Click an X, Y, +45Â° or âˆ
 Click a straight outline segment to use its infinite supporting line. Selected objects can supply the reference edge. Curves cannot supply an axis. Apply, Enter or right-click replaces the selection in one undo step; Cancel or Escape discards the preview.
 
 Selection-tool popups show small, muted instructions below their titles.
+
+## Merge
+
+Merge is always visible beside the other selection tools. It stays disabled until at least two compatible objects are selected. Merge combines connected straight closed outlines or joins open straight paths at matching endpoints. The entire selection must form one outline or unbranched path. Rounded shapes, text, mixed open/closed selections, active stitches, disconnected results and holes are unsupported; the disabled button explains the requirement.
+
+Choose Merge to preview, then Apply, Enter or right-click to save one undo step. Cancel or Escape restores the original objects. The resulting polyline keeps the first object's name and can be edited normally.
+
+Merge also joins two or more Curve and Control point curve objects at matching endpoints. Select only curves forming one open, unbranched chain. The result is a Control point curve that preserves the existing segments and any corner at a join; it does not smooth them. Curves may be reversed automatically. Interior crossings are not connections. Closed loops, branches, curves mixed with straight objects, circles, ellipses and arcs are unsupported.
+
+![Connected curves in the Merge preview, with only Merge highlighted and Apply/Cancel controls](/manual/images/merge.png)

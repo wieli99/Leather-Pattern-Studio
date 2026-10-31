@@ -1,3 +1,4 @@
+import { mergeShapes } from "../model/merge";
 import { trimAt } from "../model/trim";
 import {
   defaultStitchSettings,
@@ -1514,14 +1515,55 @@ export class Controller {
     if (next && fingerprint(next) !== fingerprint(this.document))
       await this.commit(next);
   }
+  private mergeCache: {
+    key: string;
+    result: ReturnType<typeof mergeShapes>;
+  } | null = null;
+  get mergeResult() {
+    if (this.stitchGroups.some((g) => this.selected.includes(g.shapeId))) return null;
+    const key = JSON.stringify([this.revision, this.selected]);
+    if (this.mergeCache?.key !== key) {
+      this.mergeCache = {
+        key,
+        result: mergeShapes(
+          this.document.shapes.filter((s) => this.selected.includes(s.id)),
+        ),
+      };
+    }
+    return this.mergeCache.result;
+  }
+  activateMerge() {
+    const result = this.mergeResult;
+    if (!result || this.busy) return;
+    this.cancel();
+    this.tool = "select";
+    this.trimMode = true;
+    this.mergeMode = true;
+    const ids = new Set(this.selected);
+    this.trimDraft = {
+      ...this.document,
+      shapes: this.document.shapes.flatMap((s) =>
+        s.id === result.id ? [result] : ids.has(s.id) ? [] : [s],
+      ),
+    };
+    this.preview = this.trimDraft;
+    this.notify();
+  }
+  mergeMode = false;
   trimHighlight: [Point, Point] | null = null;
   trimMode = false;
   trimDraft: Doc | null = null;
   async applyTrim() {
     if (!this.trimDraft || this.transformError || this.busy) return;
     const next = this.trimDraft;
+    const mergedId = this.mergeMode
+      ? next.shapes.find((s) => this.selected.includes(s.id))?.id
+      : undefined;
     this.cancel();
-    await this.commit(next);
+    if (await this.commit(next)) {
+      if (mergedId) this.selected = [mergedId];
+      this.notify();
+    }
   }
   activateTrim() {
     this.cancel();
@@ -1533,6 +1575,7 @@ export class Controller {
     this.mirrorAxis = null;
     this.mirrorLine = null;
     this.mirrorHover = null;
+    this.mergeMode = false;
     this.trimMode = false;
     this.trimDraft = null;
     this.trimHighlight = null;
@@ -1898,8 +1941,9 @@ export class Controller {
     if (!this.ready || this.busy) return;
     const raw = this.world(pixel);
     this.anchorPointer = raw;
+    if (this.mergeMode && button === 0 && !this.space) return;
     if (this.trimMode && button === 2) { void this.applyTrim(); return; }
-    if (this.trimMode && button === 0 && !this.space) {
+    if (this.trimMode && !this.mergeMode && button === 0 && !this.space) {
       const baseline = this.trimDraft ?? this.document;
       const shapes = trimAt(baseline.shapes, raw, 8 / this.zoom);
       this.trimHighlight = null;
@@ -2114,7 +2158,7 @@ export class Controller {
       this.notify();
       return;
     }
-    if (this.trimMode && !this.space && !this.gesture) {
+    if (this.trimMode && !this.mergeMode && !this.space && !this.gesture) {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
       this.trimHighlight = null;
