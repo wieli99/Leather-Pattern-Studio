@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount } from "vue";
+import ObjectPreview from "./ObjectPreview.vue";
+const hoverPreview = ref<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
+function previewRow(event: PointerEvent, id: string) {
+  if (event.buttons) return;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  hoverPreview.value = { id, x: rect.left, y: rect.top };
+}
+import { computed, ref, onBeforeUnmount, watch } from "vue";
 import {
   ContextMenuRoot,
   ContextMenuTrigger,
@@ -19,6 +26,7 @@ import { PanelSelection } from "../model/panelSelection";
 import { flattenObjectTree } from "../model/objectTree";
 const panelSelection = new PanelSelection();
 const e = useEditor();
+watch(()=>e.value.projectEpoch,()=>{panelSelection.anchor=undefined;hoverPreview.value.id=undefined;});
 const naming = ref<string | null>(null),
   draft = ref("");
 const rows = computed(() => {
@@ -84,6 +92,7 @@ const target = ref<{
   kind: "before" | "after" | "inside";
 } | null>(null);
 function down(event: PointerEvent, id: string) {
+  hoverPreview.value.id = undefined;
   if (
     event.button !== 0 ||
     !editor.canToggleObjectState ||
@@ -227,18 +236,46 @@ function capture(event: MouseEvent) {
     event.stopPropagation();
     return;
   }
-  const target=event.target as HTMLElement;
-  const button=target.closest<HTMLElement>('.object-select,.group-select');
-  const id=button?.closest<HTMLElement>('[data-tree-id]')?.dataset.treeId;
-  if(!id || !editor.canToggleObjectState)return;
+  const target = event.target as HTMLElement;
+  const button = target.closest<HTMLElement>(".object-select,.group-select");
+  const id = button?.closest<HTMLElement>("[data-tree-id]")?.dataset.treeId;
+  if (!id || !editor.canToggleObjectState) return;
   event.stopPropagation();
   button?.focus();
-  const current=rows.value.filter(r=>r.node.kind==='group'?editor.selectedGroups.includes(r.node.id):editor.selected.includes(r.node.id) && !editor.selectedGroups.some(groupId=>{const group=findObjectNode(editor.tree,groupId);return group?.kind==='group' && flattenObjectTree(group.children).includes(r.node.id);})).map(r=>r.node.id);
-  const picked=panelSelection.select(rows.value.map(r=>r.node.id),current,id,event);
+  const current = rows.value
+    .filter((r) =>
+      r.node.kind === "group"
+        ? editor.selectedGroups.includes(r.node.id)
+        : editor.selected.includes(r.node.id) &&
+          !editor.selectedGroups.some((groupId) => {
+            const group = findObjectNode(editor.tree, groupId);
+            return (
+              group?.kind === "group" &&
+              flattenObjectTree(group.children).includes(r.node.id)
+            );
+          }),
+    )
+    .map((r) => r.node.id);
+  const picked = panelSelection.select(
+    rows.value.map((r) => r.node.id),
+    current,
+    id,
+    event,
+  );
   editor.cancel();
-  editor.selectedGroups=picked.filter(id=>rows.value.some(r=>r.node.id===id && r.node.kind==='group'));
-  editor.selected=[...new Set(picked.flatMap(id=>{const node=findObjectNode(editor.tree,id);return node?.kind==='group'?flattenObjectTree(node.children):[id];}))];
-  editor.panelRevision++;editor.notify();
+  editor.selectedGroups = picked.filter((id) =>
+    rows.value.some((r) => r.node.id === id && r.node.kind === "group"),
+  );
+  editor.selected = [
+    ...new Set(
+      picked.flatMap((id) => {
+        const node = findObjectNode(editor.tree, id);
+        return node?.kind === "group" ? flattenObjectTree(node.children) : [id];
+      }),
+    ),
+  ];
+  editor.panelRevision++;
+  editor.notify();
 }
 function cancel() {
   drag.value = null;
@@ -291,6 +328,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
 }
 </script>
 <template>
+  <ObjectPreview v-bind="hoverPreview" />
   <div class="objects-heading">
     <h2>Objects</h2>
     <button
@@ -318,6 +356,8 @@ function keyboardMove(event: KeyboardEvent, id: string) {
       v-for="row in rows"
       :key="row.node.id"
       :data-tree-id="row.node.id"
+      @pointerenter="previewRow($event, row.node.id)"
+      @pointerleave="hoverPreview.id = undefined"
       class="tree-row"
       :style="{ paddingLeft: `${row.depth * 16}px` }"
       :class="target?.id === row.node.id ? `drop-${target.kind}` : ''"
@@ -452,7 +492,14 @@ function keyboardMove(event: KeyboardEvent, id: string) {
             stroke="currentColor"
             stroke-width="2"
           >
-            <rect x="5" y="10" width="14" height="11" rx="2" :fill="row.node.locked ? 'currentColor' : 'none'" />
+            <rect
+              x="5"
+              y="10"
+              width="14"
+              height="11"
+              rx="2"
+              :fill="row.node.locked ? 'currentColor' : 'none'"
+            />
             <path
               :d="
                 row.node.locked

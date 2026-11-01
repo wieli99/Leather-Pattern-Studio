@@ -41,3 +41,5 @@ For keyboard organization, focus a row and use Alt+Shift+Up/Down to reorder, Alt
 Crossing selection follows the visible ruler ticks and measurement strokes in the selected units, including inch-specific label gaps and arrow placement.
 
 In the object panel, Shift-click selects the inclusive visible range from the anchor row. Ctrl/⌘-click toggles individual rows and establishes a new anchor; Ctrl/⌘+Shift-click adds the range to the existing selection.
+
+Hover an object or folder row to see a medium-sized preview of its current source artwork. The preview is read-only and closes when you leave the row or begin dragging.
