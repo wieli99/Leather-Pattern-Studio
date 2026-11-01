@@ -1,6 +1,6 @@
 # Workspace
 
-The leather-and-tool icon identifies Leather Pattern Studio in the header, with the three words stacked beside it. The editor and manual browser tabs use the filled gold-and-grey icon with a transparent background.
+The leather-and-tool icon identifies Leather Pattern Studio in the header, with the three words stacked beside it. The editor and manual browser tabs use the same gold outline icon with a transparent background.
 
 The left toolbar selects drawing modes. Right-click or hold a grouped tool to open variants. Its icon remembers the last variant. Repeat its key to cycle; Shift reverses.
 
