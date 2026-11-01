@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import brandIcon from "../assets/leather-studio-icon.svg?no-inline";
 import { editorHint } from "../editor/hint";
 import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import TransformToolbox from "./TransformToolbox.vue";
@@ -166,10 +167,11 @@ onMounted(() => {
   <main @focusin="hintFocus" @focusout="editing = ''">
     <header>
       <div class="brand">
-        <span class="brand-icon">⌑</span>
+        <img class="brand-icon" :src="brandIcon" alt="" width="32" height="32" />
         <strong>
           LEATHER
-          <span>STUDIO</span>
+          <span>PATTERN</span>
+          <span class="brand-subtitle">STUDIO</span>
         </strong>
       </div>
       <span class="document-name">

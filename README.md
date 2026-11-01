@@ -1,4 +1,4 @@
-# Leather Studio
+# Leather Pattern Studio
 
 An offline-capable browser-based precision 2D pattern editor built with Vue 3, TypeScript, Canvas 2D and Rust/Wasm. Inspired by Plasticity's focused workspace; no 3D, accounts, server-side document processing, or installation required.
 

@@ -60,7 +60,7 @@ md.renderer.rules.heading_open = (tokens, i, options, env, self) => {
 async function navigate() {
   route.value = location.hash.slice(1) || "home";
   query.value = "";
-  document.title = `${page.value?.title ?? "Page not found"} · Leather Studio manual`;
+  document.title = `${page.value?.title ?? "Page not found"} · Leather Pattern Studio manual`;
   await nextTick();
   const anchor = route.value.split("/")[1];
   if (anchor) document.getElementById(anchor)?.scrollIntoView();
@@ -76,7 +76,7 @@ onUnmounted(() => window.removeEventListener("hashchange", navigate));
 </script>
 <template>
   <header>
-    <a href="#home">Leather Studio · Manual</a
+    <a href="#home">Leather Pattern Studio · Manual</a
     ><a href="/" target="_blank" rel="noopener">Open editor ↗</a>
   </header>
   <div class="layout">
