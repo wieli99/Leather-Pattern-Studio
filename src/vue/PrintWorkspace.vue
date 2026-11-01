@@ -26,6 +26,8 @@ import {
   printTree,
   printRows,
   sourceNodes,
+  sourceShapeIds,
+  findSource,
   importPrintNode,
   resolvedPrintItems,
   printDescendants,
@@ -47,6 +49,9 @@ import {
   type UnitMode,
 } from "../model/units";
 import PrintExport from "./PrintExport.vue";
+import { PanelSelection } from "../model/panelSelection";
+const panelSelection=new PanelSelection(),sourceSelection=new PanelSelection();
+const selectedSources=ref<string[]>([]);
 const emit = defineEmits<{ active: [value: boolean] }>();
 const e = useEditor(),
   active = ref(""),
@@ -100,6 +105,8 @@ const creating = ref(false),
   margin = ref("10"),
   name = ref(""),
   landscape = ref(false);
+const nameEdited=ref(false);
+watch(format,value=>{if(!nameEdited.value)name.value=value;});
 const renameId = ref(""),
   renameValue = ref("");
 const moveX = ref("0"),
@@ -197,7 +204,8 @@ function openCreate() {
   width.value = editableLength(210, units.value);
   height.value = editableLength(297, units.value);
   margin.value = editableLength(10, units.value);
-  name.value = "";
+  name.value = "A4";
+  nameEdited.value=false;
   landscape.value = false;
   error.value = "";
   creating.value = true;
@@ -212,7 +220,8 @@ function openSettings() {
   height.value = editableLength(l.height, l.units);
   margin.value = editableLength(l.margin, l.units);
   name.value = l.name;
-  landscape.value = false;
+  nameEdited.value=true;
+  landscape.value = l.width > l.height;
   creating.value = true;
 }
 function changeUnits(next: UnitMode) {
@@ -232,7 +241,7 @@ async function create() {
     const m = parseLength(margin.value, units.value);
     if (w === null || h === null || m === null)
       throw Error("Enter valid paper dimensions and margin");
-    if (landscape.value) [w, h] = [h, w];
+    if (landscape.value !== (w > h)) [w, h] = [h, w];
     printableSize({ width: w, height: h, margin: m });
     if (settingsId.value) {
       const old = layouts.value.find((l) => l.id === settingsId.value)!;
@@ -342,13 +351,12 @@ function toggleCollapse(id: string) {
   else next.add(id);
   collapsed.value = next;
 }
-function select(id: string, event?: MouseEvent) {
-  if (event?.shiftKey || event?.ctrlKey || event?.metaKey) {
-    selected.value = selected.value.includes(id)
-      ? selected.value.filter((i) => i !== id)
-      : [...selected.value, id];
-  } else selected.value = [id];
-  void draw();
+function select(id:string,event?:MouseEvent){selected.value=panelSelection.select(visibleRows.value.map(r=>r.node.id),selected.value,id,event);void draw();}
+function selectSource(id:string,event:MouseEvent){selectedSources.value=sourceSelection.select(sourceRows.value.map(r=>r.node.id),selectedSources.value,id,event);}
+function sourceDrag(event:DragEvent,id:string){if(!selectedSources.value.includes(id))selectedSources.value=[id];event.dataTransfer?.setData('application/x-leather-source',JSON.stringify(selectedSources.value));}
+async function importDrop(event:DragEvent){
+  const l=layout.value;if(!l||!event.dataTransfer)return;
+  try{const ids:unknown=JSON.parse(event.dataTransfer.getData('application/x-leather-source'));if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string'))return;const p=pixel(event);if(!isPrintablePixel(p,l))return;const world=worldFromPixel(p);let next=l;const roots=ids.filter(id=>!ids.some(parent=>{if(parent===id)return false;const node=findSource(sourceNodes(editor.document),parent);return node?.kind==='group'&&!!findSource(node.children,id);}));for(const id of roots)next=importPrintNode(editor.document,next,id,world.x,world.y);await save(next);}catch(reason){error.value=String(reason);}
 }
 function nodeName(node: PrintNode) {
   if (node.kind === "group") return node.name;
@@ -1169,7 +1177,7 @@ defineExpose({
           <label
             >Name
             <input
-              v-model="name"
+              v-model="name" @input="nameEdited=true"
               maxlength="200"
               placeholder="Use paper format" /></label
           ><label
@@ -1203,10 +1211,7 @@ defineExpose({
               >Paper height
               <input v-model="height" required /></label></template
           ><label>Margin <input v-model="margin" required /></label
-          ><label
-            ><input type="checkbox" v-model="landscape" />Swap width and height
-            (landscape)</label
-          >
+          ><button type="button" :aria-label="landscape?'Landscape orientation; switch to portrait':'Portrait orientation; switch to landscape'" @click="landscape=!landscape"><svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" aria-hidden="true"><rect :x="landscape?3:7" :y="landscape?7:3" :width="landscape?24:16" :height="landscape?16:24" rx="1"/></svg>{{landscape?'Landscape':'Portrait'}}</button>
           <p v-if="error" role="alert">{{ error }}</p>
           <div class="print-actions">
             <DialogClose type="button">Cancel</DialogClose
@@ -1280,7 +1285,7 @@ defineExpose({
     <div class="print-canvas">
       <canvas
         ref="canvas"
-        aria-label="Print layout canvas"
+        aria-label="Print layout canvas" @dragover.prevent @drop.prevent="importDrop"
         tabindex="0"
         @pointerdown="down"
         @pointermove="move"
@@ -1335,6 +1340,7 @@ defineExpose({
           v-for="row in sourceRows"
           :key="row.node.id"
           :style="{ paddingLeft: `${row.depth * 14}px` }"
+          draggable="true" @dragstart="sourceDrag($event,row.node.id)"
         >
           <button
             v-if="row.node.kind === 'group'"
@@ -1342,11 +1348,11 @@ defineExpose({
             @click="toggleCollapse(`source:${row.node.id}`)"
           >
             {{ collapsed.has(`source:${row.node.id}`) ? "▸" : "▾" }}</button
-          ><span>{{
+          ><button class="print-object-name" :aria-pressed="selectedSources.includes(row.node.id)" @click="selectSource(row.node.id,$event)">{{
             row.node.kind === "group"
               ? row.node.name
               : e.document.shapes.find((s) => s.id === row.node.id)?.name
-          }}</span
+          }}</button
           ><button
             :aria-label="`Import ${row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name}`"
             :disabled="busy"

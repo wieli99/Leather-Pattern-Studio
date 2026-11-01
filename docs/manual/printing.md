@@ -6,8 +6,8 @@ Print tabs arrange linked copies of Grid objects on physical sheets. They start 
 
 1. Press **+** beside the workspace tabs.
 2. Choose A5–A0, Letter, Legal, Tabloid, or **Custom**. Custom width, height, and margin entries use the selected units.
-3. Choose millimetres, decimal inches, or fractional inches. Use the landscape checkbox to swap width and height.
-4. Press **Create**. Duplicate paper formats are allowed; automatic names receive a numeric suffix.
+3. Choose millimetres, decimal inches, or fractional inches. Use the portrait/landscape paper-icon toggle to choose orientation.
+4. Press **Create**. Duplicate paper formats are allowed; automatic names receive a numeric suffix. The name follows format changes until you edit it; an edited name is preserved.
 
 Use **Layout settings** to rename a tab or change its paper, margin, and units. Switching units converts the existing dimensions; it never scales artwork. The initial margin is 10 mm. Dimensions must leave a positive printable area and cannot exceed 5,000 mm. Each layout supports up to 500 pages. **Delete layout** removes that layout after confirmation; undo restores it.
 
@@ -15,7 +15,7 @@ Use **Layout settings** to rename a tab or change its paper, margin, and units. 
 
 The **Grid objects** panel shows the source object and folder hierarchy. Press **Import** beside an object or folder. Repeated imports create independent linked placements. Imported folders retain their nesting and source membership: future additions appear, and removed source members disappear.
 
-The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift/Ctrl/⌘-click selects multiple rows. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; choose **rotate** and drag to rotate, or enter Move X, Move Y, and Rotate values and press **Apply**. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently.
+The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; choose **rotate** and drag to rotate, or enter Move X, Move Y, and Rotate values and press **Apply**. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently.
 
 - **Hide** and **Lock** affect only print instances. Grid visibility and locking are independent.
 - **Duplicate** creates another linked copy. **Group** groups selected siblings.
@@ -53,3 +53,5 @@ Print PDF at **Actual size / 100%** and disable “Fit to page.” Check a print
 The export libraries, PDF preview worker, and print font are bundled for offline use. See [Files, recovery and offline use](#files). Software browser checks do not replace verification on your physical printer.
 
 Print pointer previews retain the last complete frame while artwork loads, avoiding blank flashes during movement.
+
+Selected source rows can also be dragged from Grid objects onto printable paper to import linked copies at the drop point. Dropping outside paper does nothing.
