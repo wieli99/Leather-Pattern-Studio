@@ -23,6 +23,7 @@ const order = [
   "stitching",
   "text",
   "indicators",
+  "printing",
   "shortcuts",
   "files",
   "troubleshooting",

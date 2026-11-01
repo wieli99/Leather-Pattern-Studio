@@ -1,3 +1,4 @@
+import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
 import { resizeText } from "../model/text";
 import type { ImportedImage } from "./imageImport";
@@ -163,6 +164,8 @@ export class Controller {
   }
   core = new Core();
   files = new ProjectFiles();
+  printLayoutActive = false;
+  projectEpoch = 0;
   document = emptyDocument();
   preview: Doc | null = null;
   revision = 0;
@@ -600,6 +603,9 @@ export class Controller {
     }, 300);
   }
   async transact(operation: string, document?: Doc) {
+    if ((operation === "commit" || operation === "preview") && document && !this.canCommitFromView(document)) {
+      throw Error("Edit source geometry on Grid");
+    }
     if (this.transformTool || this.stitchMode) this.cancel();
     const run = async () => {
       if (!this.ready) return;
@@ -610,6 +616,10 @@ export class Controller {
         this.accept(
           await this.core.request(operation, this.revision, document),
         );
+        if (operation === "load") {
+          this.projectEpoch++;
+          this.printLayoutActive = false;
+        }
         if (this.revision !== before) {
           this.dirty = true;
           this.scheduleRecovery();
@@ -1132,8 +1142,23 @@ export class Controller {
     const objectTree = reconcileObjectTree(document.objectTree ?? objectTreeFromShapes(document.shapes), document.shapes);
     return { ...document, objectTree, shapes: treeInDrawingOrder(objectTree, document.shapes) };
   }
+  private canCommitFromView(document: Doc) {
+    const sources = (doc: Doc) => fingerprint({ ...doc, printLayouts: [] });
+    if (this.printLayoutActive && sources(document) !== sources(this.document)) {
+      this.fail(Error("Edit source geometry on Grid"));
+      return false;
+    }
+    return true;
+  }
   async commit(document: Doc) {
-    document = this.normalizeTree(document);
+    try {
+      if (!this.canCommitFromView(document)) return false;
+      document = reconcilePrintLayouts(this.normalizeTree(document));
+    } catch (error) {
+      this.preview = null;
+      this.fail(error);
+      return false;
+    }
     if (this.stitchOriginal) {
       try {
         this.document = parseProject(
@@ -1212,6 +1237,7 @@ export class Controller {
     this.setMode(tool === "line" ? "polyline" : (tool as Mode));
   }
   setMode(mode: Mode) {
+    if (this.printLayoutActive && mode !== "select") return;
     this.cancel();
     this.mode = mode;
     this.tool =
@@ -3031,6 +3057,7 @@ export class Controller {
     } catch (error) { this.fail(error); }
   }
   get canUseClipboard() {
+    if (this.printLayoutActive) return false;
     return this.ready && !this.busy && this.pointerInside && !!this.clipboardPixel &&
       !this.gesture && !this.pending.length && !this.transformTool &&
       !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;

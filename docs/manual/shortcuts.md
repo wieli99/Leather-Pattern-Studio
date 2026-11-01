@@ -62,3 +62,28 @@ Press D with the canvas focused, or select Measurement from the toolbar below Te
 Indicators share the Measurement submenu. D and Shift+D cycle its variants; right-click, hold the button, or press Down while it is focused to choose a variant. Escape cancels unfinished placement.
 
 In inch mode, guide and corner distance steps are 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. See [Measurements and snapping](#measurements) for fractional entry. Rotation steps remain in degrees.
+
+## Print layout shortcuts
+
+With the print canvas or print object panel focused:
+
+| Shortcut | Action |
+| --- | --- |
+| V / G / E | Select / Move / Rotate |
+| Space + drag | Pan |
+| Mouse wheel | Zoom around pointer |
+| F | Fit all pages |
+| Shift + rotate drag | Snap rotation to 15° |
+| Alt + move drag | Bypass snapping |
+| Shift + move drag | Constrain movement to one axis |
+| Arrow keys | Move by 1 mm or 1/16 inch |
+| Shift + arrow keys | Move by ten steps |
+| Ctrl/⌘+A | Select available print objects |
+| Ctrl/⌘+D | Duplicate linked placements |
+| Ctrl/⌘+G | Group selected siblings |
+| Delete / Backspace | Delete selected unlocked print objects |
+| Escape | Cancel pointer preview and clear selection |
+| Ctrl/⌘+Z / Ctrl/⌘+Shift+Z | Undo / redo |
+| Ctrl/⌘+S | Save project |
+
+Drawing, resizing, geometry-editing, and styling-paste shortcuts are unavailable in print views. Text entry retains normal editing shortcuts.

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import PrintWorkspace from "./PrintWorkspace.vue";
 import brandIcon from "../assets/leather-studio-icon.svg?no-inline";
 import { editorHint } from "../editor/hint";
 import ConstructionMeasurements from "./ConstructionMeasurements.vue";
@@ -19,6 +20,8 @@ import StatusBar from "./StatusBar.vue";
 import { decodeImageFile } from "../editor/imageImport";
 import { tools } from "./tools";
 import { handleShortcut, handleClipboard } from "./shortcuts";
+const printActive = ref(false);
+const printWorkspace = ref<InstanceType<typeof PrintWorkspace>>();
 const imagePicker = ref<HTMLInputElement | null>(null);
 async function importImage(event: Event) {
   const input = event.target as HTMLInputElement, file = input.files?.[0];
@@ -105,9 +108,10 @@ function reload() {
 }
 onMounted(() => {
   const key = (event: KeyboardEvent) =>
-    handleShortcut(event, () => {
+    !printActive.value && handleShortcut(event, () => {
       window.open("/manual/index.html", "_blank", "noopener");
     });
+  const clipboard = (event: ClipboardEvent) => { if (!printActive.value) handleClipboard(event); };
   const up = (e: KeyboardEvent) => {
     if (e.code === "Space") editor.space = false;
   };
@@ -126,16 +130,16 @@ onMounted(() => {
   };
   window.addEventListener("focusout", releasePan);
   window.addEventListener("keydown", key);
-  window.addEventListener("copy", handleClipboard);
-  window.addEventListener("paste", handleClipboard);
+  window.addEventListener("copy", clipboard);
+  window.addEventListener("paste", clipboard);
   window.addEventListener("keyup", up);
   window.addEventListener("blur", blur);
   window.addEventListener("beforeunload", leave);
   onUnmounted(() => {
     window.removeEventListener("focusout", releasePan);
     window.removeEventListener("keydown", key);
-    window.removeEventListener("copy", handleClipboard);
-    window.removeEventListener("paste", handleClipboard);
+    window.removeEventListener("copy", clipboard);
+    window.removeEventListener("paste", clipboard);
     window.removeEventListener("keyup", up);
     window.removeEventListener("blur", blur);
     window.removeEventListener("beforeunload", leave);
@@ -200,6 +204,7 @@ onMounted(() => {
         >
           Save
         </button>
+        <button v-if="printActive" :disabled="!e.ready" @click="printWorkspace?.openExport()">Export</button>
         <a
           href="/manual/index.html"
           target="_blank"
@@ -210,7 +215,8 @@ onMounted(() => {
         >
       </div>
     </header>
-    <section class="workspace">
+    <PrintWorkspace ref="printWorkspace" @active="printActive = $event" />
+    <section v-show="!printActive" class="workspace">
       <nav v-if="left" aria-label="Drawing tools">
         <template v-for="tool in tools" :key="tool.id">
           <div
@@ -315,7 +321,7 @@ onMounted(() => {
       <span>An update is ready. Save your project before reloading.</span>
       <button @click="reload">Reload</button>
     </div>
-    <footer v-if="bottom">
+    <footer v-if="bottom && !printActive">
       <StatusBar />
       <div class="center-settings">
         <label>

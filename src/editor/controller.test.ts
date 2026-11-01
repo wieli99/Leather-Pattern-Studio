@@ -2036,7 +2036,7 @@ test("initialization rejects a stale worker document version", async () => {
   vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
   await e.initialize();
   expect(e.ready).toBe(false);
-  expect(e.message).toContain("expects document version 17, but geometry worker returned 15");
+  expect(e.message).toContain("expects document version 18, but geometry worker returned 15");
 });
 
 test("unit preferences leave document, grid and history unchanged", () => {
@@ -2087,4 +2087,23 @@ test("selection tools require idle drawing and a committed selection", () => {
   e.drawingDown = null;
   e.busy = true;
   expect(e.selectionToolsAvailable).toBe(false);
+});
+
+test('print view commits preserve sources across worker serialization and reject geometry edits', async()=>{
+ const e=new Controller();await e.initialize();
+ await e.commit({...e.document,shapes:[{id:'source',name:'Source',kind:'rectangle',points:[{x:0,y:0},{x:40,y:20}],radius:0,rotation:0}]});
+ e.printLayoutActive=true;
+ const print={id:'layout',name:'A4',width:210,height:297,margin:10,units:'mm' as const,pages:[{column:0,row:0}],instances:[],tree:[]};
+ expect(await e.commit({...e.document,printLayouts:[print]})).toBe(true);
+ expect(await e.commit({...e.document,shapes:e.document.shapes.map(s=>({...s,radius:2}))})).toBe(false);
+ expect(e.document.shapes[0].radius).toBe(0);
+});
+
+test('print overflow rejects a source edit without a partial document or history entry',async()=>{
+ const e=new Controller();await e.initialize();
+ const shape={id:'source',name:'Source',kind:'rectangle' as const,points:[{x:0,y:0},{x:40,y:20}],radius:0,rotation:0};
+ await e.commit({...e.document,shapes:[shape],printLayouts:[{id:'layout',name:'A4',width:210,height:297,margin:10,units:'mm',pages:[{column:0,row:0}],instances:[{id:'copy',sourceId:'source',x:95,y:100,rotation:0}]}]});
+ const original=e.document,revision=e.revision;
+ expect(await e.commit({...original,shapes:[{...shape,points:[{x:0,y:0},{x:1e6,y:1e6}]}]})).toBe(false);
+ expect(e.document).toEqual(original);expect(e.revision).toBe(revision);expect(e.message).toContain('500');
 });

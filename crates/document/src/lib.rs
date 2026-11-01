@@ -218,7 +218,175 @@ pub struct StitchLink {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
+pub struct PrintPage {
+    pub column: i32,
+    pub row: i32,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct PrintPlacement {
+    pub id: String,
+    pub source_id: String,
+    pub x: f64,
+    pub y: f64,
+    pub rotation: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hidden: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub locked: Option<bool>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PrintNode {
+    Instance {
+        id: String,
+    },
+    Group {
+        id: String,
+        name: String,
+        x: f64,
+        y: f64,
+        rotation: f64,
+        #[serde(default, rename = "sourceId", skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        source_id: Option<String>,
+        #[serde(
+            default,
+            rename = "excludedSourceIds",
+            skip_serializing_if = "Option::is_none"
+        )]
+        #[ts(optional)]
+        excluded_source_ids: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        hidden: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        locked: Option<bool>,
+        children: Vec<PrintNode>,
+    },
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+pub struct PrintLayout {
+    pub id: String,
+    pub name: String,
+    pub width: f64,
+    pub height: f64,
+    pub margin: f64,
+    #[ts(type = "'mm' | 'in-decimal' | 'in-fractional'")]
+    pub units: String,
+    pub pages: Vec<PrintPage>,
+    pub instances: Vec<PrintPlacement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tree: Option<Vec<PrintNode>>,
+}
+impl PrintLayout {
+    fn validate(&self, shapes: &[Shape], source_groups: &[&str]) -> Result<(), String> {
+        let fail = || "Invalid print layout".to_string();
+        if self.id.is_empty()
+            || self.name.trim().is_empty()
+            || self.name.len() > 800
+            || ![self.width, self.height, self.margin]
+                .iter()
+                .all(|n| n.is_finite())
+            || self.margin < 0.0
+            || self.width > 5000.0
+            || self.height > 5000.0
+            || self.width <= 2.0 * self.margin
+            || self.height <= 2.0 * self.margin
+            || !["mm", "in-decimal", "in-fractional"].contains(&self.units.as_str())
+            || self.pages.is_empty()
+            || self.pages.len() > 500
+            || self.instances.len() > 10000
+        {
+            return Err(fail());
+        }
+        let mut pages = std::collections::HashSet::new();
+        if self.pages.iter().any(|p| !pages.insert((p.column, p.row))) {
+            return Err(fail());
+        }
+        let mut ids = std::collections::HashSet::new();
+        for i in &self.instances {
+            if i.id.is_empty()
+                || !ids.insert(i.id.as_str())
+                || !shapes.iter().any(|s| s.id == i.source_id)
+                || ![i.x, i.y, i.rotation].iter().all(|n| n.is_finite())
+                || i.name
+                    .as_ref()
+                    .is_some_and(|n| n.trim().is_empty() || n.len() > 800)
+            {
+                return Err(fail());
+            }
+        }
+        fn visit<'a>(
+            nodes: &'a [PrintNode],
+            depth: usize,
+            seen: &mut std::collections::HashSet<&'a str>,
+            ids: &std::collections::HashSet<&str>,
+            groups: &[&str],
+        ) -> Result<(), String> {
+            if depth > 100 {
+                return Err("Print tree too deep".into());
+            }
+            for node in nodes {
+                match node {
+                    PrintNode::Instance { id } => {
+                        if !seen.insert(id) || !ids.contains(id.as_str()) {
+                            return Err("Invalid print instance tree".into());
+                        }
+                    }
+                    PrintNode::Group {
+                        id,
+                        name,
+                        x,
+                        y,
+                        rotation,
+                        source_id,
+                        children,
+                        ..
+                    } => {
+                        if id.is_empty()
+                            || !seen.insert(id)
+                            || ids.contains(id.as_str())
+                            || name.trim().is_empty()
+                            || name.len() > 800
+                            || ![x, y, rotation].iter().all(|n| n.is_finite())
+                            || source_id
+                                .as_ref()
+                                .is_some_and(|s| !groups.contains(&s.as_str()))
+                        {
+                            return Err("Invalid print group".into());
+                        }
+                        visit(children, depth + 1, seen, ids, groups)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+        if let Some(tree) = &self.tree {
+            let mut seen = std::collections::HashSet::new();
+            visit(tree, 0, &mut seen, &ids, source_groups)?;
+            if ids.iter().any(|id| !seen.contains(id)) {
+                return Err("Print instance missing from tree".into());
+            }
+        }
+        Ok(())
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
 pub struct Document {
+    #[serde(default, rename = "printLayouts")]
+    pub print_layouts: Vec<PrintLayout>,
     #[serde(default, rename = "stitchLinks")]
     pub stitch_links: Vec<StitchLink>,
     pub version: u32,
@@ -423,6 +591,29 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
 
 impl Document {
     pub fn validate(&self) -> Result<(), String> {
+        if self.print_layouts.len() > 100 {
+            return Err("Too many print layouts".into());
+        }
+        let mut layout_ids = std::collections::HashSet::new();
+        fn groups<'a>(nodes: &'a [ObjectNode], out: &mut Vec<&'a str>) {
+            for n in nodes {
+                if let ObjectNode::Group { id, children, .. } = n {
+                    out.push(id);
+                    groups(children, out);
+                }
+            }
+        }
+        let mut source_groups = Vec::new();
+        if let Some(tree) = &self.object_tree {
+            groups(tree, &mut source_groups);
+        }
+        for layout in &self.print_layouts {
+            if !layout_ids.insert(&layout.id) {
+                return Err("Duplicate print layout".into());
+            }
+            layout.validate(&self.shapes, &source_groups)?;
+        }
+
         for s in &self.shapes {
             if s.kind == Kind::Image
                 && (s.points.len() != 2
@@ -449,10 +640,10 @@ impl Document {
         }
         if !matches!(
             self.version,
-            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17
+            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18). Reload the application.",
                 self.version
             ));
         }
@@ -779,7 +970,8 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
-                version: 17,
+                print_layouts: vec![],
+                version: 18,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -799,7 +991,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18]}).to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -911,7 +1103,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 17;
+                next.version = 18;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -986,7 +1178,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 17;
+        doc.version = 18;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1075,7 +1267,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1107,7 +1299,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 17;
+        d.version = 18;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -1266,7 +1458,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 17;
+        doc.version = 18;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1305,5 +1497,74 @@ mod tests {
         e.execute("commit", r#"{"version":5,"shapes":[]}"#, 0)
             .unwrap();
         assert!(e.past.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod print_tests {
+    use super::*;
+    fn project() -> serde_json::Value {
+        serde_json::json!({"version":18,"shapes":[{"id":"piece","name":"Piece","kind":"rectangle","points":[{"x":0,"y":0},{"x":40,"y":20}],"radius":0,"rotation":0}],"printLayouts":[{"id":"layout","name":"A4","width":210,"height":297,"margin":10,"units":"mm","pages":[{"column":0,"row":0}],"instances":[{"id":"copy","sourceId":"piece","x":95,"y":100,"rotation":0}],"tree":[{"kind":"instance","id":"copy"}]}]})
+    }
+    #[test]
+    fn print_history_and_roundtrip() {
+        let mut editor = Editor::new();
+        editor.execute("load", &project().to_string(), 0).unwrap();
+        let original = editor.document.clone();
+        let mut changed = original.clone();
+        changed.print_layouts[0].instances[0].x = 120.0;
+        editor
+            .execute("commit", &serde_json::to_string(&changed).unwrap(), 1)
+            .unwrap();
+        assert_eq!(editor.document.shapes, original.shapes);
+        editor.execute("undo", "null", 2).unwrap();
+        assert_eq!(editor.document, original);
+        editor.execute("redo", "null", 3).unwrap();
+        assert_eq!(editor.document, changed);
+        let loaded: Document =
+            serde_json::from_str(&serde_json::to_string(&changed).unwrap()).unwrap();
+        assert_eq!(loaded, changed);
+    }
+    #[test]
+    fn print_validation_rejects_broken_references_and_geometry() {
+        for change in ["source", "margin", "duplicate", "tree", "pages"] {
+            let mut doc = project();
+            match change {
+                "source" => {
+                    doc["printLayouts"][0]["instances"][0]["sourceId"] =
+                        serde_json::json!("missing")
+                }
+                "margin" => doc["printLayouts"][0]["margin"] = serde_json::json!(105),
+                "duplicate" => {
+                    let copy = doc["printLayouts"][0].clone();
+                    doc["printLayouts"].as_array_mut().unwrap().push(copy);
+                }
+                "tree" => doc["printLayouts"][0]["tree"] = serde_json::json!([]),
+                _ => doc["printLayouts"][0]["pages"] = serde_json::json!([]),
+            }
+            let doc: Document = serde_json::from_value(doc).unwrap();
+            assert!(doc.validate().is_err(), "{change}");
+        }
+    }
+    #[test]
+    fn old_projects_start_without_layouts_and_source_deletion_is_atomic() {
+        let mut editor = Editor::new();
+        editor
+            .execute("load", r#"{"version":5,"shapes":[]}"#, 0)
+            .unwrap();
+        assert_eq!(editor.document.version, 18);
+        assert!(editor.document.print_layouts.is_empty());
+        editor.execute("load", &project().to_string(), 1).unwrap();
+        let original = editor.document.clone();
+        let mut deleted = original.clone();
+        deleted.shapes.clear();
+        deleted.object_tree = Some(vec![]);
+        deleted.print_layouts[0].instances.clear();
+        deleted.print_layouts[0].tree = Some(vec![]);
+        editor
+            .execute("commit", &serde_json::to_string(&deleted).unwrap(), 2)
+            .unwrap();
+        editor.execute("undo", "null", 3).unwrap();
+        assert_eq!(editor.document, original);
     }
 }

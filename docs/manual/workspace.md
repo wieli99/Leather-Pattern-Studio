@@ -21,3 +21,7 @@ If the application reports incompatible geometry worker versions, save existing 
 If engine startup fails, the loading panel shows the worker error. An unresponsive engine reports a timeout after 15 seconds. Reload to retry; this does not clear saved projects or browser recovery.
 
 Development startup removes this app’s production offline worker before loading the editor and may reload once. Recovery data and preferences are preserved. If the offline worker still controls the page, close the app’s tabs and reopen it.
+
+## Print layouts
+
+Use **+** beside **Grid** to create an optional print-layout tab. Choose a paper format, orientation, margins, and units. See [Print layouts and export](#printing) for placement, linked folders, page assembly, and export.

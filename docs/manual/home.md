@@ -7,3 +7,5 @@ Start with [your first pattern](#getting-started), explore [drawing tools](#draw
 - [Stitch lines](#stitching): place, configure, merge, and split attached stitching.
 
 - [Indicators](#indicators): arrows, crosshairs, and dimensioned size guides.
+
+- [Print layouts and export](#printing): arrange linked copies on paper and export actual-size PDF, SVG, or PNG pages.

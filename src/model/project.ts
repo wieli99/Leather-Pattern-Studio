@@ -1,3 +1,4 @@
+import { validatePrintLayouts, findSource } from "./printLayout";
 import { objectTreeFromShapes, validateObjectTree, treeInDrawingOrder, type ObjectNode } from "./objectTree";
 import { validateStitchGroups } from "./stitchGeometry";
 import type { StitchGroup } from "./stitchGeometry";
@@ -9,20 +10,21 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
-  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17;
+  printLayouts?: import("./printLayout").PrintLayout[];
+  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const DOCUMENT_VERSION = 17;
+export const DOCUMENT_VERSION = 18;
 export const emptyDocument = (): Doc => ({ version: DOCUMENT_VERSION, shapes: [] });
 export function parseProject(text: string): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -297,7 +299,19 @@ export function parseProject(text: string): Doc {
     }
   }
   const objectTree = input.objectTree === undefined ? objectTreeFromShapes(result) : validateObjectTree(input.objectTree, result);
+  const printLayouts = validatePrintLayouts(input.printLayouts ?? []);
+  for (const layout of printLayouts) {
+    if (layout.instances.some(i => !ids.has(i.sourceId))) throw Error("Unknown print source");
+    function validateSources(nodes: import("./printLayout").PrintNode[]) {
+      for (const node of nodes) if (node.kind === 'group') {
+        if (node.sourceId && findSource(objectTree,node.sourceId)?.kind !== 'group') throw Error("Unknown print folder source");
+        validateSources(node.children);
+      }
+    }
+    validateSources(layout.tree ?? []);
+  }
   return {
+    printLayouts,
     objectTree,
     stitchLinks,
     stitchGroups,
