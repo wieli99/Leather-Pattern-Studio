@@ -15,6 +15,9 @@ import {
   type ObjectNode,
 } from "../model/objectTree";
 import ObjectRow from "./ObjectRow.vue";
+import { PanelSelection } from "../model/panelSelection";
+import { flattenObjectTree } from "../model/objectTree";
+const panelSelection = new PanelSelection();
 const e = useEditor();
 const naming = ref<string | null>(null),
   draft = ref("");
@@ -222,7 +225,20 @@ function capture(event: MouseEvent) {
   if (suppressClick) {
     event.preventDefault();
     event.stopPropagation();
+    return;
   }
+  const target=event.target as HTMLElement;
+  const button=target.closest<HTMLElement>('.object-select,.group-select');
+  const id=button?.closest<HTMLElement>('[data-tree-id]')?.dataset.treeId;
+  if(!id || !editor.canToggleObjectState)return;
+  event.stopPropagation();
+  button?.focus();
+  const current=rows.value.filter(r=>r.node.kind==='group'?editor.selectedGroups.includes(r.node.id):editor.selected.includes(r.node.id) && !editor.selectedGroups.some(groupId=>{const group=findObjectNode(editor.tree,groupId);return group?.kind==='group' && flattenObjectTree(group.children).includes(r.node.id);})).map(r=>r.node.id);
+  const picked=panelSelection.select(rows.value.map(r=>r.node.id),current,id,event);
+  editor.cancel();
+  editor.selectedGroups=picked.filter(id=>rows.value.some(r=>r.node.id===id && r.node.kind==='group'));
+  editor.selected=[...new Set(picked.flatMap(id=>{const node=findObjectNode(editor.tree,id);return node?.kind==='group'?flattenObjectTree(node.children):[id];}))];
+  editor.panelRevision++;editor.notify();
 }
 function cancel() {
   drag.value = null;

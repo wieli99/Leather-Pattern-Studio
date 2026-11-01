@@ -39,3 +39,5 @@ For keyboard organization, focus a row and use Alt+Shift+Up/Down to reorder, Alt
 ![Nested object groups](/manual/images/object-groups.png)
 
 Crossing selection follows the visible ruler ticks and measurement strokes in the selected units, including inch-specific label gaps and arrow placement.
+
+In the object panel, Shift-click selects the inclusive visible range from the anchor row. Ctrl/⌘-click toggles individual rows and establishes a new anchor; Ctrl/⌘+Shift-click adds the range to the existing selection.
