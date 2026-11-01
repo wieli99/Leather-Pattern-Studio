@@ -678,7 +678,13 @@ function removePage(column: number, row: number) {
   });
 }
 const pageImages = new Map<string, Promise<HTMLImageElement>>();
-async function draw() {
+let scheduledFrame = 0;
+function draw() {
+  generation++;
+  if (scheduledFrame) return;
+  scheduledFrame = requestAnimationFrame(() => { scheduledFrame = 0; void paintFrame(); });
+}
+async function paintFrame() {
   const token = ++generation,
     l = preview.value ?? layout.value,
     el = canvas.value;
@@ -686,9 +692,10 @@ async function draw() {
   const doc = editor.document,
     rect = el.getBoundingClientRect(),
     dpr = devicePixelRatio || 1;
-  el.width = Math.round(rect.width * dpr);
-  el.height = Math.round(rect.height * dpr);
-  const ctx = el.getContext("2d")!;
+  const buffer = document.createElement('canvas');
+  buffer.width = Math.round(rect.width * dpr);
+  buffer.height = Math.round(rect.height * dpr);
+  const ctx = buffer.getContext("2d")!;
   ctx.scale(dpr, dpr);
   ctx.translate(pan.value.x, pan.value.y);
   ctx.scale(zoom.value, zoom.value);
@@ -825,6 +832,10 @@ async function draw() {
       ctx.globalAlpha = 1;
       ctx.strokeRect(x, y, w, h);
     }
+    if(token !== generation || el !== canvas.value)return;
+    if(el.width!==buffer.width)el.width=buffer.width;
+    if(el.height!==buffer.height)el.height=buffer.height;
+    const front=el.getContext('2d')!;front.setTransform(1,0,0,1,0,0);front.clearRect(0,0,el.width,el.height);front.drawImage(buffer,0,0);
   } catch (reason) {
     if (token === generation) error.value = String(reason);
   }
@@ -1105,6 +1116,7 @@ watch(canvas, (el) => {
 });
 onUnmounted(() => {
   generation++;
+  cancelAnimationFrame(scheduledFrame);
   observer?.disconnect();
   unsubscribe?.();
   window.removeEventListener("keydown", keyboard);

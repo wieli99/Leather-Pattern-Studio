@@ -51,3 +51,5 @@ PDF contains all sheets as vector pages, with images embedded. SVG and PNG produ
 Print PDF at **Actual size / 100%** and disable “Fit to page.” Check a printed size guide with a ruler before cutting material. Browser preview zoom does not change exported dimensions. Very large paper may exceed raster memory limits; choose PDF or SVG if PNG generation reports this.
 
 The export libraries, PDF preview worker, and print font are bundled for offline use. See [Files, recovery and offline use](#files). Software browser checks do not replace verification on your physical printer.
+
+Print pointer previews retain the last complete frame while artwork loads, avoiding blank flashes during movement.
