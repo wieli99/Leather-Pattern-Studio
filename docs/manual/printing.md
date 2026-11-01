@@ -55,3 +55,5 @@ The export libraries, PDF preview worker, and print font are bundled for offline
 Print pointer previews retain the last complete frame while artwork loads, avoiding blank flashes during movement.
 
 Selected source rows can also be dragged from Grid objects onto printable paper to import linked copies at the drop point. Dropping outside paper does nothing.
+
+Paper orientation uses two adjacent icon-only choices, portrait and landscape. Hover for labels. Move-drop previews remain visible until the worker accepts the operation.

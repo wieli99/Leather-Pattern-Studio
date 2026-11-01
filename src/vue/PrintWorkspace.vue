@@ -980,12 +980,13 @@ async function up() {
 
   const next = preview.value,
     original = drag?.original;
-  cancel();
-  if (
-    next &&
-    original === editor.document.printLayouts?.find((l) => l.id === next.id)
-  )
+  drag = undefined;
+  marqueePixel = undefined;
+  if (next && original === editor.document.printLayouts?.find(l => l.id === next.id)) {
     await save(next);
+    if (preview.value === next) preview.value = undefined;
+    draw();
+  } else cancel();
 }
 function wheel(event: WheelEvent) {
   const p = pixel(event),
@@ -1211,7 +1212,42 @@ defineExpose({
               >Paper height
               <input v-model="height" required /></label></template
           ><label>Margin <input v-model="margin" required /></label
-          ><button type="button" :aria-label="landscape?'Landscape orientation; switch to portrait':'Portrait orientation; switch to landscape'" @click="landscape=!landscape"><svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" aria-hidden="true"><rect :x="landscape?3:7" :y="landscape?7:3" :width="landscape?24:16" :height="landscape?16:24" rx="1"/></svg>{{landscape?'Landscape':'Portrait'}}</button>
+          ><div
+            class="orientation-segments"
+            role="group"
+            aria-label="Paper orientation"
+          >
+            <button
+              v-for="wide in [false, true]"
+              :key="String(wide)"
+              type="button"
+              :aria-label="wide ? 'Landscape' : 'Portrait'"
+              :title="wide ? 'Landscape' : 'Portrait'"
+              :aria-pressed="landscape === wide"
+              @click="landscape = wide"
+            >
+              <svg
+                width="30"
+                height="30"
+                viewBox="0 0 30 30"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                aria-hidden="true"
+              >
+                <rect
+                  :x="wide ? 3 : 7"
+                  :y="wide ? 7 : 3"
+                  :width="wide ? 24 : 16"
+                  :height="wide ? 16 : 24"
+                  rx="1"
+                />
+                <path
+                  :d="wide ? 'M7 12H23M7 17H23' : 'M11 10H19M11 15H19M11 20H19'"
+                />
+              </svg>
+            </button>
+          </div>
           <p v-if="error" role="alert">{{ error }}</p>
           <div class="print-actions">
             <DialogClose type="button">Cancel</DialogClose
@@ -1684,4 +1720,8 @@ h3 {
   font-size: 12px;
   opacity: 0.8;
 }
+</style>
+
+<style>
+.orientation-segments{display:flex;width:max-content;border:1px solid var(--border);border-radius:5px;overflow:hidden}.orientation-segments button{border-radius:0;padding:6px 12px}.orientation-segments button[aria-pressed=true]{background:color-mix(in srgb,var(--accent) 25%,var(--panel));color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 </style>
