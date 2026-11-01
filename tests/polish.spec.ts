@@ -487,7 +487,7 @@ test("state buttons work on unselected rows and recover after editing", async ({
   await expect(page.locator(".objects .object-select.selected")).toHaveCount(2);
   await page.getByRole("button", { name: "Unlock Rectangle 2", exact: true }).click();
   await page.getByRole("button", { name: "Rectangle 1", exact: true }).click();
-  await page.getByRole("button", { name: "Rectangle 1", exact: true }).click({ modifiers: ["Shift"] });
+  await page.getByRole("button", { name: "Rectangle 1", exact: true }).click({ modifiers: ["Control"] });
   await expect(page.locator(".objects .object-select.selected")).toHaveCount(0);
   await lock.click();
   await expect(page.locator(".objects .object-select.selected")).toHaveCount(0);

@@ -4,7 +4,7 @@ Click an edge or drag an empty area to select fully enclosed outlines. Shift+cli
 
 Alt+click a non-text edge inserts an anchor where supported. Select a single path to drag its anchors. You can keep Alt held while clicking or dragging visible anchors and curve handles. On control point curves, drag handles to shape the curve; double-click an anchor toggles sharp/smooth. Sharp and Smooth buttons are also available in Vertex coordinates.
 
-Delete or Backspace removes the selection, including after clicking an object in the Objects panel. Shift+click object rows to select multiple objects for deletion. While renaming an object, these keys edit its name. Ctrl/⌘+D duplicates the selection. See [transforms](#transforms) to move, rotate, or resize.
+Delete or Backspace removes the selection, including after clicking an object in the Objects panel. Shift-click object rows to select an inclusive range, or Ctrl/⌘-click to toggle individual rows for deletion. While renaming an object, these keys edit its name. Ctrl/⌘+D duplicates the selection. See [transforms](#transforms) to move, rotate, or resize.
 
 Converted stitching paths can be selected in Select mode to edit their geometry. Alt+click inserts an anchor; drag anchors or curve handles to reshape the line. Stitching follows these edits and remains continuous across inserted anchors. Open **Stitch line** to change stitch settings.
 
@@ -26,7 +26,7 @@ Use the eye and lock buttons at the right of any object row to hide/show or lock
 
 ## Object groups
 
-The Objects panel lists the frontmost object first. The folder-plus button (**New Group**) creates a group containing all currently selected objects and groups. With nothing selected, it creates an empty group. **Group Selection** in the context menu or Ctrl/⌘+G also groups the selection. Groups may contain objects and other groups. Each item has only one parent. Click a group name to select its contents; Shift+click adds or removes the group from selection. Canvas clicks still select individual objects.
+The Objects panel lists the frontmost object first. The folder-plus button (**New Group**) creates a group containing all currently selected objects and groups. With nothing selected, it creates an empty group. **Group Selection** in the context menu or Ctrl/⌘+G also groups the selection. Groups may contain objects and other groups. Each item has only one parent. Click a group name to select its contents; Ctrl/⌘-click toggles the group; Shift-click selects a visible row range. Canvas clicks still select individual objects.
 
 Use the arrow to collapse or expand a group. Collapse affects only the panel and is remembered in saved projects and recovery, without adding undo steps. Double-click or F2 renames a group. **Ungroup** keeps its contents in place. Delete on a selected group removes its contents too; locked contents prevent deletion.
 

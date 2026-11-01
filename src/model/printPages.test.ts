@@ -64,4 +64,35 @@ it("rejects moving or partially deleting spanning objects", () => {
   );
   expect(deletePrintPages(doc, shared, ["0,0", "1,0"]).instances).toEqual([]);
 });
-it('allows extending a single page to a negative empty edge',()=>{const single={...l,pages:[{column:0,row:0}]};const moved=movePrintPage(doc,single,{column:0,row:0},{column:-1,row:0},'x');expect(moved.pages).toEqual([{column:-1,row:0}]);expect(moved.instances[0].x).toBe(-95);});
+it("allows extending a single page to a negative empty edge", () => {
+  const single = { ...l, pages: [{ column: 0, row: 0 }] };
+  const moved = movePrintPage(
+    doc,
+    single,
+    { column: 0, row: 0 },
+    { column: -1, row: 0 },
+    "x",
+  );
+  expect(moved.pages).toEqual([{ column: -1, row: 0 }]);
+  expect(moved.instances[0].x).toBe(-95);
+});
+it("refuses row insertion that would tear artwork shared with a stationary row", () => {
+  const shared = {
+    ...l,
+    pages: [
+      { column: 0, row: 1 },
+      { column: 1, row: 0 },
+      { column: 1, row: 1 },
+    ],
+    instances: [{ ...l.instances[0], x: 285, y: 277 }],
+  };
+  expect(() =>
+    movePrintPage(
+      doc,
+      shared,
+      { column: 0, row: 1 },
+      { column: 1, row: 0 },
+      "x",
+    ),
+  ).toThrow("split");
+});

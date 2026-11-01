@@ -26,7 +26,13 @@ import { PanelSelection } from "../model/panelSelection";
 import { flattenObjectTree } from "../model/objectTree";
 const panelSelection = new PanelSelection();
 const e = useEditor();
-watch(()=>e.value.projectEpoch,()=>{panelSelection.anchor=undefined;hoverPreview.value.id=undefined;});
+watch(
+  () => e.value.projectEpoch,
+  () => {
+    panelSelection.anchor = undefined;
+    hoverPreview.value.id = undefined;
+  },
+);
 const naming = ref<string | null>(null),
   draft = ref("");
 const rows = computed(() => {

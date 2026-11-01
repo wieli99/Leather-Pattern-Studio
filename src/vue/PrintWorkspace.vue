@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import ObjectPreview from "./ObjectPreview.vue";
+const hoverPreview = ref<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
+function previewRow(event: PointerEvent, id: string) {
+  if (event.buttons) return;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  hoverPreview.value = { id, x: rect.left, y: rect.top };
+}
 import {
   computed,
   ref,
@@ -49,9 +56,24 @@ import {
   type UnitMode,
 } from "../model/units";
 import PrintExport from "./PrintExport.vue";
+import PanelSection from "./PanelSection.vue";
+import type { SmartGuide } from "../editor/snapping";
+import {
+  snapRotation,
+  unwrapRotation,
+  snapRigidMove,
+} from "../editor/rigidTransform";
+import {
+  pageKey,
+  pageContents,
+  numberedPages,
+  deletePrintPages,
+  movePrintPage,
+} from "../model/printPages";
 import { PanelSelection } from "../model/panelSelection";
-const panelSelection=new PanelSelection(),sourceSelection=new PanelSelection();
-const selectedSources=ref<string[]>([]);
+const panelSelection = new PanelSelection(),
+  sourceSelection = new PanelSelection();
+const selectedSources = ref<string[]>([]);
 const emit = defineEmits<{ active: [value: boolean] }>();
 const e = useEditor(),
   active = ref(""),
@@ -92,10 +114,16 @@ const views = new Map<
   string,
   { zoom: number; pan: Point; selection: string[] }
 >();
+const snapOverlay = shallowRef<{ target?: Point; guides: SmartGuide[] }>({
+  guides: [],
+});
 const preview = shallowRef<PrintLayout>(),
   error = ref(""),
   exporting = ref(false),
   busy = ref(false);
+const canManageObjects = computed(
+  () => !busy.value && tool.value === "select" && !preview.value,
+);
 const creating = ref(false),
   settingsId = ref(""),
   format = ref("A4"),
@@ -105,13 +133,119 @@ const creating = ref(false),
   margin = ref("10"),
   name = ref(""),
   landscape = ref(false);
-const nameEdited=ref(false);
-watch(format,value=>{if(!nameEdited.value)name.value=value;});
+const nameEdited = ref(false);
+watch(format, (value) => {
+  if (!nameEdited.value) name.value = value;
+});
+const axisLock = ref<"x" | "y">();
+const axes = ref<"world" | "local">("local"),
+  placingPivot = ref(false),
+  customPivot = ref<Point>();
+function selectionPivot() {
+  if (drag?.rotate) return drag.pivot;
+  if (customPivot.value) return customPivot.value;
+  const l = preview.value ?? layout.value;
+  if (!l) return { x: 0, y: 0 };
+  const ids = new Set(printDescendants(l, selected.value));
+  const shapes = resolvedPrintItems(editor.document, l)
+    .filter((i) => ids.has(i.instance.id))
+    .map((i) => i.shape);
+  const b = bounds(shapes, l.units);
+  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+}
+function worldPixel(p: Point) {
+  const l = layout.value!;
+  const size = printableSize(l),
+    column = Math.floor(p.x / size.width),
+    row = Math.floor(p.y / size.height);
+  return {
+    x:
+      pan.value.x +
+      (column * (l.width + gutter) + l.margin + p.x - column * size.width) *
+        zoom.value,
+    y:
+      pan.value.y +
+      (row * (l.height + gutter) + l.margin + p.y - row * size.height) *
+        zoom.value,
+  };
+}
+function gizmoAngle() {
+  const l = preview.value ?? layout.value;
+  const ids = l ? printDescendants(l, selected.value) : [];
+  return axes.value === "local" && ids.length === 1
+    ? (l!.instances.find((i) => i.id === ids[0])!.rotation * Math.PI) / 180
+    : 0;
+}
+function gizmoAt(p: Point) {
+  if (!selected.value.length || !movableSelection().length) return;
+  const pivot = worldPixel(selectionPivot()),
+    dx = p.x - pivot.x,
+    dy = p.y - pivot.y;
+  if (tool.value !== "move" && Math.abs(Math.hypot(dx, dy) - 60) < 9)
+    return "rotate";
+  if (tool.value === "move") {
+    const a = gizmoAngle();
+    const x = dx * Math.cos(a) + dy * Math.sin(a),
+      y = -dx * Math.sin(a) + dy * Math.cos(a);
+    if (Math.hypot(x - 72, y) < 12) return "x";
+    if (Math.hypot(x, y + 72) < 12) return "y";
+    if (Math.hypot(x, y) < 12) return "move";
+  }
+}
+function chooseTool(value: "select" | "move" | "rotate") {
+  if (busy.value || editor.busy) return;
+  cancel();
+  tool.value = value;
+  axisLock.value = undefined;
+  moveX.value = moveY.value = turn.value = "0";
+  customPivot.value = undefined;
+  numericBase = layout.value;
+  numericPivot = selectionPivot();
+  numericOrientation = gizmoAngle();
+  if (value === "rotate") customPivot.value = { ...numericPivot };
+}
 const renameId = ref(""),
   renameValue = ref("");
 const moveX = ref("0"),
   moveY = ref("0"),
   turn = ref("0");
+let numericBase: PrintLayout | undefined,
+  numericPivot: Point = { x: 0, y: 0 },
+  numericOrientation = 0,
+  updatingNumeric = false;
+watch(
+  [moveX, moveY, turn],
+  () => {
+    if (updatingNumeric || tool.value === "select" || !numericBase) return;
+    const x = parseLength(moveX.value, numericBase.units),
+      y = parseLength(moveY.value, numericBase.units),
+      angle = String(turn.value).trim() ? Number(turn.value) : NaN;
+    if (x === null || y === null || !Number.isFinite(angle)) {
+      error.value = "Enter finite distances and rotation";
+      return;
+    }
+    error.value = "";
+    preview.value = transformPrintNodes(
+      numericBase,
+      movableSelection(),
+      x * Math.cos(numericOrientation) - y * Math.sin(numericOrientation),
+      x * Math.sin(numericOrientation) + y * Math.cos(numericOrientation),
+      angle,
+      numericPivot,
+    );
+    draw();
+  },
+  { flush: "sync" },
+);
+function rebaseNumeric() {
+  numericBase = preview.value ?? layout.value;
+  numericPivot = selectionPivot();
+  numericOrientation = gizmoAngle();
+  updatingNumeric = true;
+  moveX.value = moveY.value = turn.value = "0";
+  updatingNumeric = false;
+}
+watch(axes, rebaseNumeric);
 let observer: ResizeObserver | undefined,
   unsubscribe: (() => void) | undefined,
   generation = 0;
@@ -124,11 +258,60 @@ let drag:
       pan: Point;
       rotate: boolean;
       marquee: boolean;
+      axis?: "x" | "y";
+      lastAngle?: number;
+      accumulated?: number;
+      snapAnchor?: Point;
+      numericStart?: { x: number; y: number; angle: number };
       pivot: Point;
     }
   | undefined;
+const selectedPages = ref<string[]>([]),
+  controlHeld = ref(false);
+const listedPages = computed(() =>
+  layout.value ? pageContents(e.value.document, layout.value) : [],
+);
+let pageGesture:
+  | {
+      source: { column: number; row: number };
+      pixel: Point;
+      original: PrintLayout;
+      dragged: boolean;
+      selection: string[];
+    }
+  | undefined;
+function paperAt(p: Point, l: PrintLayout) {
+  const x = (p.x - pan.value.x) / zoom.value,
+    y = (p.y - pan.value.y) / zoom.value;
+  return l.pages.find((page) => {
+    const q = pagePosition(page, l);
+    return x >= q.x && x <= q.x + l.width && y >= q.y && y <= q.y + l.height;
+  });
+}
+function controlUp(event: KeyboardEvent) {
+  if (!event.ctrlKey) {
+    controlHeld.value = false;
+    draw();
+  }
+}
+function clearControl() {
+  controlHeld.value = false;
+  cancel();
+}
 let marqueePixel: Point | undefined;
 function cancel() {
+  snapOverlay.value = { guides: [] };
+  error.value = "";
+  numericBase = undefined;
+  updatingNumeric = true;
+  moveX.value = moveY.value = turn.value = "0";
+  updatingNumeric = false;
+  tool.value = "select";
+  customPivot.value = undefined;
+  placingPivot.value = false;
+  sourceImport = undefined;
+  if (pageGesture) selectedPages.value = pageGesture.selection;
+  pageGesture = undefined;
   drag = undefined;
   marqueePixel = undefined;
   preview.value = undefined;
@@ -149,6 +332,7 @@ async function switchTab(id: string) {
   zoom.value = view?.zoom ?? 2;
   pan.value = view?.pan ?? { x: 50, y: 50 };
   selected.value = view?.selection ?? [];
+  selectedPages.value = [];
   editor.printLayoutActive = !!id;
   emit("active", !!id);
   await nextTick();
@@ -160,6 +344,10 @@ watch(
     cancel();
     active.value = "";
     selected.value = [];
+    selectedSources.value = [];
+    selectedPages.value = [];
+    controlHeld.value = false;
+    panelSelection.anchor = sourceSelection.anchor = undefined;
     views.clear();
     exporting.value = false;
     emit("active", false);
@@ -205,7 +393,7 @@ function openCreate() {
   height.value = editableLength(297, units.value);
   margin.value = editableLength(10, units.value);
   name.value = "A4";
-  nameEdited.value=false;
+  nameEdited.value = false;
   landscape.value = false;
   error.value = "";
   creating.value = true;
@@ -220,7 +408,7 @@ function openSettings() {
   height.value = editableLength(l.height, l.units);
   margin.value = editableLength(l.margin, l.units);
   name.value = l.name;
-  nameEdited.value=true;
+  nameEdited.value = true;
   landscape.value = l.width > l.height;
   creating.value = true;
 }
@@ -241,7 +429,7 @@ async function create() {
     const m = parseLength(margin.value, units.value);
     if (w === null || h === null || m === null)
       throw Error("Enter valid paper dimensions and margin");
-    if (landscape.value !== (w > h)) [w, h] = [h, w];
+    if (landscape.value !== w > h) [w, h] = [h, w];
     printableSize({ width: w, height: h, margin: m });
     if (settingsId.value) {
       const old = layouts.value.find((l) => l.id === settingsId.value)!;
@@ -351,12 +539,171 @@ function toggleCollapse(id: string) {
   else next.add(id);
   collapsed.value = next;
 }
-function select(id:string,event?:MouseEvent){selected.value=panelSelection.select(visibleRows.value.map(r=>r.node.id),selected.value,id,event);void draw();}
-function selectSource(id:string,event:MouseEvent){selectedSources.value=sourceSelection.select(sourceRows.value.map(r=>r.node.id),selectedSources.value,id,event);}
-function sourceDrag(event:DragEvent,id:string){if(!selectedSources.value.includes(id))selectedSources.value=[id];event.dataTransfer?.setData('application/x-leather-source',JSON.stringify(selectedSources.value));}
-async function importDrop(event:DragEvent){
-  const l=layout.value;if(!l||!event.dataTransfer)return;
-  try{const ids:unknown=JSON.parse(event.dataTransfer.getData('application/x-leather-source'));if(!Array.isArray(ids)||ids.some(id=>typeof id!=='string'))return;const p=pixel(event);if(!isPrintablePixel(p,l))return;const world=worldFromPixel(p);let next=l;const roots=ids.filter(id=>!ids.some(parent=>{if(parent===id)return false;const node=findSource(sourceNodes(editor.document),parent);return node?.kind==='group'&&!!findSource(node.children,id);}));for(const id of roots)next=importPrintNode(editor.document,next,id,world.x,world.y);await save(next);}catch(reason){error.value=String(reason);}
+function select(id: string, event?: MouseEvent, canvasClick = false) {
+  if (tool.value !== "select") return;
+  customPivot.value = undefined;
+  selected.value = canvasClick
+    ? event && (event.shiftKey || event.ctrlKey || event.metaKey)
+      ? selected.value.includes(id)
+        ? selected.value.filter((i) => i !== id)
+        : [...selected.value, id]
+      : [id]
+    : panelSelection.select(
+        visibleRows.value.map((r) => r.node.id),
+        selected.value,
+        id,
+        event,
+      );
+  draw();
+}
+function selectSource(id: string, event: MouseEvent) {
+  selectedSources.value = sourceSelection.select(
+    sourceRows.value.map((r) => r.node.id),
+    selectedSources.value,
+    id,
+    event,
+  );
+}
+function importAt(l: PrintLayout, ids: string[], point: Point) {
+  const roots = ids.filter(
+    (id) =>
+      !ids.some(
+        (parent) =>
+          parent !== id &&
+          (() => {
+            const n = findSource(sourceNodes(editor.document), parent);
+            return n?.kind === "group" && !!findSource(n.children, id);
+          })(),
+      ),
+  );
+  const entries = roots.map((id) => {
+    const node = findSource(sourceNodes(editor.document), id);
+    if (!node) throw Error("Source no longer exists");
+    const shapes = editor.document.shapes.filter((s) =>
+      sourceShapeIds(node).includes(s.id),
+    );
+    return {
+      id,
+      shapes,
+      box: shapes.length
+        ? bounds(shapes, l.units)
+        : { x: 0, y: 0, width: 0, height: 0 },
+    };
+  });
+  const shapes = entries.flatMap((e) => e.shapes),
+    whole = shapes.length
+      ? bounds(shapes, l.units)
+      : { x: 0, y: 0, width: 0, height: 0 };
+  let next = l;
+  for (const e of entries)
+    next = importPrintNode(
+      editor.document,
+      next,
+      e.id,
+      point.x + e.box.x + e.box.width / 2 - whole.x - whole.width / 2,
+      point.y + e.box.y + e.box.height / 2 - whole.y - whole.height / 2,
+    );
+  return next;
+}
+let sourceImport:
+  | {
+      original: PrintLayout;
+      document: typeof editor.document;
+      base: PrintLayout;
+      ids: string[];
+    }
+  | undefined;
+function sourceDrag(event: DragEvent, id: string) {
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+  cancel();
+  hoverPreview.value.id = undefined;
+  if (!selectedSources.value.includes(id)) selectedSources.value = [id];
+  event.dataTransfer?.setData(
+    "application/x-leather-source",
+    JSON.stringify(selectedSources.value),
+  );
+  const l = layout.value;
+  if (!l) return;
+  try {
+    const base = importAt(l, selectedSources.value, { x: 0, y: 0 });
+    sourceImport = {
+      original: l,
+      document: editor.document,
+      base,
+      ids: printTree(base)
+        .filter((n) => !printTree(l).some((old) => old.id === n.id))
+        .map((n) => n.id),
+    };
+  } catch (reason) {
+    error.value = String(reason);
+  }
+}
+function sourceOver(event: DragEvent) {
+  if (!sourceImport || !layout.value) return;
+  if (sourceImport.document !== editor.document) {
+    sourceEnd();
+    error.value = "Project changed during import; drag again";
+    return;
+  }
+  const p = pixel(event);
+  if (!isPrintablePixel(p, layout.value)) {
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+    preview.value = undefined;
+    draw();
+    return;
+  }
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  const world = worldFromPixel(p);
+  preview.value = transformPrintNodes(
+    sourceImport.base,
+    sourceImport.ids,
+    world.x,
+    world.y,
+    0,
+  );
+  draw();
+}
+function sourceLeave() {
+  if (sourceImport) {
+    preview.value = undefined;
+    draw();
+  }
+}
+function sourceEnd() {
+  if (sourceImport) {
+    sourceImport = undefined;
+    preview.value = undefined;
+    draw();
+  }
+}
+async function importDrop(event: DragEvent) {
+  const l = layout.value;
+  if (!l || !event.dataTransfer || !sourceImport) return;
+  try {
+    const ids: unknown = JSON.parse(
+      event.dataTransfer.getData("application/x-leather-source"),
+    );
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) return;
+    const p = pixel(event);
+    if (!isPrintablePixel(p, l)) {
+      sourceEnd();
+      return;
+    }
+    if (sourceImport && sourceImport.document !== editor.document)
+      throw Error("Project changed during import; drag again");
+    const next =
+      sourceImport && preview.value
+        ? preview.value
+        : importAt(l, ids, worldFromPixel(p));
+    sourceImport = undefined;
+    preview.value = next;
+    await save(next);
+    preview.value = undefined;
+    draw();
+  } catch (reason) {
+    sourceEnd();
+    error.value = String(reason);
+  }
 }
 function nodeName(node: PrintNode) {
   if (node.kind === "group") return node.name;
@@ -368,6 +715,7 @@ function nodeName(node: PrintNode) {
   );
 }
 function editState(id: string, key: "hidden" | "locked") {
+  if (!canManageObjects.value) return;
   const l = layout.value;
   if (!l) return;
   const node = rows.value.find((r) => r.node.id === id)?.node;
@@ -398,6 +746,7 @@ function movableSelection() {
   });
 }
 function deleteSelection() {
+  if (!canManageObjects.value) return;
   const l = layout.value;
   if (!l) return;
   const ids = movableSelection();
@@ -405,11 +754,13 @@ function deleteSelection() {
   selected.value = [];
 }
 function renameStart(node: PrintNode) {
+  if (!canManageObjects.value) return;
   if (rows.value.find((r) => r.node.id === node.id)?.locked) return;
   renameId.value = node.id;
   renameValue.value = nodeName(node);
 }
 function renameFinish() {
+  if (!canManageObjects.value) return;
   const l = layout.value,
     id = renameId.value,
     value = renameValue.value.trim();
@@ -426,6 +777,7 @@ function renameFinish() {
   });
 }
 function duplicate() {
+  if (!canManageObjects.value) return;
   const l = layout.value;
   if (!l) return;
   const selectedIds = new Set(selected.value),
@@ -460,6 +812,7 @@ function duplicate() {
   selected.value = newIds;
 }
 function newGroup() {
+  if (!canManageObjects.value) return;
   const l = layout.value;
   if (!l) return;
   const ids = new Set(movableSelection());
@@ -493,21 +846,22 @@ function newGroup() {
   }
 }
 function applyTransform() {
-  const l = layout.value;
-  if (!l) return;
-  const x = parseLength(moveX.value, l.units),
-    y = parseLength(moveY.value, l.units),
-    angle = Number(turn.value);
-  if (x === null || y === null || !Number.isFinite(angle)) {
-    error.value = "Enter finite distances and rotation";
+  const next = preview.value;
+  if (!next) {
+    cancel();
     return;
   }
-  const ids = movableSelection();
-  void save(transformPrintNodes(l, ids, x, y, angle));
-  moveX.value = moveY.value = turn.value = "0";
+  if (error.value) return;
+  void save(next).then(() => {
+    if (error.value) return;
+    preview.value = undefined;
+    cancel();
+    draw();
+  });
 }
 const dragged = ref("");
 function drop(target: string, inside: boolean) {
+  if (!canManageObjects.value) return;
   const l = layout.value,
     id = dragged.value;
   dragged.value = "";
@@ -690,7 +1044,10 @@ let scheduledFrame = 0;
 function draw() {
   generation++;
   if (scheduledFrame) return;
-  scheduledFrame = requestAnimationFrame(() => { scheduledFrame = 0; void paintFrame(); });
+  scheduledFrame = requestAnimationFrame(() => {
+    scheduledFrame = 0;
+    void paintFrame();
+  });
 }
 async function paintFrame() {
   const token = ++generation,
@@ -700,7 +1057,7 @@ async function paintFrame() {
   const doc = editor.document,
     rect = el.getBoundingClientRect(),
     dpr = devicePixelRatio || 1;
-  const buffer = document.createElement('canvas');
+  const buffer = document.createElement("canvas");
   buffer.width = Math.round(rect.width * dpr);
   buffer.height = Math.round(rect.height * dpr);
   const ctx = buffer.getContext("2d")!;
@@ -733,6 +1090,29 @@ async function paintFrame() {
       ctx.strokeStyle = "#999";
       ctx.lineWidth = 1 / zoom.value;
       ctx.strokeRect(p.x, p.y, l.width, l.height);
+      if (selectedPages.value.includes(pageKey(page))) {
+        ctx.save();
+        ctx.strokeStyle = "#d28d40";
+        ctx.lineWidth = 3 / zoom.value;
+        ctx.strokeRect(p.x, p.y, l.width, l.height);
+        ctx.restore();
+      }
+      if (controlHeld.value) {
+        ctx.save();
+        ctx.fillStyle = "#111";
+        ctx.font = `bold ${20 / zoom.value}px sans-serif`;
+        ctx.fillText(
+          String(
+            numberedPages(l).findIndex(
+              (candidate) => pageKey(candidate) === pageKey(page),
+            ) + 1,
+          ),
+          p.x + 8 / zoom.value,
+          p.y + 25 / zoom.value,
+        );
+        ctx.restore();
+      }
+
       ctx.save();
       ctx.strokeStyle = "#aaa";
       ctx.setLineDash([2 / zoom.value, 3 / zoom.value]);
@@ -828,6 +1208,73 @@ async function paintFrame() {
     ctx.fillRect(0, 0, 20, 20);
     ctx.fillStyle = foreground;
     ctx.fillText(l.units === "mm" ? "mm" : "in", 2, 12);
+    if (snapOverlay.value.target) {
+      const target = snapOverlay.value.target,
+        p = worldPixel(target);
+      ctx.save();
+      ctx.strokeStyle = css.getPropertyValue("--accent").trim() || "#e6b07c";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      for (const guide of snapOverlay.value.guides) {
+        const a = worldPixel(
+            guide.axis === "x"
+              ? { x: guide.coordinate, y: Math.min(guide.bounds.y, target.y) }
+              : { x: Math.min(guide.bounds.x, target.x), y: guide.coordinate },
+          ),
+          b = worldPixel(
+            guide.axis === "x"
+              ? {
+                  x: guide.coordinate,
+                  y: Math.max(guide.bounds.y + guide.bounds.height, target.y),
+                }
+              : {
+                  x: Math.max(guide.bounds.x + guide.bounds.width, target.x),
+                  y: guide.coordinate,
+                },
+          );
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (selected.value.length && movableSelection().length) {
+      const p = worldPixel(selectionPivot());
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.strokeStyle = css.getPropertyValue("--accent").trim() || "#e6b07c";
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = 1.5;
+      if (tool.value !== "move") {
+        ctx.beginPath();
+        ctx.arc(0, 0, 60, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(60, 0, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.rotate(gizmoAngle());
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(72, 0);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -72);
+        ctx.moveTo(64, -5);
+        ctx.lineTo(72, 0);
+        ctx.lineTo(64, 5);
+        ctx.moveTo(-5, -64);
+        ctx.lineTo(0, -72);
+        ctx.lineTo(5, -64);
+        ctx.stroke();
+        ctx.fillRect(-4, -4, 8, 8);
+      }
+      ctx.restore();
+    }
     if (drag?.marquee && marqueePixel) {
       ctx.strokeStyle = css.getPropertyValue("--accent").trim() || "#e6b07c";
       ctx.fillStyle = ctx.strokeStyle;
@@ -840,21 +1287,55 @@ async function paintFrame() {
       ctx.globalAlpha = 1;
       ctx.strokeRect(x, y, w, h);
     }
-    if(token !== generation || el !== canvas.value)return;
-    if(el.width!==buffer.width)el.width=buffer.width;
-    if(el.height!==buffer.height)el.height=buffer.height;
-    const front=el.getContext('2d')!;front.setTransform(1,0,0,1,0,0);front.clearRect(0,0,el.width,el.height);front.drawImage(buffer,0,0);
+    if (token !== generation || el !== canvas.value) return;
+    if (el.width !== buffer.width) el.width = buffer.width;
+    if (el.height !== buffer.height) el.height = buffer.height;
+    const front = el.getContext("2d")!;
+    front.setTransform(1, 0, 0, 1, 0, 0);
+    front.clearRect(0, 0, el.width, el.height);
+    front.drawImage(buffer, 0, 0);
   } catch (reason) {
     if (token === generation) error.value = String(reason);
   }
 }
 function down(event: PointerEvent) {
+  if (busy.value || editor.busy) return;
   if (event.button !== 0 && event.button !== 1) return;
   canvas.value!.focus();
   canvas.value!.setPointerCapture(event.pointerId);
   const p = pixel(event),
     world = worldFromPixel(p),
-    l = layout.value!;
+    l = preview.value ?? layout.value!;
+  if (placingPivot.value) {
+    customPivot.value = world;
+    rebaseNumeric();
+    placingPivot.value = false;
+    draw();
+    return;
+  }
+  const handle = gizmoAt(p);
+  if (handle) {
+    if (handle === "rotate" && !customPivot.value)
+      customPivot.value = selectionPivot();
+    drag = {
+      pixel: p,
+      world,
+      original: l,
+      ids: movableSelection(),
+      pan: { ...pan.value },
+      rotate: handle === "rotate",
+      axis: handle === "x" || handle === "y" ? handle : axisLock.value,
+      marquee: false,
+      pivot: selectionPivot(),
+      numericStart: {
+        x: parseLength(moveX.value, l.units) ?? 0,
+        y: parseLength(moveY.value, l.units) ?? 0,
+        angle: Number(turn.value) || 0,
+      },
+    };
+    draw();
+    return;
+  }
   const hit = [...resolvedPrintItems(editor.document, l)]
     .reverse()
     .find(
@@ -870,9 +1351,44 @@ function down(event: PointerEvent) {
             world,
           )),
     );
+  const front = resolvedPrintItems(editor.document, l).some(
+    (i) =>
+      !i.hidden &&
+      (hitTest(i.shape, world, 5 / zoom.value, l.units) ||
+        contains(
+          i.shape.kind === "text"
+            ? { ...i.shape, kind: "rectangle", radius: 0 }
+            : i.shape,
+          world,
+        )) &&
+      isPrintablePixel(p, l),
+  );
+  const paper = paperAt(p, l);
+  if (event.ctrlKey && !front && paper && event.button === 0) {
+    const original = layout.value!;
+    cancel();
+    controlHeld.value = true;
+    selected.value = [];
+    pageGesture = {
+      source: paper,
+      pixel: p,
+      original,
+      dragged: false,
+      selection: [...selectedPages.value],
+    };
+    draw();
+    return;
+  }
+  selectedPages.value = [];
+  if (
+    tool.value !== "select" &&
+    hit &&
+    !printDescendants(l, selected.value).includes(hit.instance.id)
+  )
+    return;
   if (event.button === 0 && !editor.space && hit) {
     if (!printDescendants(l, selected.value).includes(hit.instance.id))
-      select(hit.instance.id, event);
+      select(hit.instance.id, event, true);
   } else if (event.button === 0 && !editor.space && !event.shiftKey)
     selected.value = [];
   const ids =
@@ -880,23 +1396,101 @@ function down(event: PointerEvent) {
   const items = l.instances.filter((i) =>
     printDescendants(l, ids).includes(i.id),
   );
-  const pivot = {
-    x: items.reduce((s, i) => s + i.x, 0) / (items.length || 1),
-    y: items.reduce((s, i) => s + i.y, 0) / (items.length || 1),
-  };
+  const pivot = selectionPivot();
   drag = {
     pixel: p,
     world,
     original: l,
     ids: [...ids],
     pan: { ...pan.value },
-    rotate: tool.value === "rotate",
+    rotate: false,
+    axis: axisLock.value,
     marquee: !hit && event.button === 0 && !editor.space,
     pivot,
+    numericStart: {
+      x: parseLength(moveX.value, l.units) ?? 0,
+      y: parseLength(moveY.value, l.units) ?? 0,
+      angle: Number(turn.value) || 0,
+    },
   };
   void draw();
 }
 function move(event: PointerEvent) {
+  if (pageGesture) {
+    const p = pixel(event),
+      g = pageGesture;
+    if (Math.hypot(p.x - g.pixel.x, p.y - g.pixel.y) < 6 && !g.dragged) return;
+    g.dragged = true;
+    const l = g.original,
+      x = (p.x - pan.value.x) / zoom.value,
+      y = (p.y - pan.value.y) / zoom.value;
+    const nearest = [...l.pages].sort((a, b) => {
+      const q = pagePosition(a, l),
+        r = pagePosition(b, l);
+      return (
+        Math.hypot(x - q.x - l.width / 2, y - q.y - l.height / 2) -
+        Math.hypot(x - r.x - l.width / 2, y - r.y - l.height / 2)
+      );
+    })[0];
+    const q = pagePosition(nearest, l),
+      edges = [
+        {
+          distance: Math.abs(x - q.x),
+          axis: "x" as const,
+          target: {
+            ...nearest,
+            column:
+              nearest.column -
+              (l.pages.some(
+                (p) => p.column === nearest.column - 1 && p.row === nearest.row,
+              )
+                ? 0
+                : 1),
+          },
+        },
+        {
+          distance: Math.abs(x - q.x - l.width),
+          axis: "x" as const,
+          target: { ...nearest, column: nearest.column + 1 },
+        },
+        {
+          distance: Math.abs(y - q.y),
+          axis: "y" as const,
+          target: {
+            ...nearest,
+            row:
+              nearest.row -
+              (l.pages.some(
+                (p) => p.column === nearest.column && p.row === nearest.row - 1,
+              )
+                ? 0
+                : 1),
+          },
+        },
+        {
+          distance: Math.abs(y - q.y - l.height),
+          axis: "y" as const,
+          target: { ...nearest, row: nearest.row + 1 },
+        },
+      ].sort((a, b) => a.distance - b.distance);
+    try {
+      preview.value = movePrintPage(
+        editor.document,
+        l,
+        g.source,
+        edges[0].target,
+        edges[0].axis,
+      );
+      error.value = "";
+      selectedPages.value = [pageKey(edges[0].target)];
+    } catch (reason) {
+      preview.value = undefined;
+      selectedPages.value = g.selection;
+      error.value = String(reason);
+    }
+    draw();
+    return;
+  }
   if (!drag) return;
   const p = pixel(event);
   if (drag.marquee) {
@@ -912,48 +1506,103 @@ function move(event: PointerEvent) {
     void draw();
     return;
   }
+  snapOverlay.value = { guides: [] };
   const world = worldFromPixel(p);
   let dx = world.x - drag.world.x,
     dy = world.y - drag.world.y,
     angle = 0;
   if (drag.rotate) {
-    angle =
-      ((Math.atan2(world.y - drag.pivot.y, world.x - drag.pivot.x) -
-        Math.atan2(drag.world.y - drag.pivot.y, drag.world.x - drag.pivot.x)) *
-        180) /
-      Math.PI;
-    if (event.shiftKey) angle = Math.round(angle / 15) * 15;
+    const theta = Math.atan2(world.y - drag.pivot.y, world.x - drag.pivot.x);
+    drag.accumulated =
+      (drag.accumulated ?? 0) +
+      unwrapRotation(
+        drag.lastAngle ??
+          Math.atan2(drag.world.y - drag.pivot.y, drag.world.x - drag.pivot.x),
+        theta,
+      );
+    drag.lastAngle = theta;
+    angle = snapRotation(drag.accumulated, event);
     dx = dy = 0;
   } else {
-    if (snap.value && !event.altKey) {
-      const grid = editor.gridSize;
-      dx = Math.round(dx / grid) * grid;
-      dy = Math.round(dy / grid) * grid;
-    }
-    if (event.shiftKey) {
-      if (Math.abs(dx) > Math.abs(dy)) dy = 0;
-      else dx = 0;
-    }
-    if (objectSnap.value && !event.altKey) {
-      const affected = new Set(printDescendants(drag.original, drag.ids)),
-        moving = drag.original.instances.find((i) => affected.has(i.id));
-      if (moving) {
-        const other = drag.original.instances.filter(
-          (i) => !affected.has(i.id) && !i.hidden,
-        );
-        for (const i of other) {
-          if (Math.abs(i.x - moving.x - dx) < 5 / zoom.value)
-            dx = i.x - moving.x;
-          if (Math.abs(i.y - moving.y - dy) < 5 / zoom.value)
-            dy = i.y - moving.y;
-        }
-      }
+    if (!event.altKey) {
+      const items = resolvedPrintItems(editor.document, drag.original).filter(
+        (i) => !i.hidden,
+      );
+      const result = snapRigidMove(
+        items.map((i) => i.shape),
+        printDescendants(drag.original, drag.ids),
+        { x: dx, y: dy },
+        {
+          grid: snap.value,
+          objects: objectSnap.value,
+          gridSize: editor.gridSize,
+          tolerance: 8 / zoom.value,
+          anchor: drag.snapAnchor,
+        },
+      );
+      dx = result.delta.x;
+      dy = result.delta.y;
+      drag.snapAnchor = result.anchor;
+      snapOverlay.value = { target: result.target, guides: result.guides };
     }
   }
-  preview.value = transformPrintNodes(drag.original, drag.ids, dx, dy, angle);
+  if (drag.axis) {
+    snapOverlay.value = { guides: [] };
+    const a = gizmoAngle(),
+      ux = drag.axis === "x" ? Math.cos(a) : -Math.sin(a),
+      uy = drag.axis === "x" ? Math.sin(a) : Math.cos(a),
+      distance = dx * ux + dy * uy;
+    dx = distance * ux;
+    dy = distance * uy;
+  }
+  if (tool.value !== "select") {
+    updatingNumeric = true;
+    const base = drag.numericStart ?? { x: 0, y: 0, angle: 0 },
+      a = numericOrientation;
+    moveX.value = editableLength(
+      base.x + dx * Math.cos(a) + dy * Math.sin(a),
+      drag.original.units,
+    );
+    moveY.value = editableLength(
+      base.y - dx * Math.sin(a) + dy * Math.cos(a),
+      drag.original.units,
+    );
+    turn.value = String(base.angle + angle);
+    updatingNumeric = false;
+  }
+  preview.value = transformPrintNodes(
+    drag.original,
+    drag.ids,
+    dx,
+    dy,
+    angle,
+    drag.pivot,
+  );
   void draw();
 }
 async function up() {
+  snapOverlay.value = { guides: [] };
+  if (pageGesture) {
+    const g = pageGesture,
+      next = preview.value;
+    pageGesture = undefined;
+    if (!g.dragged) {
+      const key = pageKey(g.source);
+      selectedPages.value = selectedPages.value.includes(key)
+        ? selectedPages.value.filter((k) => k !== key)
+        : [...selectedPages.value, key];
+      draw();
+      return;
+    }
+    if (next) {
+      await save(next);
+      preview.value = undefined;
+      selectedPages.value = [];
+    }
+    draw();
+    return;
+  }
+
   if (drag?.marquee && marqueePixel) {
     const end = worldFromPixel(marqueePixel),
       start = drag.world;
@@ -980,9 +1629,27 @@ async function up() {
 
   const next = preview.value,
     original = drag?.original;
+  if (next && drag && !drag.rotate && customPivot.value) {
+    const id = printDescendants(drag.original, drag.ids)[0],
+      before = drag.original.instances.find((i) => i.id === id),
+      after = next.instances.find((i) => i.id === id);
+    if (before && after)
+      customPivot.value = {
+        x: customPivot.value.x + after.x - before.x,
+        y: customPivot.value.y + after.y - before.y,
+      };
+  }
   drag = undefined;
   marqueePixel = undefined;
-  if (next && original === editor.document.printLayouts?.find(l => l.id === next.id)) {
+  if (next && tool.value !== "select") {
+    draw();
+    return;
+  }
+  if (
+    next &&
+    original === editor.document.printLayouts?.find((l) => l.id === next.id)
+  ) {
+    // Keep the final pointer preview visible until the worker accepts the commit.
     await save(next);
     if (preview.value === next) preview.value = undefined;
     draw();
@@ -1021,6 +1688,10 @@ function fit() {
   void draw();
 }
 function keyboard(event: KeyboardEvent) {
+  if (layout.value && event.key === "Control") {
+    controlHeld.value = true;
+    draw();
+  }
   if (
     !layout.value ||
     event.defaultPrevented ||
@@ -1050,6 +1721,17 @@ function keyboard(event: KeyboardEvent) {
     editor.space = true;
     return;
   }
+  if (key === "enter" && tool.value !== "select") {
+    event.preventDefault();
+    applyTransform();
+    return;
+  }
+  if ((key === "x" || key === "y") && tool.value === "move") {
+    axisLock.value = key;
+    if (drag) drag.axis = key;
+    draw();
+    return;
+  }
   if (key === "escape") {
     cancel();
     selected.value = [];
@@ -1076,7 +1758,16 @@ function keyboard(event: KeyboardEvent) {
   }
   if (key === "delete" || key === "backspace") {
     event.preventDefault();
-    deleteSelection();
+    if (selectedPages.value.length) {
+      try {
+        void save(
+          deletePrintPages(editor.document, layout.value, selectedPages.value),
+        );
+        selectedPages.value = [];
+      } catch (reason) {
+        error.value = String(reason);
+      }
+    } else deleteSelection();
     return;
   }
   if (key === "f") {
@@ -1084,11 +1775,15 @@ function keyboard(event: KeyboardEvent) {
     fit();
     return;
   }
-  if (key === "g") tool.value = "move";
-  if (key === "e") tool.value = "rotate";
-  if (key === "v") tool.value = "select";
+  if (key === "g") chooseTool("move");
+  if (key === "e") chooseTool("rotate");
+  if (key === "v") {
+    if (tool.value !== "select") placingPivot.value = true;
+    else chooseTool("select");
+  }
   if (["arrowleft", "arrowright", "arrowup", "arrowdown"].includes(key)) {
     event.preventDefault();
+    if (!canManageObjects.value) return;
     const step =
       (layout.value.units === "mm" ? 1 : 25.4 / 16) * (event.shiftKey ? 10 : 1);
     void save(
@@ -1106,6 +1801,14 @@ onMounted(() => {
   observer = new ResizeObserver(() => void draw());
   unsubscribe = editor.subscribe(() => {
     if (
+      pageGesture &&
+      editor.document.printLayouts?.find((l) => l.id === active.value) !==
+        pageGesture.original
+    ) {
+      cancel();
+      error.value = "Layout changed during page movement; try again";
+    }
+    if (
       drag &&
       editor.document.printLayouts?.find((l) => l.id === active.value) !==
         drag.original
@@ -1114,7 +1817,8 @@ onMounted(() => {
     void draw();
   });
   window.addEventListener("keydown", keyboard);
-  window.addEventListener("blur", cancel);
+  window.addEventListener("blur", clearControl);
+  window.addEventListener("keyup", controlUp);
 });
 watch(canvas, (el) => {
   observer?.disconnect();
@@ -1129,7 +1833,8 @@ onUnmounted(() => {
   observer?.disconnect();
   unsubscribe?.();
   window.removeEventListener("keydown", keyboard);
-  window.removeEventListener("blur", cancel);
+  window.removeEventListener("blur", clearControl);
+  window.removeEventListener("keyup", controlUp);
   editor.printLayoutActive = false;
 });
 defineExpose({
@@ -1139,6 +1844,7 @@ defineExpose({
 });
 </script>
 <template>
+  <ObjectPreview v-bind="hoverPreview" :units="layout?.units" />
   <div
     class="print-tabs"
     role="tablist"
@@ -1178,7 +1884,8 @@ defineExpose({
           <label
             >Name
             <input
-              v-model="name" @input="nameEdited=true"
+              v-model="name"
+              @input="nameEdited = true"
               maxlength="200"
               placeholder="Use paper format" /></label
           ><label
@@ -1211,8 +1918,8 @@ defineExpose({
             ><label
               >Paper height
               <input v-model="height" required /></label></template
-          ><label>Margin <input v-model="margin" required /></label
-          ><div
+          ><label>Margin <input v-model="margin" required /></label>
+          <div
             class="orientation-segments"
             role="group"
             aria-label="Paper orientation"
@@ -1279,7 +1986,7 @@ defineExpose({
               ? 'Move (G)'
               : 'Rotate (E)'
         "
-        @click="tool = value"
+        @click="chooseTool(value)"
       >
         <svg
           viewBox="0 0 24 24"
@@ -1321,15 +2028,18 @@ defineExpose({
     <div class="print-canvas">
       <canvas
         ref="canvas"
-        aria-label="Print layout canvas" @dragover.prevent @drop.prevent="importDrop"
+        aria-label="Print layout canvas"
+        @dragover.prevent="sourceOver"
+        @dragleave="sourceLeave"
+        @drop.prevent="importDrop"
         tabindex="0"
         @pointerdown="down"
         @pointermove="move"
         @pointerup="up"
-        @pointercancel="cancel"
+        @pointercancel="!sourceImport && cancel()"
         @lostpointercapture="drag && cancel()"
         @wheel.prevent="wheel"
-        @contextmenu.prevent
+        @contextmenu.prevent="cancel"
       />
       <button
         v-for="(button, index) in pageButtons"
@@ -1342,17 +2052,40 @@ defineExpose({
       >
         +
       </button>
-      <div v-if="selected.length" class="print-transform">
-        <label>Move X <input v-model="moveX" aria-label="Print move X" /></label
-        ><label
+      <div
+        v-if="selected.length && tool !== 'select'"
+        class="print-transform"
+        @keydown.enter.prevent="applyTransform"
+        @keydown.esc.stop.prevent="cancel"
+      >
+        <strong>{{ tool === "move" ? "Move" : "Rotate" }}</strong>
+        <p v-if="error" role="alert">{{ error }}</p>
+        <label v-if="tool === 'move'"
+          >Move X <input v-model="moveX" aria-label="Print move X" /></label
+        ><label v-if="tool === 'move'"
           >Move Y <input v-model="moveY" aria-label="Print move Y" /></label
-        ><label
+        ><label v-if="tool === 'rotate'"
           >Rotate °
           <input
             v-model="turn"
             type="number"
             aria-label="Print rotation" /></label
-        ><button :disabled="busy" @click="applyTransform">Apply</button>
+        ><label
+          >Axes<select v-model="axes">
+            <option value="local">Local</option>
+            <option value="world">World</option>
+          </select></label
+        ><button @click="placingPivot = true">Set pivot (V)</button
+        ><button
+          @click="
+            customPivot = undefined;
+            rebaseNumeric();
+            draw();
+          "
+        >
+          Reset pivot</button
+        ><button :disabled="busy" @click="applyTransform">Apply</button
+        ><button @click="cancel">Cancel</button>
       </div>
       <div class="print-status">
         <span
@@ -1370,153 +2103,194 @@ defineExpose({
         <button @click="openSettings">Layout settings</button
         ><button @click="deleteLayout">Delete layout</button>
       </div>
-      <h3>Grid objects</h3>
-      <div class="print-list" aria-label="Grid source objects">
-        <div
-          v-for="row in sourceRows"
-          :key="row.node.id"
-          :style="{ paddingLeft: `${row.depth * 14}px` }"
-          draggable="true" @dragstart="sourceDrag($event,row.node.id)"
-        >
-          <button
-            v-if="row.node.kind === 'group'"
-            :aria-label="`Toggle ${row.node.name}`"
-            @click="toggleCollapse(`source:${row.node.id}`)"
-          >
-            {{ collapsed.has(`source:${row.node.id}`) ? "▸" : "▾" }}</button
-          ><button class="print-object-name" :aria-pressed="selectedSources.includes(row.node.id)" @click="selectSource(row.node.id,$event)">{{
-            row.node.kind === "group"
-              ? row.node.name
-              : e.document.shapes.find((s) => s.id === row.node.id)?.name
-          }}</button
-          ><button
-            :aria-label="`Import ${row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name}`"
-            :disabled="busy"
-            @click="importSource(row.node.id)"
-          >
-            Import
-          </button>
-        </div>
-        <p v-if="!sourceRows.length">
-          Create objects on Grid, then import them here.
-        </p>
-      </div>
-      <h3>Print objects</h3>
-      <div class="print-actions">
-        <button :disabled="!selected.length || busy" @click="duplicate">
-          Duplicate</button
-        ><button :disabled="!selected.length || busy" @click="newGroup">
-          Group</button
-        ><button :disabled="!selected.length || busy" @click="deleteSelection">
-          Delete
-        </button>
-      </div>
-      <div
-        class="print-list"
-        aria-label="Print object tree"
-        @dragover.prevent
-        @drop.prevent="drop('', true)"
+      <PanelSection
+        section-key="print-grid-objects"
+        title="Grid objects"
+        class="sidebar-section print-object-section"
       >
+        <div class="print-list" aria-label="Grid source objects">
+          <div
+            v-for="row in sourceRows"
+            :key="row.node.id"
+            :style="{ paddingLeft: `${row.depth * 14}px` }"
+            draggable="true"
+            @pointerenter="previewRow($event, row.node.id)"
+            @pointerleave="hoverPreview.id = undefined"
+            @dragstart="
+              hoverPreview.id = undefined;
+              sourceDrag($event, row.node.id);
+            "
+            @dragend="sourceEnd"
+          >
+            <button
+              v-if="row.node.kind === 'group'"
+              :aria-label="`Toggle ${row.node.name}`"
+              @click="toggleCollapse(`source:${row.node.id}`)"
+            >
+              {{ collapsed.has(`source:${row.node.id}`) ? "▸" : "▾" }}</button
+            ><button
+              class="print-object-name"
+              :aria-pressed="selectedSources.includes(row.node.id)"
+              draggable="true"
+              @dragstart.stop="sourceDrag($event, row.node.id)"
+              @dragend.stop="sourceEnd"
+              @click="selectSource(row.node.id, $event)"
+            >
+              {{
+                row.node.kind === "group"
+                  ? row.node.name
+                  : e.document.shapes.find((s) => s.id === row.node.id)?.name
+              }}</button
+            ><button
+              :aria-label="`Import ${row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name}`"
+              :disabled="busy"
+              @click="importSource(row.node.id)"
+            >
+              Import
+            </button>
+          </div>
+          <p v-if="!sourceRows.length">
+            Create objects on Grid, then import them here.
+          </p>
+        </div>
+      </PanelSection>
+      <PanelSection
+        section-key="print-instances"
+        title="Print objects"
+        class="sidebar-section print-object-section"
+      >
+        <div class="print-actions">
+          <button
+            :disabled="!selected.length || !canManageObjects"
+            @click="duplicate"
+          >
+            Duplicate</button
+          ><button
+            :disabled="!selected.length || !canManageObjects"
+            @click="newGroup"
+          >
+            Group</button
+          ><button
+            :disabled="!selected.length || !canManageObjects"
+            @click="deleteSelection"
+          >
+            Delete
+          </button>
+        </div>
         <div
-          v-for="row in visibleRows"
-          :key="row.node.id"
-          class="print-row"
-          :class="{
-            'print-selected': selected.includes(row.node.id),
-            'print-hidden': row.hidden,
-          }"
-          :style="{ paddingLeft: `${row.depth * 14}px` }"
-          :draggable="!row.locked"
-          @dragstart="dragged = row.node.id"
-          @dragend="dragged = ''"
-          @dragover.prevent.stop
-          @drop.prevent.stop="drop(row.node.id, row.node.kind === 'group')"
+          class="print-list"
+          aria-label="Print object tree"
+          @dragover.prevent
+          @drop.prevent="drop('', true)"
         >
-          <button
-            v-if="row.node.kind === 'group'"
-            :aria-label="`Expand ${nodeName(row.node)}`"
-            @click="toggleCollapse(row.node.id)"
+          <div
+            v-for="row in visibleRows"
+            :key="row.node.id"
+            class="print-row"
+            :class="{
+              'print-selected': selected.includes(row.node.id),
+              'print-hidden': row.hidden,
+            }"
+            :style="{ paddingLeft: `${row.depth * 14}px` }"
+            :draggable="!row.locked && canManageObjects"
+            @dragstart="dragged = row.node.id"
+            @dragend="dragged = ''"
+            @dragover.prevent.stop
+            @drop.prevent.stop="drop(row.node.id, row.node.kind === 'group')"
           >
-            {{ collapsed.has(row.node.id) ? "▸" : "▾" }}</button
-          ><input
-            v-if="renameId === row.node.id"
-            v-model="renameValue"
-            autofocus
-            @keydown.enter="renameFinish"
-            @blur="renameFinish"
-            @keydown.esc="renameId = ''"
-          /><button
-            v-else
-            class="print-object-name"
-            :aria-pressed="selected.includes(row.node.id)"
-            @click="select(row.node.id, $event)"
-            @dblclick="renameStart(row.node)"
-          >
-            {{ nodeName(row.node) }}</button
-          ><button
-            :aria-label="`${row.hidden ? 'Show' : 'Hide'} print ${nodeName(row.node)}`"
-            @click="editState(row.node.id, 'hidden')"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              aria-hidden="true"
+            <button
+              v-if="row.node.kind === 'group'"
+              :aria-label="`Expand ${nodeName(row.node)}`"
+              @click="toggleCollapse(row.node.id)"
             >
-              <path d="M2 12Q12 0 22 12Q12 24 2 12Z" />
-              <circle cx="12" cy="12" r="3" />
-              <path v-if="row.hidden" d="M3 3L21 21" />
-            </svg></button
-          ><button
-            :aria-label="`${row.locked ? 'Unlock' : 'Lock'} print ${nodeName(row.node)}`"
-            @click="editState(row.node.id, 'locked')"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              aria-hidden="true"
+              {{ collapsed.has(row.node.id) ? "▸" : "▾" }}</button
+            ><input
+              v-if="renameId === row.node.id"
+              v-model="renameValue"
+              autofocus
+              @keydown.enter="renameFinish"
+              @blur="renameFinish"
+              @keydown.esc="renameId = ''"
+            /><button
+              v-else
+              class="print-object-name"
+              :aria-pressed="selected.includes(row.node.id)"
+              @click="select(row.node.id, $event)"
+              @dblclick="renameStart(row.node)"
             >
-              <rect
-                x="5"
-                y="10"
-                width="14"
-                height="11"
-                rx="2"
-                :fill="row.locked ? 'currentColor' : 'none'"
-              />
-              <path
-                :d="
-                  row.locked ? 'M8 10V6a4 4 0 018 0v4' : 'M8 10V6a4 4 0 018 0'
-                "
-              />
-            </svg>
-          </button>
+              {{ nodeName(row.node) }}</button
+            ><button
+              :aria-label="`${row.hidden ? 'Show' : 'Hide'} print ${nodeName(row.node)}`"
+              :disabled="!canManageObjects"
+              @click="editState(row.node.id, 'hidden')"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path d="M2 12Q12 0 22 12Q12 24 2 12Z" />
+                <circle cx="12" cy="12" r="3" />
+                <path v-if="row.hidden" d="M3 3L21 21" />
+              </svg></button
+            ><button
+              :aria-label="`${row.locked ? 'Unlock' : 'Lock'} print ${nodeName(row.node)}`"
+              :disabled="!canManageObjects"
+              @click="editState(row.node.id, 'locked')"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <rect
+                  x="5"
+                  y="10"
+                  width="14"
+                  height="11"
+                  rx="2"
+                  :fill="row.locked ? 'currentColor' : 'none'"
+                />
+                <path
+                  :d="
+                    row.locked ? 'M8 10V6a4 4 0 018 0v4' : 'M8 10V6a4 4 0 018 0'
+                  "
+                />
+              </svg>
+            </button>
+          </div>
+          <p v-if="!rows.length">Import objects or folders from Grid.</p>
         </div>
-        <p v-if="!rows.length">Import objects or folders from Grid.</p>
-      </div>
-      <details>
-        <summary>Pages</summary>
-        <div v-for="page in layout.pages" :key="`${page.column},${page.row}`">
-          {{ page.column }}, {{ page.row }}
-          <button
-            :disabled="layout.pages.length === 1"
-            @click="removePage(page.column, page.row)"
-          >
-            Remove empty page
-          </button>
-        </div>
-      </details>
-      <p v-if="error" role="alert">{{ error }}</p>
+      </PanelSection>
+      <section class="sidebar-section" aria-label="Pages">
+        <h2>Pages</h2>
+        <ul class="page-contents">
+          <li v-for="entry in listedPages" :key="pageKey(entry.page)">
+            Page {{ entry.number }}
+            <ul>
+              <li v-for="item in entry.items" :key="item.instance.id">
+                {{ item.instance.name ?? item.source.name
+                }}<span v-if="item.hidden"> (hidden)</span>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+      <p v-if="error && (tool === 'select' || !selected.length)" role="alert">
+        {{ error }}
+      </p>
       <p class="print-help">
-        Drag to move. Select Rotate and drag to rotate; Shift snaps to 15°.
-        Space-drag pans. Alt bypasses snapping. Source geometry remains linked.
+        Drag to move. Select Rotate and drag to rotate; Rotation snaps to 1°,
+        Shift 5°, Ctrl 10°; Alt rotates freely. Space-drag pans. Alt bypasses
+        snapping. Source geometry remains linked.
       </p>
     </aside>
   </section>
@@ -1584,6 +2358,50 @@ defineExpose({
 }
 </style>
 <style scoped>
+.orientation-segments {
+  display: flex;
+  gap: 0;
+  width: max-content;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.orientation-segments button {
+  border-radius: 0;
+  padding: 6px 12px;
+}
+.orientation-segments button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 25%, var(--panel));
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.print-object-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 260px;
+  min-height: 260px;
+}
+.print-object-section:has(button[aria-expanded="false"]) {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+.print-object-section :deep([id^="inspector-content"]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.page-contents {
+  font-size: 12px;
+  padding-left: 18px;
+}
+.page-contents ul {
+  padding-left: 16px;
+}
+.page-contents li {
+  margin: 4px 0;
+}
 .print-tabs {
   display: flex;
   gap: 4px;
@@ -1651,8 +2469,9 @@ h3 {
   white-space: nowrap;
 }
 .print-list button {
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px;
+  background: transparent;
 }
 .print-actions {
   display: flex;
@@ -1661,6 +2480,10 @@ h3 {
 }
 .print-actions button {
   font-size: 12px;
+}
+.print-object-name[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
 }
 .print-selected {
   background: #b57c3233;
@@ -1681,10 +2504,13 @@ h3 {
 .print-transform {
   position: absolute;
   top: 12px;
-  left: 12px;
+  right: 16px;
+  left: auto;
+  width: 264px;
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: end;
+  align-items: stretch;
   background: var(--panel, #20252c);
   padding: 8px;
   border-radius: 6px;
@@ -1720,8 +2546,4 @@ h3 {
   font-size: 12px;
   opacity: 0.8;
 }
-</style>
-
-<style>
-.orientation-segments{display:flex;width:max-content;border:1px solid var(--border);border-radius:5px;overflow:hidden}.orientation-segments button{border-radius:0;padding:6px 12px}.orientation-segments button[aria-pressed=true]{background:color-mix(in srgb,var(--accent) 25%,var(--panel));color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 </style>

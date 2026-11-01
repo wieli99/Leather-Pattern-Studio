@@ -93,7 +93,8 @@ test("layouts are optional, import folders repeatedly, arrange copies, persist, 
     .getByRole("button", { name: "Piece", exact: true })
     .first()
     .click();
-  await page.getByLabel("Print move X").fill("30");
+  await expect(page.getByLabel("Print move X")).toHaveCount(0);
+  await page.getByRole("button", { name: "Rotate (E)", exact: true }).click();
   await page.getByLabel("Print rotation", { exact: true }).fill("45");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await save(page);
@@ -488,7 +489,11 @@ test("cancels pointer previews, restricts drawing, and removes linked sources at
   await page.mouse.down();
   await page.mouse.move(box.x + 380, box.y + 420);
   await page.mouse.up();
-  await expect(page.getByLabel("Print move X")).toBeVisible();
+  await expect(
+    page
+      .getByLabel("Print object tree")
+      .getByRole("button", { name: "Piece", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("tab", { name: "Grid", exact: true }).click();
   await page.getByRole("button", { name: "Piece", exact: true }).click();
   await page.keyboard.press("Delete");
@@ -499,5 +504,244 @@ test("cancels pointer previews, restricts drawing, and removes linked sources at
   await expect(page.locator(".object-select")).toHaveCount(1);
   expect((await save(page)).printLayouts[0].instances).toEqual(
     before.printLayouts[0].instances,
+  );
+});
+
+test("orientation shows both icon choices and preserves a custom name", async ({
+  page,
+}) => {
+  await load(page);
+  await page
+    .getByRole("button", { name: "Create print layout", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("A4");
+  await dialog.getByLabel("Format", { exact: true }).selectOption("Letter");
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue(
+    "Letter",
+  );
+  await dialog.getByLabel("Name", { exact: true }).fill("My pattern");
+  await dialog.getByLabel("Format", { exact: true }).selectOption("A3");
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue(
+    "My pattern",
+  );
+  const orientation = dialog.getByRole("group", { name: "Paper orientation" });
+  await expect(orientation.getByRole("button")).toHaveCount(2);
+  await expect(
+    orientation.getByRole("button", { name: "Portrait", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await orientation
+    .getByRole("button", { name: "Landscape", exact: true })
+    .click();
+  await expect(
+    orientation.getByRole("button", { name: "Landscape", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.screenshot({ path: "test-results/print-orientation.png" });
+  await dialog.getByRole("button", { name: "Create", exact: true }).click();
+  const document = await save(page);
+  expect(document.printLayouts[0]).toMatchObject({
+    name: "My pattern",
+    width: 420,
+    height: 297,
+  });
+});
+test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page
+    .getByRole("button", { name: "Add page right 0,0", exact: true })
+    .click();
+  const canvas = page.getByLabel("Print layout canvas"),
+    box = (await canvas.boundingBox())!;
+  await page.keyboard.down("Control");
+  await page.mouse.click(box.x + 100, box.y + 100);
+  await page.screenshot({ path: "test-results/print-page-selection.png" });
+  await page.keyboard.press("Delete");
+  await page.keyboard.up("Control");
+  let doc = await save(page);
+  expect(doc.printLayouts[0].pages).toEqual([{ column: 1, row: 0 }]);
+  await canvas.focus();
+  await page.keyboard.press("Control+z");
+  expect((await save(page)).printLayouts[0].pages).toHaveLength(2);
+  await page.keyboard.down("Control");
+  await page.mouse.move(box.x + 150, box.y + 150);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 490, box.y + 200, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  doc = await save(page);
+  expect(doc.printLayouts[0].pages).toEqual([
+    { column: 1, row: 0 },
+    { column: 2, row: 0 },
+  ]);
+});
+test("source object and group hover previews use a medium popup", async ({
+  page,
+}) => {
+  await load(page);
+  await page.getByRole("button", { name: "Piece", exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await expect(page.getByRole("tooltip").locator("img")).toHaveAttribute(
+    "width",
+    "320",
+  );
+  await create(page);
+  await page
+    .getByLabel("Grid source objects")
+    .getByRole("button", { name: "Pattern", exact: true })
+    .hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.screenshot({ path: "test-results/object-hover-preview.png" });
+});
+
+test("dragging a source group previews and imports it at the drop location", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  const source = page
+      .getByLabel("Grid source objects")
+      .getByRole("button", { name: "Pattern", exact: true }),
+    canvas = page.getByLabel("Print layout canvas");
+  const box = (await canvas.boundingBox())!;
+  await source.dragTo(canvas, { targetPosition: { x: 250, y: 260 } });
+  await expect(
+    page
+      .getByLabel("Print object tree")
+      .getByRole("button", { name: "Piece", exact: true }),
+  ).toHaveCount(1);
+  const doc = await save(page);
+  expect(doc.printLayouts[0].instances[0].x).toBeCloseTo(90);
+  expect(doc.printLayouts[0].instances[0].y).toBeCloseTo(95);
+});
+
+test("dropping a moved object retains its final preview while the worker commits", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  const canvas = page.getByLabel("Print layout canvas"),
+    box = (await canvas.boundingBox())!;
+  const sample = () =>
+    canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement,
+        ratio = c.width / c.clientWidth;
+      return c
+        .getContext("2d")!
+        .getImageData(Math.round(260 * ratio), Math.round(307 * ratio), 1, 1)
+        .data[0];
+    });
+  await expect.poll(sample).toBeLessThan(240);
+  await page.evaluate(() => {
+    const original = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (message: any, ...args: any[]) {
+      if (message.operation === "commit")
+        setTimeout(() => original.call(this, message, ...(args as [any])), 300);
+      else original.call(this, message, ...(args as [any]));
+    };
+  });
+  await page.mouse.move(box.x + 260, box.y + 345);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 300, box.y + 385, { steps: 5 });
+  await expect.poll(sample).toBeGreaterThan(245);
+  await page.mouse.up();
+  const frames = await canvas.evaluate(async (el) => {
+    const c = el as HTMLCanvasElement,
+      ratio = c.width / c.clientWidth,
+      result: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      await new Promise(requestAnimationFrame);
+      result.push(
+        c
+          .getContext("2d")!
+          .getImageData(Math.round(260 * ratio), Math.round(307 * ratio), 1, 1)
+          .data[0],
+      );
+    }
+    return result;
+  });
+  expect(frames.every((value) => value > 245)).toBe(true);
+});
+
+test("move and rotate tool values preview, cancel, and commit without changing sources", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await page
+    .getByLabel("Print object tree")
+    .getByRole("button", { name: "Piece", exact: true })
+    .click();
+  await expect(page.getByLabel("Print move X")).toHaveCount(0);
+  await page.getByRole("button", { name: "Move (G)", exact: true }).click();
+  await page.getByLabel("Print move X").fill("20");
+  await page.getByLabel("Print move Y").fill("10");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  let doc = await save(page);
+  expect(doc.printLayouts[0].instances[0]).toMatchObject({
+    x: 95,
+    y: 138.5,
+    rotation: 0,
+  });
+  await page.getByRole("button", { name: "Move (G)", exact: true }).click();
+  await page.getByLabel("Print move X").fill("20");
+  await page.getByLabel("Print move Y").fill("10");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  doc = await save(page);
+  expect(doc.printLayouts[0].instances[0]).toMatchObject({
+    x: 115,
+    y: 148.5,
+    rotation: 0,
+  });
+  expect(doc.shapes[0]).toMatchObject(rectangle);
+});
+
+test("Select rotation ring uses Grid modifiers and Escape cancels its preview", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await page
+    .getByLabel("Print object tree")
+    .getByRole("button", { name: "Piece", exact: true })
+    .click();
+  const box = (await page.getByLabel("Print layout canvas").boundingBox())!;
+  await expect(page.getByLabel("Print rotation")).toHaveCount(0);
+  const objects = page.getByRole("region", {
+      name: "Print objects",
+      exact: true,
+    }),
+    pages = page.getByRole("region", { name: "Pages", exact: true });
+  const listBox = (await objects
+      .getByLabel("Print object tree")
+      .boundingBox())!,
+    pagesBox = (await pages.boundingBox())!;
+  expect(pagesBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height);
+  await page.screenshot({ path: "test-results/print-gizmo.png" });
+  await page.keyboard.down("Control");
+  await page.mouse.move(box.x + 320, box.y + 347);
+  await page.mouse.down();
+  await page.mouse.move(
+    box.x + 260 + 60 * Math.cos((48 * Math.PI) / 180),
+    box.y + 347 + 60 * Math.sin((48 * Math.PI) / 180),
+    { steps: 6 },
+  );
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  expect((await save(page)).printLayouts[0].instances[0].rotation).toBeCloseTo(
+    50,
+  );
+  await page.mouse.move(box.x + 320, box.y + 347);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + 407, { steps: 6 });
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  expect((await save(page)).printLayouts[0].instances[0].rotation).toBeCloseTo(
+    50,
   );
 });
