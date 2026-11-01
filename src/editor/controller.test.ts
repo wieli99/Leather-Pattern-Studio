@@ -2072,3 +2072,19 @@ test("annotation selection bounds and reset pivots follow displayed units", asyn
     }
   }
 });
+
+test("selection tools require idle drawing and a committed selection", () => {
+  const e = editor();
+  e.setTool("rectangle");
+  expect(e.selectionToolsAvailable).toBe(false);
+  e.selected = ["shape"];
+  expect(e.selectionToolsAvailable).toBe(true);
+  e.pending = [{ x: 0, y: 0 }];
+  expect(e.selectionToolsAvailable).toBe(false);
+  e.pending = [];
+  e.drawingDown = { pixel: { x: 0, y: 0 }, point: { x: 0, y: 0 }, initial: true };
+  expect(e.selectionToolsAvailable).toBe(false);
+  e.drawingDown = null;
+  e.busy = true;
+  expect(e.selectionToolsAvailable).toBe(false);
+});

@@ -1,9 +1,13 @@
 import { beforeEach, expect, test, vi } from "vitest";
 const editor = vi.hoisted(() => ({
   space: false,
+  selectionToolsAvailable: true,
   tool: "select",
   selected: ["a"],
-  transformTool: null,
+  transformTool: null as string | null,
+  placingPivot: false,
+  transformAxis: undefined as string | undefined,
+  notify: vi.fn(),
   mode: "select",
   cycle: vi.fn(),
   activateTransform: vi.fn(),
@@ -32,6 +36,12 @@ class ElementStub {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  editor.tool = "select";
+  editor.selected = ["a"];
+  editor.selectionToolsAvailable = true;
+  editor.transformTool = null;
+  editor.placingPivot = false;
+  editor.transformAxis = undefined;
   vi.stubGlobal("HTMLElement", ElementStub);
   vi.stubGlobal("document", { querySelector: () => null });
 });
@@ -130,12 +140,15 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
       { defaultPrevented: true },
     ]) press(key, overrides);
   }
+  editor.selectionToolsAvailable = false;
   editor.selected = [];
   for (const key of ["i", "k", "j"]) press(key);
   editor.selected = ["a"];
+  editor.selectionToolsAvailable = false;
   editor.tool = "rectangle";
   for (const key of ["i", "k", "j"]) press(key);
   editor.tool = "select";
+  editor.selectionToolsAvailable = true;
   expect(editor.activateStitch).not.toHaveBeenCalled();
   expect(editor.activateTrim).not.toHaveBeenCalled();
   expect(editor.activateMerge).not.toHaveBeenCalled();
@@ -150,4 +163,30 @@ test("D selects Measurement without taking over text fields or modified shortcut
   press("d", { metaKey: true });
   expect(editor.setTool).not.toHaveBeenCalled();
   expect(editor.duplicate).toHaveBeenCalledTimes(2);
+});
+
+test("selection shortcuts work from idle drawing mode", () => {
+  editor.tool = "rectangle";
+  for (const key of ["i", "k", "j", "g", "e", "s", "m", "b"]) press(key);
+  expect(editor.activateStitch).toHaveBeenCalledOnce();
+  expect(editor.activateTrim).toHaveBeenCalledOnce();
+  expect(editor.activateMerge).toHaveBeenCalledOnce();
+  expect(editor.activateTransform).toHaveBeenCalledTimes(5);
+  editor.tool = "select";
+});
+
+test("pivot and axis shortcuts remain active while a transform gesture blocks tool activation", () => {
+  editor.tool = "select";
+  editor.transformTool = "move";
+  editor.selectionToolsAvailable = false;
+  press("v");
+  expect(editor.placingPivot).toBe(true);
+  expect(editor.setTool).not.toHaveBeenCalled();
+  press("x");
+  expect(editor.transformAxis).toBe("x");
+  press("y");
+  expect(editor.transformAxis).toBe("y");
+  expect(editor.notify).toHaveBeenCalledTimes(3);
+  editor.transformTool = null;
+  editor.selectionToolsAvailable = true;
 });

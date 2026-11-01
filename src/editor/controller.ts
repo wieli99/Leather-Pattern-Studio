@@ -701,6 +701,16 @@ export class Controller {
     }
     this.notify();
   }
+  get selectionToolsAvailable() {
+    return (
+      !!this.selected.length &&
+      !this.pending.length &&
+      !this.drawingDown &&
+      !this.gesture &&
+      !this.guideDrag &&
+      !this.busy
+    );
+  }
   get canStitch() {
     return (
       !this.selectionLocked &&
@@ -712,6 +722,7 @@ export class Controller {
     if (!this.canStitch) return;
     this.cancel();
     this.tool = "select";
+    this.mode = "select";
     this.stitchOriginal = this.document;
     this.stitchOriginalSettings = { ...this.stitchSettings };
     this.stitchMode = true;
@@ -1627,6 +1638,7 @@ export class Controller {
     if (!result || this.busy) return;
     this.cancel();
     this.tool = "select";
+    this.mode = "select";
     this.trimMode = true;
     this.mergeMode = true;
     const ids = new Set(this.selected);

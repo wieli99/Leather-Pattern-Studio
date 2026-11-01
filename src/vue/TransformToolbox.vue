@@ -26,7 +26,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
 </script>
 <template>
   <div
-    v-if="(e.selected.length || e.trimMode) && !e.pending.length && !e.drawingDown"
+    v-if="e.selectionToolsAvailable || (e.tool === 'select' && e.trimMode && !e.busy)"
     class="transform-overlay"
   >
     <StitchToolbox />

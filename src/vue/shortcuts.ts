@@ -90,7 +90,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     }
     return;
   }
-  if (!e.shiftKey && editor.tool === "select" && editor.selected.length) {
+  if (!e.shiftKey && editor.selectionToolsAvailable) {
     const k = e.key.toLowerCase();
     if (k === "i" || k === "k" || k === "j") {
       e.preventDefault();
@@ -114,20 +114,20 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       );
       return;
     }
-    if (
-      editor.transformTool &&
-      editor.transformTool !== "corner" &&
-      k === "v"
-    ) {
+  }
+  if (
+    !e.shiftKey &&
+    editor.tool === "select" &&
+    editor.transformTool &&
+    editor.transformTool !== "corner"
+  ) {
+    const k = e.key.toLowerCase();
+    if (k === "v") {
       editor.placingPivot = true;
       editor.notify();
       return;
     }
-    if (
-      editor.transformTool &&
-      editor.transformTool !== "corner" &&
-      (k === "x" || k === "y")
-    ) {
+    if (k === "x" || k === "y") {
       editor.transformAxis = k;
       editor.notify();
       return;

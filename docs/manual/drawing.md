@@ -2,6 +2,8 @@
 
 Rectangles, circles, and ellipses have a light interior tint to make their area visible against the grid. Selected shapes have a stronger accent tint.
 
+After placing a shape, the drawing tool stays active so you can place another. While drawing is idle, the bottom selection toolbar and its shortcuts (such as G for Move and I for Stitch line) are available for the selection. Choosing one switches to Select mode; Apply or Cancel keeps Select active. Shortcuts require canvas focus and are unavailable while constructing a shape or typing in a field. Escape also returns to Select mode.
+
 ## Polyline (P)
 The variants are Polyline, Curve, and Control point curve. Polyline joins straight segments; Curve passes through clicked points; Control point curve uses anchors and handles. Click creates sharp anchors; drag creates smooth handles.
 

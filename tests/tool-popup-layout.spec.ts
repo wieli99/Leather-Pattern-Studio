@@ -1,4 +1,29 @@
 import { test, expect } from "@playwright/test";
+test("selection toolbar follows Select mode after repeated drawing", async ({ page }) => {
+  await page.goto("/");
+  const rectangle = page.getByRole("button", { name: "Rectangle (R)", exact: true });
+  await expect(rectangle).toBeEnabled();
+  await rectangle.click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  const toolbar = page.getByRole("toolbar", { name: "Transform selection" });
+  for (let count = 1; count <= 2; count++) {
+    await canvas.click({ position: { x: 150 + count * 80, y: 180 } });
+    await canvas.click({ position: { x: 210 + count * 80, y: 260 } });
+    await expect(page.locator(".objects .object-select")).toHaveCount(count);
+    await expect(toolbar).toBeVisible();
+  }
+  await expect(toolbar).toBeVisible();
+  await canvas.press("g");
+  await expect(page.locator(".transform-options").getByText("Move", { exact: true })).toBeVisible();
+  await canvas.press("Escape");
+  await rectangle.click();
+  await canvas.focus();
+  await canvas.press("i");
+  await expect(page.locator(".stitch-options")).toBeVisible();
+  await canvas.press("Escape");
+  await rectangle.click();
+  await expect(toolbar).toBeVisible();
+});
 test("all selection tool popups align with the right canvas edge", async ({
   page,
 }, info) => {
