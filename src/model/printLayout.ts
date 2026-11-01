@@ -656,13 +656,14 @@ export function transformPrintNodes(
   dx: number,
   dy: number,
   angle: number,
+  pivot?: {x:number;y:number},
 ): PrintLayout {
   const affected = new Set(printDescendants(layout, ids));
   const selected = layout.instances.filter((i) => affected.has(i.id));
-  const x = selected.length
+  const x = pivot ? pivot.x : selected.length
     ? selected.reduce((s, i) => s + i.x, 0) / selected.length
     : 0;
-  const y = selected.length
+  const y = pivot ? pivot.y : selected.length
     ? selected.reduce((s, i) => s + i.y, 0) / selected.length
     : 0;
   const t = (angle * Math.PI) / 180,

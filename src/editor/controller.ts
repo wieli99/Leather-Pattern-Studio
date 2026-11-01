@@ -1,3 +1,4 @@
+import {snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
 import { resizeText } from "../model/text";
@@ -2612,8 +2613,7 @@ export class Controller {
         g.lastAngle = theta;
         g.angle = (g.angle ?? 0) + (delta * 180) / Math.PI;
         const rawAngle = g.angle;
-        const step = ctrl ? 10 : shift ? 5 : 1;
-        const angle = alt ? rawAngle : Math.round(rawAngle / step) * step;
+        const angle = snapRotation(rawAngle,{ctrlKey:ctrl,shiftKey:shift,altKey:alt});
         this.transformValues = {
           ...this.transformValues,
           angle: angle + (g.baseValues?.angle ?? 0),
