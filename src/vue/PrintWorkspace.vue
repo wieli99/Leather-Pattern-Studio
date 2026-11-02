@@ -7,6 +7,18 @@ import {
 } from "../editor/transformUi";
 import { snapCandidates, smartSnap } from "../editor/snapping";
 import LengthInput from "./LengthInput.vue";
+import ReorderSlot from "./ReorderSlot.vue";
+import ReorderFloating from "./ReorderFloating.vue";
+import { useReorderDrag, type ReorderDragState } from "./useReorderDrag";
+import {
+  reorderRoots,
+  reorderIds,
+  reorderLocation,
+  reorderChildren,
+  reorderPreview,
+  type ReorderDestination,
+} from "../model/reorder";
+import { movePrintTree } from "../model/printReorder";
 import ObjectPreview from "./ObjectPreview.vue";
 const hoverPreview = ref<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
 function previewRow(event: PointerEvent, id: string) {
@@ -309,6 +321,8 @@ const selectedPages = ref<string[]>([]),
 const listedPages = computed(() =>
   layout.value ? pageContents(e.value.document, layout.value) : [],
 );
+const pageDragState = shallowRef<ReorderDragState>();
+const pageDestination = ref<string>();
 let pageGesture:
   | {
       source: { column: number; row: number };
@@ -316,8 +330,32 @@ let pageGesture:
       original: PrintLayout;
       dragged: boolean;
       selection: string[];
+      image: string;
     }
   | undefined;
+function pageThumbnail(page: { column: number; row: number }, l: PrintLayout) {
+  const image = document.createElement("canvas");
+  image.width = 140;
+  image.height = Math.round((140 * l.height) / l.width);
+  const ctx = image.getContext("2d")!,
+    el = canvas.value!,
+    p = pagePosition(page, l);
+  const ratio = el.width / el.clientWidth;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, image.width, image.height);
+  ctx.drawImage(
+    el,
+    (pan.value.x + p.x * zoom.value) * ratio,
+    (pan.value.y + p.y * zoom.value) * ratio,
+    l.width * zoom.value * ratio,
+    l.height * zoom.value * ratio,
+    0,
+    0,
+    image.width,
+    image.height,
+  );
+  return image.toDataURL();
+}
 function paperAt(p: Point, l: PrintLayout) {
   const x = (p.x - pan.value.x) / zoom.value,
     y = (p.y - pan.value.y) / zoom.value;
@@ -357,6 +395,8 @@ function cancel() {
   if (sourcePointer || sourceImport) sourceEnd();
   if (pageGesture) selectedPages.value = pageGesture.selection;
   pageGesture = undefined;
+  pageDragState.value = undefined;
+  pageDestination.value = undefined;
   drag = undefined;
   marqueePixel = undefined;
   preview.value = undefined;
@@ -561,91 +601,100 @@ async function importSource(id: string) {
     error.value = String(reason);
   }
 }
-const tabDrop = ref<{ id: string; after: boolean }>();
-let tabPointer:
-  | {
-      id: string;
-      pointerId: number;
-      x: number;
-      y: number;
-      active: boolean;
-      document: typeof editor.document;
-    }
+let tabSession:
+  | { id: string; revision: number; document: typeof editor.document }
   | undefined;
+const tabIndex = ref<number | null>(null);
 let suppressTabClick = false;
+const tabDrag = useReorderDrag({
+  activate() {
+    suppressTabClick = true;
+  },
+  current: () =>
+    !!tabSession &&
+    tabSession.document === editor.document &&
+    tabSession.revision === editor.revision &&
+    !busy.value &&
+    !editor.busy,
+  horizontal: true,
+  scroll: () => document.querySelector<HTMLElement>(".print-tabs"),
+  move(event) {
+    const el = document.elementFromPoint(event.clientX, event.clientY);
+    if (!el?.closest(".print-tabs")) {
+      tabIndex.value = null;
+      return false;
+    }
+    if (el.closest("[data-reorder-slot]")) return tabIndex.value !== null;
+    const candidates = layouts.value.filter((l) => l.id !== tabSession?.id);
+    const tab = el.closest<HTMLElement>("[data-print-tab]");
+    if (tab?.dataset.printTab === tabSession?.id)
+      return tabIndex.value !== null;
+    if (tab) {
+      const b = tab.getBoundingClientRect();
+      tabIndex.value =
+        candidates.findIndex((l) => l.id === tab.dataset.printTab) +
+        (event.clientX > b.left + b.width / 2 ? 1 : 0);
+    } else {
+      const rects = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-print-tab]"),
+      );
+      const next = rects.find(
+        (t) =>
+          event.clientX < t.getBoundingClientRect().left + t.offsetWidth / 2,
+      );
+      tabIndex.value = next
+        ? candidates.findIndex((l) => l.id === next.dataset.printTab)
+        : candidates.length;
+    }
+    return true;
+  },
+  drop() {
+    if (!tabSession || tabIndex.value === null) return;
+    const next = layouts.value.filter((l) => l.id !== tabSession!.id);
+    next.splice(
+      tabIndex.value,
+      0,
+      layouts.value.find((l) => l.id === tabSession!.id)!,
+    );
+    if (next.every((l, i) => l.id === layouts.value[i].id)) return;
+    cancel();
+    void editor.commit({ ...editor.document, printLayouts: next });
+  },
+  end() {
+    tabSession = undefined;
+    tabIndex.value = null;
+    setTimeout(() => {
+      suppressTabClick = false;
+    }, 0);
+  },
+});
+const tabDragState = tabDrag.state;
+const tabEntries = computed(() => {
+  const entries: (
+    | { key: string; tab: PrintLayout; slot: false }
+    | { key: string; slot: true }
+  )[] = layouts.value
+    .filter((l) => !tabDragState.value || l.id !== tabSession?.id)
+    .map((tab) => ({ key: tab.id, tab, slot: false }));
+  if (tabDragState.value && tabIndex.value !== null)
+    entries.splice(tabIndex.value, 0, { key: "__tab-slot", slot: true });
+  return entries;
+});
 function tabDown(event: PointerEvent, id: string) {
   if (event.button !== 0 || busy.value || editor.busy) return;
-  tabEnd();
-  tabPointer = {
-    id,
-    pointerId: event.pointerId,
-    x: event.clientX,
-    y: event.clientY,
-    active: false,
-    document: editor.document,
-  };
-  window.addEventListener("pointermove", tabMove);
-  window.addEventListener("pointerup", tabUp);
-  window.addEventListener("pointercancel", tabEnd);
-  window.addEventListener("blur", tabEnd);
-  window.addEventListener("keydown", tabEscape);
-}
-function tabEscape(event: KeyboardEvent) {
-  if (event.key === "Escape") tabEnd();
-}
-function tabMove(event: PointerEvent) {
-  const d = tabPointer;
-  if (!d || event.pointerId !== d.pointerId) return;
-  if (d.document !== editor.document) {
-    tabEnd();
-    return;
-  }
-  if (!d.active && Math.hypot(event.clientX - d.x, event.clientY - d.y) < 6)
-    return;
-  d.active = true;
-  event.preventDefault();
-  const target = document
-    .elementFromPoint(event.clientX, event.clientY)
-    ?.closest<HTMLElement>("[data-print-tab]");
-  tabDrop.value = target
-    ? {
-        id: target.dataset.printTab!,
-        after:
-          event.clientX >
-          target.getBoundingClientRect().left + target.offsetWidth / 2,
-      }
-    : undefined;
+  tabDrag.cancel();
+  const b = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  tabDrag.start(event, {
+    width: b.width,
+    height: b.height,
+    label: layouts.value.find((l) => l.id === id)!.name,
+    count: 1,
+  });
+  tabSession = { id, revision: editor.revision, document: editor.document };
+  tabIndex.value = layouts.value.findIndex((l) => l.id === id);
 }
 function tabEnd() {
-  tabPointer = undefined;
-  tabDrop.value = undefined;
-  window.removeEventListener("pointermove", tabMove);
-  window.removeEventListener("pointerup", tabUp);
-  window.removeEventListener("pointercancel", tabEnd);
-  window.removeEventListener("blur", tabEnd);
-  window.removeEventListener("keydown", tabEscape);
-}
-async function tabUp(event: PointerEvent) {
-  const d = tabPointer,
-    t = tabDrop.value;
-  if (!d || event.pointerId !== d.pointerId) return;
-  tabEnd();
-  if (!d.active) return;
-  suppressTabClick = true;
-  setTimeout(() => {
-    suppressTabClick = false;
-  }, 0);
-  if (!t || t.id === d.id || d.document !== editor.document) return;
-  const reordered = layouts.value.filter((l) => l.id !== d.id),
-    item = layouts.value.find((l) => l.id === d.id)!;
-  reordered.splice(
-    reordered.findIndex((l) => l.id === t.id) + (t.after ? 1 : 0),
-    0,
-    item,
-  );
-  if (reordered.every((l, i) => l.id === layouts.value[i].id)) return;
-  cancel();
-  await editor.commit({ ...editor.document, printLayouts: reordered });
+  tabDrag.cancel();
 }
 async function tabKey(event: KeyboardEvent) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -1038,60 +1087,145 @@ function applyTransform() {
     draw();
   });
 }
-const dragged = ref("");
-function drop(target: string, inside: boolean) {
-  if (!canManageObjects.value) return;
-  const l = layout.value,
-    id = dragged.value;
-  dragged.value = "";
-  if (!l || !id || id === target) return;
-  const node = rows.value.find((r) => r.node.id === id)?.node;
-  if (!node || rows.value.find((r) => r.node.id === id)?.locked) return;
-  const movedNode: PrintNode = node;
-  const children = printDescendants(l, [id]);
-  if (children.includes(target)) return;
-  // Keep live imports as self-contained subtrees while allowing free reordering inside them.
-  function owner(
-    nodes: PrintNode[],
-    targetId: string,
-    current = "",
-  ): string | undefined {
-    for (const n of nodes) {
-      if (n.id === targetId) return current;
-      if (n.kind === "group") {
-        const result = owner(n.children, targetId, n.sourceId ? n.id : current);
-        if (result !== undefined) return result;
-      }
-    }
-  }
-  const destination = rows.value.find((r) => r.node.id === target)?.node;
-  const targetOwner = !target
-    ? ""
-    : inside && destination?.kind === "group" && destination.sourceId
-      ? destination.id
-      : owner(printTree(l), target);
-  if (owner(printTree(l), id) !== targetOwner) {
-    error.value =
-      "Move linked children within their imported folder; duplicate to make a separate copy.";
-    return;
-  }
-  let tree = editPrintTree(printTree(l), id, () => null);
-  if (target === "") tree.push(movedNode);
-  else if (inside)
-    tree = editPrintTree(tree, target, (n) =>
-      n.kind === "group" ? { ...n, children: [...n.children, movedNode] } : n,
+let printSession:
+  | { ids: string[]; revision: number; layout: PrintLayout }
+  | undefined;
+const printTarget = ref<ReorderDestination | null>(null);
+const printTargetRow = ref("");
+let suppressPrintClick = false;
+const printDrag = useReorderDrag({
+  activate() {
+    hoverPreview.value.id = undefined;
+    suppressPrintClick = true;
+  },
+  current: () =>
+    !!printSession &&
+    printSession.revision === editor.revision &&
+    printSession.layout === layout.value &&
+    canManageObjects.value,
+  scroll: () => document.querySelector<HTMLElement>(".print-list"),
+  move: printMove,
+  drop() {
+    if (!printSession || !printTarget.value) return;
+    const next = movePrintTree(
+      printSession.layout,
+      printSession.ids,
+      printTarget.value,
     );
-  else {
-    function insert(nodes: PrintNode[]): PrintNode[] {
-      return nodes.flatMap((n) =>
-        n.id === target
-          ? [movedNode, n]
-          : [n.kind === "group" ? { ...n, children: insert(n.children) } : n],
-      );
+    if (
+      JSON.stringify(printTree(next)) !==
+      JSON.stringify(printTree(printSession.layout))
+    )
+      void save(next);
+  },
+  end() {
+    printSession = undefined;
+    printTarget.value = null;
+    printTargetRow.value = "";
+    setTimeout(() => {
+      suppressPrintClick = false;
+    }, 0);
+  },
+});
+const printDragState = printDrag.state;
+const printRemoved = computed(() =>
+  printDragState.value && printSession
+    ? reorderIds(reorderRoots(printTree(printSession.layout), printSession.ids))
+    : new Set<string>(),
+);
+const printPreviewRows = computed(() =>
+  reorderPreview(
+    visibleRows.value,
+    printRemoved.value,
+    printDragState.value ? printTarget.value : null,
+    layout.value ? printTree(layout.value) : [],
+  ),
+);
+function printDown(event: PointerEvent, id: string) {
+  if (
+    event.button !== 0 ||
+    !canManageObjects.value ||
+    !(event.target as HTMLElement).closest(".print-object-name")
+  )
+    return;
+  printDrag.cancel();
+  const l = layout.value!;
+  const roots = reorderRoots(
+    printTree(l),
+    selected.value.includes(id) ? movableSelection() : [id],
+  );
+  const moved = reorderIds(roots);
+  if (!roots.length || rows.value.some((r) => r.locked && moved.has(r.node.id)))
+    return;
+  const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const height = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-print-row]"),
+  )
+    .filter((el) => moved.has(el.dataset.printRow!))
+    .reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+  printDrag.start(event, {
+    width: box.width,
+    height: Math.max(28, height),
+    count: roots.length,
+    label: nodeName(roots[0]),
+  });
+  printSession = {
+    ids: roots.map((n) => n.id),
+    revision: editor.revision,
+    layout: l,
+  };
+  printTarget.value = reorderLocation(printTree(l), roots[0].id)!;
+}
+function printMove(event: PointerEvent): boolean {
+  const session = printSession;
+  if (!session) return false;
+  const element = document.elementFromPoint(event.clientX, event.clientY);
+  if (element?.closest("[data-reorder-slot]")) return !!printTarget.value;
+  const tree = printTree(session.layout),
+    moving = new Set(session.ids);
+  let destination: ReorderDestination | null = null;
+  const rowEl = element?.closest<HTMLElement>("[data-print-row]");
+  printTargetRow.value = "";
+  if (rowEl) {
+    const id = rowEl.dataset.printRow!,
+      row = rows.value.find((r) => r.node.id === id)!;
+    if (reorderIds(reorderRoots(tree, session.ids)).has(id))
+      return !!printTarget.value;
+    const location = reorderLocation(tree, id)!;
+    const b = rowEl.getBoundingClientRect(),
+      fraction = (event.clientY - b.top) / b.height;
+    if (event.clientX < b.left + row.depth * 14)
+      destination = {
+        parent: null,
+        index: tree.filter((n) => !moving.has(n.id)).length,
+      };
+    else {
+      const inside =
+        row.node.kind === "group" && fraction >= 0.25 && fraction <= 0.75;
+      const parent = inside ? id : location.parent;
+      let index = inside
+        ? reorderChildren(tree, parent).length
+        : location.index + (fraction > 0.5 ? 1 : 0);
+      index -= reorderChildren(tree, parent)
+        .slice(0, index)
+        .filter((n) => moving.has(n.id)).length;
+      destination = { parent, index };
     }
-    tree = insert(tree);
+    printTargetRow.value = id;
+  } else if (element?.closest(".print-list"))
+    destination = {
+      parent: null,
+      index: tree.filter((n) => !moving.has(n.id)).length,
+    };
+  if (destination) {
+    try {
+      movePrintTree(session.layout, session.ids, destination);
+    } catch {
+      destination = null;
+    }
   }
-  void save({ ...l, tree });
+  printTarget.value = destination;
+  return !!destination;
 }
 const gutter = 12;
 function pagePosition(page: { column: number; row: number }, l: PrintLayout) {
@@ -1143,6 +1277,7 @@ function pixel(event: MouseEvent) {
   return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 }
 const pageButtons = computed(() => {
+  if (!controlHeld.value || pageDragState.value) return [];
   const l = preview.value ?? layout.value;
   if (!l) return [];
   const result: {
@@ -1305,6 +1440,15 @@ async function paintFrame() {
         pan.value.y + p.y * zoom.value > rect.height
       )
         continue;
+      if (pageGesture?.dragged && pageDestination.value === pageKey(page)) {
+        ctx.save();
+        ctx.strokeStyle = "#d28d40";
+        ctx.lineWidth = 2 / zoom.value;
+        ctx.setLineDash([8 / zoom.value, 5 / zoom.value]);
+        ctx.strokeRect(p.x, p.y, l.width, l.height);
+        ctx.restore();
+        continue;
+      }
       ctx.fillStyle = "#fff";
       ctx.fillRect(p.x, p.y, l.width, l.height);
       const sizeForArtwork = printableSize(l);
@@ -1954,6 +2098,7 @@ function down(event: PointerEvent) {
       original,
       dragged: false,
       selection: [...selectedPages.value],
+      image: pageThumbnail(paper, original),
     };
     draw();
     return;
@@ -2040,71 +2185,49 @@ function moveNow(event: PointerEvent) {
       g = pageGesture;
     if (Math.hypot(p.x - g.pixel.x, p.y - g.pixel.y) < 6 && !g.dragged) return;
     g.dragged = true;
-    const l = g.original,
-      x = (p.x - pan.value.x) / zoom.value,
-      y = (p.y - pan.value.y) / zoom.value;
-    const nearest = [...l.pages].sort((a, b) => {
-      const q = pagePosition(a, l),
-        r = pagePosition(b, l);
-      return (
-        Math.hypot(x - q.x - l.width / 2, y - q.y - l.height / 2) -
-        Math.hypot(x - r.x - l.width / 2, y - r.y - l.height / 2)
-      );
-    })[0];
-    const q = pagePosition(nearest, l),
-      edges = [
-        {
-          distance: Math.abs(x - q.x),
-          axis: "x" as const,
-          target: {
-            ...nearest,
-            column:
-              nearest.column -
-              (l.pages.some(
-                (p) => p.column === nearest.column - 1 && p.row === nearest.row,
-              )
-                ? 0
-                : 1),
-          },
-        },
-        {
-          distance: Math.abs(x - q.x - l.width),
-          axis: "x" as const,
-          target: { ...nearest, column: nearest.column + 1 },
-        },
-        {
-          distance: Math.abs(y - q.y),
-          axis: "y" as const,
-          target: {
-            ...nearest,
-            row:
-              nearest.row -
-              (l.pages.some(
-                (p) => p.column === nearest.column && p.row === nearest.row - 1,
-              )
-                ? 0
-                : 1),
-          },
-        },
-        {
-          distance: Math.abs(y - q.y - l.height),
-          axis: "y" as const,
-          target: { ...nearest, row: nearest.row + 1 },
-        },
-      ].sort((a, b) => a.distance - b.distance);
+    pageDragState.value = {
+      x: event.clientX,
+      y: event.clientY,
+      width: 156,
+      height: 28,
+      label: `Page ${numberedPages(g.original).findIndex((p) => pageKey(p) === pageKey(g.source)) + 1}`,
+      count: 1,
+      valid: false,
+      image: g.image,
+    };
+    if (
+      p.x < 20 ||
+      p.y < 20 ||
+      p.x > canvas.value!.clientWidth ||
+      p.y > canvas.value!.clientHeight
+    ) {
+      preview.value = undefined;
+      pageDestination.value = undefined;
+      selectedPages.value = g.selection;
+      draw();
+      return;
+    }
+    const l = g.original;
+    const dx = (p.x - g.pixel.x) / zoom.value,
+      dy = (p.y - g.pixel.y) / zoom.value;
+    const axis =
+      Math.abs(dx / (l.width + gutter)) >= Math.abs(dy / (l.height + gutter))
+        ? "x"
+        : "y";
+    const target = {
+      column: g.source.column + Math.round(dx / (l.width + gutter)),
+      row: g.source.row + Math.round(dy / (l.height + gutter)),
+    };
     try {
-      preview.value = movePrintPage(
-        editor.document,
-        l,
-        g.source,
-        edges[0].target,
-        edges[0].axis,
-      );
+      preview.value = movePrintPage(editor.document, l, g.source, target, axis);
+      pageDestination.value = pageKey(target);
+      pageDragState.value = { ...pageDragState.value!, valid: true };
       error.value = "";
-      selectedPages.value = [pageKey(edges[0].target)];
+      selectedPages.value = [pageKey(target)];
     } catch (reason) {
       preview.value = undefined;
       selectedPages.value = g.selection;
+      pageDestination.value = undefined;
       error.value = String(reason);
     }
     draw();
@@ -2221,6 +2344,8 @@ async function up() {
     const g = pageGesture,
       next = preview.value;
     pageGesture = undefined;
+    pageDragState.value = undefined;
+    pageDestination.value = undefined;
     if (!g.dragged) {
       const key = pageKey(g.source);
       selectedPages.value = selectedPages.value.includes(key)
@@ -2229,11 +2354,11 @@ async function up() {
       draw();
       return;
     }
-    if (next) {
+    if (next && JSON.stringify(next) !== JSON.stringify(g.original)) {
       await save(next);
-      preview.value = undefined;
       selectedPages.value = [];
     }
+    preview.value = undefined;
     draw();
     return;
   }
@@ -2587,6 +2712,7 @@ watch(canvas, (el) => {
 });
 onUnmounted(() => {
   tabEnd();
+  printDrag.cancel();
   sourceEnd();
   if (moveFrame) cancelAnimationFrame(moveFrame);
   generation++;
@@ -2608,56 +2734,74 @@ defineExpose({
 </script>
 <template>
   <ObjectPreview v-bind="hoverPreview" :units="layout?.units" />
-  <div
+  <ReorderFloating :state="printDragState" />
+  <ReorderFloating :state="tabDragState" />
+  <ReorderFloating :state="pageDragState" />
+  <TransitionGroup
+    :css="false"
+    name="reorder"
+    tag="div"
     class="print-tabs"
     role="tablist"
     aria-label="Workspace views"
     @keydown="tabKey"
   >
-    <button role="tab" :aria-selected="!layout" @click="switchTab('')">
+    <button
+      key="grid"
+      role="tab"
+      :aria-selected="!layout"
+      @click="switchTab('')"
+    >
       Grid
     </button>
-    <ContextMenuRoot v-for="tab in layouts" :key="tab.id">
-      <ContextMenuTrigger as-child>
-        <button
-          role="tab"
-          :data-print-tab="tab.id"
-          :aria-selected="active === tab.id"
-          :class="{
-            'tab-drop-before': tabDrop?.id === tab.id && !tabDrop.after,
-            'tab-drop-after': tabDrop?.id === tab.id && tabDrop.after,
-          }"
-          :draggable="false"
-          @dragstart.prevent
-          @pointerdown="tabDown($event, tab.id)"
-          @click="!suppressTabClick && switchTab(tab.id)"
-        >
-          {{ tab.name }}
-        </button>
-      </ContextMenuTrigger>
-      <ContextMenuPortal
-        ><ContextMenuContent class="object-context-menu">
-          <ContextMenuItem
-            :disabled="busy || e.busy"
-            @select="openSettings(tab.id)"
-            >Layout settings</ContextMenuItem
-          >
-          <ContextMenuItem
-            :disabled="busy || e.busy"
-            @select="deleteLayout(tab.id)"
-            >Delete layout</ContextMenuItem
-          >
-        </ContextMenuContent></ContextMenuPortal
+    <template v-for="entry in tabEntries" :key="entry.key">
+      <ReorderSlot
+        v-if="entry.slot"
+        :height="tabDragState?.height ?? 28"
+        :width="tabDragState?.width"
+      />
+      <ContextMenuRoot
+        v-for="tab in entry.slot ? [] : [entry.tab]"
+        :key="tab.id"
       >
-    </ContextMenuRoot>
+        <ContextMenuTrigger as-child>
+          <button
+            role="tab"
+            :data-print-tab="tab.id"
+            :aria-selected="active === tab.id"
+            :draggable="false"
+            @dragstart.prevent
+            @pointerdown="tabDown($event, tab.id)"
+            @click="!suppressTabClick && switchTab(tab.id)"
+          >
+            {{ tab.name }}
+          </button>
+        </ContextMenuTrigger>
+        <ContextMenuPortal
+          ><ContextMenuContent class="object-context-menu">
+            <ContextMenuItem
+              :disabled="busy || e.busy"
+              @select="openSettings(tab.id)"
+              >Layout settings</ContextMenuItem
+            >
+            <ContextMenuItem
+              :disabled="busy || e.busy"
+              @select="deleteLayout(tab.id)"
+              >Delete layout</ContextMenuItem
+            >
+          </ContextMenuContent></ContextMenuPortal
+        >
+      </ContextMenuRoot>
+    </template>
     <button
+      key="create"
       aria-label="Create print layout"
       :disabled="!e.ready || busy"
       @click="openCreate"
     >
       +
     </button>
-  </div>
+  </TransitionGroup>
   <DialogRoot v-model:open="creating"
     ><DialogPortal
       ><DialogOverlay class="print-dialog-overlay" /><DialogContent
@@ -2832,12 +2976,18 @@ defineExpose({
           mirrorHover = undefined;
           draw();
         "
-        :style="{ cursor: printCursor }"
+        :style="{
+          cursor: pageDragState
+            ? pageDragState.valid
+              ? 'grabbing'
+              : 'not-allowed'
+            : printCursor,
+        }"
         @pointerdown="down"
         @pointermove="move"
         @pointerup="up"
         @pointercancel="!sourceImport && cancel()"
-        @lostpointercapture="drag && cancel()"
+        @lostpointercapture="(drag || pageGesture) && cancel()"
         @wheel.prevent="wheel"
         @contextmenu.prevent="contextMenu"
       />
@@ -2852,7 +3002,7 @@ defineExpose({
       >
         +
       </button>
-      <template v-if="controlHeld">
+      <template v-if="controlHeld && !pageDragState">
         <button
           v-for="page in layout.pages"
           :key="`delete:${pageKey(page)}`"
@@ -3010,129 +3160,161 @@ defineExpose({
         title="Print objects"
         class="sidebar-section print-object-section"
       >
-        <div
+        <TransitionGroup
+          :css="false"
+          name="reorder"
+          tag="div"
           class="print-list"
           aria-label="Print object tree"
-          @dragover.prevent
-          @drop.prevent="drop('', true)"
+          @click.capture="
+            suppressPrintClick &&
+            ($event.preventDefault(), $event.stopPropagation())
+          "
         >
+          <template v-for="entry in printPreviewRows" :key="entry.key">
+            <ReorderSlot
+              v-if="entry.slot"
+              :height="printDragState?.height ?? 28"
+              :depth="entry.depth"
+              :indent="14"
+            />
+            <div
+              v-for="row in entry.slot ? [] : [entry.row]"
+              :key="row.node.id"
+              :data-print-row="row.node.id"
+              class="print-row"
+              :class="{
+                'print-selected': selected.includes(row.node.id),
+                'print-hidden': row.hidden,
+                'print-drop-target':
+                  !!printDragState && printTargetRow === row.node.id,
+              }"
+              :style="{ paddingLeft: `${row.depth * 14}px` }"
+              :draggable="false"
+              @dragstart.prevent
+              @pointerdown="printDown($event, row.node.id)"
+            >
+              <button
+                v-if="row.node.kind === 'group'"
+                :aria-label="`Expand ${nodeName(row.node)}`"
+                @click="toggleCollapse(row.node.id)"
+              >
+                {{ collapsed.has(row.node.id) ? "▸" : "▾" }}</button
+              ><input
+                v-if="renameId === row.node.id"
+                v-model="renameValue"
+                autofocus
+                @keydown.enter="renameFinish"
+                @blur="renameFinish"
+                @keydown.esc="renameId = ''"
+              /><ContextMenuRoot v-else>
+                <ContextMenuTrigger
+                  as-child
+                  @contextmenu="openPrintObjectMenu(row.node.id)"
+                >
+                  <button
+                    class="print-object-name"
+                    :aria-pressed="selected.includes(row.node.id)"
+                    @click="select(row.node.id, $event)"
+                    @dblclick="renameStart(row.node)"
+                  >
+                    {{ nodeName(row.node) }}
+                  </button>
+                </ContextMenuTrigger>
+                <ContextMenuPortal
+                  ><ContextMenuContent
+                    class="object-context-menu"
+                    @keydown.esc.stop
+                  >
+                    <ContextMenuItem
+                      :disabled="!canManageObjects || !selected.length"
+                      @select="duplicate"
+                      >Duplicate</ContextMenuItem
+                    >
+                    <ContextMenuItem
+                      :disabled="
+                        !canManageObjects || !movableSelection().length
+                      "
+                      @select="newGroup"
+                      >Group</ContextMenuItem
+                    >
+                    <ContextMenuItem
+                      :disabled="
+                        !canManageObjects || !movableSelection().length
+                      "
+                      @select="deleteSelection"
+                      >Delete</ContextMenuItem
+                    >
+                  </ContextMenuContent></ContextMenuPortal
+                > </ContextMenuRoot
+              ><button
+                :aria-label="`${row.hidden ? 'Show' : 'Hide'} print ${nodeName(row.node)}`"
+                :disabled="!canManageObjects"
+                @click="editState(row.node.id, 'hidden')"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <path d="M2 12Q12 0 22 12Q12 24 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                  <path v-if="row.hidden" d="M3 3L21 21" />
+                </svg></button
+              ><button
+                :aria-label="`${row.locked ? 'Unlock' : 'Lock'} print ${nodeName(row.node)}`"
+                :disabled="!canManageObjects"
+                @click="editState(row.node.id, 'locked')"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  aria-hidden="true"
+                >
+                  <rect
+                    x="5"
+                    y="10"
+                    width="14"
+                    height="11"
+                    rx="2"
+                    :fill="row.locked ? 'currentColor' : 'none'"
+                  />
+                  <path
+                    :d="
+                      row.locked
+                        ? 'M8 10V6a4 4 0 018 0v4'
+                        : 'M8 10V6a4 4 0 018 0'
+                    "
+                  />
+                </svg>
+              </button>
+            </div>
+          </template>
           <div
-            v-for="row in visibleRows"
-            :key="row.node.id"
-            class="print-row"
-            :class="{
-              'print-selected': selected.includes(row.node.id),
-              'print-hidden': row.hidden,
-            }"
-            :style="{ paddingLeft: `${row.depth * 14}px` }"
-            :draggable="!row.locked && canManageObjects"
-            @dragstart="dragged = row.node.id"
-            @dragend="dragged = ''"
-            @dragover.prevent.stop
-            @drop.prevent.stop="drop(row.node.id, row.node.kind === 'group')"
-          >
-            <button
-              v-if="row.node.kind === 'group'"
-              :aria-label="`Expand ${nodeName(row.node)}`"
-              @click="toggleCollapse(row.node.id)"
-            >
-              {{ collapsed.has(row.node.id) ? "▸" : "▾" }}</button
-            ><input
-              v-if="renameId === row.node.id"
-              v-model="renameValue"
-              autofocus
-              @keydown.enter="renameFinish"
-              @blur="renameFinish"
-              @keydown.esc="renameId = ''"
-            /><ContextMenuRoot v-else>
-              <ContextMenuTrigger
-                as-child
-                @contextmenu="openPrintObjectMenu(row.node.id)"
-              >
-                <button
-                  class="print-object-name"
-                  :aria-pressed="selected.includes(row.node.id)"
-                  @click="select(row.node.id, $event)"
-                  @dblclick="renameStart(row.node)"
-                >
-                  {{ nodeName(row.node) }}
-                </button>
-              </ContextMenuTrigger>
-              <ContextMenuPortal
-                ><ContextMenuContent
-                  class="object-context-menu"
-                  @keydown.esc.stop
-                >
-                  <ContextMenuItem
-                    :disabled="!canManageObjects || !selected.length"
-                    @select="duplicate"
-                    >Duplicate</ContextMenuItem
-                  >
-                  <ContextMenuItem
-                    :disabled="!canManageObjects || !movableSelection().length"
-                    @select="newGroup"
-                    >Group</ContextMenuItem
-                  >
-                  <ContextMenuItem
-                    :disabled="!canManageObjects || !movableSelection().length"
-                    @select="deleteSelection"
-                    >Delete</ContextMenuItem
-                  >
-                </ContextMenuContent></ContextMenuPortal
-              > </ContextMenuRoot
-            ><button
-              :aria-label="`${row.hidden ? 'Show' : 'Hide'} print ${nodeName(row.node)}`"
-              :disabled="!canManageObjects"
-              @click="editState(row.node.id, 'hidden')"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                aria-hidden="true"
-              >
-                <path d="M2 12Q12 0 22 12Q12 24 2 12Z" />
-                <circle cx="12" cy="12" r="3" />
-                <path v-if="row.hidden" d="M3 3L21 21" />
-              </svg></button
-            ><button
-              :aria-label="`${row.locked ? 'Unlock' : 'Lock'} print ${nodeName(row.node)}`"
-              :disabled="!canManageObjects"
-              @click="editState(row.node.id, 'locked')"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                aria-hidden="true"
-              >
-                <rect
-                  x="5"
-                  y="10"
-                  width="14"
-                  height="11"
-                  rx="2"
-                  :fill="row.locked ? 'currentColor' : 'none'"
-                />
-                <path
-                  :d="
-                    row.locked ? 'M8 10V6a4 4 0 018 0v4' : 'M8 10V6a4 4 0 018 0'
-                  "
-                />
-              </svg>
-            </button>
-          </div>
-          <p v-if="!rows.length">Import objects or folders from Grid.</p>
-        </div>
+            v-if="printDragState"
+            key="end"
+            class="print-end-drop"
+            aria-label="Move to end of Print objects"
+          />
+          <p v-if="!rows.length" key="empty">
+            Import objects or folders from Grid.
+          </p>
+        </TransitionGroup>
       </PanelSection>
       <section class="sidebar-section" aria-label="Pages">
         <h2>Pages</h2>
+        <p>
+          Hold Ctrl and drag blank paper on the canvas to move a page to an
+          insertion edge. Pages with spanning artwork cannot move.
+        </p>
         <ul class="page-contents">
           <li v-for="entry in listedPages" :key="pageKey(entry.page)">
             Page {{ entry.number }}
@@ -3284,11 +3466,18 @@ defineExpose({
 .page-contents li {
   margin: 4px 0;
 }
-.tab-drop-before {
-  box-shadow: -3px 0 var(--accent);
+.print-end-drop {
+  min-height: 36px;
+  margin: 4px;
 }
-.tab-drop-after {
-  box-shadow: 3px 0 var(--accent);
+.print-object-name {
+  touch-action: none;
+}
+.print-tabs [data-print-tab] {
+  touch-action: none;
+  user-select: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .print-tabs {
   display: flex;

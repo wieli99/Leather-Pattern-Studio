@@ -236,9 +236,11 @@ test("custom paper units, settings, page additions, and cancellation", async ({
   await expect(
     page.getByRole("tab", { name: "Custom", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.down("Control");
   await page
     .getByRole("button", { name: "Add page right 0,0", exact: true })
     .click();
+  await page.keyboard.up("Control");
   expect((await save(page)).printLayouts[0].pages).toHaveLength(2);
   await page.getByRole("tab", { selected: true }).click({ button: "right" });
   await page
@@ -273,9 +275,11 @@ test("multiple sheets export as a ZIP and PDF export works offline", async ({
     .toBe(true);
   await create(page);
   await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await page.keyboard.down("Control");
   await page
     .getByRole("button", { name: "Add page right 0,0", exact: true })
     .click();
+  await page.keyboard.up("Control");
   await context.setOffline(true);
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Export print layout" });
@@ -586,9 +590,11 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
 }) => {
   await load(page);
   await create(page);
+  await page.keyboard.down("Control");
   await page
     .getByRole("button", { name: "Add page right 0,0", exact: true })
     .click();
+  await page.keyboard.up("Control");
   const canvas = page.getByLabel("Print layout canvas"),
     box = (await canvas.boundingBox())!;
   await page.keyboard.down("Control");
@@ -607,12 +613,25 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
   await page.mouse.move(box.x + 150, box.y + 150);
   await page.mouse.down();
   await page.mouse.move(box.x + 490, box.y + 200, { steps: 5 });
+  await expect(page.locator(".reorder-floating")).toBeVisible();
+  const destinationAlpha = () =>
+    canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement,
+        ratio = c.width / c.clientWidth;
+      return c
+        .getContext("2d")!
+        .getImageData(Math.round(530 * ratio), Math.round(200 * ratio), 1, 1)
+        .data[3];
+    });
+  await expect.poll(destinationAlpha).toBe(0);
+  await page.screenshot({ path: "public/manual/images/reorder-pages.png" });
   await page.mouse.up();
+  await expect.poll(destinationAlpha).toBe(255);
   await page.keyboard.up("Control");
   doc = await save(page);
   expect(doc.printLayouts[0].pages).toEqual([
     { column: 1, row: 0 },
-    { column: 2, row: 0 },
+    { column: 0, row: 0 },
   ]);
 });
 test("source object and group hover previews use a medium popup", async ({
@@ -880,18 +899,16 @@ test("wheel pans print pages and Ctrl wheel zooms", async ({ page }) => {
   await load(page);
   await create(page);
   const canvas = page.getByLabel("Print layout canvas");
-  const button = page.getByRole("button", {
-    name: "Add page above 0,0",
-    exact: true,
-  });
-  const before = (await button.boundingBox())!;
+  const before = await canvas.evaluate((el) =>
+    (el as HTMLCanvasElement).toDataURL(),
+  );
   const zoomLabel = page.locator(".print-status > span").last();
   const zoom = await zoomLabel.innerText();
   await canvas.hover();
   await page.mouse.wheel(0, 80);
   await expect
-    .poll(async () => (await button.boundingBox())!.y)
-    .toBeCloseTo(before.y - 80, 0);
+    .poll(() => canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL()))
+    .not.toBe(before);
   await expect(zoomLabel).toHaveText(zoom);
   await page.keyboard.down("Control");
   await page.mouse.wheel(0, -100);
@@ -1121,4 +1138,68 @@ test("print Move shafts drag and pivot placement uses a crosshair", async ({
   await expect(canvas).not.toHaveCSS("cursor", "crosshair");
   await page.keyboard.press("Escape");
   expect((await save(page)).printLayouts[0].instances[0].x).toBeCloseTo(item.x);
+});
+
+test("unchanged page drops clear the preview without adding history", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.keyboard.down("Control");
+  await page
+    .getByRole("button", { name: "Add page right 0,0", exact: true })
+    .click();
+  await page.keyboard.up("Control");
+  const canvas = page.getByLabel("Print layout canvas"),
+    box = (await canvas.boundingBox())!;
+  await page.keyboard.down("Control");
+  await page.mouse.move(box.x + 550, box.y + 150);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 500, box.y + 160, { steps: 8 });
+  await expect(page.locator(".reorder-floating")).toBeVisible();
+  await expect(page.locator(".delete-paper")).toHaveCount(0);
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  await expect(
+    page.getByRole("button", { name: "Import Piece", exact: true }),
+  ).toBeEnabled();
+  expect((await save(page)).printLayouts[0].pages).toHaveLength(2);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  expect((await save(page)).printLayouts[0].pages).toHaveLength(1);
+});
+test("add-page icons require Ctrl and disappear on release and blur", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await expect(page.locator(".add-paper")).toHaveCount(0);
+  await page.keyboard.down("Control");
+  await expect(page.locator(".add-paper").first()).toBeVisible();
+  await page.keyboard.up("Control");
+  await expect(page.locator(".add-paper")).toHaveCount(0);
+  await page.keyboard.down("Control");
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await expect(page.locator(".add-paper")).toHaveCount(0);
+  await page.keyboard.up("Control");
+});
+test("a small rightward drag near the paper edge does not shift the row", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.keyboard.down("Control");
+  await page
+    .getByRole("button", { name: "Add page right 0,0", exact: true })
+    .click();
+  await page.keyboard.up("Control");
+  const before = await save(page),
+    canvas = page.getByLabel("Print layout canvas"),
+    box = (await canvas.boundingBox())!;
+  await page.keyboard.down("Control");
+  await page.mouse.move(box.x + 450, box.y + 150);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 460, box.y + 150, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.up("Control");
+  expect(await save(page)).toEqual(before);
 });

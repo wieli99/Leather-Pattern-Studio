@@ -13,7 +13,9 @@ Right-click a print tab and choose **Layout settings** to rename a tab or change
 
 ![Portrait and landscape icon-only orientation choices](/manual/images/print-orientation.png)
 
-Drag print tabs left or right to reorder them. Grid stays first. The order is saved with the project and supports undo/redo.
+Drag print tabs left or right to reorder them. An empty dashed outline reserves the destination while the surrounding tabs move aside. A floating tab follows the pointer. Escape cancels; dropping outside the tab strip leaves the order unchanged. Grid stays first. The order is saved with the project and supports undo/redo.
+
+![Print tab destination outline](/manual/images/reorder-tabs.png)
 
 ## Import and arrange objects
 
@@ -25,13 +27,15 @@ Hover an object or folder in either Grid objects panel to preview its source art
 
 ![Source folder hover preview](/manual/images/object-hover-preview.png)
 
+![Moving selected print objects to the bottom of the list](/manual/images/reorder-print-objects.png)
+
 The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move arrow shafts and tips both support dragging, with the same cursor feedback as Grid. V or Set pivot enters crosshair placement; snapping and Alt bypass also apply to pivots. Mirror axes pass through the pivot on screen, including near page gutters. Changing the Mirror pivot or axes refreshes its preview without accumulating reflections. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. The small center circle marks the pivot in Rotate and Mirror. During a rotation drag, a degree readout follows the pointer, matching Grid. The rotation ring matches Grid: hovering highlights it, and a translucent sector shows the preview angle. Rotation uses Grid’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
 
 - **Hide** and **Lock** affect only print instances. Grid visibility and locking are independent.
 - Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes linked copies at the pointer, preserving their offsets from the pointer at copy time, just like Grid. Keep the pointer over the print canvas and finish active edits first. Copies can be pasted into another print tab in the same project.
 - Right-click a Print objects entry for **Duplicate**, **Group**, and **Delete**. Right-clicking a selected entry preserves the selection; right-clicking another entry selects it. **Duplicate** creates another linked copy. **Group** groups selected siblings.
 - Double-click a row name to rename it locally.
-- Drag rows onto a folder to put them inside it, or onto an object to place them before it. Drop on the empty panel area to move a free item to the top level. Linked children remain within their imported-folder boundary.
+- Drag rows to reorder them. An empty dashed outline shows the destination, and surrounding rows move aside. Use the upper or lower half of an object row to place items before or after it; use the middle of a folder row to append inside it. Dragging a selected row moves the selected movable items together in tree order. A floating preview shows the number of moved items. Drop on the outlined area below the last row to append a free item at the top level. Linked children remain within their imported-folder boundary; a selection that crosses those boundaries cannot move together. Escape cancels. Each completed move is one undo step.
 - **Delete** removes print placements. Removing a child from an imported folder suppresses it for that import, so future source edits do not immediately restore it. Import again to obtain another copy.
 
 Choose **Mirror (M)** to reflect selected placements. Hovering either side of a mirror axis highlights the full line through the pivot. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Grid. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
@@ -52,15 +56,17 @@ Geometry edits, new drawing tools, scaling, and styling paste are unavailable in
 
 ## Pages and assembly
 
-White sheets show the physical paper; dashed inset lines show printable areas. Grey gutters separate sheets on screen and do not add distance to the artwork. **+** controls at exposed edges add blank neighbouring sheets in any direction.
+White sheets show the physical paper; dashed inset lines show printable areas. Grey gutters separate sheets on screen and do not add distance to the artwork. Hold **Ctrl** to reveal **+** controls at exposed edges, then click one to add a blank neighbouring sheet.
 
 Artwork crossing a printable boundary is clipped onto adjacent sheets, which are added automatically after placement or source edits. Paired `|<` marks and matching edge identifiers show where to join the sheets. Trim away the blank margins along adjoining edges and align the matching marks. The Pages section is a read-only list of sheets and the objects they contain. An object spanning sheets appears under each of them.
 
-Hold **Ctrl** to show page delete buttons and page numbers (top-left to bottom-right, skipping empty cells). Ctrl-click exposed paper to toggle page selection; objects in front take priority. Delete/Backspace deletes selected pages and their objects, but refuses if an affected object also appears on an unselected page. Select every page containing that object to delete it. Deleting all sheets leaves one empty sheet.
+Hold **Ctrl** to show add-page + icons, page delete buttons and page numbers (top-left to bottom-right, skipping empty cells). Ctrl-click exposed paper to toggle page selection; objects in front take priority. Delete/Backspace deletes selected pages and their objects, but refuses if an affected object also appears on an unselected page. Select every page containing that object to delete it. Deleting all sheets leaves one empty sheet.
 
 The delete button removes its page and artwork using the same spanning-artwork restrictions as Delete/Backspace.
 
-Ctrl-drag exposed paper to move one page and its contents. A page containing a spanning object cannot move. Drop on an insertion edge: horizontal insertion pushes that contiguous row right, vertical insertion pushes that contiguous column down. The source gap stays empty. Insertion also refuses if it would split shared artwork. The proposed arrangement is previewed before release; Escape or right-click cancels.
+Ctrl-drag exposed paper to move one page and its contents. A page containing a spanning object cannot move. Drop on an insertion edge: horizontal insertion pushes that contiguous row right, vertical insertion pushes that contiguous column down. Small drags retain the original slot. The source gap closes within its contiguous row or column; existing gaps and unrelated sheets stay in place. Insertion also refuses if it would split shared artwork. The destination sheet appears as an empty dashed outline, displaced sheets preview their new positions, and a floating page thumbnail follows the pointer. Hold Ctrl and start on blank paper on the canvas, rather than the read-only Pages list. The proposed arrangement is previewed before release; Escape or right-click cancels.
+
+![Page destination outline during a Ctrl-drag](/manual/images/reorder-pages.png)
 
 ![Ctrl page selection and temporary numbering](/manual/images/print-page-selection.png)
 

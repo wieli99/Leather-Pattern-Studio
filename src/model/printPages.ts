@@ -89,10 +89,29 @@ export function movePrintPage(
   )
     throw Error("Drop at a page insertion edge");
   const changes = new Map<string, PrintPage>();
+  // Compact only the contiguous run following the removed sheet.
+  let gap = { ...source };
+  while (true) {
+    const following = {
+      column: gap.column + (axis === "x" ? 1 : 0),
+      row: gap.row + (axis === "y" ? 1 : 0),
+    };
+    const index = remaining.findIndex((p) => pageKey(p) === pageKey(following));
+    if (index < 0) break;
+    changes.set(pageKey(following), { ...gap });
+    remaining[index] = { ...gap };
+    gap = following;
+  }
   changes.set(pageKey(source), target);
+  const compacted = new Map(
+    l.pages
+      .filter((p) => pageKey(p) !== pageKey(source))
+      .map((p) => [pageKey(changes.get(pageKey(p)) ?? p), p]),
+  );
   let cursor = { ...target };
   while (remaining.some((p) => pageKey(p) === pageKey(cursor))) {
-    changes.set(pageKey(cursor), {
+    const original = compacted.get(pageKey(cursor))!;
+    changes.set(pageKey(original), {
       column: cursor.column + (axis === "x" ? 1 : 0),
       row: cursor.row + (axis === "y" ? 1 : 0),
     });

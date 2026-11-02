@@ -32,7 +32,7 @@ const l: PrintLayout = {
   ],
   instances: [{ id: "i", sourceId: "s", x: 95, y: 100, rotation: 0 }],
 };
-it("inserts without swapping and leaves the source gap", () => {
+it("reorders adjacent sheets and closes the source gap", () => {
   const next = movePrintPage(
     doc,
     l,
@@ -42,7 +42,7 @@ it("inserts without swapping and leaves the source gap", () => {
   );
   expect(next.pages).toEqual([
     { column: 1, row: 0 },
-    { column: 2, row: 0 },
+    { column: 0, row: 0 },
     { column: 0, row: 1 },
   ]);
   expect(next.instances[0].x).toBe(285);
@@ -95,4 +95,45 @@ it("refuses row insertion that would tear artwork shared with a stationary row",
       "x",
     ),
   ).toThrow("split");
+});
+it("closes a contiguous source run without changing existing gaps", () => {
+  const layout = {
+    ...l,
+    instances: [],
+    pages: [0, 1, 2, 4].map((column) => ({ column, row: 0 })),
+  };
+  const next = movePrintPage(
+    doc,
+    layout,
+    { column: 0, row: 0 },
+    { column: 1, row: 0 },
+    "x",
+  );
+  expect(next.pages.map((p) => p.column)).toEqual([1, 0, 2, 4]);
+});
+it("closes vertical source gaps and leaves other columns untouched", () => {
+  const layout = {
+    ...l,
+    instances: [],
+    pages: [
+      { column: 0, row: 0 },
+      { column: 0, row: 1 },
+      { column: 0, row: 2 },
+      { column: 1, row: 0 },
+    ],
+  };
+  expect(
+    movePrintPage(
+      doc,
+      layout,
+      { column: 0, row: 0 },
+      { column: 0, row: 1 },
+      "y",
+    ).pages,
+  ).toEqual([
+    { column: 0, row: 1 },
+    { column: 0, row: 0 },
+    { column: 0, row: 2 },
+    { column: 1, row: 0 },
+  ]);
 });

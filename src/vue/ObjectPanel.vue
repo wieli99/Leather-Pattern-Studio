@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import ReorderSlot from "./ReorderSlot.vue";
+import ReorderFloating from "./ReorderFloating.vue";
+import { useReorderDrag } from "./useReorderDrag";
+import {
+  reorderRoots,
+  reorderIds,
+  reorderPreview,
+  reorderTree,
+} from "../model/reorder";
 import ObjectPreview from "./ObjectPreview.vue";
 const hoverPreview = ref<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
 function previewRow(event: PointerEvent, id: string) {
@@ -6,7 +15,7 @@ function previewRow(event: PointerEvent, id: string) {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   hoverPreview.value = { id, x: rect.left, y: rect.top };
 }
-import { computed, ref, onBeforeUnmount, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   ContextMenuRoot,
   ContextMenuTrigger,
@@ -78,6 +87,7 @@ function children(parent: string | null): ObjectNode[] {
 function selected(id: string) {
   return e.value.selectedGroups.includes(id);
 }
+let dragDocument: typeof editor.document | undefined;
 const drag = ref<{
   ids: string[];
   revision: number;
@@ -85,18 +95,61 @@ const drag = ref<{
   y: number;
   active: boolean;
 } | null>(null);
-let frame: number | null = null;
-let lastPointer: PointerEvent | null = null;
-function scrollFrame() {
-  if (drag.value?.active && lastPointer) move(lastPointer);
-  if (drag.value) frame = requestAnimationFrame(scrollFrame);
-}
 const target = ref<{
   id: string;
   parent: string | null;
   index: number;
   kind: "before" | "after" | "inside";
 } | null>(null);
+const dragView = useReorderDrag({
+  activate() {
+    if (drag.value) drag.value.active = true;
+    suppressClick = true;
+  },
+  move(event) {
+    move(event);
+    return !!target.value;
+  },
+  drop() {
+    const d = drag.value,
+      t = target.value;
+    if (
+      d &&
+      t &&
+      JSON.stringify(reorderTree(editor.tree, d.ids, t)) !==
+        JSON.stringify(editor.tree)
+    )
+      void editor.movePanelItems(d.ids, t.parent, t.index, d.revision);
+  },
+  end() {
+    dragDocument = undefined;
+    drag.value = null;
+    target.value = null;
+    setTimeout(() => {
+      suppressClick = false;
+    }, 0);
+  },
+  current: () =>
+    !!drag.value &&
+    drag.value.revision === editor.revision &&
+    dragDocument === editor.document &&
+    editor.canToggleObjectState,
+  scroll: () => document.querySelector<HTMLElement>(".object-tree-list"),
+});
+const dragState = dragView.state;
+const removed = computed(() =>
+  drag.value?.active
+    ? reorderIds(reorderRoots(e.value.tree, drag.value.ids))
+    : new Set<string>(),
+);
+const previewRows = computed(() =>
+  reorderPreview(
+    rows.value,
+    removed.value,
+    drag.value?.active ? target.value : null,
+    e.value.tree,
+  ),
+);
 function down(event: PointerEvent, id: string) {
   hoverPreview.value.id = undefined;
   if (
@@ -105,22 +158,40 @@ function down(event: PointerEvent, id: string) {
     !(event.target as HTMLElement).closest(".object-select,.group-select")
   )
     return;
+  dragView.cancel();
+  const roots = reorderRoots(editor.tree, editor.panelSelection(id));
+  if (!roots.length) return;
+  const moving = reorderIds(roots);
+  const elements = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-tree-id]"),
+  ).filter((el) => moving.has(el.dataset.treeId!));
+  const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const ids = roots.map((n) => n.id);
+  const loc = nodeLocation(editor.tree, ids[0])!;
+  dragView.start(event, {
+    width: box.width,
+    height: Math.max(
+      28,
+      elements.reduce((sum, el) => sum + el.getBoundingClientRect().height, 0),
+    ),
+    label:
+      (event.target as HTMLElement)
+        .closest(".object-select,.group-select")
+        ?.textContent?.trim() || "Objects",
+    count: roots.length,
+  });
+  // start clears the previous session before installing pointer listeners.
+  dragDocument = editor.document;
   drag.value = {
-    ids: editor.panelSelection(id),
+    ids,
     revision: editor.revision,
     x: event.clientX,
     y: event.clientY,
     active: false,
   };
-  lastPointer = event;
-  frame = requestAnimationFrame(scrollFrame);
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
-  window.addEventListener("pointercancel", cancel);
-  window.addEventListener("keydown", escape);
+  target.value = { id: ids[0], ...loc, kind: "before" };
 }
 function move(event: PointerEvent) {
-  lastPointer = event;
   const d = drag.value;
   if (!d) return;
   if (!d.active && Math.hypot(event.clientX - d.x, event.clientY - d.y) < 6)
@@ -130,8 +201,6 @@ function move(event: PointerEvent) {
   const panel = document.querySelector<HTMLElement>(".object-tree-list");
   if (panel) {
     const b = panel.getBoundingClientRect();
-    if (event.clientY < b.top + 28) panel.scrollTop -= 12;
-    if (event.clientY > b.bottom - 28) panel.scrollTop += 12;
     // Keep outdent available while auto-scrolling changes the row under the pointer.
     if (
       event.clientX >= b.left &&
@@ -149,9 +218,16 @@ function move(event: PointerEvent) {
       return;
     }
   }
+  if (
+    document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest("[data-reorder-slot]")
+  )
+    return;
   const element = document
     .elementFromPoint(event.clientX, event.clientY)
     ?.closest<HTMLElement>("[data-tree-id]");
+  const previous = target.value;
   target.value = null;
   if (!element) {
     if (
@@ -200,8 +276,10 @@ function move(event: PointerEvent) {
             id,
           )),
     )
-  )
+  ) {
+    target.value = previous;
     return;
+  }
   const fraction = (event.clientY - b.top) / b.height;
   const inside =
     node.kind === "group" &&
@@ -222,18 +300,6 @@ function move(event: PointerEvent) {
     index,
     kind: inside ? "inside" : after ? "after" : "before",
   };
-}
-function up() {
-  const d = drag.value,
-    t = target.value;
-  if (d?.active) {
-    suppressClick = true;
-    setTimeout(() => {
-      suppressClick = false;
-    }, 0);
-    if (t) void editor.movePanelItems(d.ids, t.parent, t.index, d.revision);
-  }
-  cancel();
 }
 let suppressClick = false;
 function capture(event: MouseEvent) {
@@ -283,24 +349,6 @@ function capture(event: MouseEvent) {
   editor.panelRevision++;
   editor.notify();
 }
-function cancel() {
-  drag.value = null;
-  target.value = null;
-  lastPointer = null;
-  if (frame !== null) cancelAnimationFrame(frame);
-  frame = null;
-  window.removeEventListener("pointermove", move);
-  window.removeEventListener("pointerup", up);
-  window.removeEventListener("pointercancel", cancel);
-  window.removeEventListener("keydown", escape);
-}
-function escape(event: KeyboardEvent) {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    cancel();
-  }
-}
-onBeforeUnmount(cancel);
 function keyboardMove(event: KeyboardEvent, id: string) {
   if (
     !event.altKey ||
@@ -335,6 +383,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
 </script>
 <template>
   <ObjectPreview v-bind="hoverPreview" />
+  <ReorderFloating :state="dragState" />
   <div class="objects-heading">
     <h2>Objects</h2>
     <button
@@ -357,178 +406,193 @@ function keyboardMove(event: KeyboardEvent, id: string) {
       </svg>
     </button>
   </div>
-  <div class="objects object-tree-list" @click.capture="capture">
-    <div
-      v-for="row in rows"
-      :key="row.node.id"
-      :data-tree-id="row.node.id"
-      @pointerenter="previewRow($event, row.node.id)"
-      @pointerleave="hoverPreview.id = undefined"
-      class="tree-row"
-      :style="{ paddingLeft: `${row.depth * 16}px` }"
-      :class="target?.id === row.node.id ? `drop-${target.kind}` : ''"
-      @pointerdown="down($event, row.node.id)"
-      @keydown="keyboardMove($event, row.node.id)"
-    >
-      <ObjectRow
-        v-if="row.node.kind === 'object'"
-        :shape="e.document.shapes.find((s) => s.id === row.node.id)!"
-        :selected="e.selected.includes(row.node.id)"
+  <TransitionGroup
+    :css="false"
+    name="reorder"
+    tag="div"
+    class="objects object-tree-list"
+    @click.capture="capture"
+  >
+    <template v-for="entry in previewRows" :key="entry.key">
+      <ReorderSlot
+        v-if="entry.slot"
+        :height="dragState?.height ?? 28"
+        :depth="entry.depth"
       />
       <div
-        v-else
-        class="group-row"
-        :class="{
-          'group-selected': selected(row.node.id),
-          'inherited-hidden': e.isHidden(row.node.id),
-        }"
+        v-for="row in entry.slot ? [] : [entry.row]"
+        :key="row.node.id"
+        :data-tree-id="row.node.id"
+        @pointerenter="previewRow($event, row.node.id)"
+        @pointerleave="hoverPreview.id = undefined"
+        class="tree-row"
+        :style="{ paddingLeft: `${row.depth * 16}px` }"
+        :class="target?.id === row.node.id ? `drop-${target.kind}` : ''"
+        @pointerdown="down($event, row.node.id)"
+        @keydown="keyboardMove($event, row.node.id)"
       >
-        <button
-          class="group-disclosure"
-          :aria-label="`${e.collapsedGroups.has(row.node.id) ? 'Expand' : 'Collapse'} ${row.node.name}`"
-          :aria-expanded="!e.collapsedGroups.has(row.node.id)"
-          @click="editor.toggleGroupExpanded(row.node.id)"
-        >
-          {{ e.collapsedGroups.has(row.node.id) ? "▸" : "▾" }}
-        </button>
-        <input
-          v-if="naming === row.node.id"
-          v-model="draft"
-          aria-label="Rename group"
-          maxlength="200"
-          :ref="(el) => (el as HTMLInputElement | null)?.focus()"
-          @blur="finish()"
-          @keydown.stop
-          @keydown.enter.prevent="finish()"
-          @keydown.esc.prevent="finish(true)"
+        <ObjectRow
+          v-if="row.node.kind === 'object'"
+          :shape="e.document.shapes.find((s) => s.id === row.node.id)!"
+          :selected="e.selected.includes(row.node.id)"
         />
-        <ContextMenuRoot v-else>
-          <ContextMenuTrigger
-            as-child
-            @contextmenu="
-              !selected(row.node.id) && editor.selectGroup(row.node.id)
-            "
-          >
-            <button
-              class="group-select"
-              :aria-pressed="selected(row.node.id)"
-              @click="editor.selectGroup(row.node.id, $event.shiftKey)"
-              @dblclick="rename(row.node)"
-              @keydown.f2.prevent="rename(row.node)"
-            >
-              {{ row.node.name }}
-            </button>
-          </ContextMenuTrigger>
-          <ContextMenuPortal
-            ><ContextMenuContent class="object-context-menu">
-              <ContextMenuItem
-                :disabled="!e.canToggleObjectState"
-                @select="editor.duplicate()"
-                >Duplicate</ContextMenuItem
-              >
-              <ContextMenuItem
-                :disabled="!e.canToggleObjectState || e.isLocked(row.node.id)"
-                @select="rename(row.node)"
-                >Rename</ContextMenuItem
-              >
-              <ContextMenuItem
-                :disabled="!e.canToggleObjectState"
-                @select="create(true)"
-                >Group Selection</ContextMenuItem
-              >
-              <ContextMenuItem
-                :disabled="!e.canToggleObjectState"
-                @select="editor.ungroup(row.node.id)"
-                >Ungroup</ContextMenuItem
-              >
-              <ContextMenuItem
-                :disabled="
-                  !e.canToggleObjectState ||
-                  e.selectionLocked ||
-                  e.isLocked(row.node.id)
-                "
-                @select="editor.delete()"
-                >Delete Group and Contents</ContextMenuItem
-              >
-            </ContextMenuContent></ContextMenuPortal
-          >
-        </ContextMenuRoot>
-        <button
-          class="object-state"
-          :disabled="!e.canToggleObjectState"
-          :aria-label="`${row.node.hidden ? 'Show' : 'Hide'} ${row.node.name}`"
-          :aria-pressed="!!row.node.hidden"
-          :title="
-            e.isHidden(row.node.id) && !row.node.hidden
-              ? `Hidden by ${e.inheritedStateSource(row.node.id, 'hidden')}; toggles local visibility`
-              : 'Toggle group visibility'
-          "
-          @click="editor.toggleGroupState(row.node.id, 'hidden')"
+        <div
+          v-else
+          class="group-row"
+          :class="{
+            'group-selected': selected(row.node.id),
+            'inherited-hidden': e.isHidden(row.node.id),
+          }"
         >
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
+          <button
+            class="group-disclosure"
+            :aria-label="`${e.collapsedGroups.has(row.node.id) ? 'Expand' : 'Collapse'} ${row.node.name}`"
+            :aria-expanded="!e.collapsedGroups.has(row.node.id)"
+            @click="editor.toggleGroupExpanded(row.node.id)"
           >
-            <path d="M2 12 Q12 0 22 12 Q12 24 2 12Z" />
-            <circle cx="12" cy="12" r="3" />
-            <path v-if="row.node.hidden" d="M3 3L21 21" />
-          </svg>
-        </button>
-        <button
-          class="object-state"
-          :disabled="!e.canToggleObjectState"
-          :aria-label="`${row.node.locked ? 'Unlock' : 'Lock'} ${row.node.name}`"
-          :aria-pressed="!!row.node.locked"
-          :title="
-            e.isLocked(row.node.id) && !row.node.locked
-              ? `Locked by ${e.inheritedStateSource(row.node.id, 'locked')}; toggles local lock`
-              : 'Toggle group lock'
-          "
-          @click="editor.toggleGroupState(row.node.id, 'locked')"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect
-              x="5"
-              y="10"
-              width="14"
-              height="11"
-              rx="2"
-              :fill="row.node.locked ? 'currentColor' : 'none'"
-            />
-            <path
-              :d="
-                row.node.locked
-                  ? 'M8 10V6a4 4 0 018 0v4'
-                  : 'M8 10V6a4 4 0 018 0'
+            {{ e.collapsedGroups.has(row.node.id) ? "▸" : "▾" }}
+          </button>
+          <input
+            v-if="naming === row.node.id"
+            v-model="draft"
+            aria-label="Rename group"
+            maxlength="200"
+            :ref="(el) => (el as HTMLInputElement | null)?.focus()"
+            @blur="finish()"
+            @keydown.stop
+            @keydown.enter.prevent="finish()"
+            @keydown.esc.prevent="finish(true)"
+          />
+          <ContextMenuRoot v-else>
+            <ContextMenuTrigger
+              as-child
+              @contextmenu="
+                !selected(row.node.id) && editor.selectGroup(row.node.id)
               "
-            />
-          </svg>
-        </button>
+            >
+              <button
+                class="group-select"
+                :aria-pressed="selected(row.node.id)"
+                @click="editor.selectGroup(row.node.id, $event.shiftKey)"
+                @dblclick="rename(row.node)"
+                @keydown.f2.prevent="rename(row.node)"
+              >
+                {{ row.node.name }}
+              </button>
+            </ContextMenuTrigger>
+            <ContextMenuPortal
+              ><ContextMenuContent class="object-context-menu">
+                <ContextMenuItem
+                  :disabled="!e.canToggleObjectState"
+                  @select="editor.duplicate()"
+                  >Duplicate</ContextMenuItem
+                >
+                <ContextMenuItem
+                  :disabled="!e.canToggleObjectState || e.isLocked(row.node.id)"
+                  @select="rename(row.node)"
+                  >Rename</ContextMenuItem
+                >
+                <ContextMenuItem
+                  :disabled="!e.canToggleObjectState"
+                  @select="create(true)"
+                  >Group Selection</ContextMenuItem
+                >
+                <ContextMenuItem
+                  :disabled="!e.canToggleObjectState"
+                  @select="editor.ungroup(row.node.id)"
+                  >Ungroup</ContextMenuItem
+                >
+                <ContextMenuItem
+                  :disabled="
+                    !e.canToggleObjectState ||
+                    e.selectionLocked ||
+                    e.isLocked(row.node.id)
+                  "
+                  @select="editor.delete()"
+                  >Delete Group and Contents</ContextMenuItem
+                >
+              </ContextMenuContent></ContextMenuPortal
+            >
+          </ContextMenuRoot>
+          <button
+            class="object-state"
+            :disabled="!e.canToggleObjectState"
+            :aria-label="`${row.node.hidden ? 'Show' : 'Hide'} ${row.node.name}`"
+            :aria-pressed="!!row.node.hidden"
+            :title="
+              e.isHidden(row.node.id) && !row.node.hidden
+                ? `Hidden by ${e.inheritedStateSource(row.node.id, 'hidden')}; toggles local visibility`
+                : 'Toggle group visibility'
+            "
+            @click="editor.toggleGroupState(row.node.id, 'hidden')"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M2 12 Q12 0 22 12 Q12 24 2 12Z" />
+              <circle cx="12" cy="12" r="3" />
+              <path v-if="row.node.hidden" d="M3 3L21 21" />
+            </svg>
+          </button>
+          <button
+            class="object-state"
+            :disabled="!e.canToggleObjectState"
+            :aria-label="`${row.node.locked ? 'Unlock' : 'Lock'} ${row.node.name}`"
+            :aria-pressed="!!row.node.locked"
+            :title="
+              e.isLocked(row.node.id) && !row.node.locked
+                ? `Locked by ${e.inheritedStateSource(row.node.id, 'locked')}; toggles local lock`
+                : 'Toggle group lock'
+            "
+            @click="editor.toggleGroupState(row.node.id, 'locked')"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect
+                x="5"
+                y="10"
+                width="14"
+                height="11"
+                rx="2"
+                :fill="row.node.locked ? 'currentColor' : 'none'"
+              />
+              <path
+                :d="
+                  row.node.locked
+                    ? 'M8 10V6a4 4 0 018 0v4'
+                    : 'M8 10V6a4 4 0 018 0'
+                "
+              />
+            </svg>
+          </button>
+        </div>
+        <div
+          v-if="
+            row.node.kind === 'group' &&
+            !e.collapsedGroups.has(row.node.id) &&
+            !row.node.children.length
+          "
+          class="tree-empty-drop"
+          role="group"
+          :aria-label="`Drop into ${row.node.name}`"
+        ></div>
       </div>
-      <div
-        v-if="
-          row.node.kind === 'group' &&
-          !e.collapsedGroups.has(row.node.id) &&
-          !row.node.children.length
-        "
-        class="tree-empty-drop"
-        role="group"
-        :aria-label="`Drop into ${row.node.name}`"
-      ></div>
-    </div>
-    <p v-if="!rows.length">Your shapes and groups will appear here.</p>
-  </div>
+    </template>
+    <p v-if="!rows.length" key="empty">
+      Your shapes and groups will appear here.
+    </p>
+  </TransitionGroup>
   <div
     v-if="drag?.active"
     class="tree-root-drop"
@@ -579,27 +643,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
 .group-selected {
   background: #e7b27a18;
 }
-.drop-inside {
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-.drop-before::before,
-.drop-after::after {
-  content: "";
-  height: 2px;
-  background: var(--accent);
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 2;
-}
-.drop-before::before {
-  top: 0;
-}
-.drop-after::after {
-  bottom: 0;
-}
+/* The outlined placeholder, rather than row padding, reserves destination space. */
 .tree-empty-drop {
   min-height: 24px;
 }
