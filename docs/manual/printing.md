@@ -9,9 +9,11 @@ Print tabs arrange linked copies of Grid objects on physical sheets. They start 
 3. Choose millimetres, decimal inches, or fractional inches. Choose one of the right-aligned portrait/landscape paper icons; hover for labels.
 4. Press **Create**. Duplicate paper formats are allowed; automatic names receive a numeric suffix. The name follows format changes until you edit it; an edited name is preserved.
 
-Use **Layout settings** to rename a tab or change its paper, margin, and units. Switching units converts the existing dimensions; it never scales artwork. The initial margin is 10 mm. Dimensions must leave a positive printable area and cannot exceed 5,000 mm. Each layout supports up to 500 pages. **Delete layout** removes that layout after confirmation; undo restores it.
+Right-click a print tab and choose **Layout settings** to rename a tab or change its paper, margin, and units. Switching units converts the existing dimensions; it never scales artwork. The initial margin is 10 mm. Dimensions must leave a positive printable area and cannot exceed 5,000 mm. Each layout supports up to 500 pages. **Delete layout** in the same tab menu removes that layout after confirmation; undo restores it.
 
 ![Portrait and landscape icon-only orientation choices](/manual/images/print-orientation.png)
+
+Drag print tabs left or right to reorder them. Grid stays first. The order is saved with the project and supports undo/redo.
 
 ## Import and arrange objects
 
@@ -59,7 +61,7 @@ Ctrl-drag exposed paper to move one page and its contents. A page containing a s
 
 New print tabs fit and center all sheets. Returning to a tab restores its view. Tool settings open at the top-left beside the tools. Grid snap also aligns artwork centers with page centers and displays alignment guides; Alt bypasses snapping. Alt+right-click flips the clicked placement left/right along its local axes; add Ctrl to flip top/bottom.
 
-The wheel zooms and Space-drag pans. **Fit** shows all sheets. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Grid uses different units. Arbitrary text is unchanged.
+The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. **Fit** shows all sheets. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Grid uses different units. Arbitrary text is unchanged.
 
 ## Preview and export
 

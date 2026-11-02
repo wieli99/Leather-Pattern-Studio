@@ -72,7 +72,8 @@ With the print canvas or print object panel focused:
 | V / G / E / M | Select / Move / Rotate / Mirror (V places the pivot while a transform is active) |
 | Enter / right-click | Apply the active transform |
 | Space + drag | Pan |
-| Mouse wheel | Zoom around pointer |
+| Mouse wheel | Pan |
+| Ctrl/⌘ + mouse wheel | Zoom around pointer |
 | F | Fit all pages |
 | Shift / Ctrl / Alt + rotate drag | Snap to 5° / 10° / rotate freely (normal: 1°) |
 | Alt + right-click / Ctrl + Alt + right-click | Flip clicked print placement locally left/right / top/bottom |

@@ -17,6 +17,11 @@ import {
   nextTick,
 } from "vue";
 import {
+  ContextMenuRoot,
+  ContextMenuTrigger,
+  ContextMenuPortal,
+  ContextMenuContent,
+  ContextMenuItem,
   DialogRoot,
   DialogPortal,
   DialogOverlay,
@@ -414,8 +419,8 @@ function openCreate() {
   error.value = "";
   creating.value = true;
 }
-function openSettings() {
-  const l = layout.value;
+function openSettings(id = active.value) {
+  const l = layouts.value.find((l) => l.id === id);
   if (!l) return;
   settingsId.value = l.id;
   format.value = "Custom";
@@ -490,15 +495,15 @@ async function create() {
     error.value = String(reason);
   }
 }
-async function deleteLayout() {
-  const l = layout.value;
+async function deleteLayout(id = active.value) {
+  const l = layouts.value.find((l) => l.id === id);
   if (!l) return;
   if (!window.confirm(`Delete print layout “${l.name}”?`)) return;
   await editor.commit({
     ...editor.document,
     printLayouts: layouts.value.filter((p) => p.id !== l.id),
   });
-  await switchTab("");
+  if (active.value === id) await switchTab("");
 }
 async function importSource(id: string) {
   const l = layout.value;
@@ -530,6 +535,92 @@ async function importSource(id: string) {
   } catch (reason) {
     error.value = String(reason);
   }
+}
+const tabDrop = ref<{ id: string; after: boolean }>();
+let tabPointer:
+  | {
+      id: string;
+      pointerId: number;
+      x: number;
+      y: number;
+      active: boolean;
+      document: typeof editor.document;
+    }
+  | undefined;
+let suppressTabClick = false;
+function tabDown(event: PointerEvent, id: string) {
+  if (event.button !== 0 || busy.value || editor.busy) return;
+  tabEnd();
+  tabPointer = {
+    id,
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    active: false,
+    document: editor.document,
+  };
+  window.addEventListener("pointermove", tabMove);
+  window.addEventListener("pointerup", tabUp);
+  window.addEventListener("pointercancel", tabEnd);
+  window.addEventListener("blur", tabEnd);
+  window.addEventListener("keydown", tabEscape);
+}
+function tabEscape(event: KeyboardEvent) {
+  if (event.key === "Escape") tabEnd();
+}
+function tabMove(event: PointerEvent) {
+  const d = tabPointer;
+  if (!d || event.pointerId !== d.pointerId) return;
+  if (d.document !== editor.document) {
+    tabEnd();
+    return;
+  }
+  if (!d.active && Math.hypot(event.clientX - d.x, event.clientY - d.y) < 6)
+    return;
+  d.active = true;
+  event.preventDefault();
+  const target = document
+    .elementFromPoint(event.clientX, event.clientY)
+    ?.closest<HTMLElement>("[data-print-tab]");
+  tabDrop.value = target
+    ? {
+        id: target.dataset.printTab!,
+        after:
+          event.clientX >
+          target.getBoundingClientRect().left + target.offsetWidth / 2,
+      }
+    : undefined;
+}
+function tabEnd() {
+  tabPointer = undefined;
+  tabDrop.value = undefined;
+  window.removeEventListener("pointermove", tabMove);
+  window.removeEventListener("pointerup", tabUp);
+  window.removeEventListener("pointercancel", tabEnd);
+  window.removeEventListener("blur", tabEnd);
+  window.removeEventListener("keydown", tabEscape);
+}
+async function tabUp(event: PointerEvent) {
+  const d = tabPointer,
+    t = tabDrop.value;
+  if (!d || event.pointerId !== d.pointerId) return;
+  tabEnd();
+  if (!d.active) return;
+  suppressTabClick = true;
+  setTimeout(() => {
+    suppressTabClick = false;
+  }, 0);
+  if (!t || t.id === d.id || d.document !== editor.document) return;
+  const reordered = layouts.value.filter((l) => l.id !== d.id),
+    item = layouts.value.find((l) => l.id === d.id)!;
+  reordered.splice(
+    reordered.findIndex((l) => l.id === t.id) + (t.after ? 1 : 0),
+    0,
+    item,
+  );
+  if (reordered.every((l, i) => l.id === layouts.value[i].id)) return;
+  cancel();
+  await editor.commit({ ...editor.document, printLayouts: reordered });
 }
 async function tabKey(event: KeyboardEvent) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -2013,11 +2104,19 @@ async function up() {
   } else cancel();
 }
 function wheel(event: WheelEvent) {
+  if (!event.ctrlKey && !event.metaKey) {
+    pan.value = {
+      x: pan.value.x - event.deltaX,
+      y: pan.value.y - event.deltaY,
+    };
+    draw();
+    return;
+  }
   const p = pixel(event),
     old = zoom.value;
   zoom.value = Math.max(
     0.1,
-    Math.min(20, old * Math.exp(-event.deltaY * 0.001)),
+    Math.min(20, old * Math.exp(-event.deltaY * 0.002)),
   );
   pan.value = {
     x: p.x - ((p.x - pan.value.x) * zoom.value) / old,
@@ -2187,6 +2286,7 @@ watch(canvas, (el) => {
   }
 });
 onUnmounted(() => {
+  tabEnd();
   sourceEnd();
   if (moveFrame) cancelAnimationFrame(moveFrame);
   generation++;
@@ -2213,16 +2313,42 @@ defineExpose({
     @keydown="tabKey"
   >
     <button role="tab" :aria-selected="!layout" @click="switchTab('')">
-      Grid</button
-    ><button
-      v-for="tab in layouts"
-      :key="tab.id"
-      role="tab"
-      :aria-selected="active === tab.id"
-      @click="switchTab(tab.id)"
-    >
-      {{ tab.name }}</button
-    ><button
+      Grid
+    </button>
+    <ContextMenuRoot v-for="tab in layouts" :key="tab.id">
+      <ContextMenuTrigger as-child>
+        <button
+          role="tab"
+          :data-print-tab="tab.id"
+          :aria-selected="active === tab.id"
+          :class="{
+            'tab-drop-before': tabDrop?.id === tab.id && !tabDrop.after,
+            'tab-drop-after': tabDrop?.id === tab.id && tabDrop.after,
+          }"
+          :draggable="false"
+          @dragstart.prevent
+          @pointerdown="tabDown($event, tab.id)"
+          @click="!suppressTabClick && switchTab(tab.id)"
+        >
+          {{ tab.name }}
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuPortal
+        ><ContextMenuContent class="object-context-menu">
+          <ContextMenuItem
+            :disabled="busy || e.busy"
+            @select="openSettings(tab.id)"
+            >Layout settings</ContextMenuItem
+          >
+          <ContextMenuItem
+            :disabled="busy || e.busy"
+            @select="deleteLayout(tab.id)"
+            >Delete layout</ContextMenuItem
+          >
+        </ContextMenuContent></ContextMenuPortal
+      >
+    </ContextMenuRoot>
+    <button
       aria-label="Create print layout"
       :disabled="!e.ready || busy"
       @click="openCreate"
@@ -2518,10 +2644,6 @@ defineExpose({
       </div>
     </div>
     <aside aria-label="Print objects and settings">
-      <div class="print-actions">
-        <button @click="openSettings">Layout settings</button
-        ><button @click="deleteLayout">Delete layout</button>
-      </div>
       <PanelSection
         section-key="print-grid-objects"
         title="Grid objects"
@@ -2841,6 +2963,12 @@ defineExpose({
 }
 .page-contents li {
   margin: 4px 0;
+}
+.tab-drop-before {
+  box-shadow: -3px 0 var(--accent);
+}
+.tab-drop-after {
+  box-shadow: 3px 0 var(--accent);
 }
 .print-tabs {
   display: flex;

@@ -76,12 +76,13 @@ async function create(page: Page) {
           clientX: r.left,
           clientY: r.top,
           deltaY: delta,
+          ctrlKey: true,
           bubbles: true,
           cancelable: true,
         }),
       );
     },
-    -Math.log(2 / z) / 0.001,
+    -Math.log(2 / z) / 0.002,
   );
   await canvas.focus();
   await page.keyboard.down("Space");
@@ -239,8 +240,9 @@ test("custom paper units, settings, page additions, and cancellation", async ({
     .getByRole("button", { name: "Add page right 0,0", exact: true })
     .click();
   expect((await save(page)).printLayouts[0].pages).toHaveLength(2);
+  await page.getByRole("tab", { selected: true }).click({ button: "right" });
   await page
-    .getByRole("button", { name: "Layout settings", exact: true })
+    .getByRole("menuitem", { name: "Layout settings", exact: true })
     .click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("Name", { exact: true }).fill("Letter pattern");
@@ -449,8 +451,9 @@ test("renders all artwork families and exported unit-aware labels", async ({
   await page
     .getByRole("button", { name: "Import Pattern", exact: true })
     .click();
+  await page.getByRole("tab", { selected: true }).click({ button: "right" });
   await page
-    .getByRole("button", { name: "Layout settings", exact: true })
+    .getByRole("menuitem", { name: "Layout settings", exact: true })
     .click();
   await page
     .getByRole("dialog")
@@ -591,7 +594,9 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
   await page.keyboard.down("Control");
   await page.mouse.click(box.x + 100, box.y + 100);
   await page.screenshot({ path: "test-results/print-page-selection.png" });
-  await page.getByRole("button", {name:"Delete page 0,0",exact:true}).click();
+  await page
+    .getByRole("button", { name: "Delete page 0,0", exact: true })
+    .click();
   await page.keyboard.up("Control");
   let doc = await save(page);
   expect(doc.printLayouts[0].pages).toEqual([{ column: 1, row: 0 }]);
@@ -868,4 +873,67 @@ test("print tools select first, apply by right click, and mirror linked artwork"
   await expect(
     page.getByRole("button", { name: "Delete page 0,0", exact: true }),
   ).toHaveCount(0);
+});
+
+test("wheel pans print pages and Ctrl wheel zooms", async ({ page }) => {
+  await load(page);
+  await create(page);
+  const canvas = page.getByLabel("Print layout canvas");
+  const button = page.getByRole("button", {
+    name: "Add page above 0,0",
+    exact: true,
+  });
+  const before = (await button.boundingBox())!;
+  const zoomLabel = page.locator(".print-status > span").last();
+  const zoom = await zoomLabel.innerText();
+  await canvas.hover();
+  await page.mouse.wheel(0, 80);
+  await expect
+    .poll(async () => (await button.boundingBox())!.y)
+    .toBeCloseTo(before.y - 80, 0);
+  await expect(zoomLabel).toHaveText(zoom);
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up("Control");
+  await expect(zoomLabel).not.toHaveText(zoom);
+});
+
+test("print tab context menu targets its tab and drag reorders saved layouts", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page
+    .getByRole("button", { name: "Create print layout", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Create", exact: true })
+    .click();
+  const first = page.getByRole("tab", { name: "A4", exact: true }),
+    second = page.getByRole("tab", { name: "A4 2", exact: true });
+  await expect(second).toHaveAttribute("aria-selected", "true");
+  await first.click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "Layout settings", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog").getByLabel("Name", { exact: true }),
+  ).toHaveValue("A4");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
+  await expect(second).toHaveAttribute("aria-selected", "true");
+  const a = (await first.boundingBox())!,
+    b = (await second.boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 2, a.y + a.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByRole("tab").nth(0)).toHaveText("Grid");
+  await expect(page.getByRole("tab").nth(1)).toHaveText("A4 2");
+  expect(
+    (await save(page)).printLayouts.map((l: { name: string }) => l.name),
+  ).toEqual(["A4 2", "A4"]);
 });
