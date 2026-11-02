@@ -28,7 +28,7 @@ Single-letter editor shortcuts require canvas focus. Click the canvas first. Inp
 | ? | Open this manual |
 
 ## View navigation
-Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the pointer. With the canvas focused, F fits all objects; Shift+F fits the selection. The Fit icon below Redo in the Grid toolbar also fits all objects. When no visible objects are present, Fit or F restores the default Grid zoom and pan.
+Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the pointer. With the canvas focused, F fits all objects; Shift+F fits the selection. The Fit icon below Redo in the Model toolbar also fits all objects. When no visible objects are present, Fit or F restores the default Model zoom and pan.
 
 See [selection](#selection), [drawing](#drawing), and [transforms](#transforms) for modifier gestures.
 
@@ -44,11 +44,11 @@ Hold Ctrl to show healthy stitch-link chain indicators. Broken links remain visi
 
 In Select, double-click a polyline or rectangle anchor to make it smooth; double-click a curve anchor to toggle sharp/smooth. Alt+drag a curve handle moves it independently; dragging without Alt mirrors the handles.
 
-Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste on Grid works across browser tabs and sessions and creates one undo step. The same shortcuts work between Grid and print layout tabs. Pasting creates independent objects, including when copying linked print placements. Finish active edits before copying or pasting.
+Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste on Model works across browser tabs and sessions and creates one undo step. The same shortcuts work between Model and print layout tabs. Pasting creates independent objects, including when copying linked print placements. Finish active edits before copying or pasting.
 
 After Copy Styling in an object's context menu, Ctrl/⌘+V applies fill color, opacity, fill mode, and outline styling to selected fillable objects when the canvas or an object row has focus.
 
-| Shortcut | Objects panel action |
+| Shortcut | Model objects panel action |
 | --- | --- |
 | Ctrl/⌘+G | Group selection |
 | Alt+Shift+Up / Down | Move focused row before / after its sibling |
@@ -84,7 +84,7 @@ With the print canvas or print object panel focused:
 | Ctrl/⌘+A | Select available print objects |
 | T | Text on the active print tab |
 | D / Shift+D | Select or cycle Measurement variants |
-| Ctrl/⌘+C / Ctrl/⌘+V | Copy/paste independent objects across Grid and print tabs |
+| Ctrl/⌘+C / Ctrl/⌘+V | Copy/paste independent objects across Model and print tabs |
 | Ctrl/⌘+D | Duplicate placements, preserving their linked or unlinked state |
 | Ctrl/⌘+G | Group selected siblings |
 | Delete / Backspace | Delete selected unlocked print objects |

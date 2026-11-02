@@ -1,6 +1,6 @@
 # Print layouts and export
 
-Print tabs arrange linked copies of Grid objects and independent text, measurements, indicators, and images on physical sheets. They start empty, and new projects have only **Grid**. Editing a source on Grid updates its linked print copies without changing their print position or rotation.
+Print tabs arrange linked copies of Model objects and independent text, measurements, indicators, and images on physical sheets. They start empty, and new projects have only **Model**. Editing a source on Model updates its linked print copies without changing their print position or rotation.
 
 ## Create and configure a layout
 
@@ -13,25 +13,25 @@ Right-click a print tab and choose **Layout settings** to rename a tab or change
 
 ![Portrait and landscape icon-only orientation choices](/manual/images/print-orientation.png)
 
-Drag print tabs left or right to reorder them. An empty dashed outline reserves the destination while the surrounding tabs move aside. A floating tab follows the pointer. Escape cancels; dropping outside the tab strip leaves the order unchanged. Grid stays first. The order is saved with the project and supports undo/redo.
+Drag print tabs left or right to reorder them. An empty dashed outline reserves the destination while the surrounding tabs move aside. A floating tab follows the pointer. Escape cancels; dropping outside the tab strip leaves the order unchanged. Model stays first. The order is saved with the project and supports undo/redo.
 
 ![Print tab destination outline](/manual/images/reorder-tabs.png)
 
 ## Draw directly on a print tab
 
-Choose **Text (T)**, **Measurement (D)**, or **Import image** below Mirror in the print toolbar. The Measurement variant menu includes Measurement, Square size guide, Ruler size guide, Arrow, Bodyless arrow, and Crosshair; D and Shift+D cycle variants. Placement, numeric construction fields, Shift constraints, Alt snapping bypass, and cancellation work as on Grid. Measurements use this layout’s units.
+Choose **Text (T)**, **Measurement (D)**, or **Import image** below Mirror in the print toolbar. The Measurement variant menu includes Measurement, Square size guide, Ruler size guide, Arrow, Bodyless arrow, and Crosshair; D and Shift+D cycle variants. Placement, numeric construction fields, Shift constraints, Alt snapping bypass, and cancellation work as on Model. Measurements use this layout’s units.
 
-New objects belong only to the active print tab. They are never linked or synced to Grid or another print tab. Select an independent object to edit its Properties below Pages in the right sidebar. Double-click text on paper to edit it; Ctrl/⌘+Enter applies and Escape cancels. Image import uses the same formats and initial viewport-relative size as Grid. Each completed creation or edit is one undo step; switching tabs cancels unfinished placement.
+New objects belong only to the active print tab. They are never linked or synced to Model or another print tab. Select an independent object to edit its Properties below Pages in the right sidebar. Double-click text on paper to edit it; Ctrl/⌘+Enter applies and Escape cancels. Image import uses the same formats and initial viewport-relative size as Model. Each completed creation or edit is one undo step; switching tabs cancels unfinished placement.
 
 ![Text and measurement tools on a print tab](/manual/images/print-drawing-tools.png)
 
 ## Import and arrange objects
 
-Both object lists scroll independently when they contain many rows, like the object list on Grid. Their headings remain above the scrolling rows.
+Both object lists scroll independently when they contain many rows, like the object list on Model. Their headings remain above the scrolling rows.
 
-The **Grid objects** panel shows the source object and folder hierarchy. Clicking outside the Grid objects list or switching tabs clears its source selection. Press **Import** beside an object or folder. Repeated imports create independent linked placements. Imported folders retain their nesting and source membership: future additions appear, and removed source members disappear.
+The **Model objects** panel shows the source object and folder hierarchy. Clicking outside the Model objects list or switching tabs clears its source selection. Press **Import** beside an object or folder. Repeated imports create independent linked placements. Imported folders retain their nesting and source membership: future additions appear, and removed source members disappear.
 
-Hover an object or folder in either Grid objects panel to preview its source artwork. Drag selected source rows onto paper to place linked copies together, preserving their relative arrangement. A placement preview follows the pointer over a sheet; release to import it. Sheet margins place the artwork at the nearest printable position. Dropping outside paper does nothing; Escape or right-click cancels.
+Hover an object or folder in either Model objects panel to preview its source artwork. Drag selected source rows onto paper to place linked copies together, preserving their relative arrangement. A placement preview follows the pointer over a sheet; release to import it. Sheet margins place the artwork at the nearest printable position. Dropping outside paper does nothing; Escape or right-click cancels.
 
 ![Dragging source artwork onto a sheet before release](/manual/images/print-drag-preview.png)
 
@@ -39,12 +39,12 @@ Hover an object or folder in either Grid objects panel to preview its source art
 
 ![Moving selected print objects to the bottom of the list](/manual/images/reorder-print-objects.png)
 
-The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move arrow shafts and tips both support dragging, with the same cursor feedback as Grid. V or Set pivot enters crosshair placement; snapping and Alt bypass also apply to pivots. Mirror axes pass through the pivot on screen, including near page gutters. Changing the Mirror pivot or axes refreshes its preview without accumulating reflections. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. The small center circle marks the pivot in Rotate and Mirror. During a rotation drag, a degree readout follows the pointer, matching Grid. The rotation ring matches Grid: hovering highlights it, and a translucent sector shows the preview angle. Rotation uses Grid’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
+The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move arrow shafts and tips both support dragging, with the same cursor feedback as Model. V or Set pivot enters crosshair placement; snapping and Alt bypass also apply to pivots. Mirror axes pass through the pivot on screen, including near page gutters. Changing the Mirror pivot or axes refreshes its preview without accumulating reflections. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. The small center circle marks the pivot in Rotate and Mirror. During a rotation drag, a degree readout follows the pointer, matching Model. The rotation ring matches Model: hovering highlights it, and a translucent sector shows the preview angle. Rotation uses Model’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
 
-- **Hide** and **Lock** affect only print instances. Grid visibility and locking are independent.
-- The **chain** button after Hide and Lock unlinks an imported object from Grid immediately, preserving its current geometry, dimensions, text, images, styles, and stitching. Unlinking an imported folder freezes its entire current subtree and stops membership updates. Individual children can also be unlinked while their folder stays linked. Detached artwork survives changes to or deletion of its Grid source.
+- **Hide** and **Lock** affect only print instances. Model visibility and locking are independent.
+- The **chain** button after Hide and Lock unlinks an imported object from Model immediately, preserving its current geometry, dimensions, text, images, styles, and stitching. Unlinking an imported folder freezes its entire current subtree and stops membership updates. Individual children can also be unlinked while their folder stays linked. Detached artwork survives changes to or deletion of its Model source.
 - An unlinked entry shows a disabled **broken chain** button. Its hint reads “Unlinked. Cannot be re-linked; use Undo to restore the link.” There is no re-link action; normal Undo restores the link and Redo detaches it again. Unlinking is one undo step. Locally created folders have no chain button.
-- Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes copies at the pointer, preserving their offsets from the pointer at copy time, just like Grid. Keep the pointer over the print canvas and finish active edits first. All selectable objects and groups can be copied between Grid and print tabs, and between print tabs. Pasted print objects are independent snapshots; pasted Grid objects are ordinary independent objects. Physical dimensions and appearance are preserved across different tab units.
+- Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes copies at the pointer, preserving their offsets from the pointer at copy time, just like Model. Keep the pointer over the print canvas and finish active edits first. All selectable objects and groups can be copied between Model and print tabs, and between print tabs. Pasted print objects are independent snapshots; pasted Model objects are ordinary independent objects. Physical dimensions and appearance are preserved across different tab units.
 - Right-click a Print objects entry for **Duplicate**, **Group**, and **Delete**. Right-clicking a selected entry preserves the selection; right-clicking another entry selects it. **Duplicate** preserves the original’s linked or unlinked status, while copy/paste always creates independent objects. **Group** groups selected siblings.
 - Double-click a row name to rename it locally.
 - Drag rows to reorder them. An empty dashed outline shows the destination, and surrounding rows move aside. Use the upper or lower half of an object row to place items before or after it; use the middle of a folder row to append inside it. Dragging a selected row moves the selected movable items together in tree order. A floating preview shows the number of moved items. Drop on the outlined area below the last row to append a free item at the top level. Linked children remain within their imported-folder boundary; a selection that crosses those boundaries cannot move together. Escape cancels. Each completed move is one undo step.
@@ -52,15 +52,15 @@ The **Print objects** panel controls this layout only. Select a row or click an 
 
 ![Linked and unlinked print object controls](/manual/images/print-unlink.png)
 
-Choose **Mirror (M)** to reflect selected placements. Hovering either side of a mirror axis highlights the full line through the pivot, using the same orange stroke and theme-colored outline as Grid. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Grid. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
+Choose **Mirror (M)** to reflect selected placements. Hovering either side of a mirror axis highlights the full line through the pivot, using the same orange stroke and theme-colored outline as Model. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Model. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
 
 ![Mirror tool with axis choices and linked artwork preview](/manual/images/print-mirror.png)
 
 ![Print object context menu](/manual/images/print-object-menu.png)
 
-Source geometry, dimensions, text, images, styles, and stitching remain linked until you unlink a print copy. Moving or rotating a source on Grid does not move or rotate existing print placements. Deleting a source removes its linked print copies in the same undo step. Undo/redo is shared across Grid and all print tabs.
+Source geometry, dimensions, text, images, styles, and stitching remain linked until you unlink a print copy. Moving or rotating a source on Model does not move or rotate existing print placements. Deleting a source removes its linked print copies in the same undo step. Undo/redo is shared across Model and all print tabs.
 
-Geometry edits, new drawing tools, scaling, and styling paste are unavailable in print views. Return to Grid to edit sources.
+Geometry edits, new drawing tools, scaling, and styling paste are unavailable in print views. Return to Model to edit sources.
 
 ![Print layout with linked source and print object panels, inch rulers, dimensions, stitching, and images](/manual/images/print-layout.png)
 
@@ -86,7 +86,7 @@ Ctrl-drag exposed paper to move one page and its contents. A page containing a s
 
 New print tabs fit and center all sheets. Returning to a tab restores its view. Tool settings open at the top-left beside the tools. Grid snap also aligns artwork centers with page centers and displays alignment guides; Alt bypasses snapping. Alt+right-click flips the clicked placement left/right along its local axes; add Ctrl to flip top/bottom.
 
-The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. The **Fit** icon (a rectangle inside four framing corners) below Redo shows all sheets. With no artwork, Fit or F restores the default page-centered view. Undo and Redo use the same arrow buttons as Grid, below a separator. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Grid uses different units. Arbitrary text is unchanged.
+The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. The **Fit** icon (a rectangle inside four framing corners) below Redo shows all sheets. With no artwork, Fit or F restores the default page-centered view. Undo and Redo use the same arrow buttons as Model, below a separator. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Model uses different units. Arbitrary text is unchanged.
 
 ## Preview and export
 

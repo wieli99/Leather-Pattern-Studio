@@ -104,7 +104,7 @@ async function save(page: Page) {
   for await (const chunk of stream!) chunks.push(chunk);
   return JSON.parse(Buffer.concat(chunks).toString());
 }
-test("Fit restores the default view on an empty grid", async ({ page }) => {
+test("Fit restores the default view on an empty Model tab", async ({ page }) => {
   await page.goto("/");
   const fit = page.getByRole("button", { name: "Fit", exact: true });
   await expect(fit).toBeEnabled();
@@ -140,7 +140,7 @@ test("Fit restores the default page view on an empty print tab", async ({ page }
   await expect(async () => expect(await canvas.screenshot()).toEqual(initial)).toPass();
 });
 
-test("panel edge tabs hide and restore print panels and share visibility with Grid", async ({ page }, info) => {
+test("panel edge tabs hide and restore print panels and share visibility with Model", async ({ page }, info) => {
   await load(page);
   await create(page);
   for (const [name, selector] of [
@@ -156,7 +156,7 @@ test("panel edge tabs hide and restore print panels and share visibility with Gr
   }
   await page.screenshot({ path: info.outputPath("print-panel-toggles.png") });
   await page.getByRole("button", { name: "Hide tools", exact: true }).click();
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Drawing tools", exact: true })).toBeHidden();
   await page.getByRole("button", { name: "Show tools", exact: true }).click();
   await page.getByRole("tab", { name: "A4", exact: true }).click();
@@ -203,7 +203,7 @@ test("layouts are optional, import folders repeatedly, arrange copies, persist, 
   await expect
     .poll(async () => (await save(page)).printLayouts[0].instances[0].rotation)
     .toBe(0);
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Rectangle (R)", exact: true }),
   ).toBeVisible();
@@ -593,7 +593,7 @@ test("cancels pointer previews, restricts drawing, and removes linked sources at
       .getByLabel("Print object tree")
       .getByRole("button", { name: "Piece", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   await page.getByRole("button", { name: "Piece", exact: true }).click();
   await page.keyboard.press("Delete");
   await expect(page.locator(".object-select")).toHaveCount(0);
@@ -705,7 +705,7 @@ test("source object and group hover previews use a medium popup", async ({
   );
   await create(page);
   await page
-    .getByLabel("Grid source objects")
+    .getByLabel("Model source objects")
     .getByRole("button", { name: "Pattern", exact: true })
     .hover();
   await expect(page.getByRole("tooltip")).toBeVisible();
@@ -718,7 +718,7 @@ test("dragging a source group previews and imports it at the drop location", asy
   await load(page);
   await create(page);
   const source = page
-      .getByLabel("Grid source objects")
+      .getByLabel("Model source objects")
       .getByRole("button", { name: "Pattern", exact: true }),
     canvas = page.getByLabel("Print layout canvas");
   const box = (await canvas.boundingBox())!;
@@ -860,7 +860,7 @@ test("move and rotate tool values preview, cancel, and commit without changing s
   expect(doc.shapes[0]).toMatchObject(rectangle);
 });
 
-test("Select rotation ring uses Grid modifiers and Escape cancels its preview", async ({
+test("Select rotation ring uses Model modifiers and Escape cancels its preview", async ({
   page,
 }) => {
   await load(page);
@@ -1008,7 +1008,7 @@ test("print tab context menu targets its tab and drag reorders saved layouts", a
   await page.mouse.down();
   await page.mouse.move(a.x + 2, a.y + a.height / 2, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByRole("tab").nth(0)).toHaveText("Grid");
+  await expect(page.getByRole("tab").nth(0)).toHaveText("Model");
   await expect(page.getByRole("tab").nth(1)).toHaveText("A4 2");
   expect(
     (await save(page)).printLayouts.map((l: { name: string }) => l.name),
@@ -1021,7 +1021,7 @@ test("print object actions live in the shared context menu", async ({
   await load(page);
   await create(page);
   const tree = page.getByLabel("Print object tree");
-  const empty = tree.getByText("Import objects or folders from Grid.");
+  const empty = tree.getByText("Import objects or folders from Model.");
   await expect(empty).toHaveCSS("margin-left", "12px");
   await expect(
     page.getByRole("button", { name: "Duplicate", exact: true }),
@@ -1289,7 +1289,7 @@ test("unlink buttons freeze imported objects and folders with undo and persisten
   if (test.info().project.name === "chromium") {
     await page.locator(".print-workspace").screenshot({ path: "public/manual/images/print-unlink.png" });
   }
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   await page.getByRole("button", { name: "Piece", exact: true }).click();
   await page.keyboard.press("Delete");
   await expect(page.locator(".object-select")).toHaveCount(0);
@@ -1305,14 +1305,14 @@ test("unlink buttons freeze imported objects and folders with undo and persisten
 });
 
 
-test("detached print copies duplicate and paste after their Grid source is deleted", async ({ page }) => {
+test("detached print copies duplicate and paste after their Model source is deleted", async ({ page }) => {
   await load(page);
   await create(page);
   await page.getByRole("button", { name: "Import Piece", exact: true }).click();
   const tree = page.getByLabel("Print object tree");
   const canvas = page.getByLabel("Print layout canvas");
   await tree.getByRole("button", { name: "Unlink print Piece", exact: true }).click();
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   await page.getByRole("button", { name: "Piece", exact: true }).click();
   await page.keyboard.press("Delete");
   await expect(page.locator(".object-select")).toHaveCount(0);
@@ -1347,10 +1347,10 @@ test("detached print copies duplicate and paste after their Grid source is delet
   }
 });
 
-test("Grid source selection clears outside the list and resets its range anchor", async ({ page }) => {
+test("Model source selection clears outside the list and resets its range anchor", async ({ page }) => {
   await load(page);
   await create(page);
-  const list = page.getByLabel("Grid source objects");
+  const list = page.getByLabel("Model source objects");
   const folder = list.getByRole("button", { name: "Pattern", exact: true });
   const piece = list.getByRole("button", { name: "Piece", exact: true });
   await folder.click();
@@ -1361,7 +1361,7 @@ test("Grid source selection clears outside the list and resets its range anchor"
   await piece.click({ modifiers: ["Shift"] });
   await expect(piece).toHaveAttribute("aria-pressed", "true");
   await expect(folder).toHaveAttribute("aria-pressed", "false");
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   await page.getByRole("tab", { name: "A4", exact: true }).click();
   await expect(list.locator('[aria-pressed="true"]')).toHaveCount(0);
 });
@@ -1395,7 +1395,7 @@ test("tool rails keep separators and share history and fit icons", async ({ page
   await page.screenshot({ path: "test-results/print-tool-rail.png" });
 });
 
-test("native print tools create isolated editable objects and support Grid clipboard", async ({ page }) => {
+test("native print tools create isolated editable objects and support Model clipboard", async ({ page }) => {
   await load(page);
   await create(page);
   const canvas = page.getByLabel("Print layout canvas");
@@ -1420,7 +1420,7 @@ test("native print tools create isolated editable objects and support Grid clipb
   expect(document.printLayouts[0].instances.some((i: any) => i.snapshot.shape.kind === "measurement")).toBe(true);
   await canvas.focus();
   await page.keyboard.press("Escape");
-  // Copy a resolved print selection through the same interchange format as Grid.
+  // Copy a resolved print selection through the same interchange format as Model.
   await page.getByLabel("Print object tree").getByRole("button", { name: "Measurement 2", exact: true }).click();
   await page.mouse.move(box.x + 210, box.y + 230);
   const clipboard = await canvas.evaluate(el => {
@@ -1434,7 +1434,7 @@ test("native print tools create isolated editable objects and support Grid clipb
   if (process.env.UPDATE_MANUAL_SCREENSHOTS && page.context().browser()?.browserType().name() === "chromium") {
     await page.screenshot({ path: "public/manual/images/print-drawing-tools.png" });
   }
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   const grid = page.getByLabel("Pattern drawing canvas");
   await grid.hover();
   await grid.evaluate((el, text) => {
@@ -1487,7 +1487,7 @@ test("all print indicator variants, image import, editing, cancellation and tab 
   expect(after.printLayouts[1].instances).toEqual([]);
 });
 
-test("clipboard carries grouped Grid objects into independent copies on two print tabs", async ({ page }) => {
+test("clipboard carries grouped Model objects into independent copies on two print tabs", async ({ page }) => {
   await load(page);
   const grid = page.getByLabel("Pattern drawing canvas");
   await grid.hover(); await grid.focus(); await page.keyboard.press("Control+a");
@@ -1572,7 +1572,7 @@ test("a delayed image import cannot create objects after switching tabs", async 
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Import image", exact: true }).click();
   await (await chooser).setFiles({ name: "late.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10"/></svg>') });
-  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "Model", exact: true }).click();
   await page.getByRole("tab", { name: "A4", exact: true }).click();
   await page.evaluate(() => (window as any).releasePrintImport());
   await expect(page.getByRole("alert")).toContainText("Tab or project changed during image import");
@@ -1614,7 +1614,7 @@ test("large print object lists scroll within their sections", async ({ page }, i
   await page.getByRole("button", { name: "Import Pattern", exact: true }).click();
   for (const height of [800, 600]) {
     await page.setViewportSize({ width: 1280, height });
-    for (const label of ["Grid source objects", "Print object tree"]) {
+    for (const label of ["Model source objects", "Print object tree"]) {
       const list = page.getByLabel(label, { exact: true });
       await expect.poll(() => list.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
       expect(await list.evaluate(el => el.clientHeight)).toBeLessThanOrEqual(230);

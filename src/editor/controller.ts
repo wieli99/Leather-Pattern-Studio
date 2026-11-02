@@ -609,7 +609,7 @@ export class Controller {
   }
   async transact(operation: string, document?: Doc) {
     if ((operation === "commit" || operation === "preview") && document && !this.canCommitFromView(document)) {
-      throw Error("Edit source geometry on Grid");
+      throw Error("Edit source geometry on Model");
     }
     if (this.transformTool || this.stitchMode) this.cancel();
     const run = async () => {
@@ -1150,7 +1150,7 @@ export class Controller {
   private canCommitFromView(document: Doc) {
     const sources = (doc: Doc) => fingerprint({ ...doc, printLayouts: [] });
     if (this.printLayoutActive && sources(document) !== sources(this.document)) {
-      this.fail(Error("Edit source geometry on Grid"));
+      this.fail(Error("Edit source geometry on Model"));
       return false;
     }
     return true;

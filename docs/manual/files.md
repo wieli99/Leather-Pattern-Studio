@@ -30,4 +30,4 @@ SVG files are imported as single image objects and remain sharp when resized. Th
 
 ![SVG imported as an image object](/manual/images/svg-import.png)
 
-Print layouts and their links are included in saved JSON and recovery. The Grid is the source of geometry; exporting a print layout does not save the project. PDF, SVG, and PNG export work offline after the production cache has finished installing.
+Print layouts and their links are included in saved JSON and recovery. The Model tab is the source of geometry; exporting a print layout does not save the project. PDF, SVG, and PNG export work offline after the production cache has finished installing.

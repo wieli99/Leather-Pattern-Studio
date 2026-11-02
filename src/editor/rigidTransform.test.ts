@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { snapRotation, unwrapRotation } from "./rigidTransform";
-it("uses Grid rotation modifiers and wraps seam crossings", () => {
+it("uses Model rotation modifiers and wraps seam crossings", () => {
   expect(snapRotation(13.3, {})).toBe(13);
   expect(snapRotation(13.3, { shiftKey: true })).toBe(15);
   expect(snapRotation(13.3, { ctrlKey: true })).toBe(10);

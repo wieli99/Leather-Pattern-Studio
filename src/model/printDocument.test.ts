@@ -7,7 +7,7 @@ import { shapeMatrix, worldPoints } from "./geometry";
 const shape: Shape = { id: "label", name: "Label", kind: "text", text: "Cut two", fontSize: 5, points: [{x: 10,y: 20},{x: 40,y: 26}], radius: 0, rotation: 25 };
 const layout: PrintLayout = { id: "print", name: "Print", width: 210, height: 297, margin: 10, units: "mm", pages: [{column: 0,row: 0}], instances: [] };
 describe("editable print document", () => {
-  it("stores native objects without adding Grid shapes and preserves geometry", () => {
+  it("stores native objects without adding Model shapes and preserves geometry", () => {
     const document = emptyDocument();
     const next = { ...emptyDocument(), shapes: [shape] };
     const result = applyPrintDocument(layout, printDocument(document, layout), next);

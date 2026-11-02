@@ -281,7 +281,7 @@ export function printRows(layout: PrintLayout) {
   return rows;
 }
 export function resolvedPrintItems(doc: Doc, layout: PrintLayout) {
-  // Like Grid, panel rows run front-to-back and painting runs back-to-front.
+  // Like Model, panel rows run front-to-back and painting runs back-to-front.
   return [...printRows(layout)].reverse().flatMap((row) => {
     if (row.node.kind !== "instance") return [];
     const instance = layout.instances.find((i) => i.id === row.node.id);

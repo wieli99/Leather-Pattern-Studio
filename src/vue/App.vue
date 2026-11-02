@@ -299,8 +299,8 @@ onMounted(() => {
         <Viewport />
         <div v-if="!e.ready" class="loading">{{ e.message }}</div>
       </div>
-      <aside v-if="panel" aria-label="Objects and properties">
-        <section class="sidebar-section" aria-label="Objects">
+      <aside v-if="panel" aria-label="Model objects and properties">
+        <section class="sidebar-section" aria-label="Model objects">
           <ObjectPanel />
         </section>
         <PanelSection v-if="e.active.length" class="sidebar-section" section-key="properties" title="Properties">

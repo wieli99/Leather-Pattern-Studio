@@ -16,7 +16,7 @@ Square guides display dimensions outside two adjacent edges. Size guides always 
 
 Indicators support ordinary selection, grouping, duplication, visibility, locking, and outline styling. They do not support stitching, trimming, corner radii, or area measurement. Saved projects preserve their editable indicator types and dimensions.
 
-Draw indicators directly on a [print layout](#printing), or import size guides from Grid, to check physical scale. Indicators drawn on a print tab are independent of every other tab. Their generated labels use the layout’s units. Export PDF and print at Actual size / 100%, then measure a guide with a ruler before cutting.
+Draw indicators directly on a [print layout](#printing), or import size guides from Model, to check physical scale. Indicators drawn on a print tab are independent of every other tab. Their generated labels use the layout’s units. Export PDF and print at Actual size / 100%, then measure a guide with a ruler before cutting.
 
 Outline width (mm) in Appearance applies to all outlined shapes. The default is 0.35 mm; resizing preserves physical width. Reset styling restores this default.
 

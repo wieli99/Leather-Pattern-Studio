@@ -177,7 +177,7 @@ function down(event: PointerEvent, id: string) {
     label:
       (event.target as HTMLElement)
         .closest(".object-select,.group-select")
-        ?.textContent?.trim() || "Objects",
+        ?.textContent?.trim() || "Model objects",
     count: roots.length,
   });
   // start clears the previous session before installing pointer listeners.
@@ -387,7 +387,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
   <ObjectPreview v-bind="hoverPreview" />
   <ReorderFloating :state="dragState" />
   <div class="objects-heading">
-    <h2>Objects</h2>
+    <h2>Model objects</h2>
     <button
       :disabled="!e.canToggleObjectState"
       aria-label="New Group"

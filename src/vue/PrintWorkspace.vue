@@ -1087,7 +1087,7 @@ function isUnlinked(node: PrintNode) {
 function unlinkHint(node: PrintNode) {
   return isUnlinked(node)
     ? "Unlinked. Cannot be re-linked; use Undo to restore the link."
-    : "Unlink from Grid. Use Undo to restore the link.";
+    : "Unlink from Model. Use Undo to restore the link.";
 }
 function unlink(node: PrintNode) {
   if (!canManageObjects.value || !layout.value || isUnlinked(node)) return;
@@ -2929,7 +2929,7 @@ defineExpose({
       :aria-selected="!layout"
       @click="switchTab('')"
     >
-      Grid
+      Model
     </button>
     <template v-for="entry in tabEntries" :key="entry.key">
       <ReorderSlot
@@ -3335,10 +3335,10 @@ defineExpose({
       <p v-if="!creating && !error && tool === 'select' && drawingState.message !== 'Ready'" role="status">{{ drawingState.message }}</p>
       <PanelSection
         section-key="print-grid-objects"
-        title="Grid objects"
+        title="Model objects"
         class="sidebar-section print-object-section"
       >
-        <div ref="sourceList" class="print-list" aria-label="Grid source objects">
+        <div ref="sourceList" class="print-list" aria-label="Model source objects">
           <div
             v-for="row in sourceRows"
             :key="row.node.id"
@@ -3380,7 +3380,7 @@ defineExpose({
             </button>
           </div>
           <p v-if="!sourceRows.length">
-            Create objects on Grid, then import them here.
+            Create objects on Model, then import them here.
           </p>
         </div>
       </PanelSection>
@@ -3549,7 +3549,7 @@ defineExpose({
             aria-label="Move to end of Print objects"
           />
           <p v-if="!rows.length" key="empty">
-            Import objects or folders from Grid.
+            Import objects or folders from Model.
           </p>
         </TransitionGroup>
       </PanelSection>

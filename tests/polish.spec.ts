@@ -253,7 +253,7 @@ test("light-theme dot grid and corrected construction icons", async ({
   await page.screenshot({ path: info.outputPath("rectangle-icons.png") });
 });
 for (const key of ["Delete", "Backspace"]) {
-  test(`Objects panel supports ${key} with undo and protects renaming`, async ({ page }) => {
+  test(`Model objects panel supports ${key} with undo and protects renaming`, async ({ page }) => {
     await ready(page);
     await mode(page, "Rectangle", "Corner rectangle");
     await points(page, p.slice(0, 2));

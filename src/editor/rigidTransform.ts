@@ -1,7 +1,7 @@
 import type { Point, Shape } from "../model/project";
 import { anchors, bounds, distance, nearestOutline } from "../model/geometry";
 import { snapCandidates, smartSnap, type SmartGuide } from "./snapping";
-/** Shared modifier policy for Grid and print rotation gestures. */
+/** Shared modifier policy for Model and print rotation gestures. */
 export function snapRotation(
   angle: number,
   modifiers: { ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean },

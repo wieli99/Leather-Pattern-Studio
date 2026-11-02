@@ -1,6 +1,6 @@
 import { distanceToSegment } from "../model/geometry";
 import type { Point } from "../model/project";
-/** Grid and print use an eight-screen-pixel hit area around gizmo shafts. */
+/** Model and print use an eight-screen-pixel hit area around gizmo shafts. */
 export function hitsTransformShaft(
   point: Point,
   pivot: Point,
