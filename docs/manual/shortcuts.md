@@ -69,11 +69,13 @@ With the print canvas or print object panel focused:
 
 | Shortcut | Action |
 | --- | --- |
-| V / G / E | Select / Move / Rotate |
+| V / G / E / M | Select / Move / Rotate / Mirror (V places the pivot while a transform is active) |
+| Enter / right-click | Apply the active transform |
 | Space + drag | Pan |
 | Mouse wheel | Zoom around pointer |
 | F | Fit all pages |
 | Shift / Ctrl / Alt + rotate drag | Snap to 5° / 10° / rotate freely (normal: 1°) |
+| Alt + right-click / Ctrl + Alt + right-click | Flip clicked print placement locally left/right / top/bottom |
 | Alt + move drag | Bypass snapping |
 | X / Y in Move | Constrain movement to the active X / Y axis |
 | Arrow keys | Move by 1 mm or 1/16 inch |
@@ -88,4 +90,4 @@ With the print canvas or print object panel focused:
 
 Drawing, resizing, geometry-editing, and styling-paste shortcuts are unavailable in print views. Text entry retains normal editing shortcuts.
 
-In print views, Ctrl-click exposed paper selects pages; Ctrl-drag moves a self-contained page to an insertion edge. Hold Ctrl for page numbers. Delete removes selected pages only when every sheet touched by their objects is also selected. Escape or right-click cancels a page move.
+In print views, Ctrl-click exposed paper selects pages; Ctrl-drag moves a self-contained page to an insertion edge. Hold Ctrl for page numbers and individual page delete buttons. Delete removes selected pages only when every sheet touched by their objects is also selected. Escape or right-click cancels a page move.

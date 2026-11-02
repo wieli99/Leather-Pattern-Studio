@@ -150,6 +150,7 @@ export function validatePrintLayouts(value: unknown): PrintLayout[] {
         typeof item.sourceId !== "string" ||
         !item.sourceId ||
         ![item.x, item.y, item.rotation].every(Number.isFinite) ||
+        (item.mirrored !== undefined && typeof item.mirrored !== "boolean") ||
         (item.hidden !== undefined && typeof item.hidden !== "boolean") ||
         (item.locked !== undefined && typeof item.locked !== "boolean")
       )
@@ -192,6 +193,8 @@ export function validatePrintLayouts(value: unknown): PrintLayout[] {
                 node.excludedSourceIds.some(
                   (id: unknown) => typeof id !== "string",
                 ))) ||
+            (node.mirrored !== undefined &&
+              typeof node.mirrored !== "boolean") ||
             (node.hidden !== undefined && typeof node.hidden !== "boolean") ||
             (node.locked !== undefined && typeof node.locked !== "boolean")
           )
@@ -230,8 +233,8 @@ export function resolvePrintShape(source: Shape, item: PrintPlacement): Shape {
       {
         a: Math.cos(t),
         b: Math.sin(t),
-        c: -Math.sin(t),
-        d: Math.cos(t),
+        c: -Math.sin(t) * (item.mirrored ? -1 : 1),
+        d: Math.cos(t) * (item.mirrored ? -1 : 1),
         e: item.x,
         f: item.y,
       },
@@ -467,7 +470,9 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
             );
             const b = members.length ? bounds(members) : box;
             const dx = b.x + b.width / 2 - box.x - box.width / 2,
-              dy = b.y + b.height / 2 - box.y - box.height / 2,
+              dy =
+                (b.y + b.height / 2 - box.y - box.height / 2) *
+                (node.mirrored ? -1 : 1),
               angle = (node.rotation * Math.PI) / 180;
             const imported = importPrintNode(
               doc,
@@ -476,8 +481,19 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               node.x + dx * Math.cos(angle) - dy * Math.sin(angle),
               node.y + dx * Math.sin(angle) + dy * Math.cos(angle),
             );
+            const oriented = node.mirrored
+              ? mirrorPrintNodes(
+                  imported,
+                  [printTree(imported)[0].id],
+                  {
+                    x: node.x + dx * Math.cos(angle) - dy * Math.sin(angle),
+                    y: node.y + dx * Math.sin(angle) + dy * Math.cos(angle),
+                  },
+                  0,
+                )
+              : imported;
             const rotated = transformPrintNodes(
-              imported,
+              oriented,
               [printTree(imported)[0].id],
               0,
               0,
@@ -534,7 +550,7 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
             const p = center(shape),
               angle = (node.rotation * Math.PI) / 180;
             const dx = p.x - box.x - box.width / 2,
-              dy = p.y - box.y - box.height / 2;
+              dy = (p.y - box.y - box.height / 2) * (node.mirrored ? -1 : 1);
             const id = crypto.randomUUID(),
               m = shapeMatrix(shape);
             layout.instances.push({
@@ -542,7 +558,11 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               sourceId,
               x: node.x + dx * Math.cos(angle) - dy * Math.sin(angle),
               y: node.y + dx * Math.sin(angle) + dy * Math.cos(angle),
-              rotation: (Math.atan2(m.b, m.a) * 180) / Math.PI + node.rotation,
+              rotation:
+                ((Math.atan2(m.b, m.a) * 180) / Math.PI) *
+                  (node.mirrored ? -1 : 1) +
+                node.rotation,
+              mirrored: node.mirrored,
             });
             children.push({ kind: "instance", id });
           }
@@ -656,16 +676,20 @@ export function transformPrintNodes(
   dx: number,
   dy: number,
   angle: number,
-  pivot?: {x:number;y:number},
+  pivot?: { x: number; y: number },
 ): PrintLayout {
   const affected = new Set(printDescendants(layout, ids));
   const selected = layout.instances.filter((i) => affected.has(i.id));
-  const x = pivot ? pivot.x : selected.length
-    ? selected.reduce((s, i) => s + i.x, 0) / selected.length
-    : 0;
-  const y = pivot ? pivot.y : selected.length
-    ? selected.reduce((s, i) => s + i.y, 0) / selected.length
-    : 0;
+  const x = pivot
+    ? pivot.x
+    : selected.length
+      ? selected.reduce((s, i) => s + i.x, 0) / selected.length
+      : 0;
+  const y = pivot
+    ? pivot.y
+    : selected.length
+      ? selected.reduce((s, i) => s + i.y, 0) / selected.length
+      : 0;
   const t = (angle * Math.PI) / 180,
     c = Math.cos(t),
     s = Math.sin(t);
@@ -691,6 +715,48 @@ export function transformPrintNodes(
       affected.has(i.id) ? { ...i, ...move(i) } : i,
     ),
     tree: groups(printTree(layout)),
+  };
+}
+
+/** Reflect linked placements without changing their source geometry. */
+export function mirrorPrintNodes(
+  layout: PrintLayout,
+  ids: string[],
+  pivot: { x: number; y: number },
+  angle: number,
+): PrintLayout {
+  const affected = new Set(printDescendants(layout, ids));
+  const t = (angle * Math.PI) / 180,
+    c = Math.cos(2 * t),
+    s = Math.sin(2 * t);
+  const reflect = (p: {
+    x: number;
+    y: number;
+    rotation: number;
+    mirrored?: boolean;
+  }) => ({
+    x: pivot.x + c * (p.x - pivot.x) + s * (p.y - pivot.y),
+    y: pivot.y + s * (p.x - pivot.x) - c * (p.y - pivot.y),
+    rotation: 2 * angle - p.rotation,
+    mirrored: !p.mirrored,
+  });
+  function visit(nodes: PrintNode[], inherited = false): PrintNode[] {
+    return nodes.map((n) =>
+      n.kind === "instance"
+        ? n
+        : {
+            ...n,
+            ...(inherited || ids.includes(n.id) ? reflect(n) : {}),
+            children: visit(n.children, inherited || ids.includes(n.id)),
+          },
+    );
+  }
+  return {
+    ...layout,
+    instances: layout.instances.map((i) =>
+      affected.has(i.id) ? { ...i, ...reflect(i) } : i,
+    ),
+    tree: visit(printTree(layout)),
   };
 }
 

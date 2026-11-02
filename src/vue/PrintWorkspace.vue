@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LengthInput from "./LengthInput.vue";
 import ObjectPreview from "./ObjectPreview.vue";
 const hoverPreview = ref<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
 function previewRow(event: PointerEvent, id: string) {
@@ -41,11 +42,19 @@ import {
   editPrintTree,
   removePrintNodes,
   transformPrintNodes,
+  mirrorPrintNodes,
+  resolvePrintShape,
   type PrintLayout,
   type PrintNode,
 } from "../model/printLayout";
-import { bounds, hitTest, contains } from "../model/geometry";
-import { pageSvg } from "../editor/printScene";
+import {
+  bounds,
+  hitTest,
+  contains,
+  boundary,
+  distanceToSegment,
+} from "../model/geometry";
+import { pageSvg, printShapeSvg } from "../editor/printScene";
 import { svgImage, selfContainedSvg } from "../editor/printExport";
 import type { Point } from "../model/project";
 import type { ObjectNode } from "../model/objectTree";
@@ -109,7 +118,7 @@ const zoom = ref(2),
   pan = ref({ x: 50, y: 50 }),
   snap = ref(true),
   objectSnap = ref(true),
-  tool = ref<"select" | "move" | "rotate">("select");
+  tool = ref<"select" | "move" | "rotate" | "mirror">("select");
 const views = new Map<
   string,
   { zoom: number; pan: Point; selection: string[] }
@@ -181,6 +190,7 @@ function gizmoAt(p: Point) {
   const pivot = worldPixel(selectionPivot()),
     dx = p.x - pivot.x,
     dy = p.y - pivot.y;
+  if (tool.value === "mirror") return;
   if (tool.value !== "move" && Math.abs(Math.hypot(dx, dy) - 60) < 9)
     return "rotate";
   if (tool.value === "move") {
@@ -192,7 +202,7 @@ function gizmoAt(p: Point) {
     if (Math.hypot(x, y) < 12) return "move";
   }
 }
-function chooseTool(value: "select" | "move" | "rotate") {
+function chooseTool(value: "select" | "move" | "rotate" | "mirror") {
   if (busy.value || editor.busy) return;
   cancel();
   tool.value = value;
@@ -202,7 +212,8 @@ function chooseTool(value: "select" | "move" | "rotate") {
   numericBase = layout.value;
   numericPivot = selectionPivot();
   numericOrientation = gizmoAngle();
-  if (value === "rotate") customPivot.value = { ...numericPivot };
+  if (value === "rotate" || value === "mirror")
+    customPivot.value = { ...numericPivot };
 }
 const renameId = ref(""),
   renameValue = ref("");
@@ -300,6 +311,9 @@ function clearControl() {
 }
 let marqueePixel: Point | undefined;
 function cancel() {
+  if (moveFrame) cancelAnimationFrame(moveFrame);
+  moveFrame = 0;
+  pendingMove = undefined;
   snapOverlay.value = { guides: [] };
   error.value = "";
   numericBase = undefined;
@@ -308,8 +322,9 @@ function cancel() {
   updatingNumeric = false;
   tool.value = "select";
   customPivot.value = undefined;
+  mirrorHover.value = undefined;
   placingPivot.value = false;
-  sourceImport = undefined;
+  if (sourcePointer || sourceImport) sourceEnd();
   if (pageGesture) selectedPages.value = pageGesture.selection;
   pageGesture = undefined;
   drag = undefined;
@@ -336,6 +351,7 @@ async function switchTab(id: string) {
   editor.printLayoutActive = !!id;
   emit("active", !!id);
   await nextTick();
+  if (id && !view) fit();
   void draw();
 }
 watch(
@@ -613,96 +629,138 @@ let sourceImport:
       ids: string[];
     }
   | undefined;
-function sourceDrag(event: DragEvent, id: string) {
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
-  cancel();
-  hoverPreview.value.id = undefined;
-  if (!selectedSources.value.includes(id)) selectedSources.value = [id];
-  event.dataTransfer?.setData(
-    "application/x-leather-source",
-    JSON.stringify(selectedSources.value),
-  );
-  const l = layout.value;
-  if (!l) return;
-  try {
-    const base = importAt(l, selectedSources.value, { x: 0, y: 0 });
-    sourceImport = {
-      original: l,
-      document: editor.document,
-      base,
-      ids: printTree(base)
-        .filter((n) => !printTree(l).some((old) => old.id === n.id))
-        .map((n) => n.id),
-    };
-  } catch (reason) {
-    error.value = String(reason);
+let sourcePointer:
+  | { pointerId: number; x: number; y: number; ids: string[] }
+  | undefined;
+let suppressSourceClick = false;
+function sourceDown(event: PointerEvent, id: string) {
+  if (event.button !== 0 || busy.value || editor.busy) return;
+  if (sourcePointer || sourceImport) sourceEnd();
+  sourcePointer = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    ids: selectedSources.value.includes(id) ? [...selectedSources.value] : [id],
+  };
+  window.addEventListener("pointermove", sourceMove);
+  window.addEventListener("pointerup", sourceUp);
+  window.addEventListener("pointercancel", sourceEnd);
+  window.addEventListener("keydown", sourceKey);
+  window.addEventListener("pointerdown", sourceCancelButton);
+}
+function sourceKey(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    sourceEnd();
   }
 }
-function sourceOver(event: DragEvent) {
-  if (!sourceImport || !layout.value) return;
-  if (sourceImport.document !== editor.document) {
-    sourceEnd();
-    error.value = "Project changed during import; drag again";
+function sourceCancelButton(event: PointerEvent) {
+  if (event.button === 2) sourceEnd();
+}
+function sourcePlacement(event: MouseEvent) {
+  if (
+    !sourceImport ||
+    !canvas.value ||
+    sourceImport.document !== editor.document ||
+    sourceImport.original !== layout.value
+  )
     return;
-  }
-  const p = pixel(event);
-  if (!isPrintablePixel(p, layout.value)) {
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
-    preview.value = undefined;
-    draw();
+  const p = pixel(event),
+    rect = canvas.value.getBoundingClientRect();
+  if (
+    p.x < 0 ||
+    p.y < 0 ||
+    p.x > rect.width ||
+    p.y > rect.height ||
+    !paperAt(p, sourceImport.original)
+  )
     return;
-  }
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-  const world = worldFromPixel(p);
-  preview.value = transformPrintNodes(
+  const point = worldFromPixel(p);
+  snapOverlay.value = { guides: [] };
+  const placement =
+    snap.value && !event.altKey
+      ? pageCenterSnap(sourceImport.base, sourceImport.ids, point.x, point.y)
+      : { dx: point.x, dy: point.y };
+  return transformPrintNodes(
     sourceImport.base,
     sourceImport.ids,
-    world.x,
-    world.y,
+    placement.dx,
+    placement.dy,
     0,
   );
-  draw();
 }
-function sourceLeave() {
-  if (sourceImport) {
-    preview.value = undefined;
-    draw();
-  }
-}
-function sourceEnd() {
-  if (sourceImport) {
-    sourceImport = undefined;
-    preview.value = undefined;
-    draw();
-  }
-}
-async function importDrop(event: DragEvent) {
-  const l = layout.value;
-  if (!l || !event.dataTransfer || !sourceImport) return;
-  try {
-    const ids: unknown = JSON.parse(
-      event.dataTransfer.getData("application/x-leather-source"),
-    );
-    if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) return;
-    const p = pixel(event);
-    if (!isPrintablePixel(p, l)) {
+function sourceMove(event: PointerEvent) {
+  const pointer = sourcePointer;
+  if (!pointer || event.pointerId !== pointer.pointerId) return;
+  if (!sourceImport) {
+    if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) < 6)
+      return;
+    const ids = pointer.ids;
+    // Reset transform state without detaching the active source listeners.
+    sourcePointer = undefined;
+    cancel();
+    sourcePointer = pointer;
+    selectedSources.value = ids;
+    hoverPreview.value.id = undefined;
+    const l = layout.value;
+    if (!l) {
       sourceEnd();
       return;
     }
-    if (sourceImport && sourceImport.document !== editor.document)
-      throw Error("Project changed during import; drag again");
-    const next =
-      sourceImport && preview.value
-        ? preview.value
-        : importAt(l, ids, worldFromPixel(p));
-    sourceImport = undefined;
+    try {
+      const base = importAt(l, ids, { x: 0, y: 0 });
+      sourceImport = {
+        original: l,
+        document: editor.document,
+        base,
+        ids: printTree(base)
+          .filter((n) => !printTree(l).some((old) => old.id === n.id))
+          .map((n) => n.id),
+      };
+    } catch (reason) {
+      sourceEnd();
+      error.value = String(reason);
+      return;
+    }
+  }
+  event.preventDefault();
+  if (
+    sourceImport.document !== editor.document ||
+    sourceImport.original !== layout.value
+  ) {
+    sourceEnd();
+    return;
+  }
+  preview.value = sourcePlacement(event);
+  draw();
+}
+function sourceEnd() {
+  sourcePointer = undefined;
+  sourceImport = undefined;
+  preview.value = undefined;
+  window.removeEventListener("pointermove", sourceMove);
+  window.removeEventListener("pointerup", sourceUp);
+  window.removeEventListener("pointercancel", sourceEnd);
+  window.removeEventListener("keydown", sourceKey);
+  window.removeEventListener("pointerdown", sourceCancelButton);
+  draw();
+}
+async function sourceUp(event: PointerEvent) {
+  if (!sourcePointer || event.pointerId !== sourcePointer.pointerId) return;
+  const dragging = !!sourceImport,
+    next = sourcePlacement(event);
+  sourceEnd();
+  if (dragging) {
+    suppressSourceClick = true;
+    setTimeout(() => {
+      suppressSourceClick = false;
+    }, 0);
+  }
+  if (next) {
     preview.value = next;
     await save(next);
-    preview.value = undefined;
+    if (preview.value === next) preview.value = undefined;
     draw();
-  } catch (reason) {
-    sourceEnd();
-    error.value = String(reason);
   }
 }
 function nodeName(node: PrintNode) {
@@ -846,6 +904,7 @@ function newGroup() {
   }
 }
 function applyTransform() {
+  flushMove();
   const next = preview.value;
   if (!next) {
     cancel();
@@ -1016,28 +1075,72 @@ function addPage(column: number, row: number) {
   if (l && !l.pages.some((p) => p.column === column && p.row === row))
     void save({ ...l, pages: [...l.pages, { column, row }] });
 }
-function removePage(column: number, row: number) {
-  const l = layout.value;
-  if (!l || l.pages.length === 1) return;
-  const size = printableSize(l);
-  const occupied = resolvedPrintItems(editor.document, l).some((i) => {
-    if (i.hidden) return false;
-    const b = printArtworkBounds(editor.document, l, i);
-    return (
-      b.x < (column + 1) * size.width &&
-      b.x + b.width > column * size.width &&
-      b.y < (row + 1) * size.height &&
-      b.y + b.height > row * size.height
-    );
-  });
-  if (occupied) {
-    error.value = "Move or hide artwork before removing this page";
-    return;
+function deletePage(page: { column: number; row: number }) {
+  if (!layout.value || busy.value) return;
+  try {
+    void save(deletePrintPages(editor.document, layout.value, [pageKey(page)]));
+    selectedPages.value = [];
+  } catch (reason) {
+    error.value = String(reason);
   }
-  void save({
-    ...l,
-    pages: l.pages.filter((p) => p.column !== column || p.row !== row),
+}
+const documentArtwork = new WeakMap<
+  typeof editor.document,
+  Map<
+    string,
+    {
+      image: Promise<HTMLImageElement>;
+      box: { x: number; y: number; width: number; height: number };
+    }
+  >
+>();
+const artworkImages = new Map<
+  string,
+  {
+    image: Promise<HTMLImageElement>;
+    box: { x: number; y: number; width: number; height: number };
+  }
+>();
+function artworkImage(
+  doc: typeof editor.document,
+  l: PrintLayout,
+  source: (typeof editor.document.shapes)[number],
+) {
+  let documentCache = documentArtwork.get(doc);
+  if (!documentCache) {
+    documentCache = new Map();
+    documentArtwork.set(doc, documentCache);
+  }
+  const sourceKey = `${l.units}:${source.id}`;
+  const existing = documentCache.get(sourceKey);
+  if (existing) return existing;
+  const canonical = resolvePrintShape(source, {
+    id: source.id,
+    sourceId: source.id,
+    x: 0,
+    y: 0,
+    rotation: 0,
   });
+  const content = printShapeSvg(doc, canonical, source.id, l);
+  const key = `${l.units}:${content}`;
+  let cached = artworkImages.get(key);
+  if (!cached) {
+    const b = printArtworkBounds(doc, l, { shape: canonical, source });
+    const box = {
+      x: b.x - 1,
+      y: b.y - 1,
+      width: Math.max(1, b.width + 2),
+      height: Math.max(1, b.height + 2),
+    };
+    const rasterScale = Math.min(4, 4096 / Math.max(box.width, box.height));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${box.width * rasterScale}" height="${box.height * rasterScale}" viewBox="${box.x} ${box.y} ${box.width} ${box.height}"><defs></defs>${content}</svg>`;
+    cached = { box, image: selfContainedSvg(svg).then(svgImage) };
+    artworkImages.set(key, cached);
+    if (artworkImages.size > 512)
+      artworkImages.delete(artworkImages.keys().next().value!);
+  }
+  documentCache.set(sourceKey, cached);
+  return cached;
 }
 const pageImages = new Map<string, Promise<HTMLImageElement>>();
 let scheduledFrame = 0;
@@ -1065,6 +1168,14 @@ async function paintFrame() {
   ctx.translate(pan.value.x, pan.value.y);
   ctx.scale(zoom.value, zoom.value);
   try {
+    const resolved = resolvedPrintItems(doc, l);
+    const resources = await Promise.all(
+      resolved.map(async (item) => {
+        const resource = artworkImage(doc, l, item.source);
+        return { ...item, box: resource.box, bitmap: await resource.image };
+      }),
+    );
+    if (token !== generation) return;
     for (const page of l.pages) {
       const p = pagePosition(page, l);
       if (
@@ -1076,17 +1187,48 @@ async function paintFrame() {
         continue;
       ctx.fillStyle = "#fff";
       ctx.fillRect(p.x, p.y, l.width, l.height);
-      const svg = pageSvg(doc, l, page);
-      let image = pageImages.get(svg);
-      if (!image) {
-        image = selfContainedSvg(svg).then(svgImage);
-        pageImages.set(svg, image);
-        if (pageImages.size > 8)
+      const sizeForArtwork = printableSize(l);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(
+        p.x + l.margin,
+        p.y + l.margin,
+        sizeForArtwork.width,
+        sizeForArtwork.height,
+      );
+      ctx.clip();
+      ctx.translate(
+        p.x + l.margin - page.column * sizeForArtwork.width,
+        p.y + l.margin - page.row * sizeForArtwork.height,
+      );
+      for (const item of resources) {
+        if (item.hidden) continue;
+        ctx.save();
+        ctx.translate(item.instance.x, item.instance.y);
+        ctx.rotate((item.instance.rotation * Math.PI) / 180);
+        if (item.instance.mirrored) ctx.scale(1, -1);
+        ctx.drawImage(
+          item.bitmap,
+          item.box.x,
+          item.box.y,
+          item.box.width,
+          item.box.height,
+        );
+        ctx.restore();
+      }
+      ctx.restore();
+      // Assembly marks depend on crossings, but their image stays stable while an edge remains crossed.
+      const decoration = pageSvg(doc, l, page, true, resolved);
+      let decorationImage = pageImages.get(decoration);
+      if (!decorationImage) {
+        decorationImage = selfContainedSvg(decoration).then(svgImage);
+        pageImages.set(decoration, decorationImage);
+        if (pageImages.size > 64)
           pageImages.delete(pageImages.keys().next().value!);
       }
-      const bitmap = await image;
+      const decorationBitmap = await decorationImage;
       if (token !== generation) return;
-      ctx.drawImage(bitmap, p.x, p.y, l.width, l.height);
+      ctx.drawImage(decorationBitmap, p.x, p.y, l.width, l.height);
       ctx.strokeStyle = "#999";
       ctx.lineWidth = 1 / zoom.value;
       ctx.strokeRect(p.x, p.y, l.width, l.height);
@@ -1134,8 +1276,10 @@ async function paintFrame() {
       );
       ctx.strokeStyle = "#ba772e";
       ctx.lineWidth = 1.5 / zoom.value;
-      const selectedIds = new Set(printDescendants(l, selected.value));
-      for (const i of resolvedPrintItems(doc, l)) {
+      const selectedIds = new Set(
+        printDescendants(l, sourceImport ? sourceImport.ids : selected.value),
+      );
+      for (const i of resolved) {
         if (i.hidden || !selectedIds.has(i.instance.id)) continue;
         const b = printArtworkBounds(editor.document, l, i);
         ctx.strokeRect(b.x, b.y, b.width, b.height);
@@ -1243,7 +1387,41 @@ async function paintFrame() {
       ctx.stroke();
       ctx.restore();
     }
-    if (selected.value.length && movableSelection().length) {
+    if (tool.value === "mirror" && selected.value.length) {
+      const pivot = selectionPivot(),
+        angle = gizmoAngle();
+      ctx.save();
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([5, 5]);
+      for (const offset of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
+        const dx = Math.cos(angle + offset) * 1000,
+          dy = Math.sin(angle + offset) * 1000;
+        const a = worldPixel({ x: pivot.x - dx, y: pivot.y - dy }),
+          b = worldPixel({ x: pivot.x + dx, y: pivot.y + dy });
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (mirrorHover.value && tool.value === "mirror") {
+      const a = worldPixel(mirrorHover.value[0]),
+        b = worldPixel(mirrorHover.value[1]);
+      ctx.strokeStyle = "#9a3412";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    if (
+      selected.value.length &&
+      movableSelection().length &&
+      tool.value !== "mirror"
+    ) {
       const p = worldPixel(selectionPivot());
       ctx.save();
       ctx.translate(p.x, p.y);
@@ -1298,6 +1476,133 @@ async function paintFrame() {
     if (token === generation) error.value = String(reason);
   }
 }
+const mirrorHover = shallowRef<[Point, Point]>();
+function mirrorTarget(p: Point): [Point, Point] | undefined {
+  const base = numericBase ?? layout.value;
+  if (!base) return;
+  const pivot = selectionPivot(),
+    angle = gizmoAngle();
+  const candidates: { line: [Point, Point]; distance: number }[] = [];
+  for (const item of resolvedPrintItems(editor.document, base)) {
+    if (item.hidden) continue;
+    for (const line of boundary(item.shape, base.units).lines) {
+      if (Math.hypot(line[1].x - line[0].x, line[1].y - line[0].y) > 1e-9)
+        candidates.push({ line, distance: distanceToSegment(p, ...line) });
+    }
+  }
+  if (Math.hypot(p.x - pivot.x, p.y - pivot.y) > 8 / zoom.value) {
+    for (const offset of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
+      const dx = Math.cos(angle + offset),
+        dy = Math.sin(angle + offset);
+      candidates.push({
+        line: [pivot, { x: pivot.x + dx * 1000, y: pivot.y + dy * 1000 }],
+        distance: Math.abs((p.x - pivot.x) * dy - (p.y - pivot.y) * dx),
+      });
+    }
+  }
+  return candidates
+    .filter((c) => c.distance <= 8 / zoom.value)
+    .sort((a, b) => a.distance - b.distance)[0]?.line;
+}
+function applyMirror(line: [Point, Point]) {
+  if (!numericBase || !movableSelection().length) return;
+  preview.value = mirrorPrintNodes(
+    numericBase,
+    movableSelection(),
+    line[0],
+    (Math.atan2(line[1].y - line[0].y, line[1].x - line[0].x) * 180) / Math.PI,
+  );
+  draw();
+}
+function contextMenu(event: MouseEvent) {
+  if (!event.altKey) {
+    if (tool.value === "select") cancel();
+    else applyTransform();
+    return;
+  }
+  if (busy.value || editor.busy || !layout.value) return;
+  cancel();
+  const l = layout.value,
+    p = pixel(event),
+    world = worldFromPixel(p);
+  if (!isPrintablePixel(p, l)) return;
+  const hit = [...resolvedPrintItems(editor.document, l)]
+    .reverse()
+    .find(
+      (i) =>
+        !i.hidden &&
+        (hitTest(i.shape, world, 5 / zoom.value, l.units) ||
+          contains(i.shape, world)),
+    );
+  if (!hit || hit.locked) return;
+  void save(
+    mirrorPrintNodes(
+      l,
+      [hit.instance.id],
+      { x: hit.instance.x, y: hit.instance.y },
+      hit.instance.rotation + (event.ctrlKey ? 0 : 90),
+    ),
+  );
+}
+function pageCenterSnap(
+  base: PrintLayout,
+  ids: string[],
+  dx: number,
+  dy: number,
+) {
+  const affected = new Set(printDescendants(base, ids));
+  const shapes = resolvedPrintItems(editor.document, base)
+    .filter((i) => affected.has(i.instance.id) && !i.hidden)
+    .map((i) => i.shape);
+  if (!shapes.length) return { dx, dy };
+  const b = bounds(shapes, base.units),
+    size = printableSize(base),
+    tolerance = 8 / zoom.value;
+  const center = { x: b.x + b.width / 2 + dx, y: b.y + b.height / 2 + dy };
+  const page = base.pages
+    .map((p) => ({
+      x: (p.column + 0.5) * size.width,
+      y: (p.row + 0.5) * size.height,
+    }))
+    .sort(
+      (a, b) =>
+        Math.hypot(a.x - center.x, a.y - center.y) -
+        Math.hypot(b.x - center.x, b.y - center.y),
+    )[0];
+  const guides: SmartGuide[] = [];
+  const region = {
+    x: page.x - size.width / 2,
+    y: page.y - size.height / 2,
+    width: size.width,
+    height: size.height,
+  };
+  if (!drag?.axis && Math.abs(center.x - page.x) <= tolerance) {
+    dx += page.x - center.x;
+    guides.push({
+      axis: "x",
+      coordinate: page.x,
+      bounds: region,
+      objectId: "print-page",
+      alignment: "center",
+    });
+  }
+  if (!drag?.axis && Math.abs(center.y - page.y) <= tolerance) {
+    dy += page.y - center.y;
+    guides.push({
+      axis: "y",
+      coordinate: page.y,
+      bounds: region,
+      objectId: "print-page",
+      alignment: "center",
+    });
+  }
+  if (guides.length)
+    snapOverlay.value = {
+      target: { x: b.x + b.width / 2 + dx, y: b.y + b.height / 2 + dy },
+      guides,
+    };
+  return { dx, dy };
+}
 function down(event: PointerEvent) {
   if (busy.value || editor.busy) return;
   if (event.button !== 0 && event.button !== 1) return;
@@ -1311,6 +1616,16 @@ function down(event: PointerEvent) {
     rebaseNumeric();
     placingPivot.value = false;
     draw();
+    return;
+  }
+  if (
+    tool.value === "mirror" &&
+    selected.value.length &&
+    event.button === 0 &&
+    !editor.space
+  ) {
+    const target = mirrorTarget(world);
+    if (target) applyMirror(target);
     return;
   }
   const handle = gizmoAt(p);
@@ -1382,6 +1697,19 @@ function down(event: PointerEvent) {
   selectedPages.value = [];
   if (
     tool.value !== "select" &&
+    !selected.value.length &&
+    hit &&
+    event.button === 0 &&
+    !editor.space
+  ) {
+    selected.value = [hit.instance.id];
+    customPivot.value = undefined;
+    rebaseNumeric();
+    draw();
+    return;
+  }
+  if (
+    tool.value !== "select" &&
     hit &&
     !printDescendants(l, selected.value).includes(hit.instance.id)
   )
@@ -1415,7 +1743,24 @@ function down(event: PointerEvent) {
   };
   void draw();
 }
+let pendingMove: PointerEvent | undefined,
+  moveFrame = 0;
+function flushMove() {
+  if (moveFrame) cancelAnimationFrame(moveFrame);
+  moveFrame = 0;
+  const event = pendingMove;
+  pendingMove = undefined;
+  if (event) moveNow(event);
+}
 function move(event: PointerEvent) {
+  pendingMove = event;
+  if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
+}
+function moveNow(event: PointerEvent) {
+  if (tool.value === "mirror" && !drag) {
+    mirrorHover.value = mirrorTarget(worldFromPixel(pixel(event)));
+    draw();
+  }
   if (pageGesture) {
     const p = pixel(event),
       g = pageGesture;
@@ -1540,10 +1885,20 @@ function move(event: PointerEvent) {
           anchor: drag.snapAnchor,
         },
       );
-      dx = result.delta.x;
-      dy = result.delta.y;
+      const centered =
+        snap.value && !result.guides.length
+          ? pageCenterSnap(
+              drag.original,
+              drag.ids,
+              result.delta.x,
+              result.delta.y,
+            )
+          : { dx: result.delta.x, dy: result.delta.y };
+      dx = centered.dx;
+      dy = centered.dy;
       drag.snapAnchor = result.anchor;
-      snapOverlay.value = { target: result.target, guides: result.guides };
+      if (!snapOverlay.value.guides.length)
+        snapOverlay.value = { target: result.target, guides: result.guides };
     }
   }
   if (drag.axis) {
@@ -1581,6 +1936,7 @@ function move(event: PointerEvent) {
   void draw();
 }
 async function up() {
+  flushMove();
   snapOverlay.value = { guides: [] };
   if (pageGesture) {
     const g = pageGesture,
@@ -1603,7 +1959,8 @@ async function up() {
     return;
   }
 
-  if (drag?.marquee && marqueePixel) {
+  if (!drag) return;
+  if (drag.marquee && marqueePixel) {
     const end = worldFromPixel(marqueePixel),
       start = drag.world;
     const rect = {
@@ -1641,7 +1998,7 @@ async function up() {
   }
   drag = undefined;
   marqueePixel = undefined;
-  if (next && tool.value !== "select") {
+  if (tool.value !== "select") {
     draw();
     return;
   }
@@ -1777,6 +2134,7 @@ function keyboard(event: KeyboardEvent) {
   }
   if (key === "g") chooseTool("move");
   if (key === "e") chooseTool("rotate");
+  if (key === "m") chooseTool("mirror");
   if (key === "v") {
     if (tool.value !== "select") placingPivot.value = true;
     else chooseTool("select");
@@ -1800,6 +2158,7 @@ function keyboard(event: KeyboardEvent) {
 onMounted(() => {
   observer = new ResizeObserver(() => void draw());
   unsubscribe = editor.subscribe(() => {
+    if (sourceImport && sourceImport.document !== editor.document) sourceEnd();
     if (
       pageGesture &&
       editor.document.printLayouts?.find((l) => l.id === active.value) !==
@@ -1828,6 +2187,8 @@ watch(canvas, (el) => {
   }
 });
 onUnmounted(() => {
+  sourceEnd();
+  if (moveFrame) cancelAnimationFrame(moveFrame);
   generation++;
   cancelAnimationFrame(scheduledFrame);
   observer?.disconnect();
@@ -1969,7 +2330,7 @@ defineExpose({
   <section v-if="layout" class="print-workspace" aria-label="Print workspace">
     <nav aria-label="Print tools">
       <button
-        v-for="value in ['select', 'move', 'rotate'] as const"
+        v-for="value in ['select', 'move', 'rotate', 'mirror'] as const"
         :key="value"
         :aria-pressed="tool === value"
         :title="
@@ -1977,14 +2338,18 @@ defineExpose({
             ? 'Select (V)'
             : value === 'move'
               ? 'Move (G)'
-              : 'Rotate (E)'
+              : value === 'rotate'
+                ? 'Rotate (E)'
+                : 'Mirror (M)'
         "
         :aria-label="
           value === 'select'
             ? 'Select (V)'
             : value === 'move'
               ? 'Move (G)'
-              : 'Rotate (E)'
+              : value === 'rotate'
+                ? 'Rotate (E)'
+                : 'Mirror (M)'
         "
         @click="chooseTool(value)"
       >
@@ -2003,7 +2368,9 @@ defineExpose({
                 ? 'M5 3L19 12L12 14L9 21Z'
                 : value === 'move'
                   ? 'M3 12H21M12 3V21M3 12L7 8M3 12L7 16M21 12L17 8M21 12L17 16M12 3L8 7M12 3L16 7M12 21L8 17M12 21L16 17'
-                  : 'M19 8A8 8 0 1 0 20 16M19 3V9H13'
+                  : value === 'rotate'
+                    ? 'M19 8A8 8 0 1 0 20 16M19 3V9H13'
+                    : 'M12 2V22M9 5L3 19H9ZM15 5L21 19H15Z'
             "
           />
         </svg></button
@@ -2029,9 +2396,6 @@ defineExpose({
       <canvas
         ref="canvas"
         aria-label="Print layout canvas"
-        @dragover.prevent="sourceOver"
-        @dragleave="sourceLeave"
-        @drop.prevent="importDrop"
         tabindex="0"
         @pointerdown="down"
         @pointermove="move"
@@ -2039,7 +2403,7 @@ defineExpose({
         @pointercancel="!sourceImport && cancel()"
         @lostpointercapture="drag && cancel()"
         @wheel.prevent="wheel"
-        @contextmenu.prevent="cancel"
+        @contextmenu.prevent="contextMenu"
       />
       <button
         v-for="(button, index) in pageButtons"
@@ -2052,40 +2416,90 @@ defineExpose({
       >
         +
       </button>
+      <template v-if="controlHeld">
+        <button
+          v-for="page in layout.pages"
+          :key="`delete:${pageKey(page)}`"
+          class="delete-paper"
+          :style="{
+            left: `${pan.x + (pagePosition(page, layout).x + layout.width) * zoom - 16}px`,
+            top: `${pan.y + pagePosition(page, layout).y * zoom + 16}px`,
+          }"
+          :aria-label="`Delete page ${page.column},${page.row}`"
+          :disabled="busy"
+          @click.stop="deletePage(page)"
+        >
+          ×
+        </button>
+      </template>
       <div
         v-if="selected.length && tool !== 'select'"
-        class="print-transform"
+        class="print-transform transform-options"
         @keydown.enter.prevent="applyTransform"
         @keydown.esc.stop.prevent="cancel"
       >
-        <strong>{{ tool === "move" ? "Move" : "Rotate" }}</strong>
+        <strong>{{
+          tool === "move" ? "Move" : tool === "rotate" ? "Rotate" : "Mirror"
+        }}</strong>
         <p v-if="error" role="alert">{{ error }}</p>
-        <label v-if="tool === 'move'"
-          >Move X <input v-model="moveX" aria-label="Print move X" /></label
-        ><label v-if="tool === 'move'"
-          >Move Y <input v-model="moveY" aria-label="Print move Y" /></label
-        ><label v-if="tool === 'rotate'"
-          >Rotate °
-          <input
-            v-model="turn"
-            type="number"
-            aria-label="Print rotation" /></label
-        ><label
+        <small>{{
+          tool === "move"
+            ? "Drag the gizmo or enter X/Y distances to move the selection."
+            : tool === "rotate"
+              ? "Drag the rotation ring or enter an angle to rotate the selection."
+              : "Click an axis or straight outline edge on the canvas to mirror."
+        }}</small>
+        <div class="transform-inputs">
+          <label v-if="tool === 'move'"
+            >Move X
+            <LengthInput
+              fixed
+              :units="layout.units"
+              :value="parseLength(moveX, layout.units) ?? 0"
+              aria-label="Print move X"
+              @commit="moveX = editableLength($event, layout.units)"
+              @invalid="error = 'Enter a valid distance'" /></label
+          ><label v-if="tool === 'move'"
+            >Move Y
+            <LengthInput
+              fixed
+              :units="layout.units"
+              :value="parseLength(moveY, layout.units) ?? 0"
+              aria-label="Print move Y"
+              @commit="moveY = editableLength($event, layout.units)"
+              @invalid="error = 'Enter a valid distance'" /></label
+          ><label v-if="tool === 'rotate'"
+            >Rotate °
+            <input v-model="turn" type="number" aria-label="Print rotation"
+          /></label>
+        </div>
+        <label
           >Axes<select v-model="axes">
             <option value="local">Local</option>
             <option value="world">World</option>
           </select></label
-        ><button @click="placingPivot = true">Set pivot (V)</button
-        ><button
-          @click="
-            customPivot = undefined;
-            rebaseNumeric();
-            draw();
-          "
         >
-          Reset pivot</button
-        ><button :disabled="busy" @click="applyTransform">Apply</button
-        ><button @click="cancel">Cancel</button>
+        <div class="actions">
+          <button :aria-pressed="placingPivot" @click="placingPivot = true">
+            Set pivot (V)</button
+          ><button
+            @click="
+              customPivot = undefined;
+              rebaseNumeric();
+              draw();
+            "
+          >
+            Reset pivot
+          </button>
+        </div>
+        <div class="actions tool-popup-footer">
+          <button
+            :disabled="busy || !!error || !preview"
+            @click="applyTransform"
+          >
+            Apply</button
+          ><button @click="cancel">Cancel</button>
+        </div>
       </div>
       <div class="print-status">
         <span
@@ -2093,9 +2507,14 @@ defineExpose({
           {{ formatLength(layout.height, layout.units) }}
           {{ layout.units === "mm" ? "mm" : "in" }} ·
           {{ layout.pages.length }} pages</span
-        ><label><input type="checkbox" v-model="snap" />Grid snap</label
-        ><label><input type="checkbox" v-model="objectSnap" />Object snap</label
-        ><span>{{ Math.round(zoom * 100) }}%</span>
+        >
+        <div class="center-settings">
+          <label><input type="checkbox" v-model="snap" />Grid snap</label
+          ><label
+            ><input type="checkbox" v-model="objectSnap" />Object snap</label
+          >
+        </div>
+        <span style="margin-left: auto">{{ Math.round(zoom * 100) }}%</span>
       </div>
     </div>
     <aside aria-label="Print objects and settings">
@@ -2113,14 +2532,14 @@ defineExpose({
             v-for="row in sourceRows"
             :key="row.node.id"
             :style="{ paddingLeft: `${row.depth * 14}px` }"
-            draggable="true"
+            :draggable="false"
             @pointerenter="previewRow($event, row.node.id)"
             @pointerleave="hoverPreview.id = undefined"
-            @dragstart="
-              hoverPreview.id = undefined;
-              sourceDrag($event, row.node.id);
+            @dragstart.prevent
+            @pointerdown="
+              $event.target === $event.currentTarget &&
+              sourceDown($event, row.node.id)
             "
-            @dragend="sourceEnd"
           >
             <button
               v-if="row.node.kind === 'group'"
@@ -2131,10 +2550,10 @@ defineExpose({
             ><button
               class="print-object-name"
               :aria-pressed="selectedSources.includes(row.node.id)"
-              draggable="true"
-              @dragstart.stop="sourceDrag($event, row.node.id)"
-              @dragend.stop="sourceEnd"
-              @click="selectSource(row.node.id, $event)"
+              :draggable="false"
+              @dragstart.prevent
+              @pointerdown="sourceDown($event, row.node.id)"
+              @click="!suppressSourceClick && selectSource(row.node.id, $event)"
             >
               {{
                 row.node.kind === "group"
@@ -2326,6 +2745,21 @@ defineExpose({
   width: min(480px, 94vw);
   box-shadow: 0 12px 50px #0008;
 }
+.print-dialog button {
+  color: var(--text);
+  background: var(--button);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.print-dialog button:hover {
+  border-color: var(--accent);
+}
+.print-dialog button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .print-dialog form {
   display: grid;
   gap: 12px;
@@ -2358,7 +2792,13 @@ defineExpose({
 }
 </style>
 <style scoped>
+.delete-paper {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+}
 .orientation-segments {
+  justify-self: end;
   display: flex;
   gap: 0;
   width: max-content;
@@ -2504,27 +2944,13 @@ h3 {
 .print-transform {
   position: absolute;
   top: 12px;
-  right: 16px;
-  left: auto;
-  width: 264px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
-  background: var(--panel, #20252c);
-  padding: 8px;
-  border-radius: 6px;
+  left: 12px;
+  z-index: 10;
 }
 .print-transform label {
-  display: grid;
-  font-size: 11px;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-}
-.print-transform input {
-  width: 76px;
-  color: var(--text);
-  background: var(--canvas);
-  border: 1px solid var(--border, #666);
 }
 .print-status {
   position: absolute;
@@ -2540,6 +2966,7 @@ h3 {
 }
 .print-status label {
   display: flex;
+  align-items: center;
   gap: 4px;
 }
 .print-help {

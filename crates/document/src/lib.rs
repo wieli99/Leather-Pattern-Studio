@@ -233,6 +233,9 @@ pub struct PrintPlacement {
     pub rotation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub mirrored: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -254,6 +257,9 @@ pub enum PrintNode {
         x: f64,
         y: f64,
         rotation: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        mirrored: Option<bool>,
         #[serde(default, rename = "sourceId", skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         source_id: Option<String>,
@@ -1513,6 +1519,7 @@ mod print_tests {
         let original = editor.document.clone();
         let mut changed = original.clone();
         changed.print_layouts[0].instances[0].x = 120.0;
+        changed.print_layouts[0].instances[0].mirrored = Some(true);
         editor
             .execute("commit", &serde_json::to_string(&changed).unwrap(), 1)
             .unwrap();

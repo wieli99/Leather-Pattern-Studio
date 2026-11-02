@@ -37,7 +37,14 @@ test("manual navigation, search, links and offline articles", async ({
       exact: true,
     }),
   ).toBeVisible();
-  for (const name of ["workspace", "tool-variants", "transforms"]) {
+  for (const name of [
+    "workspace",
+    "tool-variants",
+    "transforms",
+    "print-mirror",
+    "print-orientation",
+    "print-page-selection",
+  ]) {
     expect(
       await manual.evaluate(
         async (name) => (await fetch(`/manual/images/${name}.png`)).ok,

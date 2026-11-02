@@ -308,3 +308,102 @@ it("adds touched cells for diagonal artwork without filling the bounding rectang
   expect(result.pages.some((p) => p.column === 2 && p.row === 0)).toBe(false);
   expect(result.pages.some((p) => p.column === 1 && p.row === 1)).toBe(true);
 });
+
+describe("linked print reflection", () => {
+  it("composes reflections and rotation without changing the source", async () => {
+    const { mirrorPrintNodes, transformPrintNodes, resolvePrintShape } =
+      await import("./printLayout");
+    const l = {
+      ...layout,
+      id: "l",
+      name: "A4",
+      units: "mm" as const,
+      instances: [{ id: "i", sourceId: "s", x: 30, y: 40, rotation: 20 }],
+    };
+    const pivot = { x: 10, y: 10 };
+    const reflected = mirrorPrintNodes(l, ["i"], pivot, 0);
+    expect(reflected.instances[0]).toMatchObject({
+      x: 30,
+      y: -20,
+      rotation: -20,
+      mirrored: true,
+    });
+    const twice = mirrorPrintNodes(reflected, ["i"], pivot, 0);
+    expect(twice.instances[0]).toMatchObject({
+      ...l.instances[0],
+      mirrored: false,
+    });
+    expect(
+      transformPrintNodes(reflected, ["i"], 0, 0, 35).instances[0].rotation,
+    ).toBe(15);
+    const source = {
+      id: "s",
+      name: "Source",
+      kind: "rectangle" as const,
+      points: [
+        { x: 0, y: 0 },
+        { x: 20, y: 10 },
+      ],
+      rotation: 0,
+      radius: 0,
+    };
+    const shape = resolvePrintShape(source, reflected.instances[0]);
+    expect(
+      shape.transform!.a * shape.transform!.d -
+        shape.transform!.b * shape.transform!.c,
+    ).toBeCloseTo(-1);
+    expect(source).not.toHaveProperty("transform");
+    expect(validatePrintLayouts([reflected])[0].instances[0].mirrored).toBe(
+      true,
+    );
+    expect(() =>
+      validatePrintLayouts([
+        {
+          ...reflected,
+          instances: [{ ...reflected.instances[0], mirrored: "yes" }],
+        },
+      ]),
+    ).toThrow();
+  });
+});
+
+it("new source members inherit a mirrored linked folder", async () => {
+  const { mirrorPrintNodes } = await import("./printLayout");
+  const imported = importPrintNode(doc, empty, "folder", 95, 100);
+  const mirrored = mirrorPrintNodes(
+    imported,
+    [imported.tree![0].id],
+    { x: 95, y: 100 },
+    0,
+  );
+  const added = {
+    ...source,
+    id: "second",
+    rotation: 30,
+    points: source.points.map((p) => ({ x: p.x, y: p.y + 20 })),
+  };
+  const updated: Doc = {
+    ...doc,
+    shapes: [source, added],
+    objectTree: [
+      {
+        kind: "group",
+        id: "folder",
+        name: "Pattern",
+        children: [
+          { kind: "object", id: "piece" },
+          { kind: "object", id: "second" },
+        ],
+      },
+    ],
+    printLayouts: [mirrored],
+  };
+  const synced = reconcilePrintLayouts(updated).printLayouts![0];
+  const member = synced.instances.find((i) => i.sourceId === "second")!;
+  expect(member.mirrored).toBe(true);
+  expect(member.rotation).toBeCloseTo(-30);
+  expect(member.y).toBeLessThan(100);
+  expect(synced.instances.find((i) => i.sourceId === "piece")).toEqual(
+    mirrored.instances[0],
+  );
+});

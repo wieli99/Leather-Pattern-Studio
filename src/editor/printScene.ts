@@ -244,14 +244,18 @@ export function pageSvg(
   doc: Doc,
   layout: PrintLayout,
   page: PrintPage,
+  decorationsOnly = false,
+  resolved = resolvedPrintItems(doc, layout),
 ): string {
   const size = printableSize(layout),
     x = page.column * size.width,
     y = page.row * size.height;
-  const items = resolvedPrintItems(doc, layout).filter((i) => !i.hidden);
-  const artwork = items
-    .map((i) => printShapeSvg(doc, i.shape, i.source.id, layout))
-    .join("");
+  const items = resolved.filter((i) => !i.hidden);
+  const artwork = decorationsOnly
+    ? ""
+    : items
+        .map((i) => printShapeSvg(doc, i.shape, i.source.id, layout))
+        .join("");
   let marks = "";
   for (const [dx, dy] of [
     [1, 0],
@@ -295,5 +299,5 @@ export function pageSvg(
     if (layout.margin >= 3)
       marks += `<g fill="#111">${label(key, { x: px + (dx ? (dx * layout.margin) / 2 : 0), y: py + (dy ? (dy * layout.margin) / 2 : 4) }, dx ? Math.PI / 2 : 0, 2)}</g>`;
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${layout.width}mm" height="${layout.height}mm" viewBox="0 0 ${layout.width} ${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="white"/><defs><clipPath id="paper-clip"><rect x="${layout.margin}" y="${layout.margin}" width="${size.width}" height="${size.height}"/></clipPath></defs><g clip-path="url(#paper-clip)"><g transform="translate(${n(layout.margin - x)} ${n(layout.margin - y)})">${artwork}</g></g>${marks}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${layout.width}mm" height="${layout.height}mm" viewBox="0 0 ${layout.width} ${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="${decorationsOnly ? "none" : "white"}"/><defs><clipPath id="paper-clip"><rect x="${layout.margin}" y="${layout.margin}" width="${size.width}" height="${size.height}"/></clipPath></defs><g clip-path="url(#paper-clip)"><g transform="translate(${n(layout.margin - x)} ${n(layout.margin - y)})">${artwork}</g></g>${marks}</svg>`;
 }

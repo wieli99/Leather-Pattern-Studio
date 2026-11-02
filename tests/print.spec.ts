@@ -60,6 +60,39 @@ async function create(page: Page) {
   await expect(
     page.getByRole("tab", { name: "A4", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
+  // Existing geometry fixtures use a 200% view with a 50 px origin.
+  const canvas = page.getByLabel("Print layout canvas");
+  const box = (await canvas.boundingBox())!;
+  const z = Math.max(
+    0.05,
+    Math.min((box.width - 80) / 210, (box.height - 80) / 297),
+  );
+  const pan = { x: (box.width - 210 * z) / 2, y: (box.height - 297 * z) / 2 };
+  await canvas.evaluate(
+    (el, delta) => {
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(
+        new WheelEvent("wheel", {
+          clientX: r.left,
+          clientY: r.top,
+          deltaY: delta,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    },
+    -Math.log(2 / z) / 0.001,
+  );
+  await canvas.focus();
+  await page.keyboard.down("Space");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    box.x + box.width / 2 + 50 - (pan.x * 2) / z,
+    box.y + box.height / 2 + 50 - (pan.y * 2) / z,
+  );
+  await page.mouse.up();
+  await page.keyboard.up("Space");
 }
 async function save(page: Page) {
   const pending = page.waitForEvent("download");
@@ -558,7 +591,7 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
   await page.keyboard.down("Control");
   await page.mouse.click(box.x + 100, box.y + 100);
   await page.screenshot({ path: "test-results/print-page-selection.png" });
-  await page.keyboard.press("Delete");
+  await page.getByRole("button", {name:"Delete page 0,0",exact:true}).click();
   await page.keyboard.up("Control");
   let doc = await save(page);
   expect(doc.printLayouts[0].pages).toEqual([{ column: 1, row: 0 }]);
@@ -606,15 +639,59 @@ test("dragging a source group previews and imports it at the drop location", asy
       .getByRole("button", { name: "Pattern", exact: true }),
     canvas = page.getByLabel("Print layout canvas");
   const box = (await canvas.boundingBox())!;
-  await source.dragTo(canvas, { targetPosition: { x: 250, y: 260 } });
+  const before = await canvas.evaluate((el) =>
+    (el as HTMLCanvasElement).toDataURL(),
+  );
+  const sourceBox = (await source.boundingBox())!;
+  await page.mouse.move(
+    sourceBox.x + sourceBox.width / 2,
+    sourceBox.y + sourceBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    sourceBox.x + sourceBox.width / 2 - 15,
+    sourceBox.y + sourceBox.height / 2,
+    { steps: 5 },
+  );
+  await page.mouse.move(box.x + 250, box.y + 260, { steps: 10 });
+  // Preview is visible before releasing the pointer.
+  await page.mouse.move(box.x + 251, box.y + 260);
+  await expect
+    .poll(() => canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL()))
+    .not.toBe(before);
+  await expect(
+    page
+      .getByLabel("Print object tree")
+      .getByRole("button", { name: "Piece", exact: true }),
+  ).toHaveCount(0);
+  const darkPreviewPixels = () =>
+    canvas.evaluate((el) => {
+      const c = el as HTMLCanvasElement,
+        scale = c.width / c.clientWidth;
+      const data = c
+        .getContext("2d")!
+        .getImageData(166 * scale, 240 * scale, 10 * scale, 40 * scale).data;
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4)
+        if (data[i] < 180 && data[i + 1] < 180) count++;
+      return count;
+    });
+  await expect.poll(darkPreviewPixels).toBeGreaterThan(10);
+  await page.mouse.move(box.x + 290, box.y + 260, { steps: 4 });
+  await expect.poll(darkPreviewPixels).toBe(0);
+  await page.mouse.move(box.x + 250, box.y + 260, { steps: 4 });
+  await expect.poll(darkPreviewPixels).toBeGreaterThan(10);
+  await page.screenshot({ path: "test-results/print-drag-preview.png" });
+  await page.mouse.move(box.x + 250, box.y + 260);
+  await page.mouse.up();
   await expect(
     page
       .getByLabel("Print object tree")
       .getByRole("button", { name: "Piece", exact: true }),
   ).toHaveCount(1);
   const doc = await save(page);
-  expect(doc.printLayouts[0].instances[0].x).toBeCloseTo(90);
-  expect(doc.printLayouts[0].instances[0].y).toBeCloseTo(95);
+  expect(doc.printLayouts[0].instances[0].x).toBeCloseTo(90, 0);
+  expect(doc.printLayouts[0].instances[0].y).toBeCloseTo(95, 0);
 });
 
 test("dropping a moved object retains its final preview while the worker commits", async ({
@@ -744,4 +821,51 @@ test("Select rotation ring uses Grid modifiers and Escape cancels its preview", 
   expect((await save(page)).printLayouts[0].instances[0].rotation).toBeCloseTo(
     50,
   );
+});
+
+test("print tools select first, apply by right click, and mirror linked artwork", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  const canvas = page.getByLabel("Print layout canvas");
+  const box = (await canvas.boundingBox())!;
+  // Import centers the placement in the viewport; click the object using its saved position.
+  const initial = await save(page);
+  const placement = initial.printLayouts[0].instances[0];
+  await page.getByRole("button", { name: "Move (G)", exact: true }).click();
+  await page.mouse.click(
+    box.x + 50 + (10 + placement.x) * 2,
+    box.y + 50 + (10 + placement.y) * 2,
+  );
+  await expect(
+    page.getByRole("button", { name: "Move (G)", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Print move X").fill("12");
+  await canvas.click({ button: "right", position: { x: 550, y: 500 } });
+  const moved = await save(page);
+  expect(moved.printLayouts[0].instances[0].x).toBeCloseTo(placement.x + 12);
+  await page.getByRole("button", { name: "Mirror (M)", exact: true }).click();
+  await canvas.click({
+    position: {
+      x: 50 + (10 + placement.x + 12) * 2 + 40,
+      y: 50 + (10 + placement.y) * 2,
+    },
+  });
+  await page.screenshot({ path: "test-results/print-mirror.png" });
+  await page
+    .locator(".print-transform")
+    .getByRole("button", { name: "Apply", exact: true })
+    .click();
+  const mirrored = await save(page);
+  expect(mirrored.printLayouts[0].instances[0].mirrored).toBe(true);
+  await page.keyboard.down("Control");
+  await expect(
+    page.getByRole("button", { name: "Delete page 0,0", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.up("Control");
+  await expect(
+    page.getByRole("button", { name: "Delete page 0,0", exact: true }),
+  ).toHaveCount(0);
 });

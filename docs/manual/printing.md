@@ -6,7 +6,7 @@ Print tabs arrange linked copies of Grid objects on physical sheets. They start 
 
 1. Press **+** beside the workspace tabs.
 2. Choose A5–A0, Letter, Legal, Tabloid, or **Custom**. Custom width, height, and margin entries use the selected units.
-3. Choose millimetres, decimal inches, or fractional inches. Choose one of the adjacent portrait/landscape paper icons; hover for labels.
+3. Choose millimetres, decimal inches, or fractional inches. Choose one of the right-aligned portrait/landscape paper icons; hover for labels.
 4. Press **Create**. Duplicate paper formats are allowed; automatic names receive a numeric suffix. The name follows format changes until you edit it; an edited name is preserved.
 
 Use **Layout settings** to rename a tab or change its paper, margin, and units. Switching units converts the existing dimensions; it never scales artwork. The initial margin is 10 mm. Dimensions must leave a positive printable area and cannot exceed 5,000 mm. Each layout supports up to 500 pages. **Delete layout** removes that layout after confirmation; undo restores it.
@@ -17,11 +17,13 @@ Use **Layout settings** to rename a tab or change its paper, margin, and units. 
 
 The **Grid objects** panel shows the source object and folder hierarchy. Press **Import** beside an object or folder. Repeated imports create independent linked placements. Imported folders retain their nesting and source membership: future additions appear, and removed source members disappear.
 
-Hover an object or folder in either Grid objects panel to preview its source artwork. Drag selected source rows onto paper to place linked copies together, preserving their relative arrangement. Dropping outside paper does nothing.
+Hover an object or folder in either Grid objects panel to preview its source artwork. Drag selected source rows onto paper to place linked copies together, preserving their relative arrangement. A placement preview follows the pointer over a sheet; release to import it. Sheet margins place the artwork at the nearest printable position. Dropping outside paper does nothing; Escape or right-click cancels.
+
+![Dragging source artwork onto a sheet before release](/manual/images/print-drag-preview.png)
 
 ![Source folder hover preview](/manual/images/object-hover-preview.png)
 
-The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply or Enter. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. Rotation uses Grid’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
+The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. Rotation uses Grid’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
 
 - **Hide** and **Lock** affect only print instances. Grid visibility and locking are independent.
 - **Duplicate** creates another linked copy. **Group** groups selected siblings.
@@ -29,9 +31,13 @@ The **Print objects** panel controls this layout only. Select a row or click an 
 - Drag rows onto a folder to put them inside it, or onto an object to place them before it. Drop on the empty panel area to move a free item to the top level. Linked children remain within their imported-folder boundary.
 - **Delete** removes print placements. Removing a child from an imported folder suppresses it for that import, so future source edits do not immediately restore it. Import again to obtain another copy.
 
+Choose **Mirror (M)** to reflect selected placements. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Grid. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
+
+![Mirror tool with axis choices and linked artwork preview](/manual/images/print-mirror.png)
+
 Source geometry, dimensions, text, images, styles, and stitching remain linked. Moving or rotating a source on Grid does not move or rotate existing print placements. Deleting a source removes its print copies in the same undo step. Undo/redo is shared across Grid and all print tabs.
 
-Geometry edits, new drawing tools, scaling, mirroring, and styling paste are unavailable in print views. Return to Grid to edit sources.
+Geometry edits, new drawing tools, scaling, and styling paste are unavailable in print views. Return to Grid to edit sources.
 
 ![Print layout with linked source and print object panels, inch rulers, dimensions, stitching, and images](/manual/images/print-layout.png)
 
@@ -43,11 +49,15 @@ White sheets show the physical paper; dashed inset lines show printable areas. G
 
 Artwork crossing a printable boundary is clipped onto adjacent sheets, which are added automatically after placement or source edits. Paired `|<` marks and matching edge identifiers show where to join the sheets. Trim away the blank margins along adjoining edges and align the matching marks. The Pages section is a read-only list of sheets and the objects they contain. An object spanning sheets appears under each of them.
 
-Hold **Ctrl** to show page numbers (top-left to bottom-right, skipping empty cells). Ctrl-click exposed paper to toggle page selection; objects in front take priority. Delete/Backspace deletes selected pages and their objects, but refuses if an affected object also appears on an unselected page. Select every page containing that object to delete it. Deleting all sheets leaves one empty sheet.
+Hold **Ctrl** to show page delete buttons and page numbers (top-left to bottom-right, skipping empty cells). Ctrl-click exposed paper to toggle page selection; objects in front take priority. Delete/Backspace deletes selected pages and their objects, but refuses if an affected object also appears on an unselected page. Select every page containing that object to delete it. Deleting all sheets leaves one empty sheet.
+
+The delete button removes its page and artwork using the same spanning-artwork restrictions as Delete/Backspace.
 
 Ctrl-drag exposed paper to move one page and its contents. A page containing a spanning object cannot move. Drop on an insertion edge: horizontal insertion pushes that contiguous row right, vertical insertion pushes that contiguous column down. The source gap stays empty. Insertion also refuses if it would split shared artwork. The proposed arrangement is previewed before release; Escape or right-click cancels.
 
 ![Ctrl page selection and temporary numbering](/manual/images/print-page-selection.png)
+
+New print tabs fit and center all sheets. Returning to a tab restores its view. Tool settings open at the top-left beside the tools. Grid snap also aligns artwork centers with page centers and displays alignment guides; Alt bypasses snapping. Alt+right-click flips the clicked placement left/right along its local axes; add Ctrl to flip top/bottom.
 
 The wheel zooms and Space-drag pans. **Fit** shows all sheets. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Grid uses different units. Arbitrary text is unchanged.
 
