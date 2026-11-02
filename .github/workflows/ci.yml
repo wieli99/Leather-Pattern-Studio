@@ -54,7 +54,7 @@ jobs:
           if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: steps.latest.outputs.deploy == 'true'
         with:
           name: production-dist
