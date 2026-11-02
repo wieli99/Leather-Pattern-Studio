@@ -130,6 +130,9 @@ function sourceOutsideDown(event: PointerEvent) {
   if (event.target instanceof Node && !sourceList.value?.contains(event.target))
     clearSourceSelection();
 }
+const left = defineModel<boolean>("left", { default: true });
+const panel = defineModel<boolean>("panel", { default: true });
+const bottom = defineModel<boolean>("bottom", { default: true });
 const emit = defineEmits<{ active: [value: boolean] }>();
 const e = useEditor(),
   active = ref(""),
@@ -3074,7 +3077,7 @@ defineExpose({
     ></DialogRoot
   >
   <section v-if="layout" class="print-workspace" aria-label="Print workspace">
-    <nav aria-label="Print tools">
+    <nav v-if="left" aria-label="Print tools">
       <button
         v-for="value in ['select', 'move', 'rotate', 'mirror'] as const"
         :key="value"
@@ -3154,6 +3157,38 @@ defineExpose({
       </button>
     </nav>
     <div class="print-canvas">
+      <button
+        class="edge-tab edge-left"
+        :aria-label="left ? 'Hide tools' : 'Show tools'"
+        :aria-expanded="left"
+        @click="left = !left"
+      >
+        {{ left ? "‹" : "›" }}
+      </button>
+      <button
+        class="edge-tab edge-right"
+        :aria-label="panel ? 'Hide inspector' : 'Show inspector'"
+        :aria-expanded="panel"
+        @click="drawing.finishProperty(); panel = !panel"
+      >
+        {{ panel ? "›" : "‹" }}
+      </button>
+      <button
+        class="edge-tab edge-bottom"
+        :class="{ 'above-status': bottom }"
+        :aria-label="bottom ? 'Hide status bar' : 'Show status bar'"
+        :aria-expanded="bottom"
+        @click="bottom = !bottom"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path
+            :d="bottom ? 'M3 4L6 7L9 4' : 'M3 8L6 5L9 8'"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          />
+        </svg>
+      </button>
       <canvas ref="previewCanvas" class="drawing-preview" aria-hidden="true" />
       <Viewport ref="textViewport" :controller="drawing" text-only />
       <ConstructionMeasurements :controller="drawing" />
@@ -3280,7 +3315,7 @@ defineExpose({
           ><button @click="cancel">Cancel</button>
         </div>
       </div>
-      <div class="print-status">
+      <div v-if="bottom" class="print-status">
         <span
           >{{ formatLength(layout.width, layout.units) }} ×
           {{ formatLength(layout.height, layout.units) }}
@@ -3296,7 +3331,7 @@ defineExpose({
         <span style="margin-left: auto">{{ Math.round(zoom * 100) }}%</span>
       </div>
     </div>
-    <aside aria-label="Print objects and settings">
+    <aside v-if="panel" aria-label="Print objects and settings">
       <p v-if="!creating && !error && tool === 'select' && drawingState.message !== 'Ready'" role="status">{{ drawingState.message }}</p>
       <PanelSection
         section-key="print-grid-objects"
@@ -3805,7 +3840,12 @@ h3 {
   flex-direction: column;
   gap: 4px;
 }
+.edge-bottom.above-status {
+  bottom: 32px;
+}
 .print-status {
+  min-height: 32px;
+  box-sizing: border-box;
   position: absolute;
   bottom: 0;
   left: 0;

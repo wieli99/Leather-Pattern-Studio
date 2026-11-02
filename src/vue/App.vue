@@ -216,7 +216,13 @@ onMounted(() => {
         >
       </div>
     </header>
-    <PrintWorkspace ref="printWorkspace" @active="printActive = $event" />
+    <PrintWorkspace
+      ref="printWorkspace"
+      v-model:left="left"
+      v-model:panel="panel"
+      v-model:bottom="bottom"
+      @active="printActive = $event"
+    />
     <section v-show="!printActive" class="workspace">
       <nav v-if="left" aria-label="Drawing tools">
         <template v-for="tool in tools" :key="tool.id">

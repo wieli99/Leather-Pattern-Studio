@@ -103,6 +103,8 @@ export type Gesture = {
   lastAngle?: number;
   factor?: number;
 };
+const defaultGridView = { zoom: 3, pan: { x: 80, y: 100 } };
+
 export class Controller {
   drawingShift = false;
   setDrawingModifier(shift: boolean) {
@@ -369,8 +371,8 @@ export class Controller {
   gridStyle: "dots" | "lines" = "dots";
   rulers = false;
   theme = "dark";
-  zoom = 3;
-  pan = { x: 80, y: 100 };
+  zoom = defaultGridView.zoom;
+  pan = { ...defaultGridView.pan };
   width = 900;
   height = 700;
   space = false;
@@ -3159,7 +3161,14 @@ export class Controller {
   }
   fit(selection = false) {
     const shapes = (selection ? this.active : this.document.shapes).filter(s => !this.isHidden(s.id));
-    if (!shapes.length) return;
+    if (!shapes.length) {
+      if (!selection) {
+        this.zoom = defaultGridView.zoom;
+        this.pan = { ...defaultGridView.pan };
+        this.notify();
+      }
+      return;
+    }
     const b = bounds(shapes);
     this.zoom = Math.max(
       0.01,

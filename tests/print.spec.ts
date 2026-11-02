@@ -104,6 +104,65 @@ async function save(page: Page) {
   for await (const chunk of stream!) chunks.push(chunk);
   return JSON.parse(Buffer.concat(chunks).toString());
 }
+test("Fit restores the default view on an empty grid", async ({ page }) => {
+  await page.goto("/");
+  const fit = page.getByRole("button", { name: "Fit", exact: true });
+  await expect(fit).toBeEnabled();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await fit.hover();
+  const initial = await canvas.screenshot();
+  await canvas.hover({ position: { x: 300, y: 200 } });
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -400);
+  await page.keyboard.up("Control");
+  await page.mouse.wheel(100, 200);
+  await expect(async () => expect(await canvas.screenshot()).not.toEqual(initial)).toPass();
+  await fit.click();
+  await expect(async () => expect(await canvas.screenshot()).toEqual(initial)).toPass();
+});
+
+test("Fit restores the default page view on an empty print tab", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Create print layout", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Create print layout", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();
+  const canvas = page.getByLabel("Print layout canvas");
+  await expect(canvas).toBeVisible();
+  await page.getByRole("button", { name: "Fit", exact: true }).click();
+  const initial = await canvas.screenshot();
+  await canvas.hover({ position: { x: 300, y: 200 } });
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -400);
+  await page.keyboard.up("Control");
+  await page.mouse.wheel(100, 200);
+  await expect(async () => expect(await canvas.screenshot()).not.toEqual(initial)).toPass();
+  await page.getByRole("button", { name: "Fit", exact: true }).click();
+  await expect(async () => expect(await canvas.screenshot()).toEqual(initial)).toPass();
+});
+
+test("panel edge tabs hide and restore print panels and share visibility with Grid", async ({ page }, info) => {
+  await load(page);
+  await create(page);
+  for (const [name, selector] of [
+    ["tools", 'nav[aria-label="Print tools"]'],
+    ["inspector", 'aside[aria-label="Print objects and settings"]'],
+    ["status bar", ".print-status"],
+  ]) {
+    await page.getByRole("button", { name: `Hide ${name}`, exact: true }).click();
+    await expect(page.locator(selector)).toBeHidden();
+    await expect(page.getByRole("button", { name: `Show ${name}`, exact: true })).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("button", { name: `Show ${name}`, exact: true }).click();
+    await expect(page.locator(selector)).toBeVisible();
+  }
+  await page.screenshot({ path: info.outputPath("print-panel-toggles.png") });
+  await page.getByRole("button", { name: "Hide tools", exact: true }).click();
+  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await expect(page.getByRole("navigation", { name: "Drawing tools", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Show tools", exact: true }).click();
+  await page.getByRole("tab", { name: "A4", exact: true }).click();
+  await expect(page.getByRole("navigation", { name: "Print tools", exact: true })).toBeVisible();
+});
+
 test("layouts are optional, import folders repeatedly, arrange copies, persist, and undo", async ({
   page,
 }) => {

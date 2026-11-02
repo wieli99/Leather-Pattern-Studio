@@ -10,7 +10,7 @@ The right panel stacks Objects, Properties, and Tool help. Click the Properties,
 
 Properties appears when objects are selected and hides when nothing is selected. Enter or leaving a field applies one undo step; Esc restores its starting value. Inline hints in the sidebar explain the current operation, including when nothing is selected.
 
-Edge tabs hide or show tools, Properties, and the status bar. Settings controls units, rulers, grid style, spacing, and theme. Choose Millimetres, Inches (fractional), or Inches (decimal). This preference applies across projects and is remembered in this browser. Switching units preserves physical dimensions and grid spacing. Grid spacing combines a custom value input with a preset dropdown arrow. Millimetre presets are 0.5, 1, 5, 10, 50, and 100 mm; inch presets offer 1/64 through 1 inch. Choosing a preset updates and saves the spacing immediately.
+Edge tabs on both Grid and print-layout tabs hide or show tools, the inspector, and the status bar. Each edge tab joins the bar it controls, with a flat edge against the bar. Panel visibility is shared across tabs and remembered in this browser. Settings controls units, rulers, grid style, spacing, and theme. Choose Millimetres, Inches (fractional), or Inches (decimal). This preference applies across projects and is remembered in this browser. Switching units preserves physical dimensions and grid spacing. Grid spacing combines a custom value input with a preset dropdown arrow. Millimetre presets are 0.5, 1, 5, 10, 50, and 100 mm; inch presets offer 1/64 through 1 inch. Choosing a preset updates and saves the spacing immediately.
 
 ![Inch units and grid settings](/manual/images/inch-settings.png)
 
@@ -23,5 +23,7 @@ If engine startup fails, the loading panel shows the worker error. An unresponsi
 Development startup removes this app’s production offline worker before loading the editor and may reload once. Recovery data and preferences are preserved. If the offline worker still controls the page, close the app’s tabs and reopen it.
 
 ## Print layouts
+
+![Print layout with panel edge tabs](/manual/images/print-panel-toggles.png)
 
 Use **+** beside **Grid** to create an optional print-layout tab. Choose a paper format, orientation, margins, and units. See [Print layouts and export](#printing) for placement, linked folders, page assembly, and export.

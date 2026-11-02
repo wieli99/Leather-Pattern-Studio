@@ -2107,3 +2107,18 @@ test('print overflow rejects a source edit without a partial document or history
  expect(await e.commit({...original,shapes:[{...shape,points:[{x:0,y:0},{x:1e6,y:1e6}]}]})).toBe(false);
  expect(e.document).toEqual(original);expect(e.revision).toBe(revision);expect(e.message).toContain('500');
 });
+
+test("Fit restores the default view on an empty grid without changing history", () => {
+  const e = editor();
+  const initial = { zoom: e.zoom, pan: { ...e.pan } };
+  const document = e.document;
+  const notify = vi.spyOn(e, "notify");
+  e.wheel({ x: 400, y: 300 }, 0, -500, true);
+  e.wheel({ x: 400, y: 300 }, 120, 160, false);
+  notify.mockClear();
+  e.fit();
+  expect({ zoom: e.zoom, pan: e.pan }).toEqual(initial);
+  expect(notify).toHaveBeenCalled();
+  expect(e.document).toBe(document);
+  expect(e.canUndo).toBe(false);
+});
