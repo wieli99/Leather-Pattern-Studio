@@ -1210,6 +1210,11 @@ test("unchanged page drops clear the preview without adding history", async ({
     .getByRole("button", { name: "Add page right 0,0", exact: true })
     .click();
   await page.keyboard.up("Control");
+  // Adding a page commits through the document worker before dragging is available.
+  await expect(page.locator(".print-status > span").first()).toContainText("2 pages");
+  await expect(
+    page.getByRole("button", { name: "Import Piece", exact: true }),
+  ).toBeEnabled();
   const canvas = page.getByLabel("Print layout canvas"),
     box = (await canvas.boundingBox())!;
   await page.keyboard.down("Control");
