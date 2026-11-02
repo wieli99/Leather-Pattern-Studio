@@ -1,0 +1,71 @@
+name: CI and deployment
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+permissions:
+  contents: read
+jobs:
+  check:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run containerized checks
+        run: tools/dev/run.sh check
+      - name: Validate deployment bundle
+        run: tools/dev/run.sh npx --yes wrangler@4.156.2 deploy --dry-run
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Browser reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-reports
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+  deploy:
+    name: Deploy production
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    concurrency:
+      group: production-deployment
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check this is still the latest release
+        id: latest
+        shell: bash
+        run: |
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.latest.outputs.deploy == 'true'
+        with:
+          name: production-dist
+          path: dist
+      - uses: actions/setup-node@v4
+        if: steps.latest.outputs.deploy == 'true'
+        with:
+          node-version: 22
+      - name: Deploy tested assets
+        if: steps.latest.outputs.deploy == 'true'
+        run: npx --yes wrangler@4.156.2 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

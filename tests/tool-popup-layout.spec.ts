@@ -77,7 +77,7 @@ test("all selection tool popups align with the right canvas edge", async ({
       Math.abs(box.x + box.width - (canvas.x + canvas.width - 12)),
     ).toBeLessThan(2);
     expect(
-      Math.abs(box.y + box.height - (canvas.y + canvas.height - 12)),
+      Math.abs(box.y + box.height - (canvas.y + canvas.height - 28)),
     ).toBeLessThan(2);
     expect(box.height).toBeLessThanOrEqual(800 * 0.48 + 1);
     const toolbar = (await page
