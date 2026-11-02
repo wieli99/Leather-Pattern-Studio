@@ -1,0 +1,31 @@
+/* Theme variables also cover nested scrolling panels and form controls.
+   The fallbacks match the manual's light palette. */
+* {
+  scrollbar-color: var(--muted, #536575) var(--bg, #f7f7f4);
+}
+
+/* Older WebKit uses pseudo-elements instead of scrollbar-color. */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: var(--bg, #f7f7f4);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--muted, #536575);
+    border: 3px solid var(--bg, #f7f7f4);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--accent, #245b8a);
+  }
+}
+
+@media (forced-colors: active) {
+  * {
+    scrollbar-color: auto;
+  }
+}

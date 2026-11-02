@@ -16,6 +16,10 @@ Edge tabs on both Grid and print-layout tabs hide or show tools, the inspector, 
 
 ![Inch units and grid settings](/manual/images/inch-settings.png)
 
+Scrollbars in panels and dialogs follow the selected theme. The manual uses scrollbars matching its light page colors. System high-contrast settings retain the browser's automatic scrollbar colors.
+
+![Themed scrollbar in the inspector](/manual/images/themed-scrollbars.png)
+
 ![Workspace](/manual/images/workspace.png)
 
 If the application reports incompatible geometry worker versions, save existing work before reloading. In a browser, Ctrl+Shift+R requests a fresh page. Offline updates offer a Reload button; save your project before activating an update.
