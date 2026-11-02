@@ -1698,14 +1698,14 @@ async function paintFrame() {
           ? mirrorHover.value.map(worldPixel)
           : axisPixels(hoverMirrorOffset);
       const [a, b] = projected;
-      ctx.strokeStyle = "#fff";
+      ctx.strokeStyle = css.getPropertyValue("--canvas").trim();
       ctx.lineWidth = 7;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
-      ctx.strokeStyle = "#9a3412";
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
