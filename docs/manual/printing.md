@@ -19,7 +19,7 @@ Drag print tabs left or right to reorder them. An empty dashed outline reserves 
 
 ## Import and arrange objects
 
-The **Grid objects** panel shows the source object and folder hierarchy. Press **Import** beside an object or folder. Repeated imports create independent linked placements. Imported folders retain their nesting and source membership: future additions appear, and removed source members disappear.
+The **Grid objects** panel shows the source object and folder hierarchy. Clicking outside the Grid objects list or switching tabs clears its source selection. Press **Import** beside an object or folder. Repeated imports create independent linked placements. Imported folders retain their nesting and source membership: future additions appear, and removed source members disappear.
 
 Hover an object or folder in either Grid objects panel to preview its source artwork. Drag selected source rows onto paper to place linked copies together, preserving their relative arrangement. A placement preview follows the pointer over a sheet; release to import it. Sheet margins place the artwork at the nearest printable position. Dropping outside paper does nothing; Escape or right-click cancels.
 
@@ -76,7 +76,7 @@ Ctrl-drag exposed paper to move one page and its contents. A page containing a s
 
 New print tabs fit and center all sheets. Returning to a tab restores its view. Tool settings open at the top-left beside the tools. Grid snap also aligns artwork centers with page centers and displays alignment guides; Alt bypasses snapping. Alt+right-click flips the clicked placement left/right along its local axes; add Ctrl to flip top/bottom.
 
-The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. **Fit** shows all sheets. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Grid uses different units. Arbitrary text is unchanged.
+The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. The **Fit** icon (a rectangle inside four framing corners) below Redo shows all sheets. Undo and Redo use the same arrow buttons as Grid, below a separator. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Grid uses different units. Arbitrary text is unchanged.
 
 ## Preview and export
 

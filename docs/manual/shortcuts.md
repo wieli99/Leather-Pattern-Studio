@@ -28,7 +28,7 @@ Single-letter editor shortcuts require canvas focus. Click the canvas first. Inp
 | ? | Open this manual |
 
 ## View navigation
-Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the pointer. With the canvas focused, F fits all objects; Shift+F fits the selection. These commands are available through keyboard shortcuts; there are no fit buttons in the viewport.
+Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the pointer. With the canvas focused, F fits all objects; Shift+F fits the selection. The Fit icon below Redo in the Grid toolbar also fits all objects.
 
 See [selection](#selection), [drawing](#drawing), and [transforms](#transforms) for modifier gestures.
 

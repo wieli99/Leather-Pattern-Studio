@@ -11,6 +11,7 @@ import { useEditor } from "./useEditor";
 import Viewport from "./Viewport.vue";
 import ModeIcon from "./ModeIcon.vue";
 import ToolButton from "./ToolButton.vue";
+import FitIcon from "./FitIcon.vue";
 import ObjectPanel from "./ObjectPanel.vue";
 import Inspector from "./Inspector.vue";
 import PanelSection from "./PanelSection.vue";
@@ -245,6 +246,14 @@ onMounted(() => {
           @click="editor.transact('redo')"
         >
           ↷
+        </button>
+        <button
+          title="Fit (F)"
+          aria-label="Fit"
+          :disabled="!e.ready"
+          @click="editor.fit()"
+        >
+          <span class="tool-icon"><FitIcon /></span>
         </button>
       </nav>
       <div :class="`viewport tool-${e.tool}`">

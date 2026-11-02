@@ -1283,3 +1283,50 @@ test("detached print copies duplicate and paste after their Grid source is delet
   expect(saved.printLayouts[0].instances).toHaveLength(3);
   for (const item of saved.printLayouts[0].instances) expect(item.snapshot.shape).toMatchObject(rectangle);
 });
+
+test("Grid source selection clears outside the list and resets its range anchor", async ({ page }) => {
+  await load(page);
+  await create(page);
+  const list = page.getByLabel("Grid source objects");
+  const folder = list.getByRole("button", { name: "Pattern", exact: true });
+  const piece = list.getByRole("button", { name: "Piece", exact: true });
+  await folder.click();
+  await piece.click({ modifiers: ["Control"] });
+  await expect(list.locator('[aria-pressed="true"]')).toHaveCount(2);
+  await page.getByLabel("Print layout canvas").click({ position: { x: 5, y: 5 } });
+  await expect(list.locator('[aria-pressed="true"]')).toHaveCount(0);
+  await piece.click({ modifiers: ["Shift"] });
+  await expect(piece).toHaveAttribute("aria-pressed", "true");
+  await expect(folder).toHaveAttribute("aria-pressed", "false");
+  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "A4", exact: true }).click();
+  await expect(list.locator('[aria-pressed="true"]')).toHaveCount(0);
+});
+
+test("tool rails keep separators and share history and fit icons", async ({ page }) => {
+  await load(page);
+  const grid = page.getByRole("navigation", { name: "Drawing tools" });
+  const textDivider = grid.getByRole("separator", { name: "Indicator tools" });
+  for (const height of [600, 768, 800, 900]) {
+    await page.setViewportSize({ width: 1280, height });
+    expect((await textDivider.boundingBox())!.height).toBe(1);
+    await expect(textDivider).toHaveCSS("border-top-style", "solid");
+    await expect(textDivider).toHaveCSS("border-top-width", "1px");
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await grid.getByRole("button", { name: "Fit", exact: true }).click();
+  await expect(grid.getByRole("button", { name: "Fit", exact: true }).locator("svg")).toBeVisible();
+  await page.screenshot({ path: "test-results/grid-tool-rail.png" });
+  const historyFont = await grid.getByRole("button", { name: "Undo", exact: true }).evaluate(el => getComputedStyle(el).fontSize);
+  await create(page);
+  const print = page.getByRole("navigation", { name: "Print tools" });
+  expect((await print.getByRole("separator").boundingBox())!.height).toBe(1);
+  for (const name of ["Undo", "Redo"]) {
+    await expect(print.getByRole("button", { name, exact: true })).toHaveText(name === "Undo" ? "↶" : "↷");
+    expect(await print.getByRole("button", { name, exact: true }).evaluate(el => getComputedStyle(el).fontSize))
+      .toBe(historyFont);
+  }
+  await print.getByRole("button", { name: "Fit", exact: true }).click();
+  await expect(print.getByRole("button", { name: "Fit", exact: true }).locator("svg")).toBeVisible();
+  await page.screenshot({ path: "test-results/print-tool-rail.png" });
+});

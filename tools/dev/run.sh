@@ -7,7 +7,7 @@ if [[ -t 0 && -t 1 ]]; then flags+=(-it); fi
 case "${1:-}" in
   dev) shift; flags+=(-p 127.0.0.1:5174:5173); set -- sh -c 'npm ci && npm run wasm && npm run dev' ;;
   preview) shift; flags+=(-p 127.0.0.1:5174:5173); set -- npm run preview ;;
-  check) shift; set -- sh -c 'npm ci && npm run test:rust && npm run build && npm test && npx playwright install --with-deps chromium firefox webkit && npm run test:e2e' ;;
+  check) shift; set -- sh -c 'npm ci && npm run test:rust && npm run build && npm test && npx playwright install chromium firefox webkit && npm run test:e2e' ;;
 esac
 if [[ $# -eq 0 ]]; then set -- bash; fi
 exec podman run "${flags[@]}" localhost/leather-dev "$@"

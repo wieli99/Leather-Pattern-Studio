@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FitIcon from "./FitIcon.vue";
 import {
   drawRotationGizmo,
   drawPivotPoint,
@@ -110,6 +111,15 @@ import { PanelSelection } from "../model/panelSelection";
 const panelSelection = new PanelSelection(),
   sourceSelection = new PanelSelection();
 const selectedSources = ref<string[]>([]);
+const sourceList = ref<HTMLElement>();
+function clearSourceSelection() {
+  selectedSources.value = [];
+  sourceSelection.anchor = undefined;
+}
+function sourceOutsideDown(event: PointerEvent) {
+  if (event.target instanceof Node && !sourceList.value?.contains(event.target))
+    clearSourceSelection();
+}
 const emit = defineEmits<{ active: [value: boolean] }>();
 const e = useEditor(),
   active = ref(""),
@@ -406,6 +416,7 @@ function cancel() {
 }
 async function switchTab(id: string) {
   if (id === active.value) return;
+  clearSourceSelection();
   cancel();
   if (editor.propertySession) await editor.finishProperty();
   editor.cancel();
@@ -2717,6 +2728,7 @@ onMounted(() => {
       cancel();
     void draw();
   });
+  window.addEventListener("pointerdown", sourceOutsideDown, true);
   window.addEventListener("keydown", keyboard);
   window.addEventListener("copy", printClipboard);
   window.addEventListener("paste", printClipboard);
@@ -2739,6 +2751,7 @@ onUnmounted(() => {
   cancelAnimationFrame(scheduledFrame);
   observer?.disconnect();
   unsubscribe?.();
+  window.removeEventListener("pointerdown", sourceOutsideDown, true);
   window.removeEventListener("keydown", keyboard);
   window.removeEventListener("copy", printClipboard);
   window.removeEventListener("paste", printClipboard);
@@ -2965,24 +2978,34 @@ defineExpose({
                     : 'M12 2V22M9 5L3 19H9ZM15 5L21 19H15Z'
             "
           />
-        </svg></button
-      ><button
+        </svg>
+      </button>
+      <div class="rail-divider" role="separator" />
+      <button
+        title="Undo (Ctrl/⌘+Z)"
+        aria-label="Undo"
         :disabled="!e.canUndo || busy"
         @click="
           cancel();
           editor.transact('undo');
         "
       >
-        Undo</button
-      ><button
+        ↶
+      </button>
+      <button
+        title="Redo (Ctrl/⌘+Shift+Z)"
+        aria-label="Redo"
         :disabled="!e.canRedo || busy"
         @click="
           cancel();
           editor.transact('redo');
         "
       >
-        Redo</button
-      ><button @click="fit">Fit</button>
+        ↷
+      </button>
+      <button title="Fit (F)" aria-label="Fit" @click="fit">
+        <span class="tool-icon"><FitIcon /></span>
+      </button>
     </nav>
     <div class="print-canvas">
       <canvas
@@ -3129,7 +3152,7 @@ defineExpose({
         title="Grid objects"
         class="sidebar-section print-object-section"
       >
-        <div class="print-list" aria-label="Grid source objects">
+        <div ref="sourceList" class="print-list" aria-label="Grid source objects">
           <div
             v-for="row in sourceRows"
             :key="row.node.id"
@@ -3543,9 +3566,6 @@ defineExpose({
 }
 .print-workspace nav {
   padding: 8px 4px;
-}
-.print-workspace nav button {
-  font-size: 11px;
 }
 aside {
   width: 340px;

@@ -133,8 +133,9 @@ nav small {
   color: #8996a4;
 }
 .rail-divider {
-  height: 1px;
-  background: #3a424b;
+  flex: 0 0 1px;
+  min-height: 1px;
+  border-top: 1px solid var(--border);
   margin: 10px 2px;
 }
 .viewport {
@@ -609,12 +610,8 @@ nav button[aria-pressed="true"] {
   font-size: 11px;
   margin: 0 0 16px;
 }
-.inspector-hint,
-.rail-divider {
+.inspector-hint {
   border-color: var(--border);
-}
-.rail-divider {
-  background: var(--border);
 }
 .tool-icon svg {
   display: block;
