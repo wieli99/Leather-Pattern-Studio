@@ -136,7 +136,7 @@ test("edge tabs persist, settings center, and themes remain selectable", async (
   await page.getByText("Settings", { exact: true }).click();
   await page.getByLabel("Grid spacing (mm)", { exact: true }).fill("5");
   await page.getByLabel("Grid style", { exact: true }).selectOption("lines");
-  await page.getByLabel("X/Y rulers", { exact: true }).check();
+  await page.getByLabel("Axis rulers", { exact: true }).check();
   for (const theme of ["dark", "light", "solarized", "nord", "contrast"]) {
     await page.getByLabel("Theme", { exact: true }).selectOption(theme);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);

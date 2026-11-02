@@ -26,7 +26,7 @@ Edge measurements follow the edge angle with a visible gap. Center rectangle wid
 
 ![Separate center rectangle dimensions](/manual/images/center-rectangle-measurements.png)
 
-Enable X/Y rulers in Settings. Drag from the top ruler for a horizontal guideline or the left ruler for a vertical guideline. With Select, drag a guideline to move it; drop it onto a ruler to remove it. Guidelines are saved with the project and support undo/redo. In millimetre mode, placement uses 1 mm steps, Ctrl 10 mm, and Shift 5 mm (Ctrl takes precedence). With Object snap enabled, exact object features take priority over alignment, followed by these increments. Alt bypasses both snapping and increments. Object snap makes guidelines available as alignment targets. Esc cancels a guideline drag.
+Enable Axis rulers in Settings. Drag from the top ruler for a horizontal guideline or the left ruler for a vertical guideline. With Select, drag a guideline to move it; drop it onto a ruler to remove it. Guidelines are saved with the project and support undo/redo. In millimetre mode, placement uses 1 mm steps, Ctrl 10 mm, and Shift 5 mm (Ctrl takes precedence). With Object snap enabled, exact object features take priority over alignment, followed by these increments. Alt bypasses both snapping and increments. Object snap makes guidelines available as alignment targets. Esc cancels a guideline drag.
 
 The guideline coordinate appears beside the pointer while dragging and stays inside the drawing area.
 

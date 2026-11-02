@@ -39,7 +39,7 @@ const e = useEditor(),
               editor.preferences();
             "
           />
-          X/Y rulers
+          Axis rulers
         </label>
         <label>
           Grid style

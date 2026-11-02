@@ -7,7 +7,7 @@ test("ruler guide survives release through the real worker", async ({
     page.getByRole("button", { name: "Select (V)", exact: true }),
   ).toBeEnabled();
   await page.getByText("Settings", { exact: true }).click();
-  await page.getByLabel("X/Y rulers", { exact: true }).check();
+  await page.getByLabel("Axis rulers", { exact: true }).check();
   await page.getByText("Settings", { exact: true }).click();
   const canvas = page.getByLabel("Pattern drawing canvas");
   const box = (await canvas.boundingBox())!;
@@ -48,7 +48,7 @@ test("guideline alignment reference preview", async ({ page }, info) => {
   await canvas.click({ position: { x: 450, y: 390 } });
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
   await page.getByText("Settings", { exact: true }).click();
-  await page.getByLabel("X/Y rulers", { exact: true }).check();
+  await page.getByLabel("Axis rulers", { exact: true }).check();
   await page.getByText("Settings", { exact: true }).click();
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + 600, box.y + 10);
