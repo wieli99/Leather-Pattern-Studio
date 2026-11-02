@@ -20,6 +20,7 @@ import {
 } from "../model/reorder";
 import { movePrintTree } from "../model/printReorder";
 import ObjectPreview from "./ObjectPreview.vue";
+import LinkIcon from "./LinkIcon.vue";
 const hoverPreview = ref<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
 function previewRow(event: PointerEvent, id: string) {
   if (event.buttons) return;
@@ -62,6 +63,7 @@ import {
   sourceShapeIds,
   findSource,
   importPrintNode,
+  unlinkPrintNode,
   resolvedPrintItems,
   printDescendants,
   editPrintTree,
@@ -937,9 +939,27 @@ function nodeName(node: PrintNode) {
   const item = layout.value?.instances.find((i) => i.id === node.id);
   return (
     item?.name ??
+    item?.snapshot?.shape.name ??
     editor.document.shapes.find((s) => s.id === item?.sourceId)?.name ??
     "Object"
   );
+}
+function isUnlinked(node: PrintNode) {
+  return node.kind === "group" ? !!node.unlinked
+    : !!layout.value?.instances.find((i) => i.id === node.id)?.snapshot;
+}
+function unlinkHint(node: PrintNode) {
+  return isUnlinked(node)
+    ? "Unlinked. Cannot be re-linked; use Undo to restore the link."
+    : "Unlink from Grid. Use Undo to restore the link.";
+}
+function unlink(node: PrintNode) {
+  if (!canManageObjects.value || !layout.value || isUnlinked(node)) return;
+  try {
+    void save(unlinkPrintNode(editor.document, layout.value, node.id));
+  } catch (reason) {
+    error.value = String(reason);
+  }
 }
 function editState(id: string, key: "hidden" | "locked") {
   if (!canManageObjects.value) return;
@@ -2517,7 +2537,7 @@ function printClipboard(event: ClipboardEvent) {
       const source = validatePrintLayouts([payload.layout])[0];
       if (
         source.instances.some(
-          (i) => !editor.document.shapes.some((s) => s.id === i.sourceId),
+          (i) => !i.snapshot && !editor.document.shapes.some((s) => s.id === i.sourceId),
         )
       )
         throw Error("Print clipboard sources are missing from this project");
@@ -2549,7 +2569,7 @@ function printClipboard(event: ClipboardEvent) {
         ...i,
         id: ids.get(i.id)!,
         locked: false,
-        name: `${i.name ?? editor.document.shapes.find((s) => s.id === i.sourceId)?.name ?? "Object"} copy`,
+        name: `${i.name ?? i.snapshot?.shape.name ?? editor.document.shapes.find((s) => s.id === i.sourceId)?.name ?? "Object"} copy`,
       }));
       void save({
         ...l,
@@ -3296,6 +3316,21 @@ defineExpose({
                   />
                 </svg>
               </button>
+              <span
+                v-if="row.node.kind === 'instance' || row.node.sourceId || row.node.unlinked"
+                class="print-link-control"
+                role="group"
+                :title="unlinkHint(row.node)"
+                :aria-label="isUnlinked(row.node) ? unlinkHint(row.node) : undefined"
+                :tabindex="isUnlinked(row.node) ? 0 : undefined"
+                @pointerdown.stop
+              >
+                <button
+                  :aria-label="`${isUnlinked(row.node) ? 'Unlinked' : 'Unlink'} print ${nodeName(row.node)}`"
+                  :disabled="!canManageObjects || isUnlinked(row.node)"
+                  @click.stop="unlink(row.node)"
+                ><LinkIcon :broken="isUnlinked(row.node)" /></button>
+              </span>
             </div>
           </template>
           <div
@@ -3333,7 +3368,7 @@ defineExpose({
       <p class="print-help">
         Drag to move. Select Rotate and drag to rotate; Rotation snaps to 1°,
         Shift 5°, Ctrl 10°; Alt rotates freely. Space-drag pans. Alt bypasses
-        snapping. Source geometry remains linked.
+        snapping. Source geometry stays linked until you unlink it in Print objects.
       </p>
     </aside>
   </section>
@@ -3547,6 +3582,11 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.print-list .print-link-control {
+  display: inline-flex;
+  flex: none;
+  overflow: visible;
 }
 .print-list button {
   font-size: 12px;

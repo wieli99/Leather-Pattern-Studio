@@ -1203,3 +1203,83 @@ test("a small rightward drag near the paper edge does not shift the row", async 
   await page.keyboard.up("Control");
   expect(await save(page)).toEqual(before);
 });
+
+test("unlink buttons freeze imported objects and folders with undo and persistence", async ({ page }) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Pattern", exact: true }).click();
+  const tree = page.getByLabel("Print object tree");
+  const child = tree.getByRole("button", { name: "Unlink print Piece", exact: true });
+  await expect(child).toBeEnabled();
+  const row = child.locator("xpath=../..");
+  await expect(row.getByRole("button").last()).toHaveAttribute("aria-label", "Unlink print Piece");
+  await child.click();
+  const broken = tree.getByRole("button", { name: "Unlinked print Piece", exact: true });
+  await expect(broken).toBeDisabled();
+  await expect(broken.locator("..")).toHaveAttribute("title", "Unlinked. Cannot be re-linked; use Undo to restore the link.");
+  const detached = await save(page);
+  expect(detached.printLayouts[0].instances[0].snapshot.shape).toMatchObject(rectangle);
+  await page.locator(".print-workspace").getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(child).toBeEnabled();
+  await page.locator(".print-workspace").getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(broken).toBeDisabled();
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await tree.getByRole("button", { name: "Unlink print Pattern", exact: true }).click();
+  await expect(tree.getByRole("button", { name: "Unlinked print Pattern", exact: true })).toBeDisabled();
+  if (test.info().project.name === "chromium") {
+    await page.locator(".print-workspace").screenshot({ path: "public/manual/images/print-unlink.png" });
+  }
+  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("button", { name: "Piece", exact: true }).click();
+  await page.keyboard.press("Delete");
+  await expect(page.locator(".object-select")).toHaveCount(0);
+  const deleted = await save(page);
+  expect(deleted.printLayouts[0].instances).toHaveLength(1);
+  expect(deleted.printLayouts[0].instances[0].snapshot).toBeDefined();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await (await chooser).setFiles({ name: "detached.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(deleted)) });
+  await page.getByRole("tab", { name: "A4", exact: true }).click();
+  await expect(broken).toBeDisabled();
+  expect((await save(page)).printLayouts[0].instances).toEqual(deleted.printLayouts[0].instances);
+});
+
+
+test("detached print copies duplicate and paste after their Grid source is deleted", async ({ page }) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  const tree = page.getByLabel("Print object tree");
+  const canvas = page.getByLabel("Print layout canvas");
+  await tree.getByRole("button", { name: "Unlink print Piece", exact: true }).click();
+  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("button", { name: "Piece", exact: true }).click();
+  await page.keyboard.press("Delete");
+  await expect(page.locator(".object-select")).toHaveCount(0);
+  await page.getByRole("tab", { name: "A4", exact: true }).click();
+  await tree.getByRole("button", { name: "Piece", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
+  await expect(tree.getByRole("button", { name: "Unlinked print Piece", exact: true })).toHaveCount(2);
+  await tree.getByRole("button", { name: "Piece", exact: true }).first().click();
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + 200, box.y + 400);
+  const text = await canvas.evaluate((el) => {
+    const data = new DataTransfer();
+    const event = new ClipboardEvent("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: data });
+    el.dispatchEvent(event);
+    return data.getData("text/plain");
+  });
+  await canvas.evaluate((el, text) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: data });
+    el.dispatchEvent(event);
+  }, text);
+  await expect(tree.getByRole("button", { name: "Unlinked print Piece copy", exact: true })).toBeDisabled();
+  const saved = await save(page);
+  expect(saved.shapes).toHaveLength(0);
+  expect(saved.printLayouts[0].instances).toHaveLength(3);
+  for (const item of saved.printLayouts[0].instances) expect(item.snapshot.shape).toMatchObject(rectangle);
+});

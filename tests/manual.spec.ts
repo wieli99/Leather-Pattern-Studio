@@ -42,6 +42,7 @@ test("manual navigation, search, links and offline articles", async ({
     "tool-variants",
     "transforms",
     "print-mirror",
+    "print-unlink",
     "print-orientation",
     "print-page-selection",
   ]) {

@@ -7,6 +7,7 @@ import { stitchGeometry } from "../model/stitchGeometry";
 import { stitchMarks } from "../model/stitch";
 import {
   printableSize,
+  printStitchGroups,
   resolvedPrintItems,
   printArtworkBounds,
   printItemIntersects,
@@ -214,9 +215,7 @@ export function printShapeSvg(
     }
     result = `<g transform="${matrix}">${fill}${shape.stitchOnly ? "" : `<path d="${path}" ${style}/>`}</g>`;
   }
-  for (const group of (doc.stitchGroups ?? []).filter(
-    (g) => g.shapeId === sourceId,
-  )) {
+  for (const group of printStitchGroups(doc, layout, sourceId)) {
     const geometry = stitchGeometry(shape, group),
       base = stitchMarks[group.settings.style];
     const scale =

@@ -1,4 +1,4 @@
-import { stitchGeometry } from "./stitchGeometry";
+import { stitchGeometry, type StitchGroup } from "./stitchGeometry";
 import { stitchMarks } from "./stitch";
 import {
   bounds,
@@ -152,7 +152,9 @@ export function validatePrintLayouts(value: unknown): PrintLayout[] {
         ![item.x, item.y, item.rotation].every(Number.isFinite) ||
         (item.mirrored !== undefined && typeof item.mirrored !== "boolean") ||
         (item.hidden !== undefined && typeof item.hidden !== "boolean") ||
-        (item.locked !== undefined && typeof item.locked !== "boolean")
+        (item.locked !== undefined && typeof item.locked !== "boolean") ||
+        (item.snapshot !== undefined && (!item.snapshot || !item.snapshot.shape ||
+          item.snapshot.shape.id !== item.sourceId || !Array.isArray(item.snapshot.stitchGroups)))
       )
         throw Error("Invalid print instance");
       if (
@@ -195,6 +197,7 @@ export function validatePrintLayouts(value: unknown): PrintLayout[] {
                 ))) ||
             (node.mirrored !== undefined &&
               typeof node.mirrored !== "boolean") ||
+            (node.unlinked !== undefined && typeof node.unlinked !== "boolean") ||
             (node.hidden !== undefined && typeof node.hidden !== "boolean") ||
             (node.locked !== undefined && typeof node.locked !== "boolean")
           )
@@ -282,7 +285,9 @@ export function resolvedPrintItems(doc: Doc, layout: PrintLayout) {
   return [...printRows(layout)].reverse().flatMap((row) => {
     if (row.node.kind !== "instance") return [];
     const instance = layout.instances.find((i) => i.id === row.node.id);
-    const source = doc.shapes.find((s) => s.id === instance?.sourceId);
+    const source = instance?.snapshot
+      ? { ...instance.snapshot.shape, id: snapshotSourceId(instance.id) }
+      : doc.shapes.find((s) => s.id === instance?.sourceId);
     return instance && source
       ? [
           {
@@ -367,6 +372,61 @@ export function importPrintNode(
   const node = build(source);
   return { ...layout, instances, tree: [...printTree(layout), node] };
 }
+/** Snapshot source IDs are local to a print placement, including duplicated placements. */
+const snapshotSourceId = (id: string) => `print-snapshot:${id}`;
+
+export function printStitchGroups(
+  doc: Doc,
+  layout: PrintLayout,
+  sourceId: string,
+): StitchGroup[] {
+  const item = layout.instances.find(
+    (i) => i.snapshot && snapshotSourceId(i.id) === sourceId,
+  );
+  return item?.snapshot
+    ? item.snapshot.stitchGroups.map((g): StitchGroup => {
+        if (g.side !== 1 && g.side !== -1)
+          throw Error("Invalid snapshot stitch side");
+        return { ...g, side: g.side, shapeId: sourceId };
+      })
+    : (doc.stitchGroups ?? []).filter((g) => g.shapeId === sourceId);
+}
+
+export function unlinkPrintNode(
+  doc: Doc,
+  layout: PrintLayout,
+  id: string,
+): PrintLayout {
+  const node = printRows(layout).find((r) => r.node.id === id)?.node;
+  if (!node || (node.kind === "group" && (!node.sourceId || node.unlinked)))
+    return layout;
+  const affected = new Set(printDescendants(layout, [id]));
+  const instances = layout.instances.map((item) => {
+    if (!affected.has(item.id) || item.snapshot) return item;
+    const shape = doc.shapes.find((s) => s.id === item.sourceId);
+    if (!shape) throw Error("Source no longer exists");
+    return {
+      ...item,
+      snapshot: structuredClone({
+        shape,
+        stitchGroups: (doc.stitchGroups ?? []).filter((g) => g.shapeId === shape.id),
+      }),
+    };
+  });
+  function detach(nodes: PrintNode[]): PrintNode[] {
+    return nodes.map((n) => n.kind === "instance" ? n : {
+      ...n,
+      ...(n.sourceId ? { unlinked: true } : {}),
+      children: detach(n.children),
+    });
+  }
+  return {
+    ...layout,
+    instances,
+    tree: editPrintTree(printTree(layout), id, (n) => detach([n])[0]),
+  };
+}
+
 /** Run once in the source transaction: no follow-up watcher commits or extra history entries. */
 export function reconcilePrintLayouts(doc: Doc): Doc {
   if (!doc.printLayouts?.length) return doc;
@@ -376,9 +436,17 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
       let layout = {
         ...original,
         instances: original.instances.filter((i) =>
-          doc.shapes.some((s) => s.id === i.sourceId),
+          !!i.snapshot || doc.shapes.some((s) => s.id === i.sourceId),
         ),
       };
+      function detachedOnly(nodes: PrintNode[]): PrintNode[] {
+        return nodes.flatMap<PrintNode>((n) => {
+          if (n.kind === "instance") return layout.instances.some((i) => i.id === n.id && i.snapshot) ? [n] : [];
+          if (n.unlinked) return [n];
+          const children = detachedOnly(n.children);
+          return children.length ? [{ ...n, sourceId: undefined, children }] : [];
+        });
+      }
       function sync(
         nodes: PrintNode[],
         inheritedPool?: Map<string, PrintPlacement>,
@@ -390,10 +458,11 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
             return layout.instances.some(
               (i) =>
                 i.id === node.id &&
-                (!allowedSources || allowedSources.has(i.sourceId)),
+                (!!i.snapshot || !allowedSources || allowedSources.has(i.sourceId)),
             )
               ? [node]
               : [];
+          if (node.unlinked) return [node];
           if (!node.sourceId)
             return [
               {
@@ -407,11 +476,31 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               },
             ];
           const source = findSource(sourceNodes(doc), node.sourceId);
-          if (!source || source.kind !== "group") return [];
+          if (!source || source.kind !== "group") {
+            const children = detachedOnly(node.children);
+            return children.length ? [{ ...node, sourceId: undefined, children }] : [];
+          }
           const excluded = new Set([
             ...(inheritedExcluded ?? []),
             ...(node.excludedSourceIds ?? []),
           ]);
+          // Detached branches must never be reimported or moved by source membership changes.
+          function excludeDetached(nodes: PrintNode[]) {
+            for (const n of nodes) {
+              if (n.kind === "instance") {
+                const item = layout.instances.find((i) => i.id === n.id);
+                if (item?.snapshot) excluded.add(item.sourceId);
+              } else {
+                if (n.unlinked && n.sourceId) {
+                  excluded.add(n.sourceId);
+                  const current = findSource(sourceNodes(doc), n.sourceId);
+                  if (current) for (const id of sourceShapeIds(current)) excluded.add(id);
+                }
+                excludeDetached(n.children);
+              }
+            }
+          }
+          excludeDetached(node.children);
           const allowed = new Set(sourceShapeIds(source));
           const descendants = (items: PrintNode[]): string[] =>
             items.flatMap((n) =>
@@ -438,8 +527,8 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
             return nodes.flatMap<PrintNode>((child) =>
               child.kind === "group"
                 ? child.sourceId && !allowedGroups.has(child.sourceId)
-                  ? []
-                  : [{ ...child, children: prune(child.children) }]
+                  ? detachedOnly([child])
+                  : child.unlinked ? [child] : [{ ...child, children: prune(child.children) }]
                 : [child],
             );
           }
@@ -779,9 +868,7 @@ export function printArtworkBounds(
     top = box.y - stroke,
     right = box.x + box.width + stroke,
     bottom = box.y + box.height + stroke;
-  for (const group of (doc.stitchGroups ?? []).filter(
-    (g) => g.shapeId === item.source.id,
-  )) {
+  for (const group of printStitchGroups(doc, layout, item.source.id)) {
     try {
       const base = stitchMarks[group.settings.style];
       const radius =
@@ -878,9 +965,7 @@ export function printItemIntersects(
     )
       return true;
   }
-  for (const group of (doc.stitchGroups ?? []).filter(
-    (g) => g.shapeId === item.source.id,
-  )) {
+  for (const group of printStitchGroups(doc, layout, item.source.id)) {
     try {
       const radius =
         Math.max(

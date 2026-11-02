@@ -407,3 +407,92 @@ it("new source members inherit a mirrored linked folder", async () => {
     mirrored.instances[0],
   );
 });
+
+import { unlinkPrintNode, resolvedPrintItems, printStitchGroups, printRows } from "./printLayout";
+import { parseProject } from "./project";
+
+describe("unlinked print copies", () => {
+  it("freezes geometry, styles, names and stitching independently of other imports", () => {
+    const stitched: Doc = { ...doc, stitchGroups: [{ id: "st", shapeId: source.id,
+      edges: ["rectangle:2:edge:0"], side: 1, closed: false,
+      settings: { style: "round", spacing: 4, inset: 2, alignment: "center", startClearance: 0, endClearance: 0 } }] };
+    const imported = importPrintNode(stitched, importPrintNode(stitched, empty, source.id, 80, 80), source.id, 120, 80);
+    const id = imported.instances[0].id;
+    const detached = unlinkPrintNode(stitched, imported, id);
+    expect(resolvedPrintItems(stitched, detached).find((i) => i.instance.id === id)?.shape)
+      .toEqual(resolvedPrintItems(stitched, imported).find((i) => i.instance.id === id)?.shape);
+    const changed = { ...stitched, shapes: [{ ...source, name: "Changed", strokeColor: "#ff0000", radius: 3 }], stitchGroups: [] };
+    const items = resolvedPrintItems(changed, detached);
+    const frozen = items.find((i) => i.instance.id === id)!;
+    expect(frozen.source.name).toBe("Piece");
+    expect(frozen.shape.radius).toBe(0);
+    expect(printStitchGroups(changed, detached, frozen.source.id)).toHaveLength(1);
+    expect(items.find((i) => i.instance.id !== id)?.shape.radius).toBe(3);
+    expect(imported.instances[0].snapshot).toBeUndefined();
+    expect(parseProject(JSON.stringify({ ...changed, printLayouts: [detached] })).printLayouts?.[0].instances[0].snapshot).toEqual(detached.instances[0].snapshot);
+  });
+
+  it("keeps detached children and their containers after source deletion", () => {
+    const imported = importPrintNode(doc, empty, "folder", 80, 80);
+    const detached = unlinkPrintNode(doc, imported, imported.instances[0].id);
+    const deleted = reconcilePrintLayouts({ ...doc, shapes: [], objectTree: [], printLayouts: [detached] });
+    expect(deleted.printLayouts?.[0].instances).toHaveLength(1);
+    expect(printRows(deleted.printLayouts![0])).toHaveLength(2);
+    expect(resolvedPrintItems(deleted, deleted.printLayouts![0])).toHaveLength(1);
+    expect(parseProject(JSON.stringify(deleted)).printLayouts?.[0].instances).toHaveLength(1);
+  });
+
+  it("freezes folder membership and nested source folders", () => {
+    const imported = importPrintNode(doc, empty, "folder", 80, 80);
+    const detached = unlinkPrintNode(doc, imported, imported.tree![0].id);
+    const extra: Shape = { ...source, id: "extra" };
+    const changed: Doc = { ...doc, shapes: [extra, source], objectTree: [{ kind: "group", id: "folder", name: "Changed",
+      children: [{ kind: "object", id: "piece" }, { kind: "object", id: "extra" }] }], printLayouts: [detached] };
+    expect(reconcilePrintLayouts(changed).printLayouts?.[0]).toEqual(detached);
+    const deleted = reconcilePrintLayouts({ ...changed, shapes: [], objectTree: [] });
+    expect(deleted.printLayouts?.[0]).toEqual(detached);
+    expect(parseProject(JSON.stringify(deleted)).printLayouts?.[0].tree?.[0]).toMatchObject({ unlinked: true });
+  });
+
+  it("does not restore or relocate an unlinked child after source regrouping", () => {
+    const imported = importPrintNode(doc, empty, "folder", 80, 80);
+    const id = imported.instances[0].id;
+    const detached = unlinkPrintNode(doc, imported, id);
+    const changed: Doc = { ...doc, objectTree: [{ kind: "group", id: "folder", name: "Pattern", children: [
+      { kind: "group", id: "nested", name: "Nested", children: [{ kind: "object", id: source.id }] },
+    ] }], printLayouts: [detached] };
+    const reconciled = reconcilePrintLayouts(changed).printLayouts![0];
+    expect(reconciled.instances).toHaveLength(1);
+    expect(reconciled.tree?.[0]).toMatchObject({ children: expect.arrayContaining([{ kind: "instance", id }]) });
+  });
+
+  it("rejects malformed snapshot geometry and stitching on load", () => {
+    const imported = importPrintNode(doc, empty, source.id, 80, 80);
+    const detached = unlinkPrintNode(doc, imported, imported.instances[0].id);
+    detached.instances[0].snapshot!.shape.points = [];
+    expect(() => parseProject(JSON.stringify({ ...doc, printLayouts: [detached] }))).toThrow();
+  });
+});
+
+it("keeps a detached nested folder frozen while its live parent imports new siblings", () => {
+  const nested: Doc = { ...doc, objectTree: [{ kind: "group", id: "folder", name: "Pattern", children: [
+    { kind: "group", id: "nested", name: "Nested", children: [{ kind: "object", id: source.id }] },
+  ] }] };
+  const imported = importPrintNode(nested, empty, "folder", 80, 80);
+  const child = printRows(imported).find((r) => r.node.kind === "group" && r.node.sourceId === "nested")!.node;
+  const detached = unlinkPrintNode(nested, imported, child.id);
+  const inner: Shape = { ...source, id: "inner" };
+  const sibling: Shape = { ...source, id: "sibling" };
+  const changed: Doc = { ...nested, shapes: [sibling, inner, source], objectTree: [
+    { kind: "group", id: "folder", name: "Pattern", children: [
+      { kind: "group", id: "nested", name: "Nested", children: [
+        { kind: "object", id: source.id }, { kind: "object", id: inner.id },
+      ] },
+      { kind: "object", id: sibling.id },
+    ] },
+  ], printLayouts: [detached] };
+  const reconciled = reconcilePrintLayouts(changed).printLayouts![0];
+  expect(reconciled.instances.map((i) => i.sourceId).sort()).toEqual(["piece", "sibling"]);
+  expect(printRows(reconciled).find((r) => r.node.id === child.id)?.node)
+    .toEqual(printRows(detached).find((r) => r.node.id === child.id)?.node);
+});

@@ -225,7 +225,17 @@ pub struct PrintPage {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
 #[serde(rename_all = "camelCase")]
+pub struct PrintSnapshot {
+    pub shape: Shape,
+    pub stitch_groups: Vec<StitchGroup>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "camelCase")]
 pub struct PrintPlacement {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub snapshot: Option<PrintSnapshot>,
     pub id: String,
     pub source_id: String,
     pub x: f64,
@@ -270,6 +280,9 @@ pub enum PrintNode {
         )]
         #[ts(optional)]
         excluded_source_ids: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        unlinked: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         hidden: Option<bool>,
@@ -324,7 +337,7 @@ impl PrintLayout {
         for i in &self.instances {
             if i.id.is_empty()
                 || !ids.insert(i.id.as_str())
-                || !shapes.iter().any(|s| s.id == i.source_id)
+                || (i.snapshot.is_none() && !shapes.iter().any(|s| s.id == i.source_id))
                 || ![i.x, i.y, i.rotation].iter().all(|n| n.is_finite())
                 || i.name
                     .as_ref()
@@ -357,6 +370,7 @@ impl PrintLayout {
                         y,
                         rotation,
                         source_id,
+                        unlinked,
                         children,
                         ..
                     } => {
@@ -366,9 +380,10 @@ impl PrintLayout {
                             || name.trim().is_empty()
                             || name.len() > 800
                             || ![x, y, rotation].iter().all(|n| n.is_finite())
-                            || source_id
-                                .as_ref()
-                                .is_some_and(|s| !groups.contains(&s.as_str()))
+                            || (unlinked != &Some(true)
+                                && source_id
+                                    .as_ref()
+                                    .is_some_and(|s| !groups.contains(&s.as_str())))
                         {
                             return Err("Invalid print group".into());
                         }
@@ -618,6 +633,24 @@ impl Document {
                 return Err("Duplicate print layout".into());
             }
             layout.validate(&self.shapes, &source_groups)?;
+            for item in &layout.instances {
+                if let Some(snapshot) = &item.snapshot {
+                    if snapshot.shape.id != item.source_id {
+                        return Err("Invalid print snapshot source".into());
+                    }
+                    // Reuse all normal geometry, image and stitching validation in isolation.
+                    Document {
+                        version: self.version,
+                        shapes: vec![snapshot.shape.clone()],
+                        stitch_groups: snapshot.stitch_groups.clone(),
+                        print_layouts: vec![],
+                        stitch_links: vec![],
+                        object_tree: None,
+                        guides: vec![],
+                    }
+                    .validate()?;
+                }
+            }
         }
 
         for s in &self.shapes {
@@ -1531,6 +1564,38 @@ mod print_tests {
         let loaded: Document =
             serde_json::from_str(&serde_json::to_string(&changed).unwrap()).unwrap();
         assert_eq!(loaded, changed);
+    }
+    #[test]
+    fn detached_print_snapshot_history_validation_and_source_deletion() {
+        let mut editor = Editor::new();
+        editor.execute("load", &project().to_string(), 0).unwrap();
+        let original = editor.document.clone();
+        let mut detached = original.clone();
+        detached.print_layouts[0].instances[0].snapshot = Some(PrintSnapshot {
+            shape: detached.shapes[0].clone(),
+            stitch_groups: vec![],
+        });
+        editor
+            .execute("commit", &serde_json::to_string(&detached).unwrap(), 1)
+            .unwrap();
+        editor.execute("undo", "null", 2).unwrap();
+        assert_eq!(editor.document, original);
+        editor.execute("redo", "null", 3).unwrap();
+        assert_eq!(editor.document, detached);
+        detached.shapes.clear();
+        detached.object_tree = None;
+        detached.validate().unwrap();
+        let roundtrip: Document =
+            serde_json::from_str(&serde_json::to_string(&detached).unwrap()).unwrap();
+        assert_eq!(roundtrip, detached);
+        detached.print_layouts[0].instances[0]
+            .snapshot
+            .as_mut()
+            .unwrap()
+            .shape
+            .points
+            .clear();
+        assert!(detached.validate().is_err());
     }
     #[test]
     fn print_validation_rejects_broken_references_and_geometry() {

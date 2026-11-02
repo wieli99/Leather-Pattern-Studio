@@ -1,6 +1,6 @@
 # Print layouts and export
 
-Print tabs arrange linked copies of Grid objects on physical sheets. They start empty, and new projects have only **Grid**. Editing a source on Grid updates all its print copies without changing their print position or rotation.
+Print tabs arrange linked copies of Grid objects on physical sheets. They start empty, and new projects have only **Grid**. Editing a source on Grid updates its linked print copies without changing their print position or rotation.
 
 ## Create and configure a layout
 
@@ -32,11 +32,15 @@ Hover an object or folder in either Grid objects panel to preview its source art
 The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move arrow shafts and tips both support dragging, with the same cursor feedback as Grid. V or Set pivot enters crosshair placement; snapping and Alt bypass also apply to pivots. Mirror axes pass through the pivot on screen, including near page gutters. Changing the Mirror pivot or axes refreshes its preview without accumulating reflections. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. The small center circle marks the pivot in Rotate and Mirror. During a rotation drag, a degree readout follows the pointer, matching Grid. The rotation ring matches Grid: hovering highlights it, and a translucent sector shows the preview angle. Rotation uses Grid’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
 
 - **Hide** and **Lock** affect only print instances. Grid visibility and locking are independent.
-- Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes linked copies at the pointer, preserving their offsets from the pointer at copy time, just like Grid. Keep the pointer over the print canvas and finish active edits first. Copies can be pasted into another print tab in the same project.
-- Right-click a Print objects entry for **Duplicate**, **Group**, and **Delete**. Right-clicking a selected entry preserves the selection; right-clicking another entry selects it. **Duplicate** creates another linked copy. **Group** groups selected siblings.
+- The **chain** button after Hide and Lock unlinks an imported object from Grid immediately, preserving its current geometry, dimensions, text, images, styles, and stitching. Unlinking an imported folder freezes its entire current subtree and stops membership updates. Individual children can also be unlinked while their folder stays linked. Detached artwork survives changes to or deletion of its Grid source.
+- An unlinked entry shows a disabled **broken chain** button. Its hint reads “Unlinked. Cannot be re-linked; use Undo to restore the link.” There is no re-link action; normal Undo restores the link and Redo detaches it again. Unlinking is one undo step. Locally created folders have no chain button.
+- Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes copies at the pointer, preserving their offsets from the pointer at copy time, just like Grid. Keep the pointer over the print canvas and finish active edits first. Copies can be pasted into another print tab in the same project.
+- Right-click a Print objects entry for **Duplicate**, **Group**, and **Delete**. Right-clicking a selected entry preserves the selection; right-clicking another entry selects it. **Duplicate** preserves the original’s linked or unlinked status, as does copy/paste. **Group** groups selected siblings.
 - Double-click a row name to rename it locally.
 - Drag rows to reorder them. An empty dashed outline shows the destination, and surrounding rows move aside. Use the upper or lower half of an object row to place items before or after it; use the middle of a folder row to append inside it. Dragging a selected row moves the selected movable items together in tree order. A floating preview shows the number of moved items. Drop on the outlined area below the last row to append a free item at the top level. Linked children remain within their imported-folder boundary; a selection that crosses those boundaries cannot move together. Escape cancels. Each completed move is one undo step.
 - **Delete** removes print placements. Removing a child from an imported folder suppresses it for that import, so future source edits do not immediately restore it. Import again to obtain another copy.
+
+![Linked and unlinked print object controls](/manual/images/print-unlink.png)
 
 Choose **Mirror (M)** to reflect selected placements. Hovering either side of a mirror axis highlights the full line through the pivot, using the same orange stroke and theme-colored outline as Grid. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Grid. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
 
@@ -44,7 +48,7 @@ Choose **Mirror (M)** to reflect selected placements. Hovering either side of a 
 
 ![Print object context menu](/manual/images/print-object-menu.png)
 
-Source geometry, dimensions, text, images, styles, and stitching remain linked. Moving or rotating a source on Grid does not move or rotate existing print placements. Deleting a source removes its print copies in the same undo step. Undo/redo is shared across Grid and all print tabs.
+Source geometry, dimensions, text, images, styles, and stitching remain linked until you unlink a print copy. Moving or rotating a source on Grid does not move or rotate existing print placements. Deleting a source removes its linked print copies in the same undo step. Undo/redo is shared across Grid and all print tabs.
 
 Geometry edits, new drawing tools, scaling, and styling paste are unavailable in print views. Return to Grid to edit sources.
 

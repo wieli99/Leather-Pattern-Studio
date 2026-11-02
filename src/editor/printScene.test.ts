@@ -109,3 +109,14 @@ it("keeps hidden grid sources visible but honors print visibility", () => {
     ),
   ).not.toContain("A2 2");
 });
+
+import { unlinkPrintNode } from "../model/printLayout";
+it("exports frozen artwork and stitching after unlinking and source deletion", () => {
+  const stitched: Doc = { ...doc, stitchGroups: [{ id: "st", shapeId: shape.id,
+    edges: ["rectangle:2:edge:0"], side: 1, closed: false,
+    settings: { style: "round", spacing: 4, inset: 2, alignment: "center", startClearance: 0, endClearance: 0 } }] };
+  const detached = unlinkPrintNode(stitched, layout, "copy");
+  const before = pageSvg(stitched, layout, layout.pages[0]);
+  expect(pageSvg(stitched, detached, layout.pages[0])).toBe(before);
+  expect(pageSvg({ ...stitched, shapes: [], stitchGroups: [] }, detached, layout.pages[0])).toBe(before);
+});

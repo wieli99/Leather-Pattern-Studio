@@ -301,10 +301,15 @@ export function parseProject(text: string): Doc {
   const objectTree = input.objectTree === undefined ? objectTreeFromShapes(result) : validateObjectTree(input.objectTree, result);
   const printLayouts = validatePrintLayouts(input.printLayouts ?? []);
   for (const layout of printLayouts) {
-    if (layout.instances.some(i => !ids.has(i.sourceId))) throw Error("Unknown print source");
+    for (const item of layout.instances) if (item.snapshot) {
+      const snapshot = parseProject(JSON.stringify({ version: DOCUMENT_VERSION,
+        shapes: [item.snapshot.shape], stitchGroups: item.snapshot.stitchGroups }));
+      item.snapshot = { shape: snapshot.shapes[0], stitchGroups: snapshot.stitchGroups ?? [] };
+    }
+    if (layout.instances.some(i => !i.snapshot && !ids.has(i.sourceId))) throw Error("Unknown print source");
     function validateSources(nodes: import("./printLayout").PrintNode[]) {
       for (const node of nodes) if (node.kind === 'group') {
-        if (node.sourceId && findSource(objectTree,node.sourceId)?.kind !== 'group') throw Error("Unknown print folder source");
+        if (!node.unlinked && node.sourceId && findSource(objectTree,node.sourceId)?.kind !== 'group') throw Error("Unknown print folder source");
         validateSources(node.children);
       }
     }
