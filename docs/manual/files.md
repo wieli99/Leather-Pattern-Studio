@@ -10,7 +10,7 @@ Offline use requires a successful online load and completed cache installation i
 
 ## Save and reopen a project
 
-Edit the filename directly at the top left. A subtle background with rounded corners marks the editable field; a gold accent outline appears while focused. Enter or clicking outside commits; Escape cancels. Blank names are ignored. Names without a .json suffix receive .leather.json. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
+Edit the filename directly at the top left. The .leather.json suffix is hidden from the editable field; saved filenames retain it. A subtle background with rounded corners marks the editable field; a gold accent outline appears while focused. Enter or clicking outside commits; Escape cancels. Blank names are ignored. Names without a .json suffix receive .leather.json. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
 
 Choose **Save** (Ctrl/⌘+S). With native file access, choose a destination on the first save or after renaming; later saves overwrite that selected file. Other browsers download a copy using the current filename. The browser controls the destination and may rename duplicates.
 

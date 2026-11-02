@@ -256,7 +256,7 @@ test("native save writes editable project and cancelled save preserves dirty sta
   });
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByLabel("Project filename")).toHaveValue(
-    "example.leather.json",
+    "example",
   );
   expect(
     await page.evaluate(() => JSON.parse((window as any).savedProject).version),
@@ -322,10 +322,11 @@ test("inline rename controls download filename", async ({ page }, info) => {
   await expect(filename).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await filename.fill("Cancelled");
   await filename.press("Escape");
-  await expect(filename).toHaveValue("Untitled.leather.json");
+  await expect(filename).toHaveValue("Untitled");
   await filename.fill("Wallet");
   await page.screenshot({ path: info.outputPath("rename.png") });
   await page.getByLabel("Project filename").press("Enter");
+  await expect(filename).toHaveValue("Wallet");
   const pending = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   expect((await pending).suggestedFilename()).toBe("Wallet.leather.json");

@@ -39,31 +39,34 @@ async function importImage(event: Event) {
 const nativeSaving = "showSaveFilePicker" in window;
 const renaming = ref(false);
 const draftName = ref("");
+function editableName(name: string) {
+  return name.replace(/\.leather\.json$/i, "");
+}
 function startRename(event: FocusEvent) {
   if (editor.fileBusy) {
     (event.target as HTMLInputElement).blur();
     return;
   }
-  draftName.value = editor.name;
+  draftName.value = editableName(editor.name);
   renaming.value = true;
 }
 function finishRename() {
   if (!renaming.value) return;
   editor.rename(draftName.value);
   renaming.value = false;
-  draftName.value = editor.name;
+  draftName.value = editableName(editor.name);
 }
 const e = useEditor();
 watch(
   () => e.value.name,
   (name) => {
-    if (!renaming.value) draftName.value = name;
+    if (!renaming.value) draftName.value = editableName(name);
   },
   { immediate: true },
 );
 function cancelRename(event: KeyboardEvent) {
   renaming.value = false;
-  draftName.value = editor.name;
+  draftName.value = editableName(editor.name);
   (event.target as HTMLInputElement).blur();
 }
 function applyRename(event: KeyboardEvent) {
