@@ -3688,10 +3688,6 @@ defineExpose({
 .print-object-section {
   display: flex;
   flex-direction: column;
-  flex: 1 0 260px;
-  min-height: 260px;
-}
-.print-object-section:has(button[aria-expanded="false"]) {
   flex: 0 0 auto;
   min-height: 0;
 }
@@ -3769,7 +3765,7 @@ h3 {
 }
 .print-list {
   min-height: 140px;
-  flex: 1;
+  max-height: 230px;
   overflow: auto;
   border: 1px solid var(--border, #555);
   border-radius: 4px;

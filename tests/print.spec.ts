@@ -1605,3 +1605,24 @@ test("print drawing layout and previews avoid asynchronous image generation", as
   await expect(properties).toBeVisible();
   expect(await pages.evaluate((el) => !!(el.compareDocumentPosition(document.querySelector('.print-workspace .object-properties')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
 });
+
+test("large print object lists scroll within their sections", async ({ page }, info) => {
+  await load(page, Array.from({ length: 35 }, (_, i) => ({
+    ...rectangle, id: `extra-${i}`, name: `Extra ${i}`,
+  })));
+  await create(page);
+  await page.getByRole("button", { name: "Import Pattern", exact: true }).click();
+  for (const height of [800, 600]) {
+    await page.setViewportSize({ width: 1280, height });
+    for (const label of ["Grid source objects", "Print object tree"]) {
+      const list = page.getByLabel(label, { exact: true });
+      await expect.poll(() => list.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+      expect(await list.evaluate(el => el.clientHeight)).toBeLessThanOrEqual(230);
+      await list.getByRole("button", { name: "Extra 34", exact: true }).click();
+      expect(await list.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+      const section = list.locator("..").locator("..");
+      expect(await section.evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+    }
+  }
+  await page.screenshot({ path: info.outputPath("scrolling-print-lists.png") });
+});

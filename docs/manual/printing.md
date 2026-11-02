@@ -27,6 +27,8 @@ New objects belong only to the active print tab. They are never linked or synced
 
 ## Import and arrange objects
 
+Both object lists scroll independently when they contain many rows, like the object list on Grid. Their headings remain above the scrolling rows.
+
 The **Grid objects** panel shows the source object and folder hierarchy. Clicking outside the Grid objects list or switching tabs clears its source selection. Press **Import** beside an object or folder. Repeated imports create independent linked placements. Imported folders retain their nesting and source membership: future additions appear, and removed source members disappear.
 
 Hover an object or folder in either Grid objects panel to preview its source artwork. Drag selected source rows onto paper to place linked copies together, preserving their relative arrangement. A placement preview follows the pointer over a sheet; release to import it. Sheet margins place the artwork at the nearest printable position. Dropping outside paper does nothing; Escape or right-click cancels.
