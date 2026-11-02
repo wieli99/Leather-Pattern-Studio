@@ -1,6 +1,6 @@
 # Print layouts and export
 
-Print tabs arrange linked copies of Grid objects on physical sheets. They start empty, and new projects have only **Grid**. Editing a source on Grid updates its linked print copies without changing their print position or rotation.
+Print tabs arrange linked copies of Grid objects and independent text, measurements, indicators, and images on physical sheets. They start empty, and new projects have only **Grid**. Editing a source on Grid updates its linked print copies without changing their print position or rotation.
 
 ## Create and configure a layout
 
@@ -16,6 +16,14 @@ Right-click a print tab and choose **Layout settings** to rename a tab or change
 Drag print tabs left or right to reorder them. An empty dashed outline reserves the destination while the surrounding tabs move aside. A floating tab follows the pointer. Escape cancels; dropping outside the tab strip leaves the order unchanged. Grid stays first. The order is saved with the project and supports undo/redo.
 
 ![Print tab destination outline](/manual/images/reorder-tabs.png)
+
+## Draw directly on a print tab
+
+Choose **Text (T)**, **Measurement (D)**, or **Import image** below Mirror in the print toolbar. The Measurement variant menu includes Measurement, Square size guide, Ruler size guide, Arrow, Bodyless arrow, and Crosshair; D and Shift+D cycle variants. Placement, numeric construction fields, Shift constraints, Alt snapping bypass, and cancellation work as on Grid. Measurements use this layout’s units.
+
+New objects belong only to the active print tab. They are never linked or synced to Grid or another print tab. Select an independent object to edit its Properties below Pages in the right sidebar. Double-click text on paper to edit it; Ctrl/⌘+Enter applies and Escape cancels. Image import uses the same formats and initial viewport-relative size as Grid. Each completed creation or edit is one undo step; switching tabs cancels unfinished placement.
+
+![Text and measurement tools on a print tab](/manual/images/print-drawing-tools.png)
 
 ## Import and arrange objects
 
@@ -34,8 +42,8 @@ The **Print objects** panel controls this layout only. Select a row or click an 
 - **Hide** and **Lock** affect only print instances. Grid visibility and locking are independent.
 - The **chain** button after Hide and Lock unlinks an imported object from Grid immediately, preserving its current geometry, dimensions, text, images, styles, and stitching. Unlinking an imported folder freezes its entire current subtree and stops membership updates. Individual children can also be unlinked while their folder stays linked. Detached artwork survives changes to or deletion of its Grid source.
 - An unlinked entry shows a disabled **broken chain** button. Its hint reads “Unlinked. Cannot be re-linked; use Undo to restore the link.” There is no re-link action; normal Undo restores the link and Redo detaches it again. Unlinking is one undo step. Locally created folders have no chain button.
-- Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes copies at the pointer, preserving their offsets from the pointer at copy time, just like Grid. Keep the pointer over the print canvas and finish active edits first. Copies can be pasted into another print tab in the same project.
-- Right-click a Print objects entry for **Duplicate**, **Group**, and **Delete**. Right-clicking a selected entry preserves the selection; right-clicking another entry selects it. **Duplicate** preserves the original’s linked or unlinked status, as does copy/paste. **Group** groups selected siblings.
+- Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes copies at the pointer, preserving their offsets from the pointer at copy time, just like Grid. Keep the pointer over the print canvas and finish active edits first. All selectable objects and groups can be copied between Grid and print tabs, and between print tabs. Pasted print objects are independent snapshots; pasted Grid objects are ordinary independent objects. Physical dimensions and appearance are preserved across different tab units.
+- Right-click a Print objects entry for **Duplicate**, **Group**, and **Delete**. Right-clicking a selected entry preserves the selection; right-clicking another entry selects it. **Duplicate** preserves the original’s linked or unlinked status, while copy/paste always creates independent objects. **Group** groups selected siblings.
 - Double-click a row name to rename it locally.
 - Drag rows to reorder them. An empty dashed outline shows the destination, and surrounding rows move aside. Use the upper or lower half of an object row to place items before or after it; use the middle of a folder row to append inside it. Dragging a selected row moves the selected movable items together in tree order. A floating preview shows the number of moved items. Drop on the outlined area below the last row to append a free item at the top level. Linked children remain within their imported-folder boundary; a selection that crosses those boundaries cannot move together. Escape cancels. Each completed move is one undo step.
 - **Delete** removes print placements. Removing a child from an imported folder suppresses it for that import, so future source edits do not immediately restore it. Import again to obtain another copy.

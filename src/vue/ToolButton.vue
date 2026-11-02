@@ -9,13 +9,15 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "reka-ui";
-import { editor } from "../editor/instance";
+import { editor as defaultEditor } from "../editor/instance";
+import type { Controller } from "../editor/controller";
 import { variants, labels, type Mode } from "../editor/construction";
 import type { tools } from "./tools";
 import { useEditor } from "./useEditor";
 import ModeIcon from "./ModeIcon.vue";
-const props = defineProps<{ tool: (typeof tools)[number] }>(),
-  e = useEditor(),
+const props = defineProps<{ tool: (typeof tools)[number]; controller?: Controller }>(),
+  editor = props.controller ?? defaultEditor,
+  e = useEditor(editor),
   open = ref(false),
   trigger = ref<HTMLButtonElement | null>(null);
 const group = computed(() =>

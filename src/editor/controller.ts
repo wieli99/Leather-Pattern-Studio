@@ -164,7 +164,7 @@ export class Controller {
     this.measurementsVisible = ctrl;
     this.notify();
   }
-  core = new Core();
+  core: Pick<Core, "request">;
   files = new ProjectFiles();
   printLayoutActive = false;
   projectEpoch = 0;
@@ -384,7 +384,8 @@ export class Controller {
   previewId = 0;
   previewRunning = false;
   queuedPreview: Doc | null = null;
-  constructor() {
+  constructor(core?: Pick<Core, "request">) {
+    this.core = core ?? new Core();
     try {
       const p = JSON.parse(localStorage.getItem("leather-ui") ?? "{}");
       if (["mm", "in-fractional", "in-decimal"].includes(p.units)) this.units = p.units;

@@ -2,11 +2,14 @@
 import { editableLength, parseLength } from "../model/units";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
-import { editor } from "../editor/instance";
+import { editor as defaultEditor } from "../editor/instance";
+import type { Controller } from "../editor/controller";
 import { useEditorSelector } from "./useEditorSelector";
 import { edgeMeasurements } from "../model/edgeMeasurements";
 import { editEdge } from "../model/editEdge";
 import { bounds, transformShape } from "../model/geometry";
+const props = defineProps<{ controller?: Controller }>();
+const editor = props.controller ?? defaultEditor;
 const revision = useEditorSelector(editor, editor.snapshot);
 const active = ref<string>();
 const draft = ref("");

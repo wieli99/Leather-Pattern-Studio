@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import { Controller } from "../editor/controller";
+import { printDocument, applyPrintDocument } from "../model/printDocument";
+import { parseProject } from "../model/project";
+import { decodeImageFile } from "../editor/imageImport";
+import ToolButton from "./ToolButton.vue";
+import ModeIcon from "./ModeIcon.vue";
+import Viewport from "./Viewport.vue";
+import Inspector from "./Inspector.vue";
+import ConstructionMeasurements from "./ConstructionMeasurements.vue";
+import { drawAnnotation } from "../editor/annotationRenderer";
 import FitIcon from "./FitIcon.vue";
 import {
   drawRotationGizmo,
@@ -168,6 +178,110 @@ const preview = shallowRef<PrintLayout>(),
   error = ref(""),
   exporting = ref(false),
   busy = ref(false);
+// This scene adapter uses the shared controller without another history worker.
+// Its completed documents are validated and committed by the parent Rust worker.
+const drawing: Controller = new Controller({
+  request: async (_operation, revision, document) => ({
+    document: document ? parseProject(JSON.stringify(document)) : drawing.document,
+    revision, canUndo: false, canRedo: false,
+  }),
+});
+const drawingState = useEditor(drawing);
+const textViewport = ref<InstanceType<typeof Viewport>>();
+const imagePicker = ref<HTMLInputElement>();
+let importGeneration = 0;
+drawing.ready = true;
+drawing.message = "Ready";
+drawing.world = worldFromPixel;
+drawing.screen = worldPixel;
+let syncingDrawing = false;
+function syncDrawing() {
+  if (!layout.value) return;
+  syncingDrawing = true;
+  drawing.document = printDocument(editor.document, layout.value);
+  drawing.revision = editor.revision;
+  drawing.units = layout.value.units;
+  drawing.grid = snap.value;
+  drawing.objects = objectSnap.value;
+  drawing.gridSize = editor.gridSize;
+  drawing.zoom = zoom.value;
+  drawing.width = canvas.value?.clientWidth ?? 900;
+  drawing.height = canvas.value?.clientHeight ?? 600;
+  drawing.selected = printDescendants(layout.value, selected.value);
+  drawing.selectedGroups = selected.value.filter(id => printRows(layout.value!).some(row => row.node.id === id && row.node.kind === "group"));
+  drawing.notify();
+  syncingDrawing = false;
+}
+drawing.commit = async next => {
+  const original = layout.value;
+  if (!original || busy.value || editor.busy) return false;
+  try {
+    next = drawing.normalizeTree(parseProject(JSON.stringify(drawing.normalizeTree(next))));
+    const value = applyPrintDocument(original, drawing.document, next);
+    await save(value);
+    if (error.value || active.value !== original.id) return false;
+    drawing.document = next;
+    drawing.revision = editor.revision;
+    drawing.notify();
+    return true;
+  } catch (reason) {
+    error.value = String(reason);
+    return false;
+  }
+};
+let lastDrawingSelection = JSON.stringify([drawing.selectedGroups, drawing.selected]);
+const stopDrawing = drawing.subscribe(() => {
+  const selection = JSON.stringify([drawing.selectedGroups, drawing.selected]);
+  if (drawing.mode !== "select") tool.value = "select";
+  if (!syncingDrawing && layout.value && selection !== lastDrawingSelection) {
+    const current = printDescendants(layout.value, selected.value);
+    if (JSON.stringify([...drawing.selected].sort()) !== JSON.stringify([...current].sort())) {
+      const covered = new Set(printDescendants(layout.value, drawing.selectedGroups));
+      selected.value = [...drawing.selectedGroups, ...drawing.selected.filter(id => !covered.has(id))];
+    }
+  }
+  lastDrawingSelection = selection;
+  if (drawing.mode !== "select" && !drawing.propertySession) paintDrawingPreview();
+  else { paintDrawingPreview(); void draw(); }
+});
+watch([layout, selected, zoom, pan, snap, objectSnap], syncDrawing);
+async function importLocalImage(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || !layout.value) return;
+  const original = editor.document, tab = active.value, generation = importGeneration;
+  try {
+    const image = await decodeImageFile(file);
+    if (editor.document !== original || active.value !== tab || importGeneration !== generation) throw Error("Tab or project changed during image import; please try again");
+    syncDrawing();
+    syncDrawingView();
+    await drawing.insertImage(image);
+    selected.value = [...drawing.selected];
+  } catch (reason) { error.value = String(reason); }
+}
+function drawingPixel(event: MouseEvent) {
+  syncDrawingView();
+  return pixel(event);
+}
+function syncDrawingView() {
+  drawing.zoom = zoom.value;
+  drawing.units = layout.value!.units;
+  drawing.grid = snap.value;
+  drawing.objects = objectSnap.value;
+  drawing.gridSize = editor.gridSize;
+  const center = worldFromPixel({ x: (canvas.value?.clientWidth ?? 900) / 2, y: (canvas.value?.clientHeight ?? 600) / 2 });
+  drawing.width = canvas.value?.clientWidth ?? 900;
+  drawing.height = canvas.value?.clientHeight ?? 600;
+  drawing.pan = { x: drawing.width / 2 - center.x * drawing.zoom, y: drawing.height / 2 - center.y * drawing.zoom };
+}
+function editPrintText(event: MouseEvent) {
+  syncDrawing();
+  const world = worldFromPixel(pixel(event));
+  const hit = [...drawing.document.shapes].reverse().find(shape => shape.kind === "text" && !drawing.isHidden(shape.id) && !drawing.isLocked(shape.id) && contains({ ...shape, kind: "rectangle", radius: 0 }, world));
+  if (hit) textViewport.value?.beginText(hit.points[0], hit);
+  return !!hit;
+}
 const canManageObjects = computed(
   () =>
     !busy.value && !e.value.busy && tool.value === "select" && !preview.value,
@@ -251,6 +365,7 @@ function gizmoAt(p: Point) {
 function chooseTool(value: "select" | "move" | "rotate" | "mirror") {
   if (busy.value || editor.busy) return;
   cancel();
+  drawing.setMode("select");
   tool.value = value;
   axisLock.value = undefined;
   moveX.value = moveY.value = turn.value = "0";
@@ -388,6 +503,10 @@ function clearControl() {
 }
 let marqueePixel: Point | undefined;
 function cancel() {
+  void drawing.finishProperty(true);
+  drawing.cancel();
+  drawing.setMode("select");
+  textViewport.value?.cancelText();
   rotationReadout.value = undefined;
   if (moveFrame) cancelAnimationFrame(moveFrame);
   moveFrame = 0;
@@ -416,6 +535,7 @@ function cancel() {
 }
 async function switchTab(id: string) {
   if (id === active.value) return;
+  importGeneration++;
   clearSourceSelection();
   cancel();
   if (editor.propertySession) await editor.finishProperty();
@@ -440,6 +560,7 @@ async function switchTab(id: string) {
 watch(
   () => e.value.projectEpoch,
   () => {
+    importGeneration++;
     cancel();
     active.value = "";
     selected.value = [];
@@ -735,6 +856,7 @@ function toggleCollapse(id: string) {
 }
 function select(id: string, event?: MouseEvent, canvasClick = false) {
   if (tool.value !== "select") return;
+  drawing.cancel();
   customPivot.value = undefined;
   selected.value = canvasClick
     ? event && (event.shiftKey || event.ctrlKey || event.metaKey)
@@ -1428,9 +1550,57 @@ function artworkImage(
   documentCache.set(sourceKey, cached);
   return cached;
 }
+const previewCanvas = ref<HTMLCanvasElement>();
+function paintDrawingPreview() {
+  const el = previewCanvas.value, l = layout.value;
+  if (!el || !l || !canvas.value) return;
+  const dpr = devicePixelRatio || 1;
+  const width = Math.round(canvas.value.clientWidth * dpr), height = Math.round(canvas.value.clientHeight * dpr);
+  if (el.width !== width) el.width = width;
+  if (el.height !== height) el.height = height;
+  const ctx = el.getContext("2d")!;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width / dpr, height / dpr);
+  const shape = drawing.constructionPreview;
+  if (drawing.mode !== "select" && clipboardPixel && !drawing.editingTextId) {
+    const p = worldPixel(drawing.cursor);
+    ctx.strokeStyle = "#e6b07c"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    const radius = drawing.mode === "text" ? 3 * zoom.value : 6;
+    ctx.moveTo(p.x, p.y - radius); ctx.lineTo(p.x, p.y + radius);
+    if (drawing.mode !== "text") { ctx.moveTo(p.x - radius, p.y); ctx.lineTo(p.x + radius, p.y); }
+    ctx.stroke();
+  }
+  if (!shape) return;
+  const size = printableSize(l);
+  for (const page of l.pages) {
+    const p = pagePosition(page, l);
+    ctx.save();
+    ctx.translate(pan.value.x, pan.value.y); ctx.scale(zoom.value, zoom.value);
+    ctx.beginPath(); ctx.rect(p.x + l.margin, p.y + l.margin, size.width, size.height); ctx.clip();
+    ctx.translate(p.x + l.margin - page.column * size.width, p.y + l.margin - page.row * size.height);
+    ctx.strokeStyle = shape.strokeColor ?? "#111"; ctx.lineWidth = shape.strokeWidth ?? 0.35;
+    ctx.globalAlpha = 0.7;
+    drawAnnotation(ctx, shape, l.units);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#e6b07c"; ctx.lineWidth = 1 / zoom.value;
+    ctx.setLineDash([4 / zoom.value, 4 / zoom.value]);
+    for (const guide of drawing.smartGuides) {
+      ctx.beginPath();
+      if (guide.axis === "x") { ctx.moveTo(guide.coordinate, guide.bounds.y); ctx.lineTo(guide.coordinate, guide.bounds.y + guide.bounds.height); }
+      else { ctx.moveTo(guide.bounds.x, guide.coordinate); ctx.lineTo(guide.bounds.x + guide.bounds.width, guide.coordinate); }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#e6b07c";
+    for (const point of drawing.pending) { ctx.beginPath(); ctx.arc(point.x, point.y, 3 / zoom.value, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+}
 const pageImages = new Map<string, Promise<HTMLImageElement>>();
 let scheduledFrame = 0;
 function draw() {
+  paintDrawingPreview();
   generation++;
   if (scheduledFrame) return;
   scheduledFrame = requestAnimationFrame(() => {
@@ -1440,7 +1610,7 @@ function draw() {
 }
 async function paintFrame() {
   const token = ++generation,
-    l = preview.value ?? layout.value,
+    l = preview.value ?? (layout.value && drawing.propertySession && drawing.preview ? applyPrintDocument(layout.value, drawing.document, drawing.preview) : layout.value),
     el = canvas.value;
   if (!l || !el || !el.clientWidth) return;
   const doc = editor.document,
@@ -1497,7 +1667,7 @@ async function paintFrame() {
         p.y + l.margin - page.row * sizeForArtwork.height,
       );
       for (const item of resources) {
-        if (item.hidden) continue;
+        if (item.hidden || item.instance.id === drawing.editingTextId) continue;
         ctx.save();
         ctx.translate(item.instance.x, item.instance.y);
         ctx.rotate((item.instance.rotation * Math.PI) / 180);
@@ -1816,6 +1986,24 @@ async function paintFrame() {
       ctx.globalAlpha = 1;
       ctx.strokeRect(x, y, w, h);
     }
+    if (drawing.mode !== "select" && clipboardPixel && !drawing.editingTextId && !drag) {
+      const point = worldPixel(drawing.cursor);
+      ctx.save();
+      ctx.strokeStyle = css.getPropertyValue("--preview").trim() || "#e6b07c";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (drawing.mode === "text") {
+        ctx.moveTo(point.x, point.y - 3 * zoom.value);
+        ctx.lineTo(point.x, point.y + 3 * zoom.value);
+      } else {
+        for (const sign of [-1, 1]) {
+          ctx.moveTo(point.x + sign * 2, point.y); ctx.lineTo(point.x + sign * 6, point.y);
+          ctx.moveTo(point.x, point.y + sign * 2); ctx.lineTo(point.x, point.y + sign * 6);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     if (token !== generation || el !== canvas.value) return;
     if (el.width !== buffer.width) el.width = buffer.width;
     if (el.height !== buffer.height) el.height = buffer.height;
@@ -1829,7 +2017,9 @@ async function paintFrame() {
 }
 const hoverHandle = ref<string>();
 const printCursor = computed(() =>
-  placingPivot.value
+  drawingState.value.mode !== "select"
+    ? "none"
+    : placingPivot.value
     ? "crosshair"
     : mirrorHover.value && tool.value === "mirror"
       ? "pointer"
@@ -2017,6 +2207,16 @@ function down(event: PointerEvent) {
   const p = pixel(event),
     world = worldFromPixel(p),
     l = preview.value ?? layout.value!;
+  if (drawing.mode !== "select" && event.button === 0 && !editor.space) {
+    if (!isPrintablePixel(p, l)) return;
+    syncDrawingView();
+    if (drawing.mode === "text") {
+      event.preventDefault();
+      if (editPrintText(event)) return;
+    }
+    drawing.pointerDown(p, event.button, event.shiftKey, event.altKey, event.ctrlKey);
+    return;
+  }
   if (placingPivot.value) {
     let pivot = world;
     if (!event.altKey) {
@@ -2198,6 +2398,11 @@ function move(event: PointerEvent) {
   if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
 }
 function moveNow(event: PointerEvent) {
+  if (drawing.mode !== "select" && !drag) {
+    drawing.pointerMove(drawingPixel(event), event.altKey, event.ctrlKey, event.shiftKey);
+    snapOverlay.value = { target: drawing.snapTarget ?? undefined, guides: drawing.smartGuides };
+    return;
+  }
   hoverHandle.value = placingPivot.value ? undefined : gizmoAt(pixel(event));
   if (
     tool.value === "mirror" &&
@@ -2367,8 +2572,12 @@ function moveNow(event: PointerEvent) {
   );
   void draw();
 }
-async function up() {
+async function up(event?: PointerEvent) {
   flushMove();
+  if (drawing.mode !== "select" && event && !drag) {
+    drawing.pointerUp(drawingPixel(event), event.altKey, event.shiftKey, event.ctrlKey);
+    return;
+  }
   rotationReadout.value = undefined;
   snapOverlay.value = { guides: [] };
   if (pageGesture) {
@@ -2502,99 +2711,19 @@ function printClipboard(event: ClipboardEvent) {
     document.querySelector("[role=dialog]")
   )
     return;
-  const l = layout.value;
+  syncDrawing();
+  drawing.pointerMove(clipboardPixel, true, false, false);
   if (event.type === "copy") {
-    if (!selected.value.length || !event.clipboardData) return;
-    const chosen = new Set(selected.value),
-      ids = new Set(printDescendants(l, selected.value));
-    function roots(nodes: PrintNode[]): PrintNode[] {
-      return nodes.flatMap((n) =>
-        chosen.has(n.id) ? [n] : n.kind === "group" ? roots(n.children) : [],
-      );
-    }
-    const tree = roots(printTree(l));
-    if (!tree.length) return;
-    const snapshot = {
-      ...l,
-      tree,
-      instances: l.instances.filter((i) => ids.has(i.id)),
-    };
-    event.clipboardData.setData(
-      "text/plain",
-      JSON.stringify({
-        format: "leather-pattern-designer-print-clipboard",
-        version: 1,
-        anchor: worldFromPixel(clipboardPixel),
-        layout: snapshot,
-      }),
-    );
+    const text = drawing.copyObjects();
+    if (text) { event.clipboardData?.setData("text/plain", text); event.preventDefault(); }
+  } else {
+    const text = event.clipboardData?.getData("text/plain") ?? "";
+    if (!text.includes('"leather-pattern-designer-clipboard"')) return;
     event.preventDefault();
-  } else if (event.type === "paste") {
-    let payload;
-    try {
-      payload = JSON.parse(event.clipboardData?.getData("text/plain") ?? "");
-    } catch {
-      return;
-    }
-    if (payload?.format !== "leather-pattern-designer-print-clipboard") return;
-    event.preventDefault();
-    try {
-      if (
-        payload.version !== 1 ||
-        !Number.isFinite(payload.anchor?.x) ||
-        !Number.isFinite(payload.anchor?.y)
-      )
-        throw Error("Invalid print clipboard");
-      const source = validatePrintLayouts([payload.layout])[0];
-      if (
-        source.instances.some(
-          (i) => !i.snapshot && !editor.document.shapes.some((s) => s.id === i.sourceId),
-        )
-      )
-        throw Error("Print clipboard sources are missing from this project");
-      const point = worldFromPixel(clipboardPixel),
-        shifted = transformPrintNodes(
-          source,
-          printTree(source).map((n) => n.id),
-          point.x - payload.anchor.x,
-          point.y - payload.anchor.y,
-          0,
-        );
-      const ids = new Map(
-        shifted.instances.map((i) => [i.id, crypto.randomUUID()]),
-      );
-      function remap(nodes: PrintNode[]): PrintNode[] {
-        return nodes.map((n) =>
-          n.kind === "instance"
-            ? { ...n, id: ids.get(n.id)! }
-            : {
-                ...n,
-                id: crypto.randomUUID(),
-                locked: false,
-                children: remap(n.children),
-              },
-        );
-      }
-      const tree = remap(printTree(shifted));
-      const instances = shifted.instances.map((i) => ({
-        ...i,
-        id: ids.get(i.id)!,
-        locked: false,
-        name: `${i.name ?? i.snapshot?.shape.name ?? editor.document.shapes.find((s) => s.id === i.sourceId)?.name ?? "Object"} copy`,
-      }));
-      void save({
-        ...l,
-        tree: [...tree, ...printTree(l)],
-        instances: [...l.instances, ...instances],
-      }).then(() => {
-        if (!error.value) {
-          selected.value = tree.map((n) => n.id);
-          draw();
-        }
-      });
-    } catch (reason) {
-      error.value = String(reason);
-    }
+    void drawing.pasteObjects(text).then(() => {
+      selected.value = [...drawing.selectedGroups, ...drawing.selected];
+      draw();
+    });
   }
 }
 function keyboard(event: KeyboardEvent) {
@@ -2630,6 +2759,17 @@ function keyboard(event: KeyboardEvent) {
     event.preventDefault();
     editor.space = true;
     return;
+  }
+  if (!mod && (key === "t" || key === "d")) {
+    event.preventDefault();
+    syncDrawing();
+    if (key === "t") drawing.setMode("text");
+    else drawing.cycle("indicator", event.shiftKey ? -1 : 1);
+    return;
+  }
+  if (drawing.mode !== "select" && key === "enter") { event.preventDefault(); drawing.confirmMeasurement(); return; }
+  if (drawing.mode !== "select" && key === "backspace" && drawing.pending.length) {
+    event.preventDefault(); drawing.pending = drawing.pending.slice(0, -1); drawing.notify(); return;
   }
   if (key === "enter" && tool.value !== "select") {
     event.preventDefault();
@@ -2743,6 +2883,7 @@ watch(canvas, (el) => {
   }
 });
 onUnmounted(() => {
+  stopDrawing();
   tabEnd();
   printDrag.cancel();
   sourceEnd();
@@ -2937,7 +3078,7 @@ defineExpose({
       <button
         v-for="value in ['select', 'move', 'rotate', 'mirror'] as const"
         :key="value"
-        :aria-pressed="tool === value"
+        :aria-pressed="drawingState.mode === 'select' && tool === value"
         :title="
           value === 'select'
             ? 'Select (V)'
@@ -2981,6 +3122,11 @@ defineExpose({
         </svg>
       </button>
       <div class="rail-divider" role="separator" />
+      <ToolButton :controller="drawing" :tool="{ id: 'text', key: 'T', label: 'Text' }" />
+      <ToolButton :controller="drawing" :tool="{ id: 'measurement', key: 'D', label: 'Measurement' }" />
+      <button aria-label="Import image" title="Import image" :disabled="!e.ready || busy" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></button>
+      <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importLocalImage" />
+      <div class="rail-divider" role="separator" />
       <button
         title="Undo (Ctrl/⌘+Z)"
         aria-label="Undo"
@@ -3008,6 +3154,9 @@ defineExpose({
       </button>
     </nav>
     <div class="print-canvas">
+      <canvas ref="previewCanvas" class="drawing-preview" aria-hidden="true" />
+      <Viewport ref="textViewport" :controller="drawing" text-only />
+      <ConstructionMeasurements :controller="drawing" />
       <canvas
         ref="canvas"
         aria-label="Print layout canvas"
@@ -3026,6 +3175,7 @@ defineExpose({
               : 'not-allowed'
             : printCursor,
         }"
+        @dblclick="editPrintText"
         @pointerdown="down"
         @pointermove="move"
         @pointerup="up"
@@ -3147,6 +3297,7 @@ defineExpose({
       </div>
     </div>
     <aside aria-label="Print objects and settings">
+      <p v-if="!creating && !error && tool === 'select' && drawingState.message !== 'Ready'" role="status">{{ drawingState.message }}</p>
       <PanelSection
         section-key="print-grid-objects"
         title="Grid objects"
@@ -3385,6 +3536,7 @@ defineExpose({
           </li>
         </ul>
       </section>
+      <Inspector v-if="drawingState.active.length && drawingState.active.every(s => layout?.instances.find(i => i.id === s.id)?.snapshot)" :controller="drawing" />
       <p v-if="error && (tool === 'select' || !selected.length)" role="alert">
         {{ error }}
       </p>
@@ -3560,6 +3712,7 @@ defineExpose({
   background: var(--canvas);
   overflow: hidden;
 }
+.print-canvas .drawing-preview { z-index: 1; pointer-events: none; }
 .print-canvas canvas {
   position: absolute;
   inset: 0;

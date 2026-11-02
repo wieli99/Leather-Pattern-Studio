@@ -22,7 +22,7 @@ Choose **Save** (Ctrl/⌘+S). With native file access, choose a destination on t
 
 Choose **Import image** below Measurement, then select a PNG, JPEG, WebP or SVG. It is inserted at the view centre behind existing objects, preserving its aspect ratio. Use Select to move it and the transform controls to resize, rotate or mirror it. The inspector offers width, height and image opacity. Aspect ratio is locked by default; unlock it to edit width and height independently.
 
-Use the object panel to reorder, hide or lock images. Images are embedded in saved projects and recovery, and remain available offline. The total project limit is 10 MB; individual imports larger than 7 MB are rejected. Use [Print layouts and export](#printing) to arrange linked copies and export physically sized pages.
+Use the object panel to reorder, hide or lock images. Images are embedded in saved projects and recovery, and remain available offline. The total project limit is 10 MB; individual imports larger than 7 MB are rejected. Use [Print layouts and export](#printing) to arrange linked copies or import an independent image directly onto a print tab, and export physically sized pages.
 
 ![Imported image selected with dimensions and opacity controls](/manual/images/image-import.png)
 

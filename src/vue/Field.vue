@@ -2,10 +2,11 @@
 import { editableLength, formatLength, parseLength } from "../model/units";
 import { ref, watch } from "vue";
 import { useEditor } from "./useEditor";
-import { editor } from "../editor/instance";
-const e = useEditor();
+import { editor as defaultEditor } from "../editor/instance";
+import type { Controller } from "../editor/controller";
 const props = withDefaults(
   defineProps<{
+    controller?: Controller;
     label: string;
     dimension?: boolean;
     value: string | number;
@@ -16,6 +17,8 @@ const props = withDefaults(
   }>(),
   { step: 0.1, precision: 1 },
 );
+const editor = props.controller ?? defaultEditor;
+const e = useEditor(editor);
 const emit = defineEmits<{ commit: [value: string] }>();
 const format = (v: string | number) =>
   typeof v === "number" ? (props.dimension ? formatLength(v, e.value.units, props.precision) : String(+v.toFixed(props.precision))) : v;

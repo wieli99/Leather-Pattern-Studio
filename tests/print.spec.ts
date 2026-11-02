@@ -1005,7 +1005,7 @@ test("print object actions live in the shared context menu", async ({
   ).toBeVisible();
 });
 
-test("print clipboard preserves pointer offsets and creates linked copies", async ({
+test("print clipboard preserves pointer offsets and creates independent copies", async ({
   page,
 }) => {
   await load(page);
@@ -1028,7 +1028,7 @@ test("print clipboard preserves pointer offsets and creates linked copies", asyn
     return data.getData("text/plain");
   });
   expect(JSON.parse(text).format).toBe(
-    "leather-pattern-designer-print-clipboard",
+    "leather-pattern-designer-clipboard",
   );
   await page.mouse.move(box.x + 240, box.y + 430);
   await canvas.evaluate((el, text) => {
@@ -1048,7 +1048,8 @@ test("print clipboard preserves pointer offsets and creates linked copies", asyn
     copy = doc.printLayouts[0].instances.find(
       (i: { id: string }) => i.id !== original.id,
     );
-  expect(copy.sourceId).toBe(original.sourceId);
+  expect(copy.snapshot).toBeDefined();
+  expect(copy.sourceId).not.toBe(original.sourceId);
   expect(copy.x - original.x).toBeCloseTo(20, 0);
   expect(copy.y - original.y).toBeCloseTo(15, 0);
   expect(doc.shapes).toHaveLength(1);
@@ -1281,7 +1282,10 @@ test("detached print copies duplicate and paste after their Grid source is delet
   const saved = await save(page);
   expect(saved.shapes).toHaveLength(0);
   expect(saved.printLayouts[0].instances).toHaveLength(3);
-  for (const item of saved.printLayouts[0].instances) expect(item.snapshot.shape).toMatchObject(rectangle);
+  for (const item of saved.printLayouts[0].instances) {
+    expect(item.snapshot.shape).toMatchObject({ kind: rectangle.kind, points: rectangle.points, radius: rectangle.radius });
+    expect(item.snapshot.shape.id).toBe(item.sourceId);
+  }
 });
 
 test("Grid source selection clears outside the list and resets its range anchor", async ({ page }) => {
@@ -1320,7 +1324,8 @@ test("tool rails keep separators and share history and fit icons", async ({ page
   const historyFont = await grid.getByRole("button", { name: "Undo", exact: true }).evaluate(el => getComputedStyle(el).fontSize);
   await create(page);
   const print = page.getByRole("navigation", { name: "Print tools" });
-  expect((await print.getByRole("separator").boundingBox())!.height).toBe(1);
+  await expect(print.getByRole("separator")).toHaveCount(2);
+  for (const separator of await print.getByRole("separator").all()) expect((await separator.boundingBox())!.height).toBe(1);
   for (const name of ["Undo", "Redo"]) {
     await expect(print.getByRole("button", { name, exact: true })).toHaveText(name === "Undo" ? "↶" : "↷");
     expect(await print.getByRole("button", { name, exact: true }).evaluate(el => getComputedStyle(el).fontSize))
@@ -1329,4 +1334,215 @@ test("tool rails keep separators and share history and fit icons", async ({ page
   await print.getByRole("button", { name: "Fit", exact: true }).click();
   await expect(print.getByRole("button", { name: "Fit", exact: true }).locator("svg")).toBeVisible();
   await page.screenshot({ path: "test-results/print-tool-rail.png" });
+});
+
+test("native print tools create isolated editable objects and support Grid clipboard", async ({ page }) => {
+  await load(page);
+  await create(page);
+  const canvas = page.getByLabel("Print layout canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.getByRole("button", { name: "Text (T)", exact: true }).click();
+  await canvas.click({ position: { x: 180, y: 180 } });
+  await expect(page.getByRole("textbox", { name: "Label text" })).toBeFocused();
+  await page.keyboard.type("Print only");
+  await page.keyboard.press("Control+Enter");
+  await expect(page.getByRole("textbox", { name: "Label text" })).toHaveCount(0);
+  let document = await save(page);
+  expect(document.shapes).toHaveLength(1);
+  expect(document.printLayouts[0].instances).toHaveLength(1);
+  expect(document.printLayouts[0].instances[0].snapshot.shape.text).toBe("Print only");
+  await canvas.focus();
+  await page.keyboard.press("d");
+  await canvas.click({ position: { x: 170, y: 230 } });
+  await canvas.click({ position: { x: 250, y: 230 } });
+  await canvas.click({ position: { x: 250, y: 260 } });
+  await expect.poll(async () => (await save(page)).printLayouts[0].instances.length).toBe(2);
+  document = await save(page);
+  expect(document.printLayouts[0].instances.some((i: any) => i.snapshot.shape.kind === "measurement")).toBe(true);
+  await canvas.focus();
+  await page.keyboard.press("Escape");
+  // Copy a resolved print selection through the same interchange format as Grid.
+  await page.getByLabel("Print object tree").getByRole("button", { name: "Measurement 2", exact: true }).click();
+  await page.mouse.move(box.x + 210, box.y + 230);
+  const clipboard = await canvas.evaluate(el => {
+    const data = new DataTransfer();
+    const event = new ClipboardEvent("copy", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: data });
+    el.dispatchEvent(event);
+    return data.getData("text/plain");
+  });
+  expect(clipboard).toContain("leather-pattern-designer-clipboard");
+  if (process.env.UPDATE_MANUAL_SCREENSHOTS && page.context().browser()?.browserType().name() === "chromium") {
+    await page.screenshot({ path: "public/manual/images/print-drawing-tools.png" });
+  }
+  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  const grid = page.getByLabel("Pattern drawing canvas");
+  await grid.hover();
+  await grid.evaluate((el, text) => {
+    const data = new DataTransfer(); data.setData("text/plain", text);
+    const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: data }); el.dispatchEvent(event);
+  }, clipboard);
+  await expect.poll(async () => (await save(page)).shapes.length).toBe(2);
+});
+
+test("all print indicator variants, image import, editing, cancellation and tab isolation", async ({ page }) => {
+  await load(page);
+  await create(page);
+  const canvas = page.getByLabel("Print layout canvas");
+  for (const [index, label] of ["Square size guide", "Ruler size guide", "Arrow", "Bodyless arrow", "Crosshair"].entries()) {
+    await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+    await page.getByRole("menuitemradio", { name: label, exact: true }).click();
+    await canvas.click({ position: { x: 180, y: 170 + index * 30 } });
+    await canvas.click({ position: { x: 250, y: 190 + index * 30 } });
+    await expect.poll(async () => (await save(page)).printLayouts[0].instances.length).toBe(index + 1);
+  }
+  await canvas.focus(); await page.keyboard.press("Escape");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import image", exact: true }).click();
+  await (await chooser).setFiles({ name: "stamp.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10" fill="red"/></svg>') });
+  await expect.poll(async () => (await save(page)).printLayouts[0].instances.length).toBe(6);
+  await page.getByRole("button", { name: "Text (T)", exact: true }).click();
+  await canvas.click({ position: { x: 160, y: 400 } });
+  await page.getByRole("textbox", { name: "Label text" }).fill("Temporary");
+  await page.keyboard.press("Escape");
+  expect((await save(page)).printLayouts[0].instances).toHaveLength(6);
+  await page.getByRole("button", { name: "Text (T)", exact: true }).click();
+  await canvas.click({ position: { x: 160, y: 400 } });
+  await page.getByRole("textbox", { name: "Label text" }).fill("Original label");
+  await page.keyboard.press("Control+Enter");
+  await expect.poll(async () => (await save(page)).printLayouts[0].instances.length).toBe(7);
+  await canvas.dblclick({ position: { x: 170, y: 400 } });
+  await page.getByRole("textbox", { name: "Label text" }).fill("Edited label");
+  await page.keyboard.press("Control+Enter");
+  await expect.poll(async () => (await save(page)).printLayouts[0].instances.find((i: any) => i.snapshot.shape.kind === "text")?.snapshot.shape.text).toBe("Edited label");
+  await canvas.focus(); await page.keyboard.press("Control+z");
+  await expect.poll(async () => (await save(page)).printLayouts[0].instances.find((i: any) => i.snapshot.shape.kind === "text")?.snapshot.shape.text).toBe("Original label");
+  const before = await save(page);
+  await page.getByRole("button", { name: "Create print layout", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "A4 2", exact: true })).toHaveAttribute("aria-selected", "true");
+  const after = await save(page);
+  expect(after.shapes).toEqual(before.shapes);
+  expect(after.printLayouts[0].instances).toEqual(before.printLayouts[0].instances);
+  expect(after.printLayouts[1].instances).toEqual([]);
+});
+
+test("clipboard carries grouped Grid objects into independent copies on two print tabs", async ({ page }) => {
+  await load(page);
+  const grid = page.getByLabel("Pattern drawing canvas");
+  await grid.hover(); await grid.focus(); await page.keyboard.press("Control+a");
+  async function copy(canvas: ReturnType<Page["getByLabel"]>) {
+    await canvas.hover();
+    return canvas.evaluate(el => {
+      const data = new DataTransfer();
+      const event = new ClipboardEvent("copy", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "clipboardData", { value: data }); el.dispatchEvent(event);
+      return data.getData("text/plain");
+    });
+  }
+  async function paste(canvas: ReturnType<Page["getByLabel"]>, text: string) {
+    await canvas.hover();
+    await canvas.evaluate((el, text) => {
+      const data = new DataTransfer(); data.setData("text/plain", text);
+      const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "clipboardData", { value: data }); el.dispatchEvent(event);
+    }, text);
+  }
+  const text = await copy(grid);
+  expect(text).toContain("leather-pattern-designer-clipboard");
+  await create(page);
+  const canvas = page.getByLabel("Print layout canvas");
+  await paste(canvas, text);
+  await expect.poll(async () => (await save(page)).printLayouts[0].instances.length).toBe(1);
+  const copiedPrint = await copy(canvas);
+  expect(copiedPrint).toContain("leather-pattern-designer-clipboard");
+  const before = await save(page);
+  await page.getByRole("button", { name: "Create print layout", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "A4 2", exact: true })).toHaveAttribute("aria-selected", "true");
+  await paste(canvas, copiedPrint);
+  await expect.poll(async () => (await save(page)).printLayouts[1].instances.length).toBe(1);
+  const after = await save(page);
+  expect(after.shapes).toEqual(before.shapes);
+  expect(after.printLayouts[0]).toEqual(before.printLayouts[0]);
+  expect(after.printLayouts[1].instances[0].snapshot).toBeDefined();
+  expect(after.printLayouts[1].instances[0].id).not.toBe(before.printLayouts[0].instances[0].id);
+});
+
+test("print property edits use layout units, preview locally, cancel and undo once", async ({ page }) => {
+  await load(page);
+  await page.getByRole("button", { name: "Create print layout", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Units", { exact: true }).selectOption("in-decimal");
+  await dialog.getByRole("button", { name: "Create", exact: true }).click();
+  const canvas = page.getByLabel("Print layout canvas");
+  await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitemradio", { name: "Square size guide", exact: true }).click();
+  const box = (await canvas.boundingBox())!;
+  await canvas.click({ position: { x: box.width / 2, y: 210 } });
+  await canvas.click({ position: { x: box.width / 2 + 60, y: 260 } });
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  const before = await save(page);
+  const side = page.getByLabel("Side length (in)", { exact: true });
+  await expect(side).toBeVisible();
+  await side.fill("2");
+  await side.press("Escape");
+  expect((await save(page)).printLayouts).toEqual(before.printLayouts);
+  await side.fill("2");
+  await side.press("Enter");
+  await expect(side).toHaveValue("2");
+  const after = await save(page);
+  const shape = after.printLayouts[0].instances[0].snapshot.shape;
+  const points = shape.points;
+  const scale = Math.hypot(shape.transform?.a ?? 1, shape.transform?.b ?? 0);
+  expect(Math.abs(points[1].x - points[0].x) * scale).toBeCloseTo(50.8);
+  expect(after.shapes).toEqual(before.shapes);
+  await canvas.focus(); await page.keyboard.press("Control+z");
+  await expect.poll(async () => (await save(page)).printLayouts).toEqual(before.printLayouts);
+});
+
+test("a delayed image import cannot create objects after switching tabs", async ({ page }) => {
+  await load(page); await create(page);
+  await page.evaluate(() => {
+    const read = FileReader.prototype.readAsDataURL;
+    FileReader.prototype.readAsDataURL = function(blob) {
+      (window as any).releasePrintImport = () => read.call(this, blob);
+    };
+  });
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import image", exact: true }).click();
+  await (await chooser).setFiles({ name: "late.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10"/></svg>') });
+  await page.getByRole("tab", { name: "Grid", exact: true }).click();
+  await page.getByRole("tab", { name: "A4", exact: true }).click();
+  await page.evaluate(() => (window as any).releasePrintImport());
+  await expect(page.getByRole("alert")).toContainText("Tab or project changed during image import");
+  const document = await save(page);
+  expect(document.shapes).toHaveLength(1);
+  expect(document.printLayouts[0].instances).toEqual([]);
+});
+
+test("print drawing layout and previews avoid asynchronous image generation", async ({ page }) => {
+  await load(page); await create(page);
+  const rail = page.getByRole("navigation", { name: "Print tools" });
+  const order = await rail.locator('button[aria-label], [role=separator]').evaluateAll(elements => elements.map(el => el.getAttribute('aria-label') ?? 'separator'));
+  expect(order.slice(0, 9)).toEqual(['Select (V)', 'Move (G)', 'Rotate (E)', 'Mirror (M)', 'separator', 'Text (T)', 'Measurement (D)', 'Import image', 'separator']);
+  const canvas = page.getByLabel('Print layout canvas');
+  await page.getByRole('button', { name: 'Measurement (D)', exact: true }).click({button: 'right'});
+  await page.getByRole('menuitemradio', { name: 'Ruler size guide', exact: true }).click();
+  await canvas.click({position: {x: 180, y: 200}});
+  await page.evaluate(() => {
+    const original = URL.createObjectURL;
+    (window as any).previewBlobCount = 0;
+    URL.createObjectURL = function(blob) { (window as any).previewBlobCount++; return original.call(URL, blob); };
+  });
+  const box = (await canvas.boundingBox())!;
+  for (let i = 0; i < 20; i++) await page.mouse.move(box.x + 220 + i * 3, box.y + 220 + i);
+  expect(await page.evaluate(() => (window as any).previewBlobCount)).toBe(0);
+  await canvas.click({position: {x: 280, y: 240}});
+  await page.getByRole('button', { name: 'Select (V)', exact: true }).click();
+  const pages = page.getByRole('region', { name: 'Pages', exact: true });
+  const properties = page.locator('.print-workspace .object-properties');
+  await expect(properties).toBeVisible();
+  expect(await pages.evaluate((el) => !!(el.compareDocumentPosition(document.querySelector('.print-workspace .object-properties')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
 });

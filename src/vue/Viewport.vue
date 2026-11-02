@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { measureText } from "../model/text";
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
-import { editor } from "../editor/instance";
+import { editor as defaultEditor } from "../editor/instance";
+import type { Controller } from "../editor/controller";
 import { attachRenderer } from "../editor/renderer";
 import { useEditorSelector } from "./useEditorSelector";
 import { useEditor } from "./useEditor";
 import { shapeMatrix, inverse, applyMatrix } from "../model/geometry";
 import type { Point, Shape } from "../model/project";
-const e = useEditor();
+const props = defineProps<{ controller?: Controller; textOnly?: boolean }>();
+const editor = props.controller ?? defaultEditor;
+const e = useEditor(editor);
 const saving = ref(false);
 const input = ref<HTMLTextAreaElement | null>(null);
 const draft = ref<{ point: Point; text: string; original?: Shape } | null>(
@@ -22,10 +25,14 @@ function beginText(point: Point, original?: Shape) {
     input.value?.select();
   });
 }
+function focusCanvas() {
+  if (props.textOnly) (canvas.value?.parentElement?.querySelector('canvas[aria-label="Print layout canvas"]') as HTMLCanvasElement | null)?.focus();
+  else canvas.value?.focus();
+}
 function cancelText() {
   editor.editingTextId = undefined;
   draft.value = null;
-  canvas.value?.focus();
+  focusCanvas();
 }
 async function saveText() {
   const d = draft.value;
@@ -38,7 +45,7 @@ async function saveText() {
           ...editor.document,
           shapes: editor.document.shapes.filter((s) => s.id !== d.original!.id),
         });
-      cancelText();
+      if (draft.value === d) cancelText();
       return;
     }
     if (d.original?.text === d.text) {
@@ -65,17 +72,18 @@ async function saveText() {
       shape.transform = shapeMatrix(d.original);
       shape.rotation = 0;
     }
-    await editor.commit({
+    const success = await editor.commit({
       ...editor.document,
       shapes: d.original
         ? editor.document.shapes.map((s) => (s.id === shape.id ? shape : s))
         : [...editor.document.shapes, shape],
     });
+    if (!success || draft.value !== d) return;
     editor.editingTextId = undefined;
     draft.value = null;
     editor.selected = [shape.id];
     editor.setTool("select");
-    canvas.value?.focus();
+    focusCanvas();
   } finally {
     saving.value = false;
   }
@@ -93,8 +101,8 @@ const textStyle = computed(() => {
   return {
     width: `${layout.width * state.zoom}px`,
     height: `${layout.height * state.zoom}px`,
-    left: `${state.pan.x + p.x * state.zoom}px`,
-    top: `${state.pan.y + p.y * state.zoom}px`,
+    left: `${editor.screen(p).x}px`,
+    top: `${editor.screen(p).y}px`,
     fontSize: `${(d.original?.fontSize ?? 5) * state.zoom}px`,
     transform: `matrix(${m.a},${m.b},${m.c},${m.d},0,0)`,
   };
@@ -112,7 +120,7 @@ function outside(event: PointerEvent) {
       event.target.closest(".canvas-text-editor"))
   )
     return;
-  const onCanvas = event.target === canvas.value;
+  const onCanvas = event.target === canvas.value || (props.textOnly && event.target instanceof HTMLElement && event.target.getAttribute("aria-label") === "Print layout canvas");
   if (onCanvas) {
     event.preventDefault();
     event.stopPropagation();
@@ -227,7 +235,7 @@ onMounted(() => {
   window.addEventListener("keyup", updateModifiers);
   window.addEventListener("blur", clearModifiers);
   editor.onTextRequested = beginText;
-  detach = attachRenderer(canvas.value!, editor);
+  if (!props.textOnly) detach = attachRenderer(canvas.value!, editor);
   canvas.value!.addEventListener("wheel", wheel, { passive: false });
 });
 onUnmounted(() => {
@@ -240,10 +248,12 @@ onUnmounted(() => {
   detach?.();
   canvas.value?.removeEventListener("wheel", wheel);
 });
+defineExpose({ beginText, cancelText });
 </script>
 <template>
   <canvas
     ref="canvas"
+    v-show="!textOnly"
     :style="{ cursor }"
     aria-label="Pattern drawing canvas"
     tabindex="0"
@@ -275,6 +285,7 @@ onUnmounted(() => {
   <div
     v-if="draft"
     class="canvas-text-editor"
+    :class="{ 'print-text-editor': textOnly }"
     data-hint-edit="text"
     :style="textStyle"
     @pointerdown.stop
@@ -316,5 +327,8 @@ textarea {
   resize: none;
   overflow: hidden;
   white-space: pre;
+}
+.print-text-editor textarea {
+  color: #000;
 }
 </style>

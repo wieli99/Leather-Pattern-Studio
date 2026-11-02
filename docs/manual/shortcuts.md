@@ -44,7 +44,7 @@ Hold Ctrl to show healthy stitch-link chain indicators. Broken links remain visi
 
 In Select, double-click a polyline or rectangle anchor to make it smooth; double-click a curve anchor to toggle sharp/smooth. Alt+drag a curve handle moves it independently; dragging without Alt mirrors the handles.
 
-Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste on Grid works across browser tabs and sessions and creates one undo step. In print layout tabs, the same shortcuts copy linked print placements between layouts in the project. Finish active edits before copying or pasting.
+Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste on Grid works across browser tabs and sessions and creates one undo step. The same shortcuts work between Grid and print layout tabs. Pasting creates independent objects, including when copying linked print placements. Finish active edits before copying or pasting.
 
 After Copy Styling in an object's context menu, Ctrl/⌘+V applies fill color, opacity, fill mode, and outline styling to selected fillable objects when the canvas or an object row has focus.
 
@@ -82,13 +82,16 @@ With the print canvas or print object panel focused:
 | Arrow keys | Move by 1 mm or 1/16 inch |
 | Shift + arrow keys | Move by ten steps |
 | Ctrl/⌘+A | Select available print objects |
-| Ctrl/⌘+D | Duplicate linked placements |
+| T | Text on the active print tab |
+| D / Shift+D | Select or cycle Measurement variants |
+| Ctrl/⌘+C / Ctrl/⌘+V | Copy/paste independent objects across Grid and print tabs |
+| Ctrl/⌘+D | Duplicate placements, preserving their linked or unlinked state |
 | Ctrl/⌘+G | Group selected siblings |
 | Delete / Backspace | Delete selected unlocked print objects |
 | Escape | Cancel pointer preview and clear selection |
 | Ctrl/⌘+Z / Ctrl/⌘+Shift+Z | Undo / redo |
 | Ctrl/⌘+S | Save project |
 
-Drawing, resizing, geometry-editing, and styling-paste shortcuts are unavailable in print views. Text entry retains normal editing shortcuts.
+Text (T), Measurement and its variants (D / Shift+D), and object copy/paste (Ctrl/⌘+C / Ctrl/⌘+V) also work in print views. Other drawing tools and styling-paste shortcuts remain unavailable. Text entry retains normal editing shortcuts.
 
 In print views, Ctrl-click exposed paper selects pages; Ctrl-drag moves a self-contained page to an insertion edge. Hold Ctrl for page numbers and individual page delete buttons. Delete removes selected pages only when every sheet touched by their objects is also selected. Escape or right-click cancels a page move.

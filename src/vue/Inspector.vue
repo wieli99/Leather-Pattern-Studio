@@ -23,11 +23,14 @@ import {
   rotatePoint,
 } from "../model/geometry";
 import type { Shape } from "../model/project";
-import { editor } from "../editor/instance";
+import { editor as defaultEditor } from "../editor/instance";
+import type { Controller } from "../editor/controller";
 import { useEditor } from "./useEditor";
 import Field from "./Field.vue";
 import PanelSection from "./PanelSection.vue";
-const e = useEditor(),
+const props = defineProps<{ controller?: Controller }>();
+const editor = props.controller ?? defaultEditor;
+const e = useEditor(editor),
   selected = computed(() => e.value.active),
   s = computed(() => (selected.value.length === 1 ? selected.value[0] : null)),
   a = computed(() => s.value!.points[0]),
@@ -202,14 +205,15 @@ function vertex(i: number, axis: "x" | "y", v: string) {
   </p>
   <fieldset v-if="s" class="object-properties">
     <PanelSection class="property-section" section-key="object" title="Object" :level="3" :disabled="editor.isLocked(s.id)">
-    <Field label="Name" :value="s.name" @commit="edit({ name: $event })" />
+    <Field :controller="editor" label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <template v-if="s.kind === 'text'">
       <Field
+        :controller="editor"
         label="Text"
         :value="s.text ?? ''"
         @commit="edit({ text: $event })"
       />
-      <Field dimension
+      <Field :controller="editor" dimension
         label="Font size"
         :value="s.fontSize ?? 5"
         @commit="edit({ fontSize: +$event })"
@@ -219,12 +223,12 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     <PanelSection class="property-section" section-key="geometry" title="Geometry" :level="3" :disabled="editor.isLocked(s.id)">
       <p class="geometry-units">{{ e.unitSymbol }} unless indicated</p>
     <div class="field-row">
-      <Field dimension
+      <Field :controller="editor" dimension
         label="Position X"
         :value="c.x"
         @commit="position('x', $event)"
       />
-      <Field dimension
+      <Field :controller="editor" dimension
         label="Position Y"
         :value="c.y"
         @commit="position('y', $event)"
@@ -234,20 +238,20 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       v-if="['image', 'rectangle', 'ellipse', 'curve', 'control-curve'].includes(s.kind)"
       class="field-row"
     >
-      <Field dimension
+      <Field :controller="editor" dimension
         label="Width"
         :value="width"
         :min="0.001"
         @commit="size('x', $event)"
       />
-      <Field dimension
+      <Field :controller="editor" dimension
         label="Height"
         :value="height"
         :min="0.001"
         @commit="size('y', $event)"
       />
     </div>
-    <Field dimension
+    <Field :controller="editor" dimension
       v-if="s.kind === 'circle' || s.kind === 'arc'"
       :label="s.transform ? 'Radius (local)' : 'Radius'"
       :value="distance(a, b)"
@@ -255,6 +259,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       @commit="radius"
     />
     <Field
+        :controller="editor"
       v-if="s.kind === 'arc'"
       label="Sweep (degrees)"
       :value="s.sweep ?? 0"
@@ -263,20 +268,21 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       @commit="edit({ sweep: +$event })"
     />
     <Field
+        :controller="editor"
       label="Rotation (degrees)"
       :value="+angle.toFixed(1)"
       @commit="edit(rotateShape(s, +$event - angle, c))"
     />
     <template v-if="isIndicator(s.kind)">
-      <Field dimension :label="s.kind === 'size-square' ? 'Side length (mm)' : s.kind === 'crosshair' ? 'Overall size (mm)' : s.kind === 'arrow-head' ? 'Head size (mm)' : 'Length (mm)'"
+      <Field :controller="editor" dimension :label="s.kind === 'size-square' ? 'Side length (mm)' : s.kind === 'crosshair' ? 'Overall size (mm)' : s.kind === 'arrow-head' ? 'Head size (mm)' : 'Length (mm)'"
         :value="indicatorGeometry(s).size" :min="0.001" @commit="indicatorSize" />
-      <Field dimension v-if="s.kind === 'arrow'" label="Head size (local mm)"
+      <Field :controller="editor" dimension v-if="s.kind === 'arrow'" label="Head size (local mm)"
         :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
     </template>
     <label v-if="s.kind === 'image'"><input v-model="imageAspectLocked" type="checkbox" /> Lock aspect ratio</label>
-    <Field v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
+    <Field :controller="editor" v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
-      <Field dimension
+      <Field :controller="editor" dimension
         label="Offset (mm)"
         :value="measurementGeometry(s).offset"
         @commit="edit({ measurementOffset: +$event / measurementGeometry(s).offsetScale })"
@@ -303,11 +309,11 @@ function vertex(i: number, axis: "x" | "y", v: string) {
           @blur="editor.finishProperty()"
           @keydown.esc.stop="editor.finishProperty(true)" />
       </label>
-      <Field label="Outline opacity (%)" :value="(s.strokeOpacity ?? 1) * 100"
+      <Field :controller="editor" label="Outline opacity (%)" :value="(s.strokeOpacity ?? 1) * 100"
         :min="0" :max="100" :step="1"
         @commit="edit({ strokeOpacity: +$event / 100 })" />
     </div>
-    <Field dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
+    <Field :controller="editor" dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
     <template v-if="area !== null">
       <label class="field">
         <span>Fill mode</span>
@@ -331,7 +337,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
             @blur="editor.finishProperty()"
             @keydown.esc.stop="editor.finishProperty(true)" />
         </label>
-        <Field label="Fill opacity (%)" :value="(s.fillOpacity ?? 0.05) * 100"
+        <Field :controller="editor" label="Fill opacity (%)" :value="(s.fillOpacity ?? 0.05) * 100"
           :min="0" :max="100" :step="1"
           @commit="fill({ fillOpacity: +$event / 100 })" />
       </div>
@@ -366,12 +372,12 @@ function vertex(i: number, axis: "x" | "y", v: string) {
             Smooth
           </button>
         </div>
-        <Field dimension
+        <Field :controller="editor" dimension
           :label="`Vertex ${i + 1} X`"
           :value="point.x"
           @commit="vertex(i, 'x', $event)"
         />
-        <Field dimension
+        <Field :controller="editor" dimension
           :label="`Vertex ${i + 1} Y`"
           :value="point.y"
           @commit="vertex(i, 'y', $event)"
