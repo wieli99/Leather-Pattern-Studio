@@ -961,7 +961,7 @@ test("wheel pans print pages and Ctrl wheel zooms", async ({ page }) => {
   const before = await canvas.evaluate((el) =>
     (el as HTMLCanvasElement).toDataURL(),
   );
-  const zoomLabel = page.locator(".print-status > span").last();
+  const zoomLabel = page.locator(".print-status > span").filter({ hasText: /^\d+%$/ });
   const zoom = await zoomLabel.innerText();
   await canvas.hover();
   await page.mouse.wheel(0, 80);
