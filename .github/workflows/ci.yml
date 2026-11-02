@@ -17,7 +17,7 @@ jobs:
         run: tools/dev/run.sh check
       - name: Validate deployment bundle
         run: tools/dev/run.sh npx --yes wrangler@4.156.2 deploy --dry-run
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: production-dist
           path: dist/
@@ -25,7 +25,7 @@ jobs:
           retention-days: 7
       - name: Browser reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-reports
           path: |
