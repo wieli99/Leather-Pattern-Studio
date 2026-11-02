@@ -1,3 +1,4 @@
+import { hitsTransformShaft } from "./transformUi";
 import {snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
@@ -2062,7 +2063,7 @@ export class Controller {
     return handles.find(
       (h) =>
         h.axis &&
-        distanceToSegment(raw, this.transformPivot, h.point) < 8 / this.zoom,
+        hitsTransformShaft(raw, this.transformPivot, h.point, this.zoom),
     );
   }
   private textEditingId?: string;

@@ -1,3 +1,8 @@
+import {
+  drawRotationGizmo,
+  drawPivotPoint,
+  drawTransformReadout,
+} from "./transformUi";
 import { isIndicator, indicatorGeometry } from "../model/indicators";
 import { measurementGeometry } from "../model/measurement";
 import { isClosedShape } from "../model/closedShape";
@@ -441,29 +446,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ? editor.handleAt(editor.cursor)
         : undefined;
       if (editor.transformTool === "rotate") {
-        ctx.strokeStyle = color(hovered?.kind === "rotate" ? "text" : "accent");
-        ctx.lineWidth = (hovered?.kind === "rotate" ? 3 : 2) / z;
-        ctx.beginPath();
-        ctx.arc(pivot.x, pivot.y, 60 / z, 0, Math.PI * 2);
-        ctx.stroke();
-        if (editor.transformValues.angle) {
-          ctx.save();
-          ctx.globalAlpha = 0.18;
-          ctx.fillStyle = color("accent");
-          ctx.beginPath();
-          ctx.moveTo(pivot.x, pivot.y);
-          ctx.arc(
-            pivot.x,
-            pivot.y,
-            60 / z,
-            0,
-            (editor.transformValues.angle * Math.PI) / 180,
-            editor.transformValues.angle < 0,
-          );
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        }
+        drawRotationGizmo(ctx, pivot, z, editor.transformValues.angle, hovered?.kind === "rotate", color("accent"), color("text"));
       }
       for (const handle of editor.handles()) {
         ctx.strokeStyle = ctx.fillStyle =
@@ -524,11 +507,12 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           );
         ctx.fill();
       }
-      if (editor.transformTool && editor.transformTool !== "corner") {
-        ctx.strokeStyle = color("accent");
-        ctx.beginPath();
-        ctx.arc(pivot.x, pivot.y, 3 / z, 0, Math.PI * 2);
-        ctx.stroke();
+      if (
+        editor.transformTool &&
+        editor.transformTool !== "corner" &&
+        editor.transformTool !== "rotate"
+      ) {
+        drawPivotPoint(ctx, pivot, z, color("accent"));
       }
     }
     const g = editor.gesture;
@@ -704,11 +688,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
           g.kind === "scale"
             ? `${((g.factor ?? 1) * 100).toFixed(1)}%`
             : editor.message.replace("Rotation ", "");
-      const width = ctx.measureText(text).width;
-      ctx.fillStyle = color("panel");
-      ctx.fillRect(point.x + 12, point.y - 24, width + 16, 23);
-      ctx.fillStyle = color("accent");
-      ctx.fillText(text, point.x + 20, point.y - 8);
+      drawTransformReadout(ctx, point, text, color("panel"), color("accent"));
     }
     ctx.save();
     ctx.strokeStyle = color("accent");

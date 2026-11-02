@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import {
+  drawRotationGizmo,
+  drawPivotPoint,
+  drawTransformReadout,
+  hitsTransformShaft,
+} from "../editor/transformUi";
+import { snapCandidates, smartSnap } from "../editor/snapping";
 import LengthInput from "./LengthInput.vue";
 import ObjectPreview from "./ObjectPreview.vue";
 const hoverPreview = ref<{ id?: string; x: number; y: number }>({ x: 0, y: 0 });
@@ -35,6 +42,7 @@ import { useEditor } from "./useEditor";
 import {
   paperFormats,
   printableSize,
+  validatePrintLayouts,
   printArtworkBounds,
   printTree,
   printRows,
@@ -131,12 +139,14 @@ const views = new Map<
 const snapOverlay = shallowRef<{ target?: Point; guides: SmartGuide[] }>({
   guides: [],
 });
+const rotationReadout = shallowRef<{ point: Point; angle: number }>();
 const preview = shallowRef<PrintLayout>(),
   error = ref(""),
   exporting = ref(false),
   busy = ref(false);
 const canManageObjects = computed(
-  () => !busy.value && tool.value === "select" && !preview.value,
+  () =>
+    !busy.value && !e.value.busy && tool.value === "select" && !preview.value,
 );
 const creating = ref(false),
   settingsId = ref(""),
@@ -184,7 +194,10 @@ function worldPixel(p: Point) {
   };
 }
 function gizmoAngle() {
-  const l = preview.value ?? layout.value;
+  const l =
+    tool.value === "mirror"
+      ? (numericBase ?? layout.value)
+      : (preview.value ?? layout.value);
   const ids = l ? printDescendants(l, selected.value) : [];
   return axes.value === "local" && ids.length === 1
     ? (l!.instances.find((i) => i.id === ids[0])!.rotation * Math.PI) / 180
@@ -202,9 +215,13 @@ function gizmoAt(p: Point) {
     const a = gizmoAngle();
     const x = dx * Math.cos(a) + dy * Math.sin(a),
       y = -dx * Math.sin(a) + dy * Math.cos(a);
-    if (Math.hypot(x - 72, y) < 12) return "x";
-    if (Math.hypot(x, y + 72) < 12) return "y";
-    if (Math.hypot(x, y) < 12) return "move";
+    if (Math.hypot(x - 72, y) < 10) return "x";
+    if (Math.hypot(x, y + 72) < 10) return "y";
+    if (Math.hypot(x, y) < 10) return "move";
+    if (hitsTransformShaft({ x, y }, { x: 0, y: 0 }, { x: 72, y: 0 }))
+      return "x";
+    if (hitsTransformShaft({ x, y }, { x: 0, y: 0 }, { x: 0, y: -72 }))
+      return "y";
   }
 }
 function chooseTool(value: "select" | "move" | "rotate" | "mirror") {
@@ -254,6 +271,11 @@ watch(
   { flush: "sync" },
 );
 function rebaseNumeric() {
+  if (tool.value === "mirror") {
+    numericOrientation = gizmoAngle();
+    refreshPrintMirror();
+    return;
+  }
   numericBase = preview.value ?? layout.value;
   numericPivot = selectionPivot();
   numericOrientation = gizmoAngle();
@@ -316,6 +338,7 @@ function clearControl() {
 }
 let marqueePixel: Point | undefined;
 function cancel() {
+  rotationReadout.value = undefined;
   if (moveFrame) cancelAnimationFrame(moveFrame);
   moveFrame = 0;
   pendingMove = undefined;
@@ -328,6 +351,8 @@ function cancel() {
   tool.value = "select";
   customPivot.value = undefined;
   mirrorHover.value = undefined;
+  activeMirror = undefined;
+  hoverHandle.value = undefined;
   placingPivot.value = false;
   if (sourcePointer || sourceImport) sourceEnd();
   if (pageGesture) selectedPages.value = pageGesture.selection;
@@ -662,6 +687,10 @@ function select(id: string, event?: MouseEvent, canvasClick = false) {
         event,
       );
   draw();
+}
+function openPrintObjectMenu(id: string) {
+  if (!canManageObjects.value || editor.busy) return;
+  if (!selected.value.includes(id)) select(id);
 }
 function selectSource(id: string, event: MouseEvent) {
   selectedSources.value = sourceSelection.select(
@@ -1489,8 +1518,9 @@ async function paintFrame() {
       for (const offset of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
         const dx = Math.cos(angle + offset) * 1000,
           dy = Math.sin(angle + offset) * 1000;
-        const a = worldPixel({ x: pivot.x - dx, y: pivot.y - dy }),
-          b = worldPixel({ x: pivot.x + dx, y: pivot.y + dy });
+        const origin = worldPixel(pivot);
+        const a = { x: origin.x - dx, y: origin.y - dy },
+          b = { x: origin.x + dx, y: origin.y + dy };
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -1498,15 +1528,56 @@ async function paintFrame() {
       }
       ctx.restore();
     }
-    if (mirrorHover.value && tool.value === "mirror") {
-      const a = worldPixel(mirrorHover.value[0]),
-        b = worldPixel(mirrorHover.value[1]);
+    if (activeMirror && tool.value === "mirror") {
+      const [a, b] =
+        activeMirror.offset === undefined
+          ? activeMirror.line.map(worldPixel)
+          : axisPixels(activeMirror.offset);
+      ctx.save();
+      ctx.strokeStyle = "#be123c";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (
+      mirrorHover.value &&
+      tool.value === "mirror" &&
+      !placingPivot.value &&
+      !editor.space
+    ) {
+      const projected =
+        hoverMirrorOffset === undefined
+          ? mirrorHover.value.map(worldPixel)
+          : axisPixels(hoverMirrorOffset);
+      const [a, b] = projected;
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
       ctx.strokeStyle = "#9a3412";
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
+    }
+    if (
+      tool.value === "mirror" &&
+      selected.value.length &&
+      movableSelection().length
+    ) {
+      drawPivotPoint(
+        ctx,
+        worldPixel(selectionPivot()),
+        1,
+        css.getPropertyValue("--accent").trim() || "#e6b07c",
+      );
     }
     if (
       selected.value.length &&
@@ -1520,12 +1591,17 @@ async function paintFrame() {
       ctx.fillStyle = ctx.strokeStyle;
       ctx.lineWidth = 1.5;
       if (tool.value !== "move") {
-        ctx.beginPath();
-        ctx.arc(0, 0, 60, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(60, 0, 5, 0, Math.PI * 2);
-        ctx.fill();
+        drawRotationGizmo(
+          ctx,
+          { x: 0, y: 0 },
+          1,
+          tool.value === "rotate"
+            ? Number(turn.value) || 0
+            : (drag?.accumulated ?? 0),
+          hoverHandle.value === "rotate",
+          css.getPropertyValue("--accent").trim() || "#e6b07c",
+          foreground,
+        );
       } else {
         ctx.rotate(gizmoAngle());
         ctx.beginPath();
@@ -1543,6 +1619,15 @@ async function paintFrame() {
         ctx.fillRect(-4, -4, 8, 8);
       }
       ctx.restore();
+    }
+    if (rotationReadout.value) {
+      drawTransformReadout(
+        ctx,
+        rotationReadout.value.point,
+        `${rotationReadout.value.angle.toFixed(1)}°`,
+        background,
+        css.getPropertyValue("--accent").trim() || "#e6b07c",
+      );
     }
     if (drag?.marquee && marqueePixel) {
       ctx.strokeStyle = css.getPropertyValue("--accent").trim() || "#e6b07c";
@@ -1567,13 +1652,63 @@ async function paintFrame() {
     if (token === generation) error.value = String(reason);
   }
 }
+const hoverHandle = ref<string>();
+const printCursor = computed(() =>
+  placingPivot.value
+    ? "crosshair"
+    : mirrorHover.value && tool.value === "mirror"
+      ? "pointer"
+      : hoverHandle.value === "rotate"
+        ? "grab"
+        : hoverHandle.value
+          ? "move"
+          : undefined,
+);
+let hoverMirrorOffset: number | undefined;
+let activeMirror: { offset?: number; line: [Point, Point] } | undefined;
+function axisPixels(offset: number): [Point, Point] {
+  const p = worldPixel(selectionPivot()),
+    a = gizmoAngle() + offset;
+  const length =
+    Math.max(
+      canvas.value?.clientWidth ?? 1000,
+      canvas.value?.clientHeight ?? 1000,
+    ) * 2;
+  return [
+    { x: p.x - Math.cos(a) * length, y: p.y - Math.sin(a) * length },
+    { x: p.x + Math.cos(a) * length, y: p.y + Math.sin(a) * length },
+  ];
+}
+function refreshPrintMirror() {
+  if (!numericBase || !activeMirror) return;
+  const pivot = selectionPivot(),
+    angle = gizmoAngle() + (activeMirror.offset ?? 0);
+  const line =
+    activeMirror.offset === undefined
+      ? activeMirror.line
+      : [pivot, { x: pivot.x + Math.cos(angle), y: pivot.y + Math.sin(angle) }];
+  preview.value = mirrorPrintNodes(
+    numericBase,
+    movableSelection(),
+    line[0],
+    (Math.atan2(line[1].y - line[0].y, line[1].x - line[0].x) * 180) / Math.PI,
+  );
+  draw();
+}
 const mirrorHover = shallowRef<[Point, Point]>();
-function mirrorTarget(p: Point): [Point, Point] | undefined {
+function mirrorTarget(
+  p: Point,
+  screen = worldPixel(p),
+): [Point, Point] | undefined {
   const base = numericBase ?? layout.value;
   if (!base) return;
   const pivot = selectionPivot(),
     angle = gizmoAngle();
-  const candidates: { line: [Point, Point]; distance: number }[] = [];
+  const candidates: {
+    line: [Point, Point];
+    distance: number;
+    offset?: number;
+  }[] = [];
   for (const item of resolvedPrintItems(editor.document, base)) {
     if (item.hidden) continue;
     for (const line of boundary(item.shape, base.units).lines) {
@@ -1586,24 +1721,29 @@ function mirrorTarget(p: Point): [Point, Point] | undefined {
       const dx = Math.cos(angle + offset),
         dy = Math.sin(angle + offset);
       candidates.push({
-        line: [pivot, { x: pivot.x + dx * 1000, y: pivot.y + dy * 1000 }],
-        distance: Math.abs((p.x - pivot.x) * dy - (p.y - pivot.y) * dx),
+        line: [
+          { x: pivot.x - dx * 1000, y: pivot.y - dy * 1000 },
+          { x: pivot.x + dx * 1000, y: pivot.y + dy * 1000 },
+        ],
+        offset,
+        distance:
+          Math.abs(
+            (screen.x - worldPixel(pivot).x) * dy -
+              (screen.y - worldPixel(pivot).y) * dx,
+          ) / zoom.value,
       });
     }
   }
-  return candidates
+  const best = candidates
     .filter((c) => c.distance <= 8 / zoom.value)
-    .sort((a, b) => a.distance - b.distance)[0]?.line;
+    .sort((a, b) => a.distance - b.distance)[0];
+  hoverMirrorOffset = best?.offset;
+  return best?.line;
 }
 function applyMirror(line: [Point, Point]) {
   if (!numericBase || !movableSelection().length) return;
-  preview.value = mirrorPrintNodes(
-    numericBase,
-    movableSelection(),
-    line[0],
-    (Math.atan2(line[1].y - line[0].y, line[1].x - line[0].x) * 180) / Math.PI,
-  );
-  draw();
+  activeMirror = { line, offset: hoverMirrorOffset };
+  refreshPrintMirror();
 }
 function contextMenu(event: MouseEvent) {
   if (!event.altKey) {
@@ -1703,7 +1843,40 @@ function down(event: PointerEvent) {
     world = worldFromPixel(p),
     l = preview.value ?? layout.value!;
   if (placingPivot.value) {
-    customPivot.value = world;
+    let pivot = world;
+    if (!event.altKey) {
+      const shapes = resolvedPrintItems(editor.document, l)
+        .filter((i) => !i.hidden)
+        .map((i) => i.shape);
+      const candidates = objectSnap.value
+        ? shapes
+            .flatMap(snapCandidates)
+            .map((c) => c.point)
+            .filter(
+              (q) => Math.hypot(q.x - world.x, q.y - world.y) <= 8 / zoom.value,
+            )
+            .sort(
+              (a, b) =>
+                Math.hypot(a.x - world.x, a.y - world.y) -
+                Math.hypot(b.x - world.x, b.y - world.y),
+            )
+        : [];
+      const aligned = objectSnap.value
+        ? smartSnap(world, shapes, 8 / zoom.value)
+        : { point: world, guides: [] };
+      pivot =
+        candidates[0] ??
+        (aligned.guides.length
+          ? aligned.point
+          : snap.value
+            ? {
+                x: Math.round(world.x / editor.gridSize) * editor.gridSize,
+                y: Math.round(world.y / editor.gridSize) * editor.gridSize,
+              }
+            : world);
+    }
+    customPivot.value = pivot;
+    mirrorHover.value = undefined;
     rebaseNumeric();
     placingPivot.value = false;
     draw();
@@ -1715,7 +1888,7 @@ function down(event: PointerEvent) {
     event.button === 0 &&
     !editor.space
   ) {
-    const target = mirrorTarget(world);
+    const target = mirrorTarget(world, p);
     if (target) applyMirror(target);
     return;
   }
@@ -1844,12 +2017,22 @@ function flushMove() {
   if (event) moveNow(event);
 }
 function move(event: PointerEvent) {
+  clipboardPixel = pixel(event);
   pendingMove = event;
   if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
 }
 function moveNow(event: PointerEvent) {
-  if (tool.value === "mirror" && !drag) {
-    mirrorHover.value = mirrorTarget(worldFromPixel(pixel(event)));
+  hoverHandle.value = placingPivot.value ? undefined : gizmoAt(pixel(event));
+  if (
+    tool.value === "mirror" &&
+    !drag &&
+    !placingPivot.value &&
+    !editor.space
+  ) {
+    mirrorHover.value = mirrorTarget(
+      worldFromPixel(pixel(event)),
+      pixel(event),
+    );
     draw();
   }
   if (pageGesture) {
@@ -1958,6 +2141,10 @@ function moveNow(event: PointerEvent) {
       );
     drag.lastAngle = theta;
     angle = snapRotation(drag.accumulated, event);
+    rotationReadout.value = {
+      point: p,
+      angle: (drag.numericStart?.angle ?? 0) + angle,
+    };
     dx = dy = 0;
   } else {
     if (!event.altKey) {
@@ -2028,6 +2215,7 @@ function moveNow(event: PointerEvent) {
 }
 async function up() {
   flushMove();
+  rotationReadout.value = undefined;
   snapOverlay.value = { guides: [] };
   if (pageGesture) {
     const g = pageGesture,
@@ -2143,6 +2331,116 @@ function fit() {
   };
   void draw();
 }
+let clipboardPixel: Point | undefined;
+function printClipboard(event: ClipboardEvent) {
+  const target = event.target as HTMLElement;
+  if (
+    !layout.value ||
+    !clipboardPixel ||
+    !canManageObjects.value ||
+    drag ||
+    pageGesture ||
+    sourcePointer ||
+    event.defaultPrevented ||
+    target.closest?.("input,textarea,select,[contenteditable=true]") ||
+    document.querySelector("[role=dialog]")
+  )
+    return;
+  const l = layout.value;
+  if (event.type === "copy") {
+    if (!selected.value.length || !event.clipboardData) return;
+    const chosen = new Set(selected.value),
+      ids = new Set(printDescendants(l, selected.value));
+    function roots(nodes: PrintNode[]): PrintNode[] {
+      return nodes.flatMap((n) =>
+        chosen.has(n.id) ? [n] : n.kind === "group" ? roots(n.children) : [],
+      );
+    }
+    const tree = roots(printTree(l));
+    if (!tree.length) return;
+    const snapshot = {
+      ...l,
+      tree,
+      instances: l.instances.filter((i) => ids.has(i.id)),
+    };
+    event.clipboardData.setData(
+      "text/plain",
+      JSON.stringify({
+        format: "leather-pattern-designer-print-clipboard",
+        version: 1,
+        anchor: worldFromPixel(clipboardPixel),
+        layout: snapshot,
+      }),
+    );
+    event.preventDefault();
+  } else if (event.type === "paste") {
+    let payload;
+    try {
+      payload = JSON.parse(event.clipboardData?.getData("text/plain") ?? "");
+    } catch {
+      return;
+    }
+    if (payload?.format !== "leather-pattern-designer-print-clipboard") return;
+    event.preventDefault();
+    try {
+      if (
+        payload.version !== 1 ||
+        !Number.isFinite(payload.anchor?.x) ||
+        !Number.isFinite(payload.anchor?.y)
+      )
+        throw Error("Invalid print clipboard");
+      const source = validatePrintLayouts([payload.layout])[0];
+      if (
+        source.instances.some(
+          (i) => !editor.document.shapes.some((s) => s.id === i.sourceId),
+        )
+      )
+        throw Error("Print clipboard sources are missing from this project");
+      const point = worldFromPixel(clipboardPixel),
+        shifted = transformPrintNodes(
+          source,
+          printTree(source).map((n) => n.id),
+          point.x - payload.anchor.x,
+          point.y - payload.anchor.y,
+          0,
+        );
+      const ids = new Map(
+        shifted.instances.map((i) => [i.id, crypto.randomUUID()]),
+      );
+      function remap(nodes: PrintNode[]): PrintNode[] {
+        return nodes.map((n) =>
+          n.kind === "instance"
+            ? { ...n, id: ids.get(n.id)! }
+            : {
+                ...n,
+                id: crypto.randomUUID(),
+                locked: false,
+                children: remap(n.children),
+              },
+        );
+      }
+      const tree = remap(printTree(shifted));
+      const instances = shifted.instances.map((i) => ({
+        ...i,
+        id: ids.get(i.id)!,
+        locked: false,
+        name: `${i.name ?? editor.document.shapes.find((s) => s.id === i.sourceId)?.name ?? "Object"} copy`,
+      }));
+      void save({
+        ...l,
+        tree: [...tree, ...printTree(l)],
+        instances: [...l.instances, ...instances],
+      }).then(() => {
+        if (!error.value) {
+          selected.value = tree.map((n) => n.id);
+          draw();
+        }
+      });
+    } catch (reason) {
+      error.value = String(reason);
+    }
+  }
+}
 function keyboard(event: KeyboardEvent) {
   if (layout.value && event.key === "Control") {
     controlHeld.value = true;
@@ -2190,7 +2488,6 @@ function keyboard(event: KeyboardEvent) {
   }
   if (key === "escape") {
     cancel();
-    selected.value = [];
     tool.value = "select";
     return;
   }
@@ -2202,6 +2499,7 @@ function keyboard(event: KeyboardEvent) {
     void draw();
     return;
   }
+  if (mod && (key === "c" || key === "v")) return;
   if (mod && key === "d") {
     event.preventDefault();
     duplicate();
@@ -2231,10 +2529,10 @@ function keyboard(event: KeyboardEvent) {
     fit();
     return;
   }
-  if (key === "g") chooseTool("move");
-  if (key === "e") chooseTool("rotate");
-  if (key === "m") chooseTool("mirror");
-  if (key === "v") {
+  if (!mod && !event.shiftKey && key === "g") chooseTool("move");
+  if (!mod && !event.shiftKey && key === "e") chooseTool("rotate");
+  if (!mod && !event.shiftKey && key === "m") chooseTool("mirror");
+  if (!mod && !event.shiftKey && key === "v") {
     if (tool.value !== "select") placingPivot.value = true;
     else chooseTool("select");
   }
@@ -2275,6 +2573,8 @@ onMounted(() => {
     void draw();
   });
   window.addEventListener("keydown", keyboard);
+  window.addEventListener("copy", printClipboard);
+  window.addEventListener("paste", printClipboard);
   window.addEventListener("blur", clearControl);
   window.addEventListener("keyup", controlUp);
 });
@@ -2294,6 +2594,8 @@ onUnmounted(() => {
   observer?.disconnect();
   unsubscribe?.();
   window.removeEventListener("keydown", keyboard);
+  window.removeEventListener("copy", printClipboard);
+  window.removeEventListener("paste", printClipboard);
   window.removeEventListener("blur", clearControl);
   window.removeEventListener("keyup", controlUp);
   editor.printLayoutActive = false;
@@ -2523,6 +2825,14 @@ defineExpose({
         ref="canvas"
         aria-label="Print layout canvas"
         tabindex="0"
+        @pointerenter="clipboardPixel = pixel($event)"
+        @pointerleave="
+          clipboardPixel = undefined;
+          hoverHandle = undefined;
+          mirrorHover = undefined;
+          draw();
+        "
+        :style="{ cursor: printCursor }"
         @pointerdown="down"
         @pointermove="move"
         @pointerup="up"
@@ -2700,24 +3010,6 @@ defineExpose({
         title="Print objects"
         class="sidebar-section print-object-section"
       >
-        <div class="print-actions">
-          <button
-            :disabled="!selected.length || !canManageObjects"
-            @click="duplicate"
-          >
-            Duplicate</button
-          ><button
-            :disabled="!selected.length || !canManageObjects"
-            @click="newGroup"
-          >
-            Group</button
-          ><button
-            :disabled="!selected.length || !canManageObjects"
-            @click="deleteSelection"
-          >
-            Delete
-          </button>
-        </div>
         <div
           class="print-list"
           aria-label="Print object tree"
@@ -2752,14 +3044,42 @@ defineExpose({
               @keydown.enter="renameFinish"
               @blur="renameFinish"
               @keydown.esc="renameId = ''"
-            /><button
-              v-else
-              class="print-object-name"
-              :aria-pressed="selected.includes(row.node.id)"
-              @click="select(row.node.id, $event)"
-              @dblclick="renameStart(row.node)"
-            >
-              {{ nodeName(row.node) }}</button
+            /><ContextMenuRoot v-else>
+              <ContextMenuTrigger
+                as-child
+                @contextmenu="openPrintObjectMenu(row.node.id)"
+              >
+                <button
+                  class="print-object-name"
+                  :aria-pressed="selected.includes(row.node.id)"
+                  @click="select(row.node.id, $event)"
+                  @dblclick="renameStart(row.node)"
+                >
+                  {{ nodeName(row.node) }}
+                </button>
+              </ContextMenuTrigger>
+              <ContextMenuPortal
+                ><ContextMenuContent
+                  class="object-context-menu"
+                  @keydown.esc.stop
+                >
+                  <ContextMenuItem
+                    :disabled="!canManageObjects || !selected.length"
+                    @select="duplicate"
+                    >Duplicate</ContextMenuItem
+                  >
+                  <ContextMenuItem
+                    :disabled="!canManageObjects || !movableSelection().length"
+                    @select="newGroup"
+                    >Group</ContextMenuItem
+                  >
+                  <ContextMenuItem
+                    :disabled="!canManageObjects || !movableSelection().length"
+                    @select="deleteSelection"
+                    >Delete</ContextMenuItem
+                  >
+                </ContextMenuContent></ContextMenuPortal
+              > </ContextMenuRoot
             ><button
               :aria-label="`${row.hidden ? 'Show' : 'Hide'} print ${nodeName(row.node)}`"
               :disabled="!canManageObjects"
@@ -3021,6 +3341,9 @@ h3 {
   overflow: auto;
   border: 1px solid var(--border, #555);
   border-radius: 4px;
+}
+.print-list > p {
+  margin: 12px;
 }
 .print-list > div {
   display: flex;

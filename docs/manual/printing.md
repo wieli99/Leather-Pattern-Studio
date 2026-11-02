@@ -25,17 +25,20 @@ Hover an object or folder in either Grid objects panel to preview its source art
 
 ![Source folder hover preview](/manual/images/object-hover-preview.png)
 
-The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. Rotation uses Grid’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
+The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move arrow shafts and tips both support dragging, with the same cursor feedback as Grid. V or Set pivot enters crosshair placement; snapping and Alt bypass also apply to pivots. Mirror axes pass through the pivot on screen, including near page gutters. Changing the Mirror pivot or axes refreshes its preview without accumulating reflections. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. The small center circle marks the pivot in Rotate and Mirror. During a rotation drag, a degree readout follows the pointer, matching Grid. The rotation ring matches Grid: hovering highlights it, and a translucent sector shows the preview angle. Rotation uses Grid’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
 
 - **Hide** and **Lock** affect only print instances. Grid visibility and locking are independent.
-- **Duplicate** creates another linked copy. **Group** groups selected siblings.
+- Ctrl/⌘+C copies selected print placements; Ctrl/⌘+V pastes linked copies at the pointer, preserving their offsets from the pointer at copy time, just like Grid. Keep the pointer over the print canvas and finish active edits first. Copies can be pasted into another print tab in the same project.
+- Right-click a Print objects entry for **Duplicate**, **Group**, and **Delete**. Right-clicking a selected entry preserves the selection; right-clicking another entry selects it. **Duplicate** creates another linked copy. **Group** groups selected siblings.
 - Double-click a row name to rename it locally.
 - Drag rows onto a folder to put them inside it, or onto an object to place them before it. Drop on the empty panel area to move a free item to the top level. Linked children remain within their imported-folder boundary.
 - **Delete** removes print placements. Removing a child from an imported folder suppresses it for that import, so future source edits do not immediately restore it. Import again to obtain another copy.
 
-Choose **Mirror (M)** to reflect selected placements. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Grid. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
+Choose **Mirror (M)** to reflect selected placements. Hovering either side of a mirror axis highlights the full line through the pivot. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Grid. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
 
 ![Mirror tool with axis choices and linked artwork preview](/manual/images/print-mirror.png)
+
+![Print object context menu](/manual/images/print-object-menu.png)
 
 Source geometry, dimensions, text, images, styles, and stitching remain linked. Moving or rotating a source on Grid does not move or rotate existing print placements. Deleting a source removes its print copies in the same undo step. Undo/redo is shared across Grid and all print tabs.
 
@@ -44,6 +47,8 @@ Geometry edits, new drawing tools, scaling, and styling paste are unavailable in
 ![Print layout with linked source and print object panels, inch rulers, dimensions, stitching, and images](/manual/images/print-layout.png)
 
 ![Select-mode rotation ring](/manual/images/print-gizmo.png)
+
+![Rotation preview with degree readout](/manual/images/print-rotation-readout.png)
 
 ## Pages and assembly
 

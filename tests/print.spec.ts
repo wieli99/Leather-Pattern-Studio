@@ -813,6 +813,7 @@ test("Select rotation ring uses Grid modifiers and Escape cancels its preview", 
     box.y + 347 + 60 * Math.sin((48 * Math.PI) / 180),
     { steps: 6 },
   );
+  await page.screenshot({ path: "test-results/print-rotation-readout.png" });
   await page.mouse.up();
   await page.keyboard.up("Control");
   expect((await save(page)).printLayouts[0].instances[0].rotation).toBeCloseTo(
@@ -936,4 +937,188 @@ test("print tab context menu targets its tab and drag reorders saved layouts", a
   expect(
     (await save(page)).printLayouts.map((l: { name: string }) => l.name),
   ).toEqual(["A4 2", "A4"]);
+});
+
+test("print object actions live in the shared context menu", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  const tree = page.getByLabel("Print object tree");
+  const empty = tree.getByText("Import objects or folders from Grid.");
+  await expect(empty).toHaveCSS("margin-left", "12px");
+  await expect(
+    page.getByRole("button", { name: "Duplicate", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await tree
+    .getByRole("button", { name: "Piece", exact: true })
+    .click({ button: "right" });
+  await expect(page.locator(".object-context-menu")).toBeVisible();
+  await page.screenshot({ path: "test-results/print-object-menu.png" });
+  await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
+  await expect(
+    tree.getByRole("button", { name: "Piece", exact: true }),
+  ).toHaveCount(2);
+  await tree
+    .getByRole("button", { name: "Piece", exact: true })
+    .first()
+    .click();
+  await tree
+    .getByRole("button", { name: "Piece", exact: true })
+    .last()
+    .click({ modifiers: ["Control"] });
+  await tree
+    .getByRole("button", { name: "Piece", exact: true })
+    .first()
+    .click({ button: "right" });
+  await expect(
+    tree.locator('.print-object-name[aria-pressed="true"]'),
+  ).toHaveCount(2);
+  await page.getByRole("menuitem", { name: "Group", exact: true }).click();
+  await tree
+    .getByRole("button", { name: "Group", exact: true })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  await expect(empty).toBeVisible();
+  await page.getByLabel("Print layout canvas").focus();
+  await page.keyboard.press("Control+z");
+  await expect(
+    tree.getByRole("button", { name: "Group", exact: true }),
+  ).toBeVisible();
+});
+
+test("print clipboard preserves pointer offsets and creates linked copies", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  const tree = page.getByLabel("Print object tree"),
+    canvas = page.getByLabel("Print layout canvas");
+  const original = (await save(page)).printLayouts[0].instances[0];
+  await tree.getByRole("button", { name: "Piece", exact: true }).click();
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + 200, box.y + 400);
+  const text = await canvas.evaluate((el) => {
+    const data = new DataTransfer();
+    const event = new ClipboardEvent("copy", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, "clipboardData", { value: data });
+    el.dispatchEvent(event);
+    return data.getData("text/plain");
+  });
+  expect(JSON.parse(text).format).toBe(
+    "leather-pattern-designer-print-clipboard",
+  );
+  await page.mouse.move(box.x + 240, box.y + 430);
+  await canvas.evaluate((el, text) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    const event = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, "clipboardData", { value: data });
+    el.dispatchEvent(event);
+  }, text);
+  await expect(
+    tree.getByRole("button", { name: "Piece copy", exact: true }),
+  ).toBeVisible();
+  const doc = await save(page),
+    copy = doc.printLayouts[0].instances.find(
+      (i: { id: string }) => i.id !== original.id,
+    );
+  expect(copy.sourceId).toBe(original.sourceId);
+  expect(copy.x - original.x).toBeCloseTo(20, 0);
+  expect(copy.y - original.y).toBeCloseTo(15, 0);
+  expect(doc.shapes).toHaveLength(1);
+  await canvas.focus();
+  await page.keyboard.press("Control+z");
+  await expect(
+    tree.getByRole("button", { name: "Piece copy", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("mirror hover highlights both halves of an axis", async ({ page }) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  const doc = await save(page),
+    item = doc.printLayouts[0].instances[0];
+  await page
+    .getByLabel("Print object tree")
+    .getByRole("button", { name: "Piece", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Mirror (M)", exact: true }).click();
+  const canvas = page.getByLabel("Print layout canvas"),
+    box = (await canvas.boundingBox())!;
+  const x = 50 + (10 + item.x) * 2,
+    y = 50 + (10 + item.y) * 2;
+  for (const side of [-1, 1]) {
+    await page.mouse.move(box.x + x + side * 90, box.y + y);
+    await expect
+      .poll(() =>
+        canvas.evaluate(
+          (el, p) => {
+            const c = el as HTMLCanvasElement,
+              scale = c.width / c.clientWidth;
+            return [-1, 1].every((sign) => {
+              const pixels = c
+                .getContext("2d")!
+                .getImageData(
+                  Math.round((p.x + sign * 90) * scale) - 2,
+                  Math.round(p.y * scale) - 2,
+                  5,
+                  5,
+                ).data;
+              for (let i = 0; i < pixels.length; i += 4)
+                if (
+                  pixels[i] > 100 &&
+                  pixels[i] > pixels[i + 1] * 1.5 &&
+                  pixels[i] > pixels[i + 2] * 1.5
+                )
+                  return true;
+              return false;
+            });
+          },
+          { x, y },
+        ),
+      )
+      .toBe(true);
+    await page.screenshot({ path: "test-results/print-mirror.png" });
+  }
+});
+
+test("print Move shafts drag and pivot placement uses a crosshair", async ({
+  page,
+}) => {
+  await load(page);
+  await create(page);
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  const item = (await save(page)).printLayouts[0].instances[0];
+  await page
+    .getByLabel("Print object tree")
+    .getByRole("button", { name: "Piece", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Move (G)", exact: true }).click();
+  const canvas = page.getByLabel("Print layout canvas"),
+    box = (await canvas.boundingBox())!;
+  const x = 50 + (10 + item.x) * 2,
+    y = 50 + (10 + item.y) * 2;
+  await page.mouse.move(box.x + x + 36, box.y + y);
+  await expect(canvas).toHaveCSS("cursor", "move");
+  await page.mouse.down();
+  await page.mouse.move(box.x + x + 56, box.y + y, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByLabel("Print move X")).not.toHaveValue("0.00");
+  await canvas.focus();
+  await page.keyboard.press("v");
+  await expect(canvas).toHaveCSS("cursor", "crosshair");
+  await page.mouse.click(box.x + x + 20, box.y + y + 80);
+  await expect(canvas).not.toHaveCSS("cursor", "crosshair");
+  await page.keyboard.press("Escape");
+  expect((await save(page)).printLayouts[0].instances[0].x).toBeCloseTo(item.x);
 });
