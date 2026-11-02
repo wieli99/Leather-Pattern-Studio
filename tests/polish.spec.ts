@@ -503,3 +503,33 @@ test("state buttons work on unselected rows and recover after editing", async ({
   await hide.click();
   await expect(page.getByRole("button", { name: "Rectangle 1", exact: true })).toHaveClass(/selected/);
 });
+
+for (const staleAnchor of [false, true]) {
+  test(`new objects anchor panel ranges (previous anchor: ${staleAnchor})`, async ({ page }) => {
+    await ready(page);
+    await mode(page, "Rectangle", "Corner rectangle");
+    const rows = page.locator(".objects .object-select");
+    for (let i = 0; i < 3; i++) {
+      await expect(rows).toHaveCount(i);
+      await page.waitForTimeout(350); // Keep consecutive drawings separate from double-click gestures.
+      await points(page, [{ x: 180 + i * 90, y: 220 }, { x: 240 + i * 90, y: 280 }]);
+    }
+    await expect(rows).toHaveCount(3);
+    await page.waitForTimeout(350);
+    if (staleAnchor) {
+      await rows.last().click();
+      await mode(page, "Rectangle", "Corner rectangle");
+    }
+    await points(page, [{ x: 180, y: 340 }, { x: 240, y: 400 }]);
+    await expect(rows).toHaveCount(4);
+    await expect(rows.first()).toHaveClass(/selected/);
+    await rows.last().click({ modifiers: ["Shift"] });
+    await expect(page.locator(".objects .object-select.selected")).toHaveCount(4);
+    await rows.nth(1).click({ modifiers: ["Shift"] });
+    await expect(page.locator(".objects .object-select.selected")).toHaveCount(2);
+    await rows.last().click({ modifiers: ["Shift"] });
+    await expect(page.locator(".objects .object-select.selected")).toHaveCount(4);
+    await rows.nth(1).click({ modifiers: ["Control"] });
+    await expect(page.locator(".objects .object-select.selected")).toHaveCount(3);
+  });
+}

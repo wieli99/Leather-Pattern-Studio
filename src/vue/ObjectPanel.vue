@@ -328,6 +328,8 @@ function capture(event: MouseEvent) {
           }),
     )
     .map((r) => r.node.id);
+  // Creation and canvas selection can replace the selection without a panel click.
+  if (current.length === 1) panelSelection.anchor = current[0];
   const picked = panelSelection.select(
     rows.value.map((r) => r.node.id),
     current,
