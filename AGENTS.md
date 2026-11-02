@@ -1,4 +1,4 @@
-# Repository Guidelines
+# Contributor and Agent Guidelines
 
 ## Project Structure & Module Organization
 
@@ -6,7 +6,7 @@
 
 ## Build, Test, and Development Commands
 
-Use **Podman** for servers, dependency installation, builds, and tests. This Bluefin host is immutable; do not install toolchains on the host.
+Prefer the provided **Podman** workflow for a reproducible Node.js, Rust/Wasm, and browser-test environment matching CI. It requires Bash and a working Podman installation. Contributors may use an equivalent local environment; use `tools/dev/Containerfile` and `package-lock.json` as the toolchain and dependency references. Do not assume a particular operating system or install system tools without the contributor's agreement.
 
 - `tools/dev/run.sh dev`: install locked dependencies, generate Wasm, and serve at `http://127.0.0.1:5174`.
 - `tools/dev/run.sh check`: run Rust tests, production build, unit tests, and three-engine browser tests.
@@ -25,8 +25,18 @@ Run Vitest unit tests, Rust tests, and Playwright acceptance tests for meaningfu
 
 ## Commits & Pull Requests
 
-No established Git history convention exists. Use concise imperative commit subjects. PRs should describe resulting behavior, validation, remaining limitations, and linked issues. Include screenshots for UI changes. Do not claim completion based only on a successful build.
+Use concise imperative commit subjects. Keep changes focused and avoid unrelated generated artifacts. PRs should describe resulting behavior, validation, remaining limitations, and linked issues. Include screenshots for UI changes. Do not claim completion based only on a successful build.
 
 ## User manual maintenance
 
 Keep `docs/manual/` updated with every user-visible behavior change in the same change. Update affected procedures, shortcut references, and screenshots. Verify internal links and instructions against the implementation before reporting completion. The bundled manual is opened through the ? link and must remain available offline.
+
+## Development and releases
+
+Follow [the development and release workflow](docs/deployment.md) when preparing branches, dependency updates, or releases. Create feature/fix branches from updated `dev` and submit PRs to `dev`. External contributors should work in a fork and target the upstream `dev` branch. Maintainers use `dev` → `main` PRs for releases. Both branches require passing checks. Every successful `main` push deploys to Cloudflare, so treat merging a release PR as publishing.
+
+Use semantic versioning by convention. Before a release, prepare a separate version-bump commit on a branch from `dev`, updating `package.json` and `package-lock.json` together with `tools/dev/run.sh npm version patch --no-git-tag-version` (or `minor`, `major`, or an explicit version). Merge it through a PR into `dev` before opening the release PR. Release preparation is a maintainer responsibility; ordinary contribution PRs do not need version bumps. Versions, tags, and GitHub Releases are not generated automatically. Do not change the Rust document/file-format version merely to bump the application release version.
+
+## Security and credentials
+
+Never commit API tokens, credentials, or local environment secrets. Cloudflare deployment credentials belong in the upstream repository's GitHub production environment; they are not needed to develop or test contributions. Review dependency updates and security findings before merging. Security scanning and deployment settings are documented in [docs/deployment.md](docs/deployment.md).
