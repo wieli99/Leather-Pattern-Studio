@@ -15,7 +15,7 @@ function previewRow(event: PointerEvent, id: string) {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   hoverPreview.value = { id, x: rect.left, y: rect.top };
 }
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import {
   ContextMenuRoot,
   ContextMenuTrigger,
@@ -459,7 +459,15 @@ function keyboardMove(event: KeyboardEvent, id: string) {
             v-model="draft"
             aria-label="Rename group"
             maxlength="200"
-            :ref="(el) => (el as HTMLInputElement | null)?.focus()"
+            :ref="(el) => {
+              const input = el as HTMLInputElement | null;
+              if (input && input !== input.ownerDocument.activeElement) {
+                void nextTick(() => {
+                  input.focus();
+                  input.select();
+                });
+              }
+            }"
             @blur="finish()"
             @keydown.stop
             @keydown.enter.prevent="finish()"

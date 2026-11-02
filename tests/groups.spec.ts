@@ -156,9 +156,16 @@ test("drag reorders objects, reparents into collapsed groups, and supports keybo
 test("new empty group, rename, delete and undo", async ({ page }) => {
   await load(page);
   await page.getByRole("button", { name: "New Group", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "Rename group", exact: true })
-    .fill("Wallet");
+  const name = page.getByRole("textbox", { name: "Rename group", exact: true });
+  await expect(name).toBeFocused();
+  await expect
+    .poll(() =>
+      name.evaluate((input: HTMLInputElement) =>
+        input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0),
+      ),
+    )
+    .toBe("Group");
+  await page.keyboard.type("Wallet");
   await page
     .getByRole("textbox", { name: "Rename group", exact: true })
     .press("Enter");
