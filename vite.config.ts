@@ -3,6 +3,9 @@ import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vite";
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
+  },
   // The manual opens in a separate tab; prepare its dependency before that tab loads.
   optimizeDeps: { include: ["markdown-it"] },
   plugins: [

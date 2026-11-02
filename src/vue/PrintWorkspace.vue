@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const appVersion = __APP_VERSION__;
 import { Controller } from "../editor/controller";
 import { printDocument, applyPrintDocument } from "../model/printDocument";
 import { parseProject } from "../model/project";
@@ -3329,6 +3330,7 @@ defineExpose({
           >
         </div>
         <span style="margin-left: auto">{{ Math.round(zoom * 100) }}%</span>
+        <span class="app-version" title="Application version">v{{ appVersion }}</span>
       </div>
     </div>
     <aside v-if="panel" aria-label="Print objects and settings">

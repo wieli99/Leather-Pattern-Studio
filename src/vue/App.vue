@@ -22,6 +22,7 @@ import { decodeImageFile } from "../editor/imageImport";
 import { tools } from "./tools";
 import { handleShortcut, handleClipboard } from "./shortcuts";
 const printActive = ref(false);
+const appVersion = __APP_VERSION__;
 const printWorkspace = ref<InstanceType<typeof PrintWorkspace>>();
 const imagePicker = ref<HTMLInputElement | null>(null);
 async function importImage(event: Event) {
@@ -367,6 +368,7 @@ onMounted(() => {
         <Settings />
       </div>
       <StatusBar coordinates />
+      <span class="app-version" title="Application version">v{{ appVersion }}</span>
     </footer>
   </main>
 </template>

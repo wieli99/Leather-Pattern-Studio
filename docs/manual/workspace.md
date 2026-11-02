@@ -6,6 +6,8 @@ The left toolbar selects drawing modes. Right-click or hold a grouped tool to op
 
 The drawing and print-layout canvases accept keyboard focus without showing an outline around the canvas.
 
+The footer shows the application version at the right on both Model and print-layout tabs. Include this version when reporting a problem.
+
 The Model objects panel lists your shapes. Click to select; Shift+click selects the range from the selected row, including a newly created object. Ctrl/⌘+click toggles individual rows; Ctrl/⌘+Shift+click adds a range. Double-click an object name or press F2 while its row is focused to rename it. Enter applies; Esc cancels.
 
 The right panel stacks Model objects, Properties, and Tool help. Click the Properties, Tool help, Object, Geometry, or Appearance header to collapse or expand it. Each section remembers its state across visits. The Model objects panel always remains expanded. Headers also work with Enter or Space when focused. Properties groups fields under Object, Geometry, and Appearance; expandable Vertex coordinates follow where applicable. Geometry fields use the selected measurement units unless a field indicates otherwise. Duplicate and Delete appear below the properties.

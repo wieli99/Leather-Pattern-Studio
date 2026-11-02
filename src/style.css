@@ -729,6 +729,10 @@ footer {
 .cursor-coordinates {
   margin-left: auto;
 }
+.app-version {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .settings summary::before {
   border: 0;
   border-left: 5px solid currentColor;
