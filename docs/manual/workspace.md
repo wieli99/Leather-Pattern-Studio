@@ -4,6 +4,8 @@ The leather-and-tool icon identifies Leather Pattern Studio in the header, with 
 
 The left toolbar selects drawing modes. Right-click or hold a grouped tool to open variants. Its icon remembers the last variant. Repeat its key to cycle; Shift reverses.
 
+The drawing and print-layout canvases accept keyboard focus without showing an outline around the canvas.
+
 Objects lists your shapes. Click to select; Shift+click toggles selection. Double-click an object name or press F2 while its row is focused to rename it. Enter applies; Esc cancels.
 
 The right panel stacks Objects, Properties, and Tool help. Click the Properties, Tool help, Object, Geometry, or Appearance header to collapse or expand it. Each section remembers its state across visits. Objects always remains expanded. Headers also work with Enter or Space when focused. Properties groups fields under Object, Geometry, and Appearance; expandable Vertex coordinates follow where applicable. Geometry fields use the selected measurement units unless a field indicates otherwise. Duplicate and Delete appear below the properties.
