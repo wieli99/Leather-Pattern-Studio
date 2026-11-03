@@ -12,6 +12,8 @@ Projects from older versions are upgraded when opened. Save a new copy before sh
 
 Open the app online first and wait for the editor and its offline files to finish loading. Before relying on it away from an internet connection, save your project and try reopening the app with the network disconnected. The manual and PDF, SVG, and PNG export are available offline too. If reopening fails, reconnect and allow the online load to finish before trying again.
 
+Open the manual with **Help (?)** or the **?** shortcut on the canvas. You can reload its tab and open article links while offline after the offline files finish loading.
+
 Use the same browser and website address. Clearing website data can remove offline files and recovery. Keep saved project files outside browser storage.
 
 When an application update offers **Reload**, save your project before accepting it.
