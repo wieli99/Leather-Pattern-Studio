@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { construct } from "./construction";
+import { construct, constructionGuides } from "./construction";
 import { parseProject } from "../model/project";
 import {
   bounds,
@@ -122,4 +122,19 @@ test("bounding-box polygons fit both corners in either drawing direction", () =>
     expect(shape.points.at(-1)).toEqual(shape.points[0]);
   }
   expect(() => construct("polygon-box", [{ x: 0, y: 0 }, { x: 0, y: 10 }])).toThrow();
+});
+
+test("three-point guides follow the constrained endpoint and retain the baseline", () => {
+  expect(constructionGuides("rectangle-three", [], b)).toEqual([]);
+  expect(constructionGuides("select", [a], b)).toEqual([]);
+  const first = constructionGuides("rectangle-three", [a], b);
+  expect(first[0].points).toEqual([a, b]);
+  const third = constructionGuides("rectangle-three", [a, b], c);
+  expect(third).toHaveLength(1);
+  expect(third[0].points).toEqual([a, b]);
+  const circle = constructionGuides("circle-three", [a], b)[0];
+  expect(circle).toEqual(construct("circle-two", [a, b]));
+  expect(constructionGuides("circle-three", [a], a)).toEqual([]);
+  expect(constructionGuides("circle-three", [a, b], c)).toEqual([]);
+  expect(construct("circle-three", [a, b, c]).points[0]).not.toEqual(circle.points[0]);
 });

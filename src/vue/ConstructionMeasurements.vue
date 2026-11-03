@@ -112,12 +112,20 @@ function input(item: (typeof items.value)[number], event: Event) {
 }
 async function confirm(item: (typeof items.value)[number]) {
   const value = (["Angle", "Sweep"].includes(item.key) ? Number(draft.value) : (parseLength(draft.value, editor.units) ?? NaN));
+  const signedHeight = item.key === "Height" &&
+    ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
+    editor.pending.length === 2;
+  const signed = ["Angle", "Sweep", "Offset"].includes(item.key);
   if (
     !draft.value.trim() ||
     !Number.isFinite(value) ||
-    (!["Angle", "Sweep", "Offset"].includes(item.key) && value <= 0)
+    (signedHeight ? value === 0 : !signed && value <= 0)
   ) {
-    error.value = "Enter a positive finite measurement";
+    error.value = signedHeight
+      ? "Enter a nonzero finite measurement"
+      : signed
+        ? "Enter a finite measurement"
+        : "Enter a positive finite measurement";
     return;
   }
   if (item.key) editor.confirmMeasurement();

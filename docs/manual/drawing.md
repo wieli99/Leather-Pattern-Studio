@@ -16,16 +16,20 @@ Enter or right-click finishes paths. Double-click closes polylines and both curv
 ## Rectangles (R)
 - Corner rectangle: first corner, opposite corner; dragging also works.
 - Center rectangle: center, corner defining half-width and half-height.
-- Three-point rectangle: first corner, width and direction, then height.
+- Three-point rectangle: first corner, width and direction, then height. A baseline follows the pointer while choosing the second point and stays visible while setting the height.
+
+![Three-point rectangle baseline while choosing the second point](/manual/images/three-point-rectangle-guide.png)
 
 ## Circles, ellipses and arcs (C)
 - Center circle: center, radius point.
 - Diameter circle: two diameter endpoints.
-- Three-point circle: three non-collinear points on the circumference.
+- Three-point circle: three non-collinear points on the circumference. While choosing point 2, a temporary circle shows points 1–2 as diameter endpoints. While choosing point 3, the preview circle passes through all three points.
 - Bounding-box ellipse: opposite bounding-box corners.
 - Center ellipse: center, first radius/direction, then perpendicular radius.
 - Center arc: center, start, then sweep endpoint. Move around the center to set sweep.
 - Three-point arc: start, end, then a point shaping the arc.
+
+![Temporary diameter circle while choosing the second point](/manual/images/three-point-circle-guide.png)
 
 ## Polygons (H)
 Center polygon uses a center followed by radius/rotation. Bounding-box polygon uses opposite corners. Up/Down or Shift+wheel changes the side count.

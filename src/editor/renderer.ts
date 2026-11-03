@@ -1,3 +1,4 @@
+import { constructionGuides } from "./construction";
 import { drawAnnotation } from "./annotationRenderer";
 import {
   drawRotationGizmo,
@@ -331,6 +332,9 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.restore();
     }
     const construction = editor.constructionPreview;
+    for (const guide of constructionGuides(
+      editor.mode, editor.pending, editor.constrainMeasurement(editor.cursor),
+    )) shape(guide, true);
     if (construction) shape(construction, true);
     else if (editor.mode === "arc-three" && editor.pending.length)
       shape(
