@@ -31,7 +31,7 @@ export default defineConfig({
             "__BUILD_HASH__",
             createHash("sha256")
               .update(
-                html +
+                sw + html +
                   readdirSync("dist/assets")
                     .sort()
                     .map((f) =>
