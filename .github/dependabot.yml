@@ -5,6 +5,13 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    # Node typings match the Node 22 build/runtime environment.
+    # vue-tsc currently imports TypeScript's JS implementation, absent in TS 7.
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      - dependency-name: typescript
+        versions: ['>=7.0.0']
     groups:
       npm-dependencies:
         patterns: ['*']

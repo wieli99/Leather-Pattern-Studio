@@ -23,6 +23,13 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 7
+      - name: Download artifact for compatibility check
+        uses: actions/download-artifact@v8
+        with:
+          name: production-dist
+          path: ${{ runner.temp }}/dist-roundtrip
+      - name: Verify deployment artifact round trip
+        run: diff -qr dist "$RUNNER_TEMP/dist-roundtrip"
       - name: Browser reports
         if: failure()
         uses: actions/upload-artifact@v7
