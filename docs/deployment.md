@@ -80,6 +80,8 @@ Use the Worker's workers.dev URL while DNS activation is pending. Once wieli.at 
 
 After deployment verify editor startup and Wasm loading, the bundled manual, project save/open, offline use after cache installation, and the update prompt across two releases. Save projects before accepting an update. Browser storage is hostname-specific: export projects on the temporary address and open them on the final address. Browser CI results do not establish physical device compatibility.
 
+For the manual, wait until the editor's service worker controls the page, then open Help in a new tab, reload normally, and open an article offline. Repeat after accepting an update from the previous release. A hard reload bypasses the worker and cannot validate this behavior. Cloudflare redirects `/manual/index.html` to `/manual/`; the worker must serve cached followed responses without their redirect metadata to avoid browser `ERR_FAILED` navigation errors. `tests/manual-redirect.spec.ts` reproduces these hosting redirects against the production build. Worker source is included in the offline cache fingerprint so worker-only fixes also replace the cache.
+
 ## Rollback
 
 Use the Worker's Deployments dashboard to roll back to a previous successful deployment. Then revert the faulty change through dev and main so the next automated deployment retains the correction. Verify offline/update behavior after rollback; installed clients may still have cached assets until they accept an update.
