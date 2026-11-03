@@ -12,20 +12,29 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run containerized checks
         run: tools/dev/run.sh check
+      - name: Verify manual illustrations
+        run: tools/dev/run.sh npm run manual:screenshots:check
       - name: Validate deployment bundle
         run: tools/dev/run.sh npx --yes wrangler@4.156.2 deploy --dry-run
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: production-dist
           path: dist/
           if-no-files-found: error
           retention-days: 7
+      - name: Download artifact for compatibility check
+        uses: actions/download-artifact@v8
+        with:
+          name: production-dist
+          path: ${{ runner.temp }}/dist-roundtrip
+      - name: Verify deployment artifact round trip
+        run: diff -qr dist "$RUNNER_TEMP/dist-roundtrip"
       - name: Browser reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-reports
           path: |
@@ -43,7 +52,7 @@ jobs:
       group: production-deployment
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Check this is still the latest release
@@ -54,12 +63,12 @@ jobs:
           if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: steps.latest.outputs.deploy == 'true'
         with:
           name: production-dist
           path: dist
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.latest.outputs.deploy == 'true'
         with:
           node-version: 22

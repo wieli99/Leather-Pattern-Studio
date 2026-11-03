@@ -1,6 +1,7 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-test("rounding a stitched perimeter adapts through the worker and commits with history", async ({
+test("rounding a stitched perimeter adapts through the worker and commits with history", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await page.goto("/");
@@ -67,13 +68,7 @@ test("rounding a stitched perimeter adapts through the worker and commits with h
   await expect(page.locator('.transform-options [role="alert"]')).toHaveCount(
     0,
   );
-  if (
-    info.project.name === "chromium" &&
-    process.env.UPDATE_MANUAL_SCREENSHOTS === "1"
-  )
-    await page.screenshot({
-      path: "public/manual/images/rounded-stitching.png",
-    });
+  await manualScreenshot(page, "rounded-stitching.png");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save", exact: true }).click();

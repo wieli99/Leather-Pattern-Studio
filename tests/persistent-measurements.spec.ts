@@ -1,6 +1,7 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from '@playwright/test';
 
-test('three-click measurements persist, edit, undo and cancel', async ({page}, info) => {
+test('three-click measurements persist, edit, undo and cancel', { tag: "@manual" }, async ({page}, info) => {
   await page.goto('/');
   const tool = page.getByRole('button',{name:'Measurement (D)',exact:true});
   await expect(tool).toBeEnabled();
@@ -39,8 +40,7 @@ test('three-click measurements persist, edit, undo and cancel', async ({page}, i
   await expect(offset).toHaveValue('-15');
   await page.getByRole('button',{name:'Redo',exact:true}).click();
   await expect(offset).toHaveValue('20');
-  await page.screenshot({path:info.outputPath('persistent-measurement.png')});
-  if (info.project.name === 'chromium') await page.screenshot({path:'public/manual/images/persistent-measurement.png'});
+  await manualScreenshot(page, "persistent-measurement.png");
   await page.waitForTimeout(600); // Recovery is debounced by 300 ms.
   await page.reload();
   await page.getByRole('button', {name:'Restore',exact:true}).click();

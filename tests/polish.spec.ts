@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect, type Page } from "@playwright/test";
 async function ready(page: Page) {
   await page.goto("/");
@@ -384,7 +385,7 @@ test("Settings closes on outside clicks without consuming the click", async ({
   await expect(settings).not.toHaveAttribute("aria-expanded", "true");
 });
 
-test("object context menu duplicates, renames and captures styling", async ({ page }) => {
+test("object context menu duplicates, renames and captures styling", { tag: "@manual" }, async ({ page }) => {
   await ready(page);
   await page.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
@@ -403,7 +404,7 @@ test("object context menu duplicates, renames and captures styling", async ({ pa
   await color.blur();
   await rows.first().click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Paste Styling", exact: true })).toHaveCount(0);
-  await page.screenshot({ path: "public/manual/images/object-context-menu.png" });
+  await manualScreenshot(page, "object-context-menu.png");
   await page.getByRole("menuitem", { name: "Copy Styling", exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse((window as any).copiedStyle).fillOpacity)).toBe(0.05);
   await rows.first().click({ button: "right" });
@@ -428,7 +429,7 @@ test("object context menu duplicates, renames and captures styling", async ({ pa
   await expect(page.getByRole("textbox", { name: "Rename object", exact: true })).toBeFocused();
 });
 
-test("object visibility and locks persist and protect edits", async ({ page }) => {
+test("object visibility and locks persist and protect edits", { tag: "@manual" }, async ({ page }) => {
   await ready(page);
   await mode(page, "Rectangle", "Corner rectangle");
   await points(page, p.slice(0, 2));
@@ -442,7 +443,7 @@ test("object visibility and locks persist and protect edits", async ({ page }) =
   for (const name of ["Move", "Rotate", "Resize", "Mirror", "Corner radius", "Merge", "Trim", "Stitch line"]) {
     await expect(page.getByRole("toolbar", { name: "Transform selection" }).getByRole("button", { name, exact: true })).toBeDisabled();
   }
-  await page.screenshot({ path: "public/manual/images/object-states.png" });
+  await manualScreenshot(page, "object-states.png");
   await page.keyboard.press("Delete");
   await expect(row).toHaveCount(1);
   await expect.poll(() => page.evaluate(() => new Promise<boolean>((resolve, reject) => {

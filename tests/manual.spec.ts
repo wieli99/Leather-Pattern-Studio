@@ -1,3 +1,4 @@
+import { readFileSync, readdirSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 test("manual navigation, search, links and offline articles", async ({
   page,
@@ -37,18 +38,17 @@ test("manual navigation, search, links and offline articles", async ({
       exact: true,
     }),
   ).toBeVisible();
-  for (const name of [
-    "workspace",
-    "tool-variants",
-    "transforms",
-    "print-mirror",
-    "print-unlink",
-    "print-orientation",
-    "print-page-selection",
-  ]) {
+  const images = new Set(
+    readdirSync("docs/manual").filter(file => file.endsWith(".md")).flatMap(file => {
+      const content = readFileSync(`docs/manual/${file}`, "utf8");
+      return [...content.matchAll(/!\[[^\]]*\]\(\/manual\/images\/([^)]*)\)/g)]
+        .map(match => match[1]);
+    }),
+  );
+  for (const name of images) {
     expect(
       await manual.evaluate(
-        async (name) => (await fetch(`/manual/images/${name}.png`)).ok,
+        async (name) => (await fetch(`/manual/images/${name}`)).ok,
         name,
       ),
     ).toBe(true);
@@ -79,4 +79,62 @@ test("canvas help preserves unfinished drawing", async ({ page }) => {
   );
   await canvas.click({ position: { x: 350, y: 300 } });
   await expect(page.locator(".objects .object-select")).toHaveCount(1);
+});
+
+test("first-pattern manual walkthrough produces a saved stitched pattern and printable PDF", async ({ page }, info) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Rectangle (R)", exact: true })).toBeEnabled();
+  await page.evaluate(() => {
+    delete (window as any).showSaveFilePicker;
+    delete (window as any).showOpenFilePicker;
+  });
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.hover({ position: { x: 350, y: 300 } });
+  await page.keyboard.press("Tab");
+  await page.getByLabel("Width", { exact: true }).fill("60");
+  await page.getByLabel("Width", { exact: true }).press("Tab");
+  await page.getByLabel("Height", { exact: true }).fill("40");
+  await page.getByLabel("Height", { exact: true }).press("Enter");
+  await page.keyboard.press("Escape");
+  await page.locator(".objects .object-select").first().click();
+  await expect(page.getByLabel("Width", { exact: true })).toHaveValue("60");
+  await expect(page.getByLabel("Height", { exact: true })).toHaveValue("40");
+  await page.getByRole("button", { name: "Corner radius", exact: true }).click();
+  await canvas.click({ position: { x: 160, y: 190 } });
+  await page.getByLabel("All corners (mm)", { exact: true }).fill("4");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.getByRole("button", { name: "Stitch line", exact: true }).click();
+  await canvas.click({ position: { x: 210, y: 180 } });
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  const saved = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const path = info.outputPath("first-pattern.leather.json");
+  await (await saved).saveAs(path);
+  const project = JSON.parse(readFileSync(path, "utf8"));
+  expect(project.shapes).toHaveLength(1);
+  expect(project.stitchGroups).toHaveLength(1);
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await (await chooser).setFiles(path);
+  await page.getByRole("button", { name: "Create print layout", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();
+  await page.getByRole("button", { name: "Import Rectangle 1", exact: true }).first().click();
+  await expect(page.getByRole("region", { name: "Print objects", exact: true }).locator(".print-object-name")).toHaveCount(1);
+  await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitemradio", { name: "Square size guide", exact: true }).click();
+  const printCanvas = page.getByLabel("Print layout canvas");
+  await printCanvas.click({ position: { x: 350, y: 330 } });
+  await printCanvas.click({ position: { x: 390, y: 370 } });
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  await page.getByLabel("Side length (mm)", { exact: true }).fill("20");
+  await page.getByLabel("Side length (mm)", { exact: true }).press("Enter");
+  await expect(page.getByRole("region", { name: "Print objects", exact: true }).locator(".print-object-name")).toHaveCount(2);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator("canvas")).toBeVisible();
+  const exported = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Export", exact: true }).click();
+  expect((await exported).suggestedFilename()).toMatch(/\.pdf$/);
 });

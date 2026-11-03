@@ -1,97 +1,113 @@
 # Keyboard and navigation
 
-Single-letter editor shortcuts require canvas focus. Click the canvas first. Inputs retain their text-editing shortcuts. Ctrl/⌘ means Ctrl on Windows/Linux and Command on macOS. Pointer controls explicitly labelled Ctrl use Control.
+Click the canvas before using single-letter shortcuts. While typing in a field, keys edit its text. Finish or cancel active drawings and previews before starting another operation. **Ctrl/⌘** means Control on Windows/Linux and Command on macOS; pointer gestures explicitly marked **Ctrl** use Control.
 
-| Key | Action |
-|---|---|
-| V | Select; in Move, Rotate or Resize, place pivot |
-| P / R / C / H | Path / rectangle / circle / polygon group |
-| Shift+group key | Previous variant |
-| T | Text |
-| D | Measurement (dimension) |
-| G / E / S / B | Move / Rotate / Resize / Corner radius selection tools |
-| M | Mirror selection |
-| I / K / J | Stitch line / Trim / Merge selection |
-| X / Y | Move or Resize axis constraint |
-| Enter | Finish path or apply transform |
-| Esc | Cancel and return to Select |
-| Backspace | Remove pending anchor; otherwise delete selection |
-| Delete | Delete selection |
-| Ctrl/⌘+A | Select all |
-| Ctrl/⌘+D | Duplicate |
-| Ctrl/⌘+C | Copy selected objects |
-| Ctrl/⌘+V | Paste objects relative to cursor |
-| Ctrl/⌘+Z | Undo |
-| Ctrl/⌘+Shift+Z | Redo |
-| Ctrl+Y | Additional redo binding |
-| Ctrl/⌘+S | Save |
-| ? | Open this manual |
-
-## View navigation
-Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms at the pointer. With the canvas focused, F fits all objects; Shift+F fits the selection. The Fit icon below Redo in the Model toolbar also fits all objects. When no visible objects are present, Fit or F restores the default Model zoom and pan.
-
-See [selection](#selection), [drawing](#drawing), and [transforms](#transforms) for modifier gestures.
-
-While dragging a [guideline](#measurements), the shortcut list in the right inspector shows its controls: in millimetre mode, default 1 mm steps, Ctrl for 10 mm steps, Shift for 5 mm steps, and Alt for free placement. Esc cancels the drag; dropping on a ruler removes the guideline.
-
-Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
-
-Choose Corner radius (B) for selected rectangles and closed polygons. In millimetre mode, drag in 1 mm steps; Shift uses 5 mm, Ctrl 10 mm, and Alt applies to all corners of the targeted shape. Enter/right-click applies; Esc cancels. See [corner radii](#transforms).
-
-In [Stitch line](#stitching), Shift-click selects a second line for merging; the first selection is master. Enter/right-click commits the session and exits; Esc discards the session and exits, and Delete removes selected stitching when the canvas is focused. The tool button is beside Corner radius and uses **I**. Use **K** for Trim (cut) and **J** for Merge (join); **M** remains Mirror. These tool shortcuts require a selection in Select mode. Merge requires compatible selected objects and opens a preview; Enter applies it and Esc cancels.
-
-Hold Ctrl to show healthy stitch-link chain indicators. Broken links remain visible without Ctrl.
-
-In Select, double-click a polyline or rectangle anchor to make it smooth; double-click a curve anchor to toggle sharp/smooth. Alt+drag a curve handle moves it independently; dragging without Alt mirrors the handles.
-
-Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste on Model works across browser tabs and sessions and creates one undo step. The same shortcuts work between Model and print layout tabs. Pasting creates independent objects, including when copying linked print placements. Finish active edits before copying or pasting.
-
-After Copy Styling in an object's context menu, Ctrl/⌘+V applies fill color, opacity, fill mode, and outline styling to selected fillable objects when the canvas or an object row has focus.
-
-| Shortcut | Model objects panel action |
-| --- | --- |
-| Ctrl/⌘+G | Group selection |
-| Alt+Shift+Up / Down | Move focused row before / after its sibling |
-| Alt+Shift+Right | Move focused row into preceding group |
-| Alt+Shift+Left | Move focused row out of its parent group |
-
-Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
-
-Press D with the canvas focused, or select Measurement from the toolbar below Text. After placing its two endpoints, Tab edits the signed Offset; Enter confirms placement. Esc cancels an unfinished measurement. See [Persistent measurements](#measurements).
-
-Indicators share the Measurement submenu. D and Shift+D cycle its variants; right-click, hold the button, or press Down while it is focused to choose a variant. Escape cancels unfinished placement.
-
-In inch mode, guide and corner distance steps are 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. See [Measurements and snapping](#measurements) for fractional entry. Rotation steps remain in degrees.
-
-## Print layout shortcuts
-
-With the print canvas or print object panel focused:
+## Everyday commands
 
 | Shortcut | Action |
 | --- | --- |
-| V / G / E / M | Select / Move / Rotate / Mirror (V places the pivot while a transform is active) |
-| Enter / right-click | Apply the active transform |
-| Space + drag | Pan |
-| Mouse wheel | Pan |
-| Ctrl/⌘ + mouse wheel | Zoom around pointer |
-| F | Fit all pages |
-| Shift / Ctrl / Alt + rotate drag | Snap to 5° / 10° / rotate freely (normal: 1°) |
-| Alt + right-click / Ctrl + Alt + right-click | Flip clicked print placement locally left/right / top/bottom |
-| Alt + move drag | Bypass snapping |
-| X / Y in Move | Constrain movement to the active X / Y axis |
-| Arrow keys | Move by 1 mm or 1/16 inch |
-| Shift + arrow keys | Move by ten steps |
-| Ctrl/⌘+A | Select available print objects |
-| T | Text on the active print tab |
-| D / Shift+D | Select or cycle Measurement variants |
-| Ctrl/⌘+C / Ctrl/⌘+V | Copy/paste independent objects across Model and print tabs |
-| Ctrl/⌘+D | Duplicate placements, preserving their linked or unlinked state |
-| Ctrl/⌘+G | Group selected siblings |
-| Delete / Backspace | Delete selected unlocked print objects |
-| Escape | Cancel pointer preview and clear selection |
+| Ctrl/⌘+S | Save editable project |
 | Ctrl/⌘+Z / Ctrl/⌘+Shift+Z | Undo / redo |
-| Ctrl/⌘+S | Save project |
+| Ctrl+Y | Additional redo binding |
+| Ctrl/⌘+A | Select all available objects |
+| Ctrl/⌘+D | Duplicate selection |
+| Ctrl/⌘+C / Ctrl/⌘+V | Copy / paste objects at pointer; keep pointer over canvas |
+| Delete / Backspace | Delete selected unlocked objects |
+| F2 on an object row | Rename |
+| Ctrl/⌘+G | Group selection |
+| ? | Open manual |
 
-Text (T), Measurement and its variants (D / Shift+D), and object copy/paste (Ctrl/⌘+C / Ctrl/⌘+V) also work in print views. Other drawing tools and styling-paste shortcuts remain unavailable. Text entry retains normal editing shortcuts.
+Copy/paste works between Model and print tabs and across browser tabs. Pasted objects are independent, including copies of linked print objects. After **Copy Styling**, Ctrl/⌘+V applies styling instead; copy objects again to return to object paste. See [selection](#selection).
 
-In print views, Ctrl-click exposed paper selects pages; Ctrl-drag moves a self-contained page to an insertion edge. Hold Ctrl for page numbers and individual page delete buttons. Delete removes selected pages only when every sheet touched by their objects is also selected. Escape or right-click cancels a page move.
+## View navigation
+
+| Control | Action |
+| --- | --- |
+| Space+drag / middle-drag | Pan |
+| Scroll | Pan |
+| Ctrl/⌘+scroll | Zoom at pointer |
+| F / Fit button | Fit Model objects or print pages |
+| Shift+F | Fit Model selection |
+
+## Drawing and exact dimensions
+
+| Shortcut | Action |
+| --- | --- |
+| V | Select |
+| P / R / C / H | Path / rectangle / circle / polygon tool group |
+| Repeat group letter / Shift+letter | Next / previous variant |
+| T | Text |
+| D / Shift+D | Measurement group, next / previous variant |
+| Tab / Shift+Tab | Enter or cycle numeric construction fields |
+| Enter | Confirm entered dimensions or finish a path |
+| Esc | Leave numeric entry, or cancel drawing and return to Select |
+| Backspace while drawing a path | Remove last pending anchor |
+| Up / Down or Shift+wheel | Change polygon sides |
+| Shift while drawing | Constrain proportions or direction; see [drawing](#drawing) |
+| Alt | Bypass positional snapping |
+| Ctrl | Show selected edge lengths; click a label to edit |
+
+For text, Enter inserts a line, Ctrl/⌘+Enter applies, and Esc cancels. See [numeric entry](#measurements/enter-exact-dimensions) for dimension locks and fractions.
+
+## Selection and transforms
+
+Selection tools require compatible selected, unlocked objects. Shortcuts also work when a drawing tool is idle after completing a shape.
+
+| Control | Action |
+| --- | --- |
+| G / E / S / M / B | Move / Rotate / Resize / Mirror / Corner radius |
+| I / K / J | Stitch line / Trim / Merge |
+| Tab / Shift+Tab | Enter or cycle transform fields |
+| X / Y | Constrain Move or Resize axis |
+| V during transform | Place pivot |
+| Enter / right-click | Apply active transform or tool session |
+| Esc | Cancel active preview |
+| Shift+click / Shift+drag | Toggle selection / add enclosed objects |
+| Ctrl+click / Ctrl+drag | Select by interior / include crossing outlines |
+| Alt+click edge | Insert anchor where supported |
+| Double-click anchor | Toggle sharp/smooth where supported |
+| Alt+drag curve handle | Move handle independently |
+
+Rotation steps: 1° normally, Shift 5°, Ctrl 10°, Alt free. Guide and corner-radius steps: 1 mm normally, Shift 5 mm, Ctrl 10 mm; in inches, 1/16 inch normally, Shift 1/4 inch, Ctrl 1 inch. In Corner radius, Alt affects all corners of the targeted shape instead of bypassing snapping.
+
+## Object list organization
+
+| Control | Action |
+| --- | --- |
+| Shift+click row | Select visible range |
+| Ctrl/⌘+click row | Toggle individual row |
+| Ctrl/⌘+Shift+click row | Add visible range |
+| Alt+Shift+Up / Down | Move focused row before / after sibling |
+| Alt+Shift+Right / Left | Move into preceding group / out of parent |
+
+## Stitch sessions
+
+| Control | Action |
+| --- | --- |
+| Click stitch path | Select its group; from Select, open stitch settings |
+| Shift+click stitch path | Add/remove groups for merging or linking |
+| Shift while placing a new line | Merge compatible neighboring stitching |
+| Enter / right-click | Commit session and exit |
+| Esc | Discard session and exit |
+| Delete with canvas focus | Remove selected stitching in the preview |
+| Hold Ctrl | Show healthy stitch-link indicators |
+
+See [stitch lines](#stitching) for master settings, clearances and equal hole counts.
+
+## Print layouts
+
+Everyday save, history, copy/paste, duplication, grouping and deletion shortcuts also work in print layouts. Text (T), Measurement variants (D/Shift+D), Select (V), Move (G), Rotate (E), and Mirror (M) are available. Use Model for source geometry edits and resizing.
+
+| Control | Action |
+| --- | --- |
+| Arrow keys / Shift+arrow keys | Move by one / ten steps (1 mm or 1/16 inch per step) |
+| X / Y in Move | Constrain movement axis |
+| Alt+move drag | Bypass snapping |
+| Alt+right-click placement | Flip locally left/right |
+| Ctrl+Alt+right-click placement | Flip locally top/bottom |
+| Ctrl on exposed paper | Reveal page controls and numbers |
+| Ctrl+click exposed paper | Toggle page selection |
+| Ctrl+drag exposed paper | Move a self-contained page |
+| Esc / right-click during page move | Cancel page move |
+
+Delete removes selected pages only when every sheet touched by their artwork is selected. See [pages and assembly](#printing/pages-and-assembly).

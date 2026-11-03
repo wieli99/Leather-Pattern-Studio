@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect, type Page } from "@playwright/test";
 const shapes = ["A", "B", "C"].map((name, i) => ({
   id: name,
@@ -105,7 +106,7 @@ async function begin(page: Page, selector: string) {
   await expect(page.locator(".reorder-floating")).toBeVisible();
   return b;
 }
-test("tab slot uses actual width and stays stable under the pointer, cancel and undo restore order", async ({
+test("tab slot uses actual width and stays stable under the pointer, cancel and undo restore order", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -128,7 +129,7 @@ test("tab slot uses actual width and stays stable under the pointer, cancel and 
     expect((await slot.boundingBox())!.x).toBeCloseTo(target.x, 0);
   }
   expect(await snapshot(page)).toEqual(before);
-  await page.screenshot({ path: "public/manual/images/reorder-tabs.png" });
+  await manualScreenshot(page, "reorder-tabs.png");
   await page.mouse.up();
   await expect(page.getByRole("tab").nth(1)).toHaveText(
     "A much wider print layout",
@@ -141,7 +142,7 @@ test("tab slot uses actual width and stays stable under the pointer, cancel and 
   await expect(slot).toHaveCount(0);
   await expect(page.getByRole("tab").nth(1)).toHaveText("Short");
 });
-test("Print objects selection reserves a bottom slot, commits once, and undoes together", async ({
+test("Print objects selection reserves a bottom slot, commits once, and undoes together", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -164,9 +165,7 @@ test("Print objects selection reserves a bottom slot, commits once, and undoes t
   expect(b.height).toBeGreaterThanOrEqual(68);
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
   expect(await snapshot(page)).toEqual(before);
-  await page.screenshot({
-    path: "public/manual/images/reorder-print-objects.png",
-  });
+  await manualScreenshot(page, "reorder-print-objects.png");
   await page.mouse.up();
   await expect(tree.locator(".print-object-name")).toHaveText(["C", "A", "B"]);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
@@ -176,7 +175,7 @@ test("Print objects selection reserves a bottom slot, commits once, and undoes t
   await page.mouse.up();
   await expect(tree.locator(".print-object-name")).toHaveText(["A", "B", "C"]);
 });
-test("Objects slots preserve dimensions and Escape leaves document unchanged", async ({
+test("Objects slots preserve dimensions and Escape leaves document unchanged", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -190,7 +189,7 @@ test("Objects slots preserve dimensions and Escape leaves document unchanged", a
   await expect(slot).toBeVisible();
   expect((await slot.boundingBox())!.height).toBeGreaterThanOrEqual(b.height);
   expect(await snapshot(page)).toEqual(before);
-  await page.screenshot({ path: "public/manual/images/reorder-objects.png" });
+  await manualScreenshot(page, "reorder-objects.png");
   await page.keyboard.press("Escape");
   await page.mouse.up();
   await expect(page.locator(".object-select")).toHaveText(["A", "B", "C"]);

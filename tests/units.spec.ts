@@ -1,5 +1,6 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from '@playwright/test';
-test('global units accept fractions, preserve dimensions and persist', async ({ page }, testInfo) => {
+test('global units accept fractions, preserve dimensions and persist', { tag: "@manual" }, async ({ page }, testInfo) => {
   await page.goto('/');
   const rectangle = page.getByRole('button', { name: 'Rectangle (R)', exact: true });
   await expect(rectangle).toBeEnabled();
@@ -25,7 +26,7 @@ test('global units accept fractions, preserve dimensions and persist', async ({ 
   await width.press('Enter');
   await expect(width).toHaveValue('1 3/8');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.screenshot({ path: testInfo.outputPath('inch-settings.png') });
+  await manualScreenshot(page, "inch-settings.png");
   await page.keyboard.press('Escape');
   await units('mm');
   // Display precision is independent of the exact stored value.

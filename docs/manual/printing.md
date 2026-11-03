@@ -39,7 +39,17 @@ Hover an object or folder in either Model objects panel to preview its source ar
 
 ![Moving selected print objects to the bottom of the list](/manual/images/reorder-print-objects.png)
 
-The **Print objects** panel controls this layout only. Select a row or click an object on paper. Shift-click selects the visible range from the selection anchor. Ctrl/⌘-click toggles individual rows; Ctrl/⌘+Shift-click adds a range. Drag a selection box on empty paper to select several placements; Shift adds to the selection. Drag to move; drag the rotation ring in Select to rotate, or choose **Move**/**Rotate** for axis handles, pivot controls, numeric settings, and **Apply**/**Cancel**. Selection gestures commit on release; dedicated tool previews commit with Apply, Enter, or right-click. Escape or Cancel discards the preview. With Move or Rotate active and nothing selected, the first click selects an object without changing tools. Move arrow shafts and tips both support dragging, with the same cursor feedback as Model. V or Set pivot enters crosshair placement; snapping and Alt bypass also apply to pivots. Mirror axes pass through the pivot on screen, including near page gutters. Changing the Mirror pivot or axes refreshes its preview without accumulating reflections. Move values are relative distances in the layout units; rotation uses degrees. Select a folder to transform its descendants together. Children can also be arranged independently. The small center circle marks the pivot in Rotate and Mirror. During a rotation drag, a degree readout follows the pointer, matching Model. The rotation ring matches Model: hovering highlights it, and a translucent sector shows the preview angle. Rotation uses Model’s modifiers: 1° normally, Shift 5°, Ctrl 10°, Alt free rotation.
+## Move and rotate print objects
+
+Select a row in **Print objects**, or click artwork on paper. Shift-click rows for a range; Ctrl/⌘-click toggles individual rows. Drag a selection box on empty paper to select several placements; Shift adds to the selection.
+
+- Drag selected artwork to move it; drag its rotation ring to rotate. Release to apply.
+- Choose **Move (G)** or **Rotate (E)** for numeric values, axis handles and pivot controls. Press Tab to enter fields. Move values are relative distances in the layout units; rotation is in degrees.
+- Use **V** or Set pivot, then click to place the pivot. Alt bypasses positional snapping. Select a folder to transform its contents together.
+- For dedicated tool previews, Apply, Enter or right-click commits; Esc or Cancel discards. Finish the preview before editing something else.
+- Rotation steps are 1° normally, Shift 5°, Ctrl 10°, or Alt for free rotation.
+
+## Manage linked and independent copies
 
 - **Hide** and **Lock** affect only print instances. Model visibility and locking are independent.
 - The **chain** button after Hide and Lock unlinks an imported object from Model immediately, preserving its current geometry, dimensions, text, images, styles, and stitching. Unlinking an imported folder freezes its entire current subtree and stops membership updates. Individual children can also be unlinked while their folder stays linked. Detached artwork survives changes to or deletion of its Model source.
@@ -52,7 +62,7 @@ The **Print objects** panel controls this layout only. Select a row or click an 
 
 ![Linked and unlinked print object controls](/manual/images/print-unlink.png)
 
-Choose **Mirror (M)** to reflect selected placements. Hovering either side of a mirror axis highlights the full line through the pivot, using the same orange stroke and theme-colored outline as Model. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Model. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
+Choose **Mirror (M)** to reflect selected placements. Choose X, Y, or a diagonal axis in the tool panel, or click a straight artwork edge. Local/world axes and pivot controls work as in Model. Apply, Enter, or right-click commits; Escape or Cancel discards the preview. Mirroring affects linked print placements, including text and images, and survives saving and export.
 
 ![Mirror tool with axis choices and linked artwork preview](/manual/images/print-mirror.png)
 
@@ -60,7 +70,7 @@ Choose **Mirror (M)** to reflect selected placements. Hovering either side of a 
 
 Source geometry, dimensions, text, images, styles, and stitching remain linked until you unlink a print copy. Moving or rotating a source on Model does not move or rotate existing print placements. Deleting a source removes its linked print copies in the same undo step. Undo/redo is shared across Model and all print tabs.
 
-Geometry edits, new drawing tools, scaling, and styling paste are unavailable in print views. Return to Model to edit sources.
+Return to Model to edit source geometry, resize pattern pieces, or paste styling. Print tabs provide text, measurements, indicators, and image import for page-specific annotations.
 
 ![Print layout with linked source and print object panels, inch rulers, dimensions, stitching, and images](/manual/images/print-layout.png)
 
@@ -101,4 +111,4 @@ PDF contains all sheets as vector pages, with images embedded. SVG and PNG produ
 
 Print PDF at **Actual size / 100%** and disable “Fit to page.” Check a printed size guide with a ruler before cutting material. Browser preview zoom does not change exported dimensions. Very large paper may exceed raster memory limits; choose PDF or SVG if PNG generation reports this.
 
-The export libraries, PDF preview worker, and print font are bundled for offline use. See [Files, recovery and offline use](#files). Software browser checks do not replace verification on your physical printer.
+Export and PDF preview work offline after caching completes. See [Files, recovery and offline use](#files). Software browser checks do not replace verification on your physical printer.

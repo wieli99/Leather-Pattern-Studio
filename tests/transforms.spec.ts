@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -46,7 +47,7 @@ async function setup(page: any) {
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await page.getByRole("button", { name: "Rounded", exact: true }).click();
 }
-test("numeric transforms, pivot, cancellation, history and affine file recovery", async ({
+test("numeric transforms, pivot, cancellation, history and affine file recovery", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await setup(page);
@@ -58,7 +59,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
   await page.getByRole("button", { name: "Resize", exact: true }).click();
   await page.getByLabel("X factor", { exact: true }).fill("2");
   await page.getByLabel("Y factor", { exact: true }).fill("0.5");
-  await page.screenshot({ path: info.outputPath("transform-toolbox.png") });
+  await manualScreenshot(page, "transforms.png");
   await page.locator(".transform-options strong").click();
   await expect(page.getByLabel("Y factor", { exact: true })).toHaveValue(
     "0.50",
@@ -246,4 +247,22 @@ test("canvas shortcuts leave controls and browser combinations alone", async ({
     return event.defaultPrevented;
   });
   expect(prevented).toBe(false);
+});
+
+test("panning keeps selection tools visible", async ({ page }) => {
+  await setup(page);
+  const toolbar = page.getByRole("toolbar", { name: "Transform selection" });
+  const box = (await page.getByLabel("Pattern drawing canvas").boundingBox())!;
+  for (const space of [false, true]) {
+    await page.mouse.move(box.x + 300, box.y + 200);
+    if (space) await page.keyboard.down("Space");
+    await page.mouse.down({ button: space ? "left" : "middle" });
+    await page.mouse.move(box.x + 350, box.y + 240);
+    await expect(toolbar).toBeVisible();
+    await page.mouse.up({ button: space ? "left" : "middle" });
+    if (space) await page.keyboard.up("Space");
+    await expect(toolbar).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Resize", exact: true }).click();
+  await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
 });

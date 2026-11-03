@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 async function ready(page: any) {
@@ -195,7 +196,7 @@ test("move, cancel, scale, rotate and duplicate through the viewport", async ({
   await page.getByRole("button", { name: "Duplicate", exact: true }).click();
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
-test("saved project opens and invalid file preserves current work", async ({
+test("saved project opens and invalid file preserves current work", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await ready(page);
@@ -216,6 +217,7 @@ test("saved project opens and invalid file preserves current work", async ({
   await (await chooser).setFiles(path);
   await page.locator(".objects .object-select").first().click();
   await expectRadius(page, "8");
+  await manualScreenshot(page, "workspace.png");
   chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await (
@@ -227,7 +229,6 @@ test("saved project opens and invalid file preserves current work", async ({
   });
   await expect(page.getByRole("status").first()).toContainText("Invalid shape");
   await expect(page.locator(".objects .object-select")).toHaveCount(1);
-  await page.screenshot({ path: info.outputPath("workspace.png") });
 });
 test("native save writes editable project and cancelled save preserves dirty state", async ({
   page,
@@ -276,7 +277,7 @@ test("native save writes editable project and cancelled save preserves dirty sta
   await expect(page.locator(".document-name")).toContainText("•");
 });
 
-test("corner tool previews, edits numerically and applies once", async ({
+test("corner tool previews, edits numerically and applies once", { tag: "@manual" }, async ({
   page,
 }, testInfo) => {
   await ready(page);
@@ -301,7 +302,7 @@ test("corner tool previews, edits numerically and applies once", async ({
   await expect(corner).toHaveValue("70");
   await corner.fill("8.12");
   await canvas.focus();
-  await page.screenshot({ path: testInfo.outputPath("corner-radii.png") });
+  await manualScreenshot(page, "corner-radii.png");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(page.getByLabel("Corner 1 radius", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("All corner radii", { exact: true })).toHaveCount(0);
@@ -312,7 +313,7 @@ test("corner tool previews, edits numerically and applies once", async ({
   await expectRadius(page, "0");
 });
 
-test("inline rename controls download filename", async ({ page }, info) => {
+test("inline rename controls download filename", { tag: "@manual" }, async ({ page }, info) => {
   await ready(page);
   await page.evaluate(() => { delete (window as any).showSaveFilePicker; });
   const filename = page.getByLabel("Project filename");
@@ -324,7 +325,7 @@ test("inline rename controls download filename", async ({ page }, info) => {
   await filename.press("Escape");
   await expect(filename).toHaveValue("Untitled");
   await filename.fill("Wallet");
-  await page.screenshot({ path: info.outputPath("rename.png") });
+  await manualScreenshot(page, "rename.png");
   await page.getByLabel("Project filename").press("Enter");
   await expect(filename).toHaveValue("Wallet");
   const pending = page.waitForEvent("download");

@@ -3,6 +3,8 @@ import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vite";
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 export default defineConfig({
+  // Container-local storage survives installs into the shared dependency volume.
+  cacheDir: process.env.VITE_CACHE_DIR ?? "node_modules/.vite",
   define: {
     __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
   },

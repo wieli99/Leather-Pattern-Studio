@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect, type Page } from "@playwright/test";
 const shapes = ["A", "B", "C"].map((name, i) => ({
   id: name.toLowerCase(),
@@ -73,7 +74,7 @@ async function drag(page: Page, from: string, to: string, fraction = 0.5) {
   await expect(target).toHaveClass(/drop-/);
   await page.mouse.up();
 }
-test("grouping, nested inheritance, collapse and ungroup round trip", async ({
+test("grouping, nested inheritance, collapse and ungroup round trip", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -117,7 +118,7 @@ test("grouping, nested inheritance, collapse and ungroup round trip", async ({
   await expect(page.locator(".group-select")).toHaveCount(1);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(page.locator(".group-select")).toHaveCount(2);
-  await page.screenshot({ path: "public/manual/images/object-groups.png" });
+  await manualScreenshot(page, "object-groups.png");
 });
 test("drag reorders objects, reparents into collapsed groups, and supports keyboard outdent", async ({
   page,
@@ -282,7 +283,6 @@ test("icons show local state and sidebar dividers share styling", async ({
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "dark";
   });
-  await page.screenshot({ path: "public/manual/images/object-groups.png" });
   const source = (await page
     .getByRole("button", { name: "A", exact: true })
     .boundingBox())!;
