@@ -4,7 +4,7 @@ Zoom and unit selection never change the physical size of your pattern. Use nume
 
 ## Enter exact dimensions
 
-While constructing a shape, Tab enters available dimension fields and selects the current value so typing replaces it. Type a value and press Enter to confirm; Esc returns to the canvas. Tab and Shift+Tab cycle forward and backward through the construction fields, wrapping at either end without moving to other page controls. Each newly focused field selects its current value. A single field retains focus and reselects its value. Empty construction fields clear their locks. Invalid values remain uncommitted.
+While constructing a shape, Tab enters available dimension fields and selects the current value so typing replaces it. Type a value and press Enter to confirm; Esc returns to the canvas. Tab and Shift+Tab cycle forward and backward through the construction fields, wrapping at either end without moving to other page controls. Each newly focused field selects its current value. A single field retains focus and reselects its value. Empty construction fields clear their locks. Invalid values remain uncommitted. Three-point rectangle and center ellipse heights accept positive or negative nonzero values: the sign chooses the side of the first two points. Press Enter to confirm either direction.
 
 ![Entering exact width and height during rectangle construction](/manual/images/construction-dimensions.png)
 

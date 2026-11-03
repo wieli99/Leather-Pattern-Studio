@@ -95,3 +95,56 @@ test("center rectangle displays separate dimensions before sizing", { tag: "@man
   expect(a.x + a.width + 8 <= b.x || b.x + b.width + 8 <= a.x || a.y + a.height + 8 <= b.y || b.y + b.height + 8 <= a.y).toBe(true);
   await manualScreenshot(page, "center-rectangle-measurements.png");
 });
+
+for (const variant of ["Three-point rectangle", "Center ellipse"]) {
+  for (const typed of [false, true]) {
+    test(`${variant} confirms ${typed ? "typed" : "pointer-derived"} negative height with Enter`, async ({ page }) => {
+      await page.goto("/");
+      await page.getByRole("button", { name: variant === "Three-point rectangle" ? "Rectangle (R)" : "Circle (C)", exact: true }).click({ button: "right" });
+      await page.getByRole("menuitemradio", { name: variant, exact: true }).click();
+      const canvas = page.getByLabel("Pattern drawing canvas");
+      await canvas.click({ position: { x: 250, y: 350 } });
+      await canvas.click({ position: { x: 450, y: 350 } });
+      const box = (await canvas.boundingBox())!;
+      await page.mouse.move(box.x + 450, box.y + 250);
+      await canvas.press("Tab");
+      const height = page.getByRole("spinbutton", { name: "Height", exact: true });
+      await expect(height).toBeFocused();
+      expect(Number(await height.inputValue())).toBeLessThan(0);
+      if (typed) {
+        await height.fill("0");
+        await height.press("Enter");
+        await expect(page.getByRole("alert")).toHaveText("Enter a nonzero finite measurement");
+        await expect(page.locator(".objects .object-select")).toHaveCount(0);
+        await height.fill("-20");
+      }
+      await height.press("Enter");
+      await expect(page.locator(".objects .object-select")).toHaveCount(1);
+      await page.getByRole("button", { name: "Undo", exact: true }).click();
+      await expect(page.locator(".objects .object-select")).toHaveCount(0);
+    });
+  }
+}
+
+for (const variant of ["Three-point rectangle", "Three-point circle"]) {
+  test(`${variant} construction guide`, { tag: "@manual" }, async ({ page }, info) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: variant === "Three-point rectangle" ? "Rectangle (R)" : "Circle (C)", exact: true }).click({ button: "right" });
+    await page.getByRole("menuitemradio", { name: variant, exact: true }).click();
+    const canvas = page.getByLabel("Pattern drawing canvas");
+    await canvas.click({ position: { x: 250, y: 350 } });
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.move(box.x + 450, box.y + 250);
+    const image = variant === "Three-point rectangle" ? "three-point-rectangle-guide.png" : "three-point-circle-guide.png";
+    if (variant === "Three-point rectangle")
+      await manualScreenshot(page, "three-point-rectangle-guide.png");
+    else
+      await manualScreenshot(page, "three-point-circle-guide.png");
+    await page.screenshot({ path: info.outputPath(image) });
+    await canvas.click({ position: { x: 450, y: 250 } });
+    await page.mouse.move(box.x + 450, box.y + 450);
+    await expect(page.locator(".objects .object-select")).toHaveCount(0);
+    await canvas.press("Escape");
+    await expect(page.locator(".construction-measurements input")).toHaveCount(0);
+  });
+}

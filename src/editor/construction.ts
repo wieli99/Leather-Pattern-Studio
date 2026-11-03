@@ -219,3 +219,18 @@ export function construct(
     ...(kind === "control-curve" ? { handles: out.map(zeroHandles) } : {}),
   };
 }
+
+/** Transient guides; never become document geometry. */
+export function constructionGuides(mode: Mode, pending: Point[], cursor: Point): Shape[] {
+  if (!["rectangle-three", "circle-three"].includes(mode) || !pending.length)
+    return [];
+  const a = pending[0], b = pending[1] ?? cursor;
+  const line: Shape = {
+    id: "", name: "", kind: "polyline", points: [a, b], radius: 0, rotation: 0,
+  };
+  if (mode === "circle-three")
+    return pending.length === 1 && distance(a, b) > 1e-9
+      ? [construct("circle-two", [a, b])]
+      : [];
+  return [line];
+}
