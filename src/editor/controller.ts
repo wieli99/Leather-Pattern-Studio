@@ -459,6 +459,7 @@ export class Controller {
       this.selectedGroups.join(","),
       this.panelRevision,
       this.pending.length,
+      this.selectionToolsAvailable,
       !!this.guideDrag,
       this.grid,
       this.objects,
@@ -721,7 +722,7 @@ export class Controller {
       !!this.selected.length &&
       !this.pending.length &&
       !this.drawingDown &&
-      !this.gesture &&
+      (!this.gesture || this.gesture.kind === "pan") &&
       !this.guideDrag &&
       !this.busy
     );
@@ -2182,7 +2183,9 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
-    this.selectedGroups = []; this.panelRevision++;
+    if (button !== 1 && !(button === 0 && this.space)) {
+      this.selectedGroups = []; this.panelRevision++;
+    }
     this.clipboardPixel = { ...pixel };
     this.pointerInside = true;
     const raw = this.world(pixel);
