@@ -248,3 +248,21 @@ test("canvas shortcuts leave controls and browser combinations alone", async ({
   });
   expect(prevented).toBe(false);
 });
+
+test("panning keeps selection tools visible", async ({ page }) => {
+  await setup(page);
+  const toolbar = page.getByRole("toolbar", { name: "Transform selection" });
+  const box = (await page.getByLabel("Pattern drawing canvas").boundingBox())!;
+  for (const space of [false, true]) {
+    await page.mouse.move(box.x + 300, box.y + 200);
+    if (space) await page.keyboard.down("Space");
+    await page.mouse.down({ button: space ? "left" : "middle" });
+    await page.mouse.move(box.x + 350, box.y + 240);
+    await expect(toolbar).toBeVisible();
+    await page.mouse.up({ button: space ? "left" : "middle" });
+    if (space) await page.keyboard.up("Space");
+    await expect(toolbar).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Resize", exact: true }).click();
+  await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
+});
