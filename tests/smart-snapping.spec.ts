@@ -1,6 +1,7 @@
+import { manualScreenshot } from "./manual-capture";
 import { expect, test } from "@playwright/test";
 
-test("object snapping persists and shows reference guides while drawing", async ({ page }, info) => {
+test("object snapping persists and shows reference guides while drawing", { tag: "@manual" }, async ({ page }, info) => {
   await page.goto("/");
   const objects = page.getByRole("checkbox", { name: "Object snap", exact: true });
   await expect(objects).toBeChecked();
@@ -16,10 +17,7 @@ test("object snapping persists and shows reference guides while drawing", async 
   await expect(page.locator(".objects .object-select")).toHaveCount(1);
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + 350, box.y + 300);
-  await page.screenshot({ path: info.outputPath("smart-center-guides.png") });
-  if (info.project.name === "chromium") {
-    await page.screenshot({ path: "public/manual/images/smart-snapping.png" });
-  }
+  await manualScreenshot(page, "smart-snapping.png");
   await objects.uncheck();
   await expect(objects).not.toBeChecked();
 });

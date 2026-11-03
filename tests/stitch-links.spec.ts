@@ -1,6 +1,7 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from "@playwright/test";
 
-test("linked stitching loads and displays controls", async ({ page }, info) => {
+test("linked stitching loads and displays controls", { tag: "@manual" }, async ({ page }, info) => {
   await page.goto("/");
   await expect(page.getByRole("button", {name: "Open", exact: true})).toBeEnabled();
   await page.evaluate(() => {
@@ -25,7 +26,7 @@ test("linked stitching loads and displays controls", async ({ page }, info) => {
   await page.getByLabel("Pattern drawing canvas").click({position: {x: 260, y: 160}});
   await expect(page.locator(".stitch-options")).toContainText("21 holes");
   await expect(page.getByRole("button", {name: "Unlink", exact: true})).toBeEnabled();
-  await page.screenshot({path: info.outputPath("stitch-links.png")});
+  await manualScreenshot(page, "stitch-links.png");
   await page.getByRole("button", {name: "Unlink", exact: true}).click();
   await expect(page.getByRole("button", {name: "Unlink", exact: true})).toBeDisabled();
 });

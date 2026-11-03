@@ -1,6 +1,7 @@
+import { manualScreenshot } from "./manual-capture";
 import { expect, test } from "@playwright/test";
 
-test("construction measurements cycle and retain typed sizes", async ({
+test("construction measurements cycle and retain typed sizes", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await page.goto("/");
@@ -37,9 +38,7 @@ test("construction measurements cycle and retain typed sizes", async ({
   await page.mouse.move(box.x + 550, box.y + 400);
   await expect(width).toHaveValue("60");
   await expect(height).toHaveValue("40");
-  await page.screenshot({
-    path: info.outputPath("construction-measurements.png"),
-  });
+  await manualScreenshot(page, "construction-dimensions.png");
   await height.press("Enter");
   await expect(page.locator(".objects .object-select")).toHaveCount(1);
   await page.getByRole("button", { name: "Select (V)", exact: true }).click();
@@ -82,7 +81,7 @@ test("anchor toggles share state and remain undoable", async ({ page }) => {
   await expect(sharp).toHaveAttribute("aria-pressed", "true");
 });
 
-test("center rectangle displays separate dimensions before sizing", async ({ page }, info) => {
+test("center rectangle displays separate dimensions before sizing", { tag: "@manual" }, async ({ page }, info) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click({ button: "right" });
   await page.getByRole("menuitemradio", { name: "Center rectangle", exact: true }).click();
@@ -94,5 +93,5 @@ test("center rectangle displays separate dimensions before sizing", async ({ pag
   const a = (await width.boundingBox())!;
   const b = (await height.boundingBox())!;
   expect(a.x + a.width + 8 <= b.x || b.x + b.width + 8 <= a.x || a.y + a.height + 8 <= b.y || b.y + b.height + 8 <= a.y).toBe(true);
-  await page.screenshot({ path: info.outputPath("center-rectangle-measurements.png") });
+  await manualScreenshot(page, "center-rectangle-measurements.png");
 });

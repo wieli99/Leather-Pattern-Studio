@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect, type Page } from "@playwright/test";
 const rectangle = {
   id: "piece",
@@ -140,7 +141,7 @@ test("Fit restores the default page view on an empty print tab", async ({ page }
   await expect(async () => expect(await canvas.screenshot()).toEqual(initial)).toPass();
 });
 
-test("panel edge tabs hide and restore print panels and share visibility with Model", async ({ page }, info) => {
+test("panel edge tabs hide and restore print panels and share visibility with Model", { tag: "@manual" }, async ({ page }, info) => {
   await load(page);
   await create(page);
   for (const [name, selector] of [
@@ -154,7 +155,7 @@ test("panel edge tabs hide and restore print panels and share visibility with Mo
     await page.getByRole("button", { name: `Show ${name}`, exact: true }).click();
     await expect(page.locator(selector)).toBeVisible();
   }
-  await page.screenshot({ path: info.outputPath("print-panel-toggles.png") });
+  await manualScreenshot(page, "print-panel-toggles.png");
   await page.getByRole("button", { name: "Hide tools", exact: true }).click();
   await page.getByRole("tab", { name: "Model", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Drawing tools", exact: true })).toBeHidden();
@@ -208,7 +209,7 @@ test("layouts are optional, import folders repeatedly, arrange copies, persist, 
     page.getByRole("button", { name: "Rectangle (R)", exact: true }),
   ).toBeVisible();
 });
-test("exports actual PDF, SVG and PNG previews with physical page sizes", async ({
+test("exports actual PDF, SVG and PNG previews with physical page sizes", { tag: "@manual" }, async ({
   page,
 }) => {
   test.setTimeout(90000);
@@ -248,7 +249,7 @@ test("exports actual PDF, SVG and PNG previews with physical page sizes", async 
       }),
     )
     .toBe(true);
-  await page.screenshot({ path: "test-results/print-preview.png" });
+  await manualScreenshot(page, "print-preview.png");
   await dialog.getByLabel("Format", { exact: true }).selectOption("svg");
   await expect(
     dialog.getByRole("button", { name: "Export", exact: true }),
@@ -363,7 +364,7 @@ test("multiple sheets export as a ZIP and PDF export works offline", async ({
   expect(Object.keys(zip.files)).toEqual(["A4-001.svg", "A4-002.svg"]);
 });
 
-test("renders all artwork families and exported unit-aware labels", async ({
+test("renders all artwork families and exported unit-aware labels", { tag: "@manual" }, async ({
   page,
 }) => {
   test.setTimeout(60000);
@@ -526,7 +527,7 @@ test("renders all artwork families and exported unit-aware labels", async ({
     .getByRole("button", { name: "Apply settings", exact: true })
     .click();
   await page.getByRole("button", { name: "Fit", exact: true }).click();
-  await page.screenshot({ path: "test-results/print-layout.png" });
+  await manualScreenshot(page, "print-layout.png");
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Export print layout" });
   await expect(
@@ -606,7 +607,7 @@ test("cancels pointer previews, restricts drawing, and removes linked sources at
   );
 });
 
-test("orientation shows both icon choices and preserves a custom name", async ({
+test("orientation shows both icon choices and preserves a custom name", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -635,7 +636,7 @@ test("orientation shows both icon choices and preserves a custom name", async ({
   await expect(
     orientation.getByRole("button", { name: "Landscape", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await page.screenshot({ path: "test-results/print-orientation.png" });
+  await manualScreenshot(page, "print-orientation.png");
   await dialog.getByRole("button", { name: "Create", exact: true }).click();
   const document = await save(page);
   expect(document.printLayouts[0]).toMatchObject({
@@ -644,7 +645,7 @@ test("orientation shows both icon choices and preserves a custom name", async ({
     height: 297,
   });
 });
-test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
+test("Ctrl selects, numbers, moves and deletes pages with undo", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -654,11 +655,22 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
     .getByRole("button", { name: "Add page right 0,0", exact: true })
     .click();
   await page.keyboard.up("Control");
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   const canvas = page.getByLabel("Print layout canvas"),
     box = (await canvas.boundingBox())!;
   await page.keyboard.down("Control");
   await page.mouse.click(box.x + 100, box.y + 100);
-  await page.screenshot({ path: "test-results/print-page-selection.png" });
+  // Canvas page decorations render asynchronously. Wait for the selected border,
+  // rather than capturing a stable frame from before selection was painted.
+  await expect.poll(() => canvas.evaluate(el => {
+    const c = el as HTMLCanvasElement;
+    const scale = c.width / c.clientWidth;
+    const color = c.getContext("2d")!.getImageData(Math.round(50 * scale), Math.round(90 * scale), 1, 1).data;
+    // WebKit blends border pixels differently; distinguish orange from the
+    // unselected grey border without depending on exact antialiasing values.
+    return color[0] - color[1] > 25 && color[1] - color[2] > 25;
+  })).toBe(true);
+  await manualScreenshot(page, "print-page-selection.png");
   await page
     .getByRole("button", { name: "Delete page 0,0", exact: true })
     .click();
@@ -683,7 +695,7 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
         .data[3];
     });
   await expect.poll(destinationAlpha).toBe(0);
-  await page.screenshot({ path: "public/manual/images/reorder-pages.png" });
+  await manualScreenshot(page, "reorder-pages.png");
   await page.mouse.up();
   await expect.poll(destinationAlpha).toBe(255);
   await page.keyboard.up("Control");
@@ -693,7 +705,7 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", async ({
     { column: 0, row: 0 },
   ]);
 });
-test("source object and group hover previews use a medium popup", async ({
+test("source object and group hover previews use a medium popup", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -709,10 +721,10 @@ test("source object and group hover previews use a medium popup", async ({
     .getByRole("button", { name: "Pattern", exact: true })
     .hover();
   await expect(page.getByRole("tooltip")).toBeVisible();
-  await page.screenshot({ path: "test-results/object-hover-preview.png" });
+  await manualScreenshot(page, "object-hover-preview.png");
 });
 
-test("dragging a source group previews and imports it at the drop location", async ({
+test("dragging a source group previews and imports it at the drop location", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -764,7 +776,7 @@ test("dragging a source group previews and imports it at the drop location", asy
   await expect.poll(darkPreviewPixels).toBe(0);
   await page.mouse.move(box.x + 250, box.y + 260, { steps: 4 });
   await expect.poll(darkPreviewPixels).toBeGreaterThan(10);
-  await page.screenshot({ path: "test-results/print-drag-preview.png" });
+  await manualScreenshot(page, "print-drag-preview.png");
   await page.mouse.move(box.x + 250, box.y + 260);
   await page.mouse.up();
   await expect(
@@ -860,7 +872,7 @@ test("move and rotate tool values preview, cancel, and commit without changing s
   expect(doc.shapes[0]).toMatchObject(rectangle);
 });
 
-test("Select rotation ring uses Model modifiers and Escape cancels its preview", async ({
+test("Select rotation ring uses Model modifiers and Escape cancels its preview", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -882,7 +894,7 @@ test("Select rotation ring uses Model modifiers and Escape cancels its preview",
       .boundingBox())!,
     pagesBox = (await pages.boundingBox())!;
   expect(pagesBox.y).toBeGreaterThanOrEqual(listBox.y + listBox.height);
-  await page.screenshot({ path: "test-results/print-gizmo.png" });
+  await manualScreenshot(page, "print-gizmo.png");
   await page.keyboard.down("Control");
   await page.mouse.move(box.x + 320, box.y + 347);
   await page.mouse.down();
@@ -891,7 +903,7 @@ test("Select rotation ring uses Model modifiers and Escape cancels its preview",
     box.y + 347 + 60 * Math.sin((48 * Math.PI) / 180),
     { steps: 6 },
   );
-  await page.screenshot({ path: "test-results/print-rotation-readout.png" });
+  await manualScreenshot(page, "print-rotation-readout.png");
   await page.mouse.up();
   await page.keyboard.up("Control");
   expect((await save(page)).printLayouts[0].instances[0].rotation).toBeCloseTo(
@@ -907,7 +919,7 @@ test("Select rotation ring uses Model modifiers and Escape cancels its preview",
   );
 });
 
-test("print tools select first, apply by right click, and mirror linked artwork", async ({
+test("print tools select first, apply by right click, and mirror linked artwork", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -937,7 +949,7 @@ test("print tools select first, apply by right click, and mirror linked artwork"
       y: 50 + (10 + placement.y) * 2,
     },
   });
-  await page.screenshot({ path: "test-results/print-mirror.png" });
+  await manualScreenshot(page, "print-mirror.png");
   await page
     .locator(".print-transform")
     .getByRole("button", { name: "Apply", exact: true })
@@ -1015,7 +1027,7 @@ test("print tab context menu targets its tab and drag reorders saved layouts", a
   ).toEqual(["A4 2", "A4"]);
 });
 
-test("print object actions live in the shared context menu", async ({
+test("print object actions live in the shared context menu", { tag: "@manual" }, async ({
   page,
 }) => {
   await load(page);
@@ -1031,7 +1043,7 @@ test("print object actions live in the shared context menu", async ({
     .getByRole("button", { name: "Piece", exact: true })
     .click({ button: "right" });
   await expect(page.locator(".object-context-menu")).toBeVisible();
-  await page.screenshot({ path: "test-results/print-object-menu.png" });
+  await manualScreenshot(page, "print-object-menu.png");
   await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
   await expect(
     tree.getByRole("button", { name: "Piece", exact: true }),
@@ -1269,7 +1281,7 @@ test("a small rightward drag near the paper edge does not shift the row", async 
   expect(await save(page)).toEqual(before);
 });
 
-test("unlink buttons freeze imported objects and folders with undo and persistence", async ({ page }) => {
+test("unlink buttons freeze imported objects and folders with undo and persistence", { tag: "@manual" }, async ({ page }) => {
   await load(page);
   await create(page);
   await page.getByRole("button", { name: "Import Pattern", exact: true }).click();
@@ -1291,9 +1303,7 @@ test("unlink buttons freeze imported objects and folders with undo and persisten
   await page.getByRole("button", { name: "Import Piece", exact: true }).click();
   await tree.getByRole("button", { name: "Unlink print Pattern", exact: true }).click();
   await expect(tree.getByRole("button", { name: "Unlinked print Pattern", exact: true })).toBeDisabled();
-  if (test.info().project.name === "chromium") {
-    await page.locator(".print-workspace").screenshot({ path: "public/manual/images/print-unlink.png" });
-  }
+  await manualScreenshot(page.locator(".print-workspace"), "print-unlink.png");
   await page.getByRole("tab", { name: "Model", exact: true }).click();
   await page.getByRole("button", { name: "Piece", exact: true }).click();
   await page.keyboard.press("Delete");
@@ -1400,7 +1410,7 @@ test("tool rails keep separators and share history and fit icons", async ({ page
   await page.screenshot({ path: "test-results/print-tool-rail.png" });
 });
 
-test("native print tools create isolated editable objects and support Model clipboard", async ({ page }) => {
+test("native print tools create isolated editable objects and support Model clipboard", { tag: "@manual" }, async ({ page }) => {
   await load(page);
   await create(page);
   const canvas = page.getByLabel("Print layout canvas");
@@ -1436,9 +1446,7 @@ test("native print tools create isolated editable objects and support Model clip
     return data.getData("text/plain");
   });
   expect(clipboard).toContain("leather-pattern-designer-clipboard");
-  if (process.env.UPDATE_MANUAL_SCREENSHOTS && page.context().browser()?.browserType().name() === "chromium") {
-    await page.screenshot({ path: "public/manual/images/print-drawing-tools.png" });
-  }
+  await manualScreenshot(page, "print-drawing-tools.png");
   await page.getByRole("tab", { name: "Model", exact: true }).click();
   const grid = page.getByLabel("Pattern drawing canvas");
   await grid.hover();

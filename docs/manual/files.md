@@ -1,20 +1,26 @@
 # Files, recovery and offline use
 
-Save uses native file pickers where supported. Other browsers download a JSON copy; a download notification does not guarantee a disk write. Open accepts saved project files. New and Open ask before replacing unsaved work.
+Save opens a file dialog or downloads a project file, depending on your browser. A download notification does not guarantee that the file reached your disk. Open accepts saved project files. New and Open ask before replacing unsaved work.
 
-Browser storage and offline caches belong to the current hostname. When moving from a temporary workers.dev address to leather.wieli.at, save your projects to files on the old address and open them on the new address; recovery does not transfer automatically.
+Recovery does not transfer automatically between browsers, devices, or website addresses. Save projects to files before switching, then use Open in the new location.
 
-Recovery is stored separately in browser storage and offered at startup. It is not a substitute for saved files: storage may be denied, cleared, or evicted.
+Recovery is stored separately in browser storage and offered at startup. It is not a substitute for saved files: your browser may prevent storage or clear it later.
 
-Current files use version 18, including linked print layouts, paper settings, and placements alongside indicators, persistent measurements, object groups, visibility, locking, and attached stitch groups. Versions 1–17 migrate on opening without changing canvas stacking. Older application builds cannot open version-18 files. Inactive legacy stitch metadata is preserved.
+Projects from older versions are upgraded when opened. Save a new copy before sharing with someone using an older application version: older builds may not open newer files.
 
-Offline use requires a successful online load and completed cache installation in a production build. Development mode does not enable offline caching. The manual is bundled and precached too. Save before accepting an application update.
+## Work offline
+
+Open the app online first and wait for the editor and its offline files to finish loading. Before relying on it away from an internet connection, save your project and try reopening the app with the network disconnected. The manual and PDF, SVG, and PNG export are available offline too. If reopening fails, reconnect and allow the online load to finish before trying again.
+
+Use the same browser and website address. Clearing website data can remove offline files and recovery. Keep saved project files outside browser storage.
+
+When an application update offers **Reload**, save your project before accepting it.
 
 ## Save and reopen a project
 
-Edit the filename directly at the top left. The .leather.json suffix is hidden from the editable field; saved filenames retain it. A subtle background with rounded corners marks the editable field; a gold accent outline appears while focused. Enter or clicking outside commits; Escape cancels. Blank names are ignored. Names without a .json suffix receive .leather.json. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
+Edit the filename directly at the top left. The .leather.json suffix is hidden from the editable field; saved filenames retain it. Enter or clicking outside commits; Escape cancels. Blank names are ignored. Names without a .json suffix receive .leather.json. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
 
-Choose **Save** (Ctrl/⌘+S). With native file access, choose a destination on the first save or after renaming; later saves overwrite that selected file. Other browsers download a copy using the current filename. The browser controls the destination and may rename duplicates.
+Choose **Save** (Ctrl/⌘+S). When Save opens a file dialog, choose a destination on the first save or after renaming; later saves overwrite that selected file. Other browsers download a copy using the current filename. The browser controls the destination and may rename duplicates.
 
 “Download started” clears the change indicator for the exported revision but does not confirm a disk write. Keep the file and use **Open** to edit it again. Browser recovery remains separate.
 

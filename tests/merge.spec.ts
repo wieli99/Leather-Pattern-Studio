@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect, type Page } from "@playwright/test";
 async function load(page: Page, shapes: unknown[]) {
   await page.evaluate(() => {
@@ -64,7 +65,7 @@ test("Merge alone highlights, cancels, applies and undoes an outline union", asy
   await page.getByRole("button", { name: "Redo", exact: true }).click();
   await expect(page.locator(".objects .object-select")).toHaveCount(1);
 });
-test("connected curves merge, cancel and round trip their handles", async ({
+test("connected curves merge, cancel and round trip their handles", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await page.goto("/");
@@ -87,11 +88,7 @@ test("connected curves merge, cancel and round trip their handles", async ({
   const merge = page.getByRole("button", { name: "Merge", exact: true });
   await expect(merge).toBeEnabled();
   await merge.click();
-  if (
-    info.project.name === "chromium" &&
-    process.env.UPDATE_MANUAL_SCREENSHOTS === "1"
-  )
-    await page.screenshot({ path: "public/manual/images/merge.png" });
+  await manualScreenshot(page, "merge.png");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await merge.click();

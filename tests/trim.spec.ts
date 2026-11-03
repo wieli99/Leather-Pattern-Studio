@@ -1,7 +1,8 @@
+import { manualScreenshot } from "./manual-capture";
 import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 
-test("curved trim highlights, cancels, applies, undoes and round trips", async ({
+test("curved trim highlights, cancels, applies, undoes and round trips", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await page.goto("/");
@@ -62,11 +63,7 @@ test("curved trim highlights, cancels, applies, undoes and round trips", async (
   const point = { x: box.x + 80 + 110 * 3, y: box.y + 100 + 70 * 3 };
   await page.mouse.move(point.x, point.y);
   await page.screenshot({ path: info.outputPath("curved-trim.png") });
-  if (
-    info.project.name === "chromium" &&
-    process.env.UPDATE_MANUAL_SCREENSHOTS === "1"
-  )
-    await page.screenshot({ path: "public/manual/images/trim.png" });
+  await manualScreenshot(page, "trim.png");
   await page.mouse.click(point.x, point.y);
   await page.keyboard.press("Escape");
   await expect(trim).toHaveAttribute("aria-pressed", "false");

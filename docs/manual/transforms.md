@@ -16,7 +16,7 @@ Drag for proportional sizing, use an axis handle to resize one direction, or ent
 
 Transforms remain previews until applied. Selection changes are restricted while a transform is active. Apply or cancel before editing Properties.
 
-![Transforms](/manual/images/transforms.png)
+![Resize preview with numeric scale factors and pivot controls](/manual/images/transforms.png)
 
 ![SVG artwork resized independently along X and Y](/manual/images/svg-resize.png)
 
@@ -28,7 +28,7 @@ Alt applies the radius to every corner of the targeted shape and combines with S
 
 ![Individual corner radius, corner dots, edge measurements and exact numeric editing](/manual/images/corner-radii.png)
 
-Tool settings open in a compact popup at the bottom right of the drawing canvas, beside the sidebar, with matching 12 px bottom and right margins. The tool icon bar stays centered along the bottom. Longer settings panels scroll internally.
+Tool settings appear beside the sidebar. Scroll within long panels to reach additional controls.
 
 ## Trim
 
@@ -41,8 +41,6 @@ Choose the scissors icon to activate Trim, or press **K** with a selection in Se
 Select objects and choose Mirror (M), next to Resize. Click an X, Y, +45° or −45° axis line on the canvas to reflect across it through the pivot. Hover highlights selectable axes and straight edges. Activation leaves geometry unchanged until you click a target. The popup retains the Local/World axes dropdown. X reflects across the X axis, reversing Y. Use World/Local axes and Set pivot as with other transforms.
 
 Click a straight outline segment to use its infinite supporting line. Selected objects can supply the reference edge. Curves cannot supply an axis. Apply, Enter or right-click replaces the selection in one undo step; Cancel or Escape discards the preview.
-
-Selection-tool popups show small, muted instructions below their titles.
 
 ## Merge
 
@@ -57,5 +55,3 @@ Merge also joins two or more Curve and Control point curve objects at matching e
 Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
 
 In inch mode, guide and corner distance steps are 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. See [Measurements and snapping](#measurements) for fractional entry. Rotation steps remain in degrees.
-
-Annotation selection bounds and reset pivots follow the displayed measurement units, including ruler ticks and measurement labels.
