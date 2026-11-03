@@ -1,5 +1,6 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from "@playwright/test";
-test("import an image and edit opacity and dimensions", async ({page}) => {
+test("import an image and edit opacity and dimensions", { tag: "@manual" }, async ({page}) => {
   await page.goto("/");
   const button = page.getByRole("button", {name:"Import image", exact:true});
   await expect(button).toBeEnabled();
@@ -9,11 +10,11 @@ test("import an image and edit opacity and dimensions", async ({page}) => {
   await expect(page.locator(".object-select")).toHaveCount(1);
   await expect(page.getByText("Lock aspect ratio", {exact:true})).toBeVisible();
   await expect(page.getByText("Image opacity (%)", {exact:true})).toBeVisible();
-  await page.screenshot({path:"test-results/image-import.png"});
+  await manualScreenshot(page, "image-import.png");
 });
 
 for (const mimeType of ["image/svg+xml", ""]) {
-  test(`import SVG image (${mimeType || "empty MIME"}) and undo`, async ({ page }) => {
+  test(`import SVG image (${mimeType || "empty MIME"}) and undo`, { tag: "@manual" }, async ({ page }) => {
     await page.goto("/");
     const button = page.getByRole("button", { name: "Import image", exact: true });
     await expect(button).toBeEnabled();
@@ -23,14 +24,14 @@ for (const mimeType of ["image/svg+xml", ""]) {
       buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="120" height="60" fill="red"/></svg>') });
     await expect(page.locator(".object-select")).toHaveCount(1);
     await expect(page.getByText("Image opacity (%)", { exact: true })).toBeVisible();
-    if (mimeType) await page.screenshot({path:"test-results/svg-import.png"});
+    if (mimeType) await manualScreenshot(page, "svg-import.png");
     await page.getByRole("button", { name: "Undo", exact:true }).click();
     await expect(page.locator(".object-select")).toHaveCount(0);
   });
 }
 
 for (const aspect of ['width="120" height="60"', 'viewBox="0 0 120 60"', 'viewBox="0 0 120 60" preserveAspectRatio="xMidYMid meet"']) {
-  test(`SVG artwork stretches independently ${aspect || "default"}`, async ({ page }) => {
+  test(`SVG artwork stretches independently ${aspect || "default"}`, { tag: "@manual" }, async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("button", {name:"Import image",exact:true})).toBeEnabled();
     const chooser = page.waitForEvent("filechooser");
@@ -57,6 +58,6 @@ for (const aspect of ['width="120" height="60"', 'viewBox="0 0 120 60"', 'viewBo
     await page.getByRole("spinbutton",{name:"Y factor",exact:true}).fill("1.2");
     await page.getByRole("button",{name:"Apply",exact:true}).click();
     await expect.poll(async () => (await artwork()).height/before.height).toBeCloseTo(1.2,1);
-    await page.screenshot({path:"test-results/svg-resize.png"});
+    if (aspect === 'width="120" height="60"') await manualScreenshot(page, "svg-resize.png");
   });
 }

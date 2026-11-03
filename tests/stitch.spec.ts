@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
@@ -40,7 +41,7 @@ async function saved(page: any) {
   await page.getByRole("button", { name: "Save", exact: true }).click();
   return JSON.parse(await readFile((await (await download).path())!, "utf8"));
 }
-test("place, merge and split within a session, then save", async ({
+test("place, merge and split within a session, then save", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await setup(page);
@@ -53,11 +54,7 @@ test("place, merge and split within a session, then save", async ({
   await expect(
     page.getByRole("button", { name: "Split all", exact: true }),
   ).toBeEnabled();
-  if (
-    info.project.name === "chromium" &&
-    process.env.UPDATE_MANUAL_SCREENSHOTS === "1"
-  )
-    await page.screenshot({ path: "public/manual/images/stitch-lines.png" });
+  await manualScreenshot(page, "stitch-lines.png");
   await page.getByRole("button", { name: "Split all", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await saved(page);
@@ -134,7 +131,7 @@ test("sharp rectangles accept placement and editable preset values in the bottom
   expect(doc.stitchGroups[0].settings.inset).toBe(2.75);
 });
 
-test("converted path stays stitched after inserting an anchor", async ({
+test("converted path stays stitched after inserting an anchor", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await page.goto("/");
@@ -176,13 +173,7 @@ test("converted path stays stitched after inserting an anchor", async ({
   await expect(page.getByLabel("Stitch inset", { exact: true })).toHaveValue(
     "0.00",
   );
-  if (
-    info.project.name === "chromium" &&
-    process.env.UPDATE_MANUAL_SCREENSHOTS === "1"
-  )
-    await page.screenshot({
-      path: "public/manual/images/converted-stitching.png",
-    });
+  await manualScreenshot(page, "converted-stitching.png");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const canvas = page.getByLabel("Pattern drawing canvas");
   await canvas.click({ position: { x: 245, y: 160 }, modifiers: ["Alt"] });

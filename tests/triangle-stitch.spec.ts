@@ -1,6 +1,7 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-test("triangle edges accept stitching through the real worker", async ({
+test("triangle edges accept stitching through the real worker", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await page.goto("/");
@@ -50,13 +51,7 @@ test("triangle edges accept stitching through the real worker", async ({
     await canvas.click({ position });
     await expect(page.locator('.stitch-options [role="alert"]')).toHaveCount(0);
   }
-  if (
-    info.project.name === "chromium" &&
-    process.env.UPDATE_MANUAL_SCREENSHOTS === "1"
-  )
-    await page.screenshot({
-      path: "public/manual/images/triangle-stitching.png",
-    });
+  await manualScreenshot(page, "triangle-stitching.png");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save", exact: true }).click();

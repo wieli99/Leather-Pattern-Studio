@@ -86,14 +86,6 @@ test("all selection tool popups align with the right canvas edge", async ({
     expect(
       Math.abs(toolbar.x + toolbar.width / 2 - (canvas.x + canvas.width / 2)),
     ).toBeLessThan(2);
-    if (
-      info.project.name === "chromium" &&
-      process.env.UPDATE_MANUAL_SCREENSHOTS === "1" &&
-      (name === "Move" || name === "Corner radius")
-    )
-      await page.screenshot({
-        path: `public/manual/images/${name === "Move" ? "transforms" : "corner-radii"}.png`,
-      });
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
   }
 });

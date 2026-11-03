@@ -1,17 +1,18 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from "@playwright/test";
 
-test("footer reporting opens a themed dialog and always includes the app version", async ({ page }, testInfo) => {
+test("footer reporting opens a themed dialog and always includes the app version", { tag: "@manual" }, async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("button", { name: "New", exact: true })).toBeEnabled();
   await page.locator("footer").getByRole("button", { name: "Report a bug" }).click();
   const dialog = page.getByRole("dialog", { name: "Report a bug" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("checkbox")).toHaveCount(2);
+  await manualScreenshot(page, "bug-report.png");
   for (const checkbox of await dialog.getByRole("checkbox").all()) {
     await expect(checkbox).toBeChecked();
     await checkbox.uncheck();
   }
-  await page.screenshot({ path: testInfo.outputPath("bug-report.png") });
   await page.evaluate(() => {
     window.open = (url) => { (window as any).__reportUrl = String(url); return null; };
   });

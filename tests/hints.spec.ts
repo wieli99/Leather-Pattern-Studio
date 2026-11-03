@@ -1,12 +1,13 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from "@playwright/test";
-test("properties follows the selection", async ({ page }, info) => {
+test("properties follows the selection", { tag: "@manual" }, async ({ page }, info) => {
   await page.goto("/");
   const rectangle = page.getByRole("button", { name: "Rectangle (R)", exact: true });
   await expect(rectangle).toBeEnabled();
   const properties = page.getByRole("heading", { name: "Properties", exact: true });
   await expect(properties).toHaveCount(0);
   await expect(page.locator(".object-properties")).toHaveCount(0);
-  await page.screenshot({ path: info.outputPath("empty-canvas.png") });
+  await manualScreenshot(page, "empty-canvas.png");
   await rectangle.click();
   const canvas = page.getByLabel("Pattern drawing canvas");
   await canvas.click({ position: { x: 150, y: 180 } });

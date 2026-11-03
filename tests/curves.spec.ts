@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 test("curve variants draw, edit, undo, save and reopen", async ({
@@ -119,14 +120,14 @@ for (const mode of ["Curve", "Control point curve"]) {
   });
 }
 
-test("Polyline groups straight and curved paths and remembers its variant", async ({ page }, info) => {
+test("Polyline groups straight and curved paths and remembers its variant", { tag: "@manual" }, async ({ page }, info) => {
   await page.goto("/");
   const tool = page.getByRole("button", { name: "Polyline (P)", exact: true });
   await expect(tool).toBeEnabled();
   await expect(page.getByRole("button", { name: "Curve (B)", exact: true })).toHaveCount(0);
   await tool.click({ button: "right" });
   for (const name of ["Polyline", "Curve", "Control point curve"]) await expect(page.getByRole("menuitemradio", { name, exact: true })).toBeVisible();
-  await page.screenshot({ path: info.outputPath("polyline-variants.png") });
+  await manualScreenshot(page, "tool-variants.png");
   await page.getByRole("menuitemradio", { name: "Curve", exact: true }).click();
   const canvas = page.getByLabel("Pattern drawing canvas");
   await canvas.focus();

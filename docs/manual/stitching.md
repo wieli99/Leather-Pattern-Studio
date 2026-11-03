@@ -3,7 +3,7 @@
 ## Place a line
 
 1. Select the source shape, then choose **Stitch line** beside **Corner radius**, or press **I** with the canvas focused in Select mode.
-2. In the bottom-right popup beside the sidebar, choose the iron style, spacing, inset, and alignment. Spacing and inset are editable fields with preset suggestions; type over the value directly or open its arrow dropdown and choose a preset. Presets open beside the field, with a pointer cursor and a highlight on the option under the mouse. Arrow keys also highlight options; Enter selects one.
+2. In the bottom-right popup beside the sidebar, choose the iron style, spacing, inset, and alignment. Spacing and inset are editable fields with preset suggestions; type over the value directly or open its arrow dropdown and choose a preset. Arrow keys also highlight options; Enter selects one.
 3. Hover a source edge to preview the entire stitch line. On an open path, hover on the side you want. Closed shapes always stitch inside.
 4. Click to preview placement. Each straight edge, curve segment, and rounded corner is a separate target. Circles and ellipses use their whole perimeter.
 
@@ -53,7 +53,7 @@ Rounding a sharp corner already spanned by a merged stitch group adds the new ar
 
 ![Merged stitching adapting to rounded corners](/manual/images/rounded-stitching.png)
 
-## Sharp polygon corners
+## Stitch sharp polygon corners
 
 On triangles, rectangles, and other sharp polygons, stitch lines stop where the neighboring inset edges intersect, even if those neighbors are not stitched. This keeps their ends inset from both adjoining sides. Start/end clearances are measured from these inset intersections. Insets that collapse the available path or leave the shape are still rejected.
 
@@ -61,9 +61,9 @@ On triangles, rectangles, and other sharp polygons, stitch lines stop where the 
 
 Selected stitch groups show a broad translucent highlight with a dashed centerline, plus their direction and endpoint markers. This highlight follows the entire selected group and keeps the same screen thickness when zooming.
 
-Click a visible stitch path in Select mode to open its stitch settings and highlight its group. Within the Stitch line tool, click the visible path to select it, or Shift-click to add/remove groups from the selection. Selection uses a fixed screen-space tolerance at every zoom; you do not need to click the source edge.
+Click a visible stitch path in Select mode to open its stitch settings and highlight its group. Within the Stitch line tool, click the visible path to select it, or Shift-click to add/remove groups from the selection. Click the stitch path itself; you do not need to click the source edge.
 
-Stitch placement previews and clicks snap to the nearest source edge within 24 screen pixels, at any zoom. On open paths, the side of the edge you point at still chooses the stitch side.
+Stitch placement previews and clicks snap to nearby source edges at any zoom. On open paths, the side of the edge you point at still chooses the stitch side.
 
 ## Convert a path
 
@@ -87,4 +87,4 @@ Trim and Stitch line are disabled when only text is selected, including their ke
 
 All dimensional settings and preset labels follow Settings → Units. Inch mode accepts fractions and decimals, including for marker diameter and length. Physical preset sizes and validity limits are preserved; spacing, inset, and clearances accept finer precision than 0.01 mm. See [Measurements and snapping](#measurements).
 
-Switching to another stitch group resets field validity to that group’s displayed settings; invalid drafts from the previous group do not block valid edits on the new group.
+If a dimension is invalid, correct it before applying the session.

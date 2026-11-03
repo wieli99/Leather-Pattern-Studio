@@ -20,6 +20,8 @@ These settings apply to the upstream repository. Contributors do not need Cloudf
 3. Open a PR into `dev`. Merge after required checks pass; do not push directly to protected branches.
 4. Review Dependabot PRs in the same way. They update `dev` and reach production in a subsequent release; prioritize releases for urgent security fixes.
 
+The Podman runner keeps Vite's optimizer cache in container-local temporary storage, separate from the shared dependency volume. This prevents dependency installs in validation containers from deleting a running dev server's optimized modules. After changing dependencies, restart your development server and reload open editor/manual tabs. If an older running container reports `504 Outdated Optimize Dep` or a module MIME-type error, stop it and rerun `tools/dev/run.sh dev` to pick up the isolated-cache setting.
+
 CI checks PRs and pushes to both branches. It runs Rust tests, the TypeScript/production build, unit tests, and Playwright on Chromium, Firefox, and WebKit. Development changes do not deploy a preview site.
 
 ## Versioning and releases
@@ -42,10 +44,23 @@ Maintainers prepare one version bump per release; ordinary contribution PRs do n
    ```
 
    Replace `patch` with `minor`, `major`, or an explicit version such as `0.2.0`. This updates `package.json` and `package-lock.json` without creating a Git commit or tag.
-3. Review and commit both files as a separate version-bump commit. Merge the preparation PR into `dev` after checks pass.
-4. Open a `dev` → `main` release PR with the target version, resulting behavior, breaking changes if any, and validation results.
-5. Merge after checks pass. Every push to `main` runs checks again, then deploys the tested `dist/` artifact to the production Worker. A failed check prevents deployment.
-6. Verify the production workflow and smoke-test the deployed app. Merge `main` back into `dev` through a PR to keep the branch histories synchronized; merge any emergency fixes back as well.
+3. Refresh the manual illustrations in the same Podman environment as CI. On a fresh environment, first run `tools/dev/run.sh sh -c 'npm ci && npx playwright install chromium'` to populate dependencies and the browser cache:
+
+   ```bash
+   tools/dev/run.sh npm run build
+   tools/dev/run.sh npm run manual:screenshots:update
+   tools/dev/run.sh npm run build
+   tools/dev/run.sh npm run manual:screenshots:check
+   ```
+
+   The first build supplies the current editor for captures; the second packages the refreshed images into the offline manual. Review every changed image alongside its article and commit the refreshed images in the preparation PR. The check command regenerates screenshots in memory and compares their pixels with the committed files (zero differing pixels after Playwright’s 0.1 perceptual threshold for rasterization noise); differences fail CI before the production artifact is uploaded. Failure reports include actual, expected, and difference images under `test-results/manual/` and `playwright-report/manual/`. Do not update images merely to silence a failure: first check the UI and documentation agree.
+
+   Captures use Chromium at 1280×800 and scale 1 in the development container. Each test starts with clean browser storage; locale, timezone, color scheme and reduced motion are fixed. `tests/manual-capture.ts` captures stable frames with animations and carets hidden. Existing browser scenarios supply the illustrated interaction and assert its state. Every referenced illustration must be captured in each run. Ordinary browser tests never update source illustrations. Add a named capture call and the `@manual` test tag when adding a manual image; remove its asset and capture when retiring it. Keep Playwright and the container environment aligned when updating dependencies.
+
+4. Review and commit both files as a separate version-bump commit. Merge the preparation PR into `dev` after checks pass.
+5. Open a `dev` → `main` release PR with the target version, resulting behavior, breaking changes if any, and validation results.
+6. Merge after checks pass. Every push to `main` runs checks again, then deploys the tested `dist/` artifact to the production Worker. A failed check prevents deployment.
+7. Verify the production workflow and smoke-test the deployed app. Merge `main` back into `dev` through a PR to keep the branch histories synchronized; merge any emergency fixes back as well.
 
 The build reads `package.json` to display the application version. Version selection and bumping are manual: CI does not enforce a new version, create tags, or publish GitHub Release entries. Never reuse an already published version for changed application contents. Production deployments are serialized and stale main commits are skipped.
 

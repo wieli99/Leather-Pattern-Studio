@@ -1,37 +1,37 @@
 # Workspace
 
-The leather-and-tool icon identifies Leather Pattern Studio in the header, with the three words stacked beside it. The editor and manual browser tabs use the same gold outline icon with a transparent background.
+Use **Model** to draw and edit your pattern. Optional print tabs arrange copies on physical paper; [create a print layout](#printing) when you are ready to export.
 
-The left toolbar selects drawing modes. Right-click or hold a grouped tool to open variants. Its icon remembers the last variant. Repeat its key to cycle; Shift reverses.
+![Drawing workspace with tools, objects, properties and tool help](/manual/images/workspace.png)
 
-The drawing and print-layout canvases accept keyboard focus without showing an outline around the canvas.
+## Find tools and their variants
 
-The footer shows the application version at the right on both Model and print-layout tabs. Include this version when reporting a problem.
+The left toolbar selects drawing tools. Right-click or hold a grouped tool to open its variants. You can also focus its button and press Down. The button remembers the last variant. Repeat its shortcut letter to cycle forward; Shift+letter cycles backward.
 
-The Model objects panel lists your shapes. Click to select; Shift+click selects the range from the selected row, including a newly created object. Ctrl/⌘+click toggles individual rows; Ctrl/⌘+Shift+click adds a range. Double-click an object name or press F2 while its row is focused to rename it. Enter applies; Esc cancels.
+Select an object to show its Properties and the selection tools below the canvas. Tool help in the right panel describes the current operation. If a shortcut does nothing, click the canvas first and finish or cancel any active edit.
 
-The right panel stacks Model objects, Properties, and Tool help. Click the Properties, Tool help, Object, Geometry, or Appearance header to collapse or expand it. Each section remembers its state across visits. The Model objects panel always remains expanded. Headers also work with Enter or Space when focused. Properties groups fields under Object, Geometry, and Appearance; expandable Vertex coordinates follow where applicable. Geometry fields use the selected measurement units unless a field indicates otherwise. Duplicate and Delete appear below the properties.
+## Use Properties and Tool help
 
-Properties appears when objects are selected and hides when nothing is selected. Enter or leaving a field applies one undo step; Esc restores its starting value. Inline hints in the sidebar explain the current operation, including when nothing is selected.
+Properties groups settings under Object, Geometry, and Appearance. Select an object to see its available fields; expand Vertex coordinates for individual points. Enter or leaving a property field applies it. Esc restores the starting value. Each applied property edit can be undone.
 
-Edge tabs on both Model and print-layout tabs hide or show tools, the inspector, and the status bar. Each edge tab joins the bar it controls, with a flat edge against the bar. Panel visibility is shared across tabs and remembered in this browser. Settings controls units, Axis rulers, grid style, spacing, and theme. Choose Millimetres, Inches (fractional), or Inches (decimal). This preference applies across projects and is remembered in this browser. Switching units preserves physical dimensions and grid spacing. Grid spacing combines a custom value input with a preset dropdown arrow. Millimetre presets are 0.5, 1, 5, 10, 50, and 100 mm; inch presets offer 1/64 through 1 inch. Choosing a preset updates and saves the spacing immediately.
+Click section headers to collapse or expand them; Enter and Space work when a header has focus. Sections remember their state. The object list stays expanded. See [selection and groups](#selection) for organizing objects.
 
-![Inch units and grid settings](/manual/images/inch-settings.png)
+## Set units, grid and theme
 
-Scrollbars in panels and dialogs follow the selected theme. The manual uses scrollbars matching its light page colors. System high-contrast settings retain the browser's automatic scrollbar colors.
+Open **Settings** to choose millimetres, fractional inches, or decimal inches, plus grid spacing, grid style, theme, and Axis rulers. Switching units preserves physical dimensions. Unit preferences apply across projects and are remembered in this browser.
 
-![Themed scrollbar in the inspector](/manual/images/themed-scrollbars.png)
+Type custom grid spacing or choose a preset from its dropdown arrow. Choosing a preset applies it immediately. Grid visibility and snapping are separate: use the footer's Grid snap and Object snap controls to decide what the pointer snaps to.
 
-![Workspace](/manual/images/workspace.png)
+![Unit choices and grid spacing settings](/manual/images/inch-settings.png)
 
-If the application reports incompatible geometry worker versions, save existing work before reloading. In a browser, Ctrl+Shift+R requests a fresh page. Offline updates offer a Reload button; save your project before activating an update.
+## Make more room
 
-If engine startup fails, the loading panel shows the worker error. An unresponsive engine reports a timeout after 15 seconds. Reload to retry; this does not clear saved projects or browser recovery.
+Use the edge tabs to hide or show tools, inspector, and status bar. Their visibility is shared across Model and print tabs and remembered in this browser.
 
-Development startup removes this app’s production offline worker before loading the editor and may reload once. Recovery data and preferences are preserved. If the offline worker still controls the page, close the app’s tabs and reopen it.
+![Print layout with controls to hide or show panels](/manual/images/print-panel-toggles.png)
 
-## Print layouts
+## Navigate the canvas
 
-![Print layout with panel edge tabs](/manual/images/print-panel-toggles.png)
+Space+drag or middle-drag pans. Scrolling pans; Ctrl/⌘+scroll zooms around the pointer. With canvas focus, **F** fits all objects and **Shift+F** fits the selection on Model. The Fit button below Redo also fits the view. On a print tab, F fits the pages.
 
-Use **+** beside **Model** to create an optional print-layout tab. Choose a paper format, orientation, margins, and units. See [Print layouts and export](#printing) for placement, linked folders, page assembly, and export.
+The footer shows the application version. Include it when [reporting a problem](#troubleshooting/report-a-bug). Save before accepting an application update; see [offline use](#files).

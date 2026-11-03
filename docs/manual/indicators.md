@@ -4,6 +4,8 @@ Choose **Measurement (D)** below Text in the left toolbar. Right-click the butto
 
 ![Indicator examples and variant menu](/manual/images/indicators.png)
 
+## Place an indicator
+
 All variants support two clicks or click-and-drag. Snapping works as for other drawing tools; hold Alt to bypass it. Escape or choosing another mode cancels unfinished placement. Each completed indicator is one undo step, and the tool stays active for another placement.
 
 - **Arrow:** click the tip, then the tail. The open head has a default length of 3 mm. Properties edits Length and Head size (local mm).
@@ -12,11 +14,15 @@ All variants support two clicks or click-and-drag. Snapping works as for other d
 - **Square size guide:** click a corner, then its opposite corner. Grid and object snapping use the same Cartesian coordinates as rectangles. The larger horizontal or vertical pointer distance sets both sides. Properties edits Side length in the selected units. Resizing a selection containing a square guide always scales uniformly.
 - **Ruler size guide:** click zero, then the end. It follows that direction, with millimetre ticks (longer at 5 mm and numbered every 10 mm) or 1/16-inch ticks (longer at half inches and numbered every inch), and a total length label. Properties edits Length in the selected units.
 
+## Check physical scale
+
 Square guides display dimensions outside two adjacent edges. Size guides always display dimensions calculated from their current geometry in the selected units. Moving, rotating, mirroring, and resizing update the display. Ruler ticks and lettering retain their physical sizes when the guide is resized. Millimetre labels show up to two decimal places; ≈ means the displayed value was rounded. For exceptionally long rulers above 10,000 mm, tick spacing increases to keep the editor responsive.
 
 Indicators support ordinary selection, grouping, duplication, visibility, locking, and outline styling. They do not support stitching, trimming, corner radii, or area measurement. Saved projects preserve their editable indicator types and dimensions.
 
 Draw indicators directly on a [print layout](#printing), or import size guides from Model, to check physical scale. Indicators drawn on a print tab are independent of every other tab. Their generated labels use the layout’s units. Export PDF and print at Actual size / 100%, then measure a guide with a ruler before cutting.
+
+## Change appearance
 
 Outline width (mm) in Appearance applies to all outlined shapes. The default is 0.35 mm; resizing preserves physical width. Reset styling restores this default.
 

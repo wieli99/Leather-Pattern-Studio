@@ -1,7 +1,8 @@
+import { manualScreenshot } from "./manual-capture";
 import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
 
-test("indicator variants, gestures, edits, undo and saved roundtrip",async({page})=>{
+test("indicator variants, gestures, edits, undo and saved roundtrip", { tag: "@manual" },async({page})=>{
   await page.goto("/");
   const button=page.getByRole("button",{name:"Measurement (D)",exact:true});
   await expect(button).toBeEnabled();
@@ -40,6 +41,5 @@ test("indicator variants, gestures, edits, undo and saved roundtrip",async({page
   await (await chooser).setFiles({name:"Indicators.leather.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(doc))});
   await expect(page.locator(".objects .object-select")).toHaveCount(5);
   await button.click({button:"right"});
-  if (test.info().project.name==="chromium")
-    await page.screenshot({path:"public/manual/images/indicators.png"});
+  await manualScreenshot(page, "indicators.png");
 });

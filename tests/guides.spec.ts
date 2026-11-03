@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect } from "@playwright/test";
 test("ruler guide survives release through the real worker", async ({
   page,
@@ -38,7 +39,7 @@ test("ruler guide survives release through the real worker", async ({
     .toBe(1);
 });
 
-test("guideline alignment reference preview", async ({ page }, info) => {
+test("guideline alignment reference preview", { tag: "@manual" }, async ({ page }, info) => {
   await page.goto("/");
   await page
     .getByRole("button", { name: "Rectangle (R)", exact: true })
@@ -59,7 +60,7 @@ test("guideline alignment reference preview", async ({ page }, info) => {
   await expect(hint).toContainText("10 mm steps");
   await expect(hint).toContainText("5 mm steps");
   await expect(hint).toContainText("Free placement");
-  await page.screenshot({ path: info.outputPath("guide-alignment.png") });
+  await manualScreenshot(page, "guideline-snapping.png");
   await page.mouse.up();
   await expect(hint).toContainText("Choose Move, Rotate or Resize.");
 });
