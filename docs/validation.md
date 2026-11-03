@@ -32,3 +32,5 @@ Release gates: merge the separate manual update, run the complete suite on the c
 The preparation run passed 38 Rust tests, 344 unit tests, TypeScript checking and the production build. The Wrangler deployment dry run passed without publishing. The documented production address responded with HTTP 200. GitHub reported zero open Dependabot, code-scanning, and secret-scanning alerts at inspection time; this is not a complete security audit.
 
 The optional Tauri desktop shell retains its independent development version and is not part of this browser release. No physical printer, OS dialog, or real device validation was performed by the preparation agent.
+
+Browser run: 407 passed and 6 skipped across Chromium, Firefox and WebKit. One WebKit rounded-stitch test failed waiting five seconds for the startup Open button to become enabled; its isolated rerun passed (1/1). The full run therefore did not pass cleanly. Investigate startup timing if this recurs and require a passing combined-candidate CI run before release.
