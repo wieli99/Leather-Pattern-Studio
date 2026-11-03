@@ -2,6 +2,8 @@
 
 An offline-capable browser-based precision 2D pattern editor built with Vue 3, TypeScript, Canvas 2D and Rust/Wasm. Inspired by Plasticity's focused workspace; no 3D, accounts, server-side document processing, or installation required.
 
+[Open Leather Pattern Studio](https://leather.wieli.at) · [Release notes](CHANGELOG.md)
+
 ## Run with Podman
 
 ```
@@ -22,11 +24,17 @@ Open the ? link in the editor for the bundled, searchable user manual, or visit 
 
 ## Project files and recovery
 
-Projects save as version 5. Per-shape affine transforms preserve exact stretched arcs, rounded corners, and sheared shapes. Versions 1–4 open through migration; older application builds cannot open version-5 files. Inspector dimensions follow transformed local axes; stretched primitive radii are labeled as local dimensions.
+Projects save as version 18, including linked print layouts, embedded images, text, object groups, indicators, measurements, and attached stitch groups. Versions 1–17 migrate on open; older application builds cannot open version-18 files. Keep backup copies before upgrading.
 
-Save/Save As use native browser file pickers where supported. Other browsers download a JSON copy; the application reports that a download started rather than claiming a successful disk write. Unsaved work is protected before New/Open and by the browser's navigation prompt. IndexedDB recovery is offered at startup and is separate from a saved project file. Browser storage can be cleared or denied; retain downloaded/saved files.
+Save/Save As use native browser file pickers where supported; other browsers download JSON copies. Browser recovery is separate from saved files and can be cleared or evicted. Save before accepting an application update.
 
-Version 4 preserves shape parameters, rotation, circular arc sweeps, IDs, and names. Versions 1–3 migrate on open; legacy stitch metadata is retained but stitch tools are deferred. Booleans, offsets, export, printing, leather-specific tools, and mobile editing are outside this MVP.
+## Capabilities and limitations
+
+Draw precise geometry in millimetres, organize objects into groups, import images, add text, measurements and stitch lines, and arrange linked artwork on print pages. Export layouts to PDF, SVG, or PNG. Print at 100% / actual size and measure a known dimension before using a pattern.
+
+The desktop browser workflow is the validation target. CI exercises Chromium, Firefox, and WebKit on Linux; this does not certify physical Windows/macOS devices, native file dialogs, or touch/mobile editing. General-purpose booleans and offsets are outside the supported workflow. Offline use requires an initial successful online load and completed cache installation.
+
+Bug reports may include project contents and system information. Review attachments before submitting a public GitHub issue. See the bundled manual for current procedures and limitations.
 
 ## Code
 
