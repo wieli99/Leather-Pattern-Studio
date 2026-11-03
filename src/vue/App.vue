@@ -17,6 +17,7 @@ import Inspector from "./Inspector.vue";
 import PanelSection from "./PanelSection.vue";
 import Settings from "./Settings.vue";
 import StatusBar from "./StatusBar.vue";
+import BugReport from "./BugReport.vue";
 
 import { decodeImageFile } from "../editor/imageImport";
 import { tools } from "./tools";
@@ -210,6 +211,7 @@ onMounted(() => {
           Save
         </button>
         <button v-if="printActive" :disabled="!e.ready" @click="printWorkspace?.openExport()">Export</button>
+        <BugReport :print-active="printActive" />
         <a
           href="/manual/index.html"
           target="_blank"
@@ -369,6 +371,7 @@ onMounted(() => {
       </div>
       <StatusBar coordinates />
       <span class="app-version" title="Application version">v{{ appVersion }}</span>
+      <BugReport :print-active="printActive" icon-only />
     </footer>
   </main>
 </template>
