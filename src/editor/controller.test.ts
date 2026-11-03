@@ -2122,3 +2122,25 @@ test("Fit restores the default view on an empty grid without changing history", 
   expect(e.document).toBe(document);
   expect(e.canUndo).toBe(false);
 });
+
+test.each([1, 2, 5])("panning preserves tools and selection for %i objects", (count) => {
+  const e = editor();
+  e.selected = Array.from({ length: count }, (_, i) => String(i));
+  e.selectedGroups = ["group"];
+  const selection = [...e.selected];
+  const document = e.document;
+  const revision = e.revision;
+  for (const space of [false, true]) {
+    e.space = space;
+    e.pointerDown({ x: 300, y: 300 }, space ? 0 : 1, false, false);
+    expect(e.selectionToolsAvailable).toBe(true);
+    e.pointerMove({ x: 320, y: 330 }, false);
+    expect(e.selectionToolsAvailable).toBe(true);
+    e.pointerUp();
+    expect(e.selectionToolsAvailable).toBe(true);
+    expect(e.selected).toEqual(selection);
+    expect(e.selectedGroups).toEqual(["group"]);
+  }
+  expect(e.document).toBe(document);
+  expect(e.revision).toBe(revision);
+});
