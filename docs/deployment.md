@@ -53,6 +53,12 @@ The build reads `package.json` to display the application version. Version selec
 
 Dependabot monitors dependencies and opens update PRs; review them before merging. In repository Settings → Advanced Security, enable Secret Protection and push protection, and configure CodeQL default setup for JavaScript/TypeScript and Rust. Review findings under Security → Code scanning. These are repository settings, separate from personal push protection, and are not enabled merely by adding the deployment workflow. Making CodeQL findings block merges requires separate merge-protection configuration.
 
+### Dependency compatibility
+
+Keep `@types/node` on Node 22 to match the build container and deployment tooling. TypeScript 7 is deferred because the current `vue-tsc` integration imports `typescript/lib/tsc`, which TypeScript 7 does not export. Dependabot ignores those upgrades until the toolchain is migrated; compatible updates remain enabled. Revisit these limits when updating the runtime or Vue type checker.
+
+CI uploads and downloads the production artifact and compares its contents before merging dependency updates, exercising both artifact actions without deploying a PR.
+
 ## Domains and verification
 
 Use the Worker's workers.dev URL while DNS activation is pending. Once wieli.at is active in Cloudflare, attach leather.wieli.at under Worker Settings / Domains & Routes / Add / Custom Domain. This requires no workflow change. Do not add a routes list to Wrangler unless you intend to manage domain bindings in source control.
