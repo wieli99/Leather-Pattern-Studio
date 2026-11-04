@@ -654,8 +654,10 @@ test("Ctrl selects, numbers, moves and deletes pages with undo", { tag: "@manual
   await page
     .getByRole("button", { name: "Add page right 0,0", exact: true })
     .click();
+  // Save remains enabled during print transactions, but canvas input is ignored.
+  // Wait for the added page to be committed and its controls to be unlocked.
+  await expect(page.getByRole("button", { name: "Add page right 1,0", exact: true })).toBeEnabled();
   await page.keyboard.up("Control");
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   const canvas = page.getByLabel("Print layout canvas"),
     box = (await canvas.boundingBox())!;
   await page.keyboard.down("Control");
