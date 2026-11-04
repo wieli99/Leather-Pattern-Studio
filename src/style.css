@@ -1074,3 +1074,6 @@ aside .actions {
 }
 aside .inspector-hint > p { font-weight: 600; }
 aside .inspector-hint dd { opacity: .8; }
+
+.header-actions .feedback-link { color: inherit; text-decoration: none; padding: 6px 10px; border-radius: 4px; }
+.header-actions .feedback-link:hover { background: var(--panel); }

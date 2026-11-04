@@ -213,6 +213,13 @@ onMounted(() => {
         <button v-if="printActive" :disabled="!e.ready" @click="printWorkspace?.openExport()">Export</button>
         <BugReport :print-active="printActive" />
         <a
+          class="feedback-link"
+          href="https://github.com/wieli99/Leather-Pattern-Studio/discussions"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Share feedback on GitHub (opens in a new tab)"
+        >Feedback</a>
+        <a
           href="/manual/index.html"
           target="_blank"
           rel="noopener"
