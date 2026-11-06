@@ -20,7 +20,7 @@ Choose units in Settings before entering dimensions. In inch mode you can enter 
 2. Choose **Stitch line (I)**. For this example, use **3.85 mm** spacing and **3 mm** inset from the cut edge. For real work, match spacing to your stitching iron.
 3. Hover an edge to check the preview, then click to place stitching. Repeat on the other edges and rounded corners. Choose Apply to keep the complete session.
 
-For continuous spacing around corners, see [merging stitch lines](#stitching/merge-and-split). For now, independent edge lines are enough to learn placement.
+For continuous spacing around corners, see [merging stitch lines](#stitching/merge-split-and-links). For now, independent edge lines are enough to learn placement.
 
 ## Save your editable project
 

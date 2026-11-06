@@ -1077,3 +1077,7 @@ aside .inspector-hint dd { opacity: .8; }
 
 .header-actions .feedback-link { color: inherit; text-decoration: none; padding: 6px 10px; border-radius: 4px; }
 .header-actions .feedback-link:hover { background: var(--panel); }
+
+/* Stitch settings remain above their wider operation toolbar. */
+.transform-overlay:has(.stitch-toolbar) { flex-direction:column; }
+.transform-overlay > .stitch-options { bottom:72px; }

@@ -214,6 +214,7 @@ function wheel(event: WheelEvent) {
     event.deltaX,
     event.deltaY,
     event.ctrlKey || event.metaKey,
+    {ctrlKey:event.ctrlKey,shiftKey:event.shiftKey,altKey:event.altKey},
   );
 }
 function updateModifiers(event: KeyboardEvent) {

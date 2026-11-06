@@ -1,3 +1,4 @@
+import { holeAppearance, holeMark } from "../model/stitchLayers";
 import { shapePath } from "./renderer";
 import { bounds, shapeMatrix } from "../model/geometry";
 import { isClosedShape } from "../model/closedShape";
@@ -178,7 +179,7 @@ export function printShapeSvg(
     const path = svgShapePath(shape),
       id = `clip-${shape.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
     let fill = "";
-    if (isClosedShape(shape)) {
+    if (isClosedShape(shape) && !shape.stitchOnly) {
       fill = `<path d="${path}" fill="${shape.fillColor ?? "#111111"}" fill-opacity="${shape.fillOpacity ?? 0.05}"/>`;
       if (["skiving", "glueing", "cutout"].includes(shape.fillMode ?? "")) {
         const box = bounds([{ ...shape, rotation: 0, transform: undefined }]);
@@ -227,12 +228,11 @@ export function printShapeSvg(
         ? (group.settings.roundDiameter ?? base.width)
         : base.width * scale;
     const h = base.height * scale;
-    result += geometry.holes
-      .map(
-        ({ point, angle }) =>
-          `<g transform="translate(${xy(point)}) rotate(${n(((angle + base.angle) * 180) / Math.PI)})" fill="#111111">${group.settings.style === "round" ? `<circle r="${w / 2}"/>` : group.settings.style === "japanese" ? `<path d="M${-w / 2} 0 L0 ${-h / 2} L${w / 2} 0 L0 ${h / 2}Z"/>` : `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}"/>`}</g>`,
-      )
-      .join("");
+    result += geometry.holes.map(({ point, angle }, index) => {
+      const appearance = holeAppearance(group,index), mark = holeMark(appearance);
+      const w = mark.width, h = mark.height;
+      return `<g transform="translate(${xy(point)}) rotate(${n(((angle + (group.settings.reversed ? -mark.angle : mark.angle)) * 180) / Math.PI)})" fill="#111111">${appearance.style === "round" ? `<circle r="${w / 2}"/>` : appearance.style === "japanese" ? `<path d="M${-w / 2} 0 L0 ${-h / 2} L${w / 2} 0 L0 ${h / 2}Z"/>` : `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}"/>`}</g>`;
+    }).join("");
   }
   return result;
 }

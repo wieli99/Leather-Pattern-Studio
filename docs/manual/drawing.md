@@ -6,7 +6,7 @@ Choose a tool, place its defining points, then enter dimensions with **Tab** whe
 
 Right-click or hold a grouped toolbar button to choose a variant. Repeat P/R/C/H to cycle forward; Shift+letter cycles backward.
 
-After placing a shape, the drawing tool stays active so you can place another. While drawing is idle, the bottom selection toolbar and its shortcuts (such as G for Move and I for Stitch line) are available for the selection. Choosing one switches to Select mode; Apply or Cancel keeps Select active. Shortcuts require canvas focus and are unavailable while constructing a shape or typing in a field. Escape also returns to Select mode.
+After placing a shape, the drawing tool stays active so you can place another. While drawing is idle, the bottom selection toolbar and its shortcuts (such as G for Move and I for Stitch line) are available for the selection. Selection modifiers switch to Select mode; Apply or Cancel keeps Select active. Stitch line opens its own toolbar mode and Apply keeps it active. Shortcuts require canvas focus and are unavailable while constructing a shape or typing in a field. Escape also returns to Select mode.
 
 ## Paths (P)
 The variants are Polyline, Curve, and Control point curve. Polyline joins straight segments; Curve passes through clicked points; Control point curve uses anchors and handles. Click creates sharp anchors; drag creates smooth handles.

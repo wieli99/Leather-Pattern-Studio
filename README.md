@@ -47,7 +47,7 @@ Follow [your first pattern](https://leather.wieli.at/manual/index.html#getting-s
 
 ## Project files and recovery
 
-Projects save as version 18, including linked print layouts, embedded images, text, object groups, indicators, measurements, and attached stitch groups. Versions 1–17 migrate on open; older application builds cannot open version-18 files. Keep backup copies before upgrading.
+Projects save as version 21, including linked print layouts, embedded images, text, object groups, indicators, measurements, and attached stitch groups. Versions 1–20 migrate on open; older application builds cannot open version-21 files. Keep backup copies before upgrading.
 
 Save/Save As use native browser file pickers where supported; other browsers download JSON copies. Browser recovery is separate from saved files and can be cleared or evicted. Save before accepting an application update.
 

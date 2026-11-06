@@ -2,6 +2,7 @@
 import { parseLength } from "../model/units";
 import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
+import StitchToolbar from "./StitchToolbar.vue";
 import { computed, ref } from "vue";
 import { cornerRadii } from "../model/geometry";
 import { editor } from "../editor/instance";
@@ -26,10 +27,11 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
 </script>
 <template>
   <div
-    v-if="e.selectionToolsAvailable || (e.tool === 'select' && e.trimMode && !e.busy)"
+    v-if="e.stitchMode || e.selectionToolsAvailable || (e.tool === 'select' && e.trimMode && !e.busy)"
     class="transform-overlay"
   >
     <StitchToolbox />
+    <StitchToolbar />
     <section v-if="e.trimMode" class="transform-options" :aria-label="e.mergeMode ? 'Merge settings' : 'Trim settings'"
       @keydown.enter.prevent="editor.applyTrim()" @keydown.esc.stop.prevent="editor.cancel()">
       <strong>{{ e.mergeMode ? "Merge" : "Trim" }}</strong>
@@ -127,6 +129,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
       </div>
     </div>
     <div
+      v-if="!e.stitchMode && e.selectionToolsAvailable"
       class="transform-toolbox"
       role="toolbar"
       aria-label="Transform selection"
@@ -189,24 +192,6 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           <circle cx="6" cy="6" r="3" />
           <circle cx="6" cy="18" r="3" />
           <path d="M8.2 8.2 20 20M8.2 15.8 20 4" />
-        </svg>
-      </button>
-      <button
-        :disabled="!e.canStitch"
-        aria-label="Stitch line"
-        title="Stitch line (I)"
-        aria-keyshortcuts="i"
-        :aria-pressed="e.stitchMode"
-        @click="editor.activateStitch()"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.7"
-          aria-hidden="true"
-        >
-          <path d="M4 5h16M5 14l3-4m3 4 3-4m3 4 3-4M4 20h16" />
         </svg>
       </button>
     </div>

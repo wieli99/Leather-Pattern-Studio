@@ -2527,7 +2527,7 @@ function moveNow(event: PointerEvent) {
         },
       );
       const centered =
-        snap.value && !result.guides.length
+        snap.value && !result.objectSnapped
           ? pageCenterSnap(
               drag.original,
               drag.ids,

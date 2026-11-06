@@ -1,6 +1,9 @@
 import { beforeEach, expect, test, vi } from "vitest";
 const editor = vi.hoisted(() => ({
   space: false,
+  pending: [] as unknown[],
+  drawingDown: false,
+  busy: false,
   selectionToolsAvailable: true,
   tool: "select",
   selected: ["a"],
@@ -36,6 +39,7 @@ class ElementStub {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  editor.pending = [];
   editor.tool = "select";
   editor.selected = ["a"];
   editor.selectionToolsAvailable = true;
@@ -110,6 +114,7 @@ test("native clipboard writes snapshots and leaves text fields alone", () => {
   handleClipboard({ ...event, type: "paste" } as unknown as ClipboardEvent);
   expect(editor.pasteObjects).toHaveBeenCalledOnce();
   vi.clearAllMocks();
+  editor.pending = [];
   handleClipboard({ ...event, target: new ElementStub("INPUT", true) } as unknown as ClipboardEvent);
   expect(editor.copyObjects).not.toHaveBeenCalled();
   expect(event.preventDefault).not.toHaveBeenCalled();
@@ -143,6 +148,9 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
   editor.selectionToolsAvailable = false;
   editor.selected = [];
   for (const key of ["i", "k", "j"]) press(key);
+  expect(editor.activateStitch).toHaveBeenCalledOnce();
+  editor.activateStitch.mockClear();
+  editor.pending = [{}];
   editor.selected = ["a"];
   editor.selectionToolsAvailable = false;
   editor.tool = "rectangle";
@@ -158,6 +166,7 @@ test("D selects Measurement without taking over text fields or modified shortcut
   press("d");
   expect(editor.cycle).toHaveBeenLastCalledWith("indicator", 1);
   vi.clearAllMocks();
+  editor.pending = [];
   press("d", { target: new ElementStub("INPUT", true) });
   press("d", { ctrlKey: true });
   press("d", { metaKey: true });

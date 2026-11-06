@@ -80,7 +80,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   }
   if (e.key === "Tab" && !e.shiftKey && canvas) {
     const field = document.querySelector<HTMLInputElement>(
-      editor.transformTool
+      editor.stitchMode ? ".stitch-options input, .stitch-options select" : editor.transformTool
         ? ".transform-inputs input"
         : ".construction-measurements input",
     );
@@ -89,6 +89,9 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       field.focus();
     }
     return;
+  }
+  if (!e.shiftKey && e.key.toLowerCase() === "i" && !editor.pending.length && !editor.drawingDown && !editor.busy) {
+    e.preventDefault(); editor.activateStitch(); return;
   }
   if (!e.shiftKey && editor.selectionToolsAvailable) {
     const k = e.key.toLowerCase();
@@ -145,7 +148,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if (editor.stitchMode && (e.key === "Enter" || e.key === "Escape")) {
     e.preventDefault();
     if (e.key === "Enter") void editor.applyStitch();
-    else editor.cancel();
+    else editor.escapeStitch();
     return;
   }
   if (e.key === "Escape") {
@@ -164,7 +167,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   } else if (["Delete", "Backspace"].includes(e.key)) {
     e.preventDefault();
     if (editor.stitchMode && editor.stitchSelected.length)
-      void editor.deleteStitches();
+      void editor.deleteStitchSelection();
     else editor.delete();
   }
   if (e.key.toLowerCase() === "f") {

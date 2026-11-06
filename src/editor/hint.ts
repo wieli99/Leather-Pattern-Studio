@@ -5,6 +5,11 @@ export interface HintState {
   mode: Mode;
   units?: string;
   stitchMode?: boolean;
+  stitchTool?: string | null;
+  stitchTransferPlacement?: {phase?:"hover"|"placed"} | null;
+  editingStitchHoles?: boolean;
+  addingStitchRun?: boolean;
+
   pending: readonly unknown[];
   selected: readonly string[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
@@ -46,28 +51,35 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     return { action, controls };
   }
   if (s.stitchMode) {
+    if(s.stitchTool===null)return {action:"Select a stitching tool below, or click a line to edit it.",controls:[{id:"stitch-exit",gesture:"Esc",action:"Return to Select"},{id:"stitch-select",gesture:"Shift+click",action:"Toggle stitch line selection"},{id:"stitch-all",gesture:"Alt+click / Alt+Shift+click",action:"Select all stitching of a piece / add it"},{id:"stitch-holes",gesture:"Ctrl+click / Ctrl+Shift+click",action:"Select hole / toggle holes"},{id:"stitch-delete",gesture:"Delete",action:"Delete selected stitching (Undo available)"}]};
+    if(s.stitchTool && ["link","unlink","merge","split","delete"].includes(s.stitchTool))return {action:"Click lines to select the operation’s targets; review the preview before applying.",controls:[{id:"stitch-select",gesture:"Shift+click",action:"Add or remove lines"},{id:"stitch-apply",gesture:"Enter / Right-click",action:"Apply operation"},{id:"stitch-cancel",gesture:"Esc",action:"Discard preview"}]};
+    if(s.stitchTool==="continue")return {action:"Continue the selected section; adjust count, gap and end clearance.",controls:[{id:"continue-apply",gesture:"Enter / Right-click",action:"Apply continuation"},{id:"continue-cancel",gesture:"Esc",action:"Discard continuation"},{id:"continue-fields",gesture:"Tab / Shift+Tab",action:"Next / previous field"}]};
+    if(s.stitchTransferPlacement) return {action:"Place the master preview over receiving pieces; left-click to place, then Apply or right-click to confirm.",controls:[{id:"transfer-apply",gesture:"Enter / Right-click",action:"Confirm placed transfer"},{id:"transfer-rotate",gesture:"Wheel / Shift / Alt",action:"Rotate 1° / 5° / free"},{id:"transfer-zoom",gesture:"Ctrl/⌘+wheel",action:"Zoom"},{id:"transfer-cancel",gesture:"Esc",action:"Cancel transfer"},{id:"transfer-viewport",gesture:"Space",action:"Navigate viewport"}]};
     return {
-      action: "Hover an edge to preview stitching; click to place or select.",
+      action: (s.editingStitchHoles ? "Ctrl-click a hole; Ctrl+Shift-click to add or remove holes." : s.addingStitchRun ? "Click the edge where the new run starts." : "Hover an edge to preview stitching; click to place or select."),
       controls: [
+        {id:"stitch-all",gesture:"Alt+click / Alt+Shift+click",action:"Select all stitching of a piece / add it"},
+        {id:"stitch-holes",gesture:"Ctrl+click / Ctrl+Shift+click",action:"Select hole / toggle holes"},
+        {id:"stitch-place",gesture:"Shift+click new adjacent edge",action:"Place and merge compatible neighboring stitching"},
         {
           id: "stitch-merge",
-          gesture: "Shift+click",
-          action: "Select second line; first is master",
+          gesture: s.editingStitchHoles ? "Ctrl+Shift+click" : "Shift+click",
+          action: s.editingStitchHoles ? "Add or remove holes from the selection" : "Toggle lines; Shift-click a free part of the same edge to continue",
         },
         {
           id: "stitch-apply",
           gesture: "Enter",
-          action: "Apply stitch session",
+          action: "Apply operation",
         },
         {
           id: "stitch-cancel",
           gesture: "Esc",
-          action: "Cancel stitch session",
+          action: "Cancel operation",
         },
         {
           id: "stitch-delete",
           gesture: "Delete",
-          action: "Delete selected stitching",
+          action: "Delete selected lines (Undo available)",
         },
       ],
     };

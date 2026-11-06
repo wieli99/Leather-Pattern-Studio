@@ -1218,6 +1218,7 @@ test("stitch previews, master settings, split, deletion and undo use document tr
     true,
   );
   await e.applyStitch();
+  e.cancel();
   await e.commit({ ...e.document, shapes: [] });
   expect(e.stitchGroups).toHaveLength(0);
   await e.transact("undo");
@@ -1343,7 +1344,7 @@ test("stitch session cancel restores the original and apply commits once", async
   e.stitchClick({ x: 0, y: 15 }, false);
   await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(1));
   await e.applyStitch();
-  expect(e.stitchMode).toBe(false);
+  expect(e.stitchMode).toBe(true);
   expect(e.revision).toBe(revision + 1);
   expect(e.stitchGroups).toHaveLength(1);
   await e.transact("undo");
@@ -2036,7 +2037,7 @@ test("initialization rejects a stale worker document version", async () => {
   vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
   await e.initialize();
   expect(e.ready).toBe(false);
-  expect(e.message).toContain("expects document version 18, but geometry worker returned 15");
+  expect(e.message).toContain("expects document version 21, but geometry worker returned 15");
 });
 
 test("unit preferences leave document, grid and history unchanged", () => {
@@ -2143,4 +2144,302 @@ test.each([1, 2, 5])("panning preserves tools and selection for %i objects", (co
   }
   expect(e.document).toBe(document);
   expect(e.revision).toBe(revision);
+});
+
+function runFixture() {
+  const shape: import("../model/project").Shape={id:"run-source",name:"Source",kind:"line",points:[{x:0,y:5},{x:100,y:5}],radius:0,rotation:0};
+  const group: import("../model/stitchGeometry").StitchGroup={id:"counted",shapeId:shape.id,edges:["line:2:edge:0"],side:1,closed:false,settings:{style:"round",roundDiameter:.8,spacing:3.38,inset:0,alignment:"start",startClearance:0,endClearance:0,holeCount:2}};
+  return {shape,group};
+}
+
+test("counted continuations move together, freeze after preceding-run deletion, and cancel atomically",async()=>{
+ const e=editor(), {shape,group}=runFixture();
+ await e.commit({version:20,shapes:[shape],stitchGroups:[group]});
+ const revision=e.revision;
+ e.activateStitch(); e.stitchSelected=[group.id];
+ await e.continueStitchRun();
+ const second=e.stitchGroups[1];
+ expect(e.stitchGeometry(shape,second).distances[0]).toBeCloseTo(6.76);
+ e.setContinuationGap(5);
+ await vi.waitFor(()=>expect(e.stitchGroups[1].continuation?.gap).toBe(5));
+ e.stitchSelected=[group.id];
+ e.setStitchSettings({...group.settings,holeCount:3});
+ expect(e.stitchGeometry(shape,e.stitchGroups[1]).distances[0]).toBeCloseTo(11.76);
+ await e.deleteStitches();
+ expect(e.stitchGroups).toHaveLength(1);
+ expect(e.stitchGroups[0].continuation).toBeUndefined();
+ expect(e.stitchGeometry(shape,e.stitchGroups[0]).distances[0]).toBeCloseTo(11.76);
+ expect(e.revision).toBe(revision);
+ e.escapeStitch();
+ expect(e.stitchMode).toBe(true);
+ expect(e.stitchGroups).toHaveLength(1);
+ expect(e.stitchGroups[0].id).toBe(group.id);
+});
+
+test("receiving-layer registration, detach, save and undo preserve hole positions",async()=>{
+ const e=editor(), {shape,group}=runFixture();
+ const receiver: import("../model/project").Shape={id:"receiving",name:"Receiving",kind:"rectangle",points:[{x:200,y:0},{x:250,y:20}],radius:0,rotation:0};
+ await e.commit({version:20,shapes:[shape,receiver],stitchGroups:[group]});
+ e.activateStitch(); e.stitchSelected=[group.id];
+ e.beginStitchTransfer();
+ e.updateStitchTransfer({x:250,y:5},true);
+ e.stitchTransferPlacement!.phase="placed";
+ await e.placeStitchTransfer();
+ expect(e.document.stitchTransfers).toHaveLength(1);
+ const id=e.document.stitchTransfers![0].id;
+ await e.removeStitchTransfer(id,true);
+ expect(e.document.stitchTransfers).toHaveLength(0);
+ const detached=e.stitchGroups.find(g=>g.id!==group.id)!;
+ const guide=e.document.shapes.find(s=>s.id===detached.shapeId)!;
+ expect(guide.stitchParentId).toBe(receiver.id);
+ expect(detached.holes).toBeUndefined();
+ expect(e.stitchGeometry(guide,detached).holes[0].point.x).toBeCloseTo(200);
+ await e.applyStitch();
+ await e.transact("undo");
+ expect(e.document.stitchTransfers).toHaveLength(1);
+ expect(e.stitchGroups).toHaveLength(1);
+});
+
+test("Shift-click selects multiple individual holes without changing line settings",async()=>{
+ const e=editor(), {shape,group}=runFixture();
+ await e.commit({version:20,shapes:[shape],stitchGroups:[group]});
+ e.activateStitch();
+ e.stitchClick({x:0,y:5},false,false,true);
+ e.stitchClick({x:3.38,y:5},true,false,true);
+ expect(e.stitchHoleNumbers).toEqual([1,2]);
+ e.stitchClick({x:0,y:5},true,false,true);
+ expect(e.stitchHoleNumbers).toEqual([2]);
+ expect(e.stitchGroups[0].settings).toEqual(group.settings);
+});
+
+test("a failed Apply retains the staged stitching session for correction",async()=>{
+ const e=editor(), {shape,group}=runFixture();
+ await e.commit({version:20,shapes:[shape],stitchGroups:[group]});
+ e.activateStitch(); e.stitchSelected=[group.id];
+ e.setStitchSettings({...group.settings,holeCount:3});
+ const baseline=e.stitchOriginal;
+ e.message="Worker refused the operation";
+ vi.spyOn(e,"commit").mockResolvedValueOnce(false);
+ await e.applyStitch();
+ expect(e.stitchMode).toBe(true);
+ expect(e.stitchOriginal).toBe(baseline);
+ expect(e.stitchGroups[0].settings.holeCount).toBe(3);
+ expect(e.stitchError).toContain("Worker refused");
+});
+
+test("Alt replaces, Alt+Shift adds object stitching, and transfer rejects multiple source pieces",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ const other={...shape,id:"other",points:[{x:0,y:25},{x:100,y:25}]};
+ const second={...group,id:"other-line",shapeId:other.id};
+ await e.commit({version:21,shapes:[shape,other],stitchGroups:[group,second]});
+ e.activateStitch();e.stitchSelected=[second.id];
+ e.stitchClick({x:50,y:5},false,true);
+ expect(e.stitchSelected).toEqual([group.id]);
+ e.stitchClick({x:50,y:25},true,true);
+ expect(e.stitchSelected).toEqual([group.id,second.id]);
+ expect(e.transferStitchReason).toContain("one source piece");
+});
+
+test("transfer preview rotates with shared modifiers and places all eligible pieces in one transaction",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ const pieces=["backing","lining"].map(id=>({id,name:id,kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0}));
+ await e.commit({version:21,shapes:[shape,...pieces],stitchGroups:[group]});
+ const revision=e.revision;
+ e.activateStitch();e.stitchSelected=[group.id];e.beginStitchTransfer();
+ e.updateStitchTransfer({x:250,y:10},true);
+ const pixel=e.screen({x:250,y:10});
+ e.wheel(pixel,0,-100,true,{ctrlKey:true,altKey:true});
+ expect(e.stitchTransferPlacement?.angle).toBe(0);
+ expect(e.zoom).toBeGreaterThan(3);
+ e.wheel(pixel,0,100,true,{ctrlKey:true,altKey:true});
+ expect(e.stitchTransferPlacement?.angle).toBe(0);
+ expect(e.stitchTransferPreview.transfers).toHaveLength(2);
+ e.stitchTransferPlacement!.phase="placed";
+ await e.placeStitchTransfer();
+ expect(e.document.stitchTransfers).toHaveLength(2);
+ expect(e.revision).toBe(revision+1);
+ expect(e.stitchTransferPlacement).toBeNull();
+ expect(e.message).toContain("backing");expect(e.message).toContain("lining");
+ await e.transact("undo");expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+});
+
+test("Ctrl-click picks the painted area of a large hole at high zoom",async()=>{
+ const e=editor(),{shape,group}=runFixture();group.settings.roundDiameter=5;
+ await e.commit({version:21,shapes:[shape],stitchGroups:[group]});e.zoom=100;
+ e.activateStitch();e.stitchClick({x:-2.4,y:5},false,false,true);
+ expect(e.stitchHoleSelection).toEqual([{groupId:group.id,number:1}]);
+});
+
+
+test("a rejected transfer keeps staged edits and the preview without committing history",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ const target={id:"target",name:"Target",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const other={...group,id:"not-selected",settings:{...group.settings,inset:3,startClearance:30}};
+ await e.commit({version:21,shapes:[shape,target],stitchGroups:[group,other]});
+ e.activateStitch();e.stitchSelected=[group.id];e.setStitchSettings({...group.settings,holeCount:3});
+ e.beginStitchTransfer();e.updateStitchTransfer({x:250,y:10},true);
+ expect(e.stitchTransferPreview.transfers.map(t=>t.masterId)).toEqual([group.id]);
+ const revision=e.revision,baseline=e.stitchOriginal;
+ const request=e.core.request.bind(e.core);
+ vi.spyOn(e.core,"request").mockImplementation((op,...args)=>op==="commit" ? Promise.reject(Error("Worker refused")) : request(op,...args));
+ e.stitchTransferPlacement!.phase="placed";
+ await e.placeStitchTransfer();
+ expect(e.revision).toBe(revision);expect(e.stitchTransferPlacement).not.toBeNull();
+ expect(e.stitchOriginal).toBe(baseline);expect(e.stitchGroups[0].settings.holeCount).toBe(3);
+ expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+});
+
+
+test("copying a receiver retains editable detached guides and remaps their parent",async()=>{
+ const {detachTransfer,makeTransfer}=await import("../model/stitchLayers");
+ const source=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={version:21,shapes:[shape,receiver],stitchGroups:[group]};
+ const detached=detachTransfer(doc,makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement"));
+ await source.commit({...doc,shapes:[...doc.shapes,...detached.shapes],stitchGroups:[group,...detached.groups]});
+ source.selected=[receiver.id];source.pointerMove(source.screen({x:200,y:0}),false);
+ const copied=source.copyObjects()!;
+ const target=editor();target.pointerMove(target.screen({x:0,y:0}),false);
+ await target.pasteObjects(copied);
+ expect(target.document.shapes).toHaveLength(2);
+ const guide=target.document.shapes.find(s=>s.stitchParentId)!;
+ const piece=target.document.shapes.find(s=>s.id===guide.stitchParentId)!;
+ expect(piece.id).not.toBe(receiver.id);
+ const run=target.stitchGroups[0];expect(run.holes).toBeUndefined();
+ expect(target.stitchGeometry(guide,run).holes[0].point.x).toBeCloseTo(0);
+ expect(target.stitchGeometry(guide,{...run,settings:{...run.settings,spacing:4}}).holes[1].point.x).toBeCloseTo(4);
+});
+
+test("contextual tools preview, switch without history, and apply once",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ const other={...shape,id:"other",points:[{x:0,y:25},{x:100,y:25}]};
+ const second={...group,id:"second",shapeId:other.id};
+ await e.commit({version:21,shapes:[shape,other],stitchGroups:[group,second]});
+ const revision=e.revision;
+ e.activateStitch();e.stitchSelected=[group.id,second.id];
+ await e.activateStitchTool("link");
+ expect(e.stitchTool).toBe("link");expect(e.document.stitchLinks).toHaveLength(1);
+ expect(e.revision).toBe(revision);
+ await e.activateStitchTool("delete");
+ expect(e.document.stitchLinks ?? []).toHaveLength(0);expect(e.stitchGroups).toHaveLength(0);
+ expect(e.revision).toBe(revision);
+ e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(2);expect(e.stitchTool).toBeNull();
+ expect(e.stitchSelected).toEqual([group.id,second.id]);
+ await e.activateStitchTool("link");await e.applyStitch();
+ expect(e.revision).toBe(revision+1);expect(e.stitchTool).toBeNull();
+ expect(e.stitchMode).toBe(true);expect(e.document.stitchLinks).toHaveLength(1);
+ await e.transact("undo");expect(e.document.stitchLinks ?? []).toHaveLength(0);
+});
+
+test("switching tools drops dimensions, while selecting an active tool keeps its preview",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ await e.commit({version:21,shapes:[shape],stitchGroups:[group]});
+ e.activateStitch();e.stitchSelected=[group.id];e.setStitchSettings({...group.settings,spacing:4});
+ await e.activateStitchTool("line");expect(e.stitchGroups[0].settings.spacing).toBe(4);
+ await e.activateStitchTool("continue");expect(e.stitchGroups[0].settings.spacing).toBe(3.38);
+ expect(e.stitchGroups).toHaveLength(2);expect(e.stitchTool).toBe("continue");
+ e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(1);
+ expect(e.stitchToolReason("split")).toContain("full-length");
+});
+
+test("split preview changes rebuild from the unsplit baseline and failed Apply retains the tool",async()=>{
+ const e=editor();
+ const shape={id:"path",name:"Path",kind:"polyline" as const,points:[{x:0,y:0},{x:50,y:0},{x:50,y:50},{x:100,y:50}],radius:0,rotation:0};
+ const {stitchEdges}=await import("../model/stitchGeometry");
+ const {group}=runFixture();
+ const merged={...group,shapeId:shape.id,edges:stitchEdges(shape).map(e=>e.key),settings:{...group.settings,holeCount:undefined}};
+ await e.commit({version:21,shapes:[shape],stitchGroups:[merged]});
+ e.activateStitch();e.stitchSelected=[group.id];await e.activateStitchTool("split");
+ expect(e.stitchGroups).toHaveLength(3);
+ e.stitchSplitMethod="junction";e.stitchSplitJunction=1;await e.previewStitchOperation();
+ expect(e.stitchGroups).toHaveLength(2);
+ const request=e.core.request.bind(e.core);
+ vi.spyOn(e.core,"request").mockImplementation((op,...args)=>op==="commit" ? Promise.reject(Error("Refused")) : request(op,...args));
+ await e.applyStitch();expect(e.stitchTool).toBe("split");expect(e.stitchGroups).toHaveLength(2);
+ expect(e.stitchError).toContain("Refused");
+ e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(1);
+});
+
+
+test("a geometry exception leaves the contextual operation cancellable without partial state",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ await e.commit({version:21,shapes:[shape],stitchGroups:[group]});
+ const revision=e.revision;e.activateStitch();e.stitchSelected=[group.id];
+ vi.spyOn(e,"deleteStitches").mockRejectedValueOnce(Error("Invalid continuation geometry"));
+ await e.activateStitchTool("delete");
+ expect(e.stitchError).toContain("Invalid continuation geometry");
+ expect(e.stitchTool).toBe("delete");expect(e.stitchToolPending).toBe(false);
+ expect(e.canApplyStitchTool).toBe(false);expect(e.stitchGroups).toHaveLength(1);expect(e.revision).toBe(revision);
+ e.cancelStitchOperation();expect(e.stitchError).toBe("");expect(e.stitchSelected).toEqual([group.id]);
+});
+
+test("merge accepts three lines in selection order and refuses a disconnected intermediate chain",async()=>{
+ const {stitchEdges}=await import("../model/stitchGeometry");
+ const {defaultStitchSettings}=await import("../model/stitch");
+ const e=editor();
+ const shape={id:"multi",name:"Multi",kind:"polyline" as const,points:[{x:0,y:0},{x:50,y:0},{x:50,y:50},{x:100,y:50}],radius:0,rotation:0};
+ const groups=stitchEdges(shape).map((edge,i)=>({id:`line${i}`,shapeId:shape.id,edges:[edge.key],side:1 as const,closed:false,settings:{...defaultStitchSettings,inset:0}}));
+ await e.commit({version:21,shapes:[shape],stitchGroups:groups});
+ e.activateStitch();e.stitchSelected=groups.map(g=>g.id);await e.activateStitchTool("merge");
+ expect(e.stitchError).toBe("");expect(e.stitchGroups).toHaveLength(1);expect(e.stitchGroups[0].edges).toHaveLength(3);
+ e.cancelStitchOperation();e.stitchSelected=[groups[0].id,groups[2].id,groups[1].id];
+ await e.activateStitchTool("merge");expect(e.stitchError).toMatch(/connected/);expect(e.stitchGroups).toHaveLength(3);
+});
+
+test("transfer preview and render document reuse one immutable result per pose",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ await e.commit({version:21,shapes:[shape,receiver],stitchGroups:[group]});
+ e.activateStitch();e.stitchSelected=[group.id];e.beginStitchTransfer();e.updateStitchTransfer({x:250,y:10},true);
+ const preview=e.stitchTransferPreview,render=e.stitchTransferRenderDocument;
+ for(let i=0;i<100;i++){expect(e.stitchTransferPreview).toBe(preview);expect(e.stitchTransferRenderDocument).toBe(render);}
+ e.updateStitchTransfer({x:251,y:10},true);expect(e.stitchTransferPreview).not.toBe(preview);
+ expect(e.stitchTransferPreview.transfers[0].id).toBe(preview.transfers[0].id);
+});
+
+test("Continue run stages an invalid default gap for correction and keeps Auto available",async()=>{
+ const e=editor(),{shape,group}=runFixture();group.settings.holeCount=2;
+ group.settings.spacing=40;
+ await e.commit({version:21,shapes:[shape],stitchGroups:[group]});e.activateStitch();e.stitchSelected=[group.id];
+ await e.activateStitchTool("continue");
+ expect(e.stitchGroups).toHaveLength(2);e.setContinuationGap(100);expect(e.stitchError).not.toBe("");
+ e.setContinuationGap(5);await vi.waitFor(()=>expect(e.stitchError).toBe(""));
+ const continued=e.stitchGroups[1];e.setStitchSettings({...continued.settings,spacing:5,holeCount:undefined});
+ expect(e.stitchError).toBe("");expect(e.stitchGeometry(shape,e.stitchGroups[1]).holes.length).toBeGreaterThan(1);
+});
+
+test("pointer bursts coalesce and a cancelled placement rejects queued input",async()=>{
+ const e=editor(),{shape,group}=runFixture();await e.commit({version:21,shapes:[shape],stitchGroups:[group]});
+ e.activateStitch();e.stitchSelected=[group.id];e.beginStitchTransfer();
+ const callbacks:FrameRequestCallback[]=[];vi.stubGlobal("requestAnimationFrame",(cb:FrameRequestCallback)=>{callbacks.push(cb);return 1;});
+ try {
+  e.queueStitchTransferPointer({x:20,y:20},true);e.queueStitchTransferPointer({x:30,y:30},true);
+  expect(callbacks).toHaveLength(1);callbacks.shift()!(0);expect(e.stitchTransferPlacement?.center).toEqual({x:30,y:30});
+  e.queueStitchTransferPointer({x:40,y:40},true);e.cancelStitchOperation();callbacks.shift()!(0);expect(e.stitchTransferPlacement).toBeNull();
+ }finally{vi.unstubAllGlobals();}
+});
+
+test("transfer left-click stages, freezes and repositions without history until Apply",async()=>{
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:30}],radius:0,rotation:0};
+ await e.commit({version:21,shapes:[shape,receiver],stitchGroups:[group]});const revision=e.revision;
+ e.activateStitch();e.stitchSelected=[group.id];e.beginStitchTransfer();
+ expect(e.canApplyStitchTool).toBe(false);
+ await e.placeStitchTransfer();expect(e.revision).toBe(revision);expect(e.stitchTransferPlacement?.phase).toBe("hover");
+ e.stitchClick({x:250,y:10},false,true);expect(e.stitchTransferPlacement?.phase).toBe("placed");
+ expect(e.revision).toBe(revision);expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+ e.queueStitchTransferPointer({x:50,y:50},true);expect(e.stitchTransferPlacement?.center).toEqual({x:250,y:10});
+ e.wheel({x:10,y:10},0,100,false,{altKey:true});expect(e.stitchTransferPlacement?.center).toEqual({x:250,y:10});
+ const angle=e.stitchTransferPlacement!.angle;e.wheel({x:50,y:50},0,-100,true);
+ expect(e.stitchTransferPlacement?.angle).toBe(angle);expect(e.stitchTransferPlacement?.center).toEqual({x:250,y:10});
+ e.stitchClick({x:255,y:15},false,true);expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+ await e.applyStitch();expect(e.revision).toBe(revision+1);expect(e.document.stitchTransfers).toHaveLength(1);
+});
+
+test("Auto-filled rectangle sections cannot start Continue run",async()=>{
+ const e=editor(),{group}=runFixture();
+ const shape={id:"rectangle",name:"Rectangle",kind:"rectangle" as const,points:[{x:0,y:0},{x:100,y:40}],radius:0,rotation:0};
+ await e.commit({version:21,shapes:[shape],stitchGroups:[{...group,shapeId:shape.id,edges:["rectangle:2:edge:1"],settings:{...group.settings,inset:3,holeCount:undefined}}]});
+ e.activateStitch();e.stitchSelected=[group.id];expect(e.stitchToolReason("continue")).toContain("fixed hole count");
+ await e.activateStitchTool("continue");expect(e.stitchGroups).toHaveLength(1);
 });

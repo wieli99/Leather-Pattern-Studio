@@ -41,7 +41,7 @@ async function saved(page: any) {
   await page.getByRole("button", { name: "Save", exact: true }).click();
   return JSON.parse(await readFile((await (await download).path())!, "utf8"));
 }
-test("place, merge and split within a session, then save", { tag: "@manual" }, async ({
+test("place and merge, then preview and apply split", { tag: "@manual" }, async ({
   page,
 }, info) => {
   await setup(page);
@@ -51,11 +51,9 @@ test("place, merge and split within a session, then save", { tag: "@manual" }, a
     .getByLabel("Stitch style", { exact: true })
     .selectOption("japanese");
   await canvas.click({ position: { x: 136, y: 171 }, modifiers: ["Shift"] });
-  await expect(
-    page.getByRole("button", { name: "Split all", exact: true }),
-  ).toBeEnabled();
   await manualScreenshot(page, "stitch-lines.png");
-  await page.getByRole("button", { name: "Split all", exact: true }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.getByRole("button", { name: "Split", exact: true }).click();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await saved(page);
   expect(doc.version).toBe(DOCUMENT_VERSION);
@@ -83,7 +81,7 @@ test("sharp rectangles accept placement and editable preset values in the bottom
   });
   await page.locator(".objects .object-select").first().click();
   const tool = page.getByRole("button", { name: "Stitch line", exact: true });
-  await expect(tool).toHaveText("");
+  await expect(tool).toHaveText("I");
   await tool.click();
   await expect(
     page.locator(".transform-overlay .stitch-options"),
@@ -176,10 +174,72 @@ test("converted path stays stitched after inserting an anchor", { tag: "@manual"
   await manualScreenshot(page, "converted-stitching.png");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const canvas = page.getByLabel("Pattern drawing canvas");
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
   await canvas.click({ position: { x: 245, y: 160 }, modifiers: ["Alt"] });
   const doc = await saved(page);
   expect(doc.shapes[0].stitchOnly).toBe(true);
   expect(doc.shapes[0].points).toHaveLength(4);
   expect(doc.stitchGroups).toHaveLength(1);
   expect(doc.stitchGroups[0].edges).toHaveLength(3);
+});
+
+test("project presets, reverse irons and individual round holes survive saving", async ({ page }) => {
+  await setup(page);
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 125, y: 240 } });
+  await page.getByLabel("Reverse iron", { exact: true }).check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 125, y: 240 } });
+  await page.getByLabel("Pattern drawing canvas").click({position:{x:134,y:240},modifiers:["Control"]});
+  await page.getByLabel("Hole type", { exact:true }).selectOption("round");
+  await page.getByRole("button", { name:"Line settings",exact:true }).click();
+  await page.getByText("Presets", { exact: true }).click();
+  await page.getByRole("button", { name:"Save as…", exact:true }).click();
+  await page.getByLabel("Stitch preset name").fill("Reverse pocket iron");
+  await page.getByRole("button", { name: "Save preset", exact: true }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  const doc = await saved(page);
+  expect(doc.stitchGroups[0].settings.reversed).toBe(true);
+  const overrides=Object.values(doc.stitchGroups[0].holeOverrides) as {style:string;roundDiameter?:number}[];
+  expect(overrides).toHaveLength(1);
+  expect(overrides[0].style).toBe("round");
+  expect(overrides[0].roundDiameter ?? .8).toBe(.8);
+  expect(doc.stitchPresets ?? []).toHaveLength(0);
+});
+
+
+test("My presets remain available after opening another project and reloading",async({page})=>{
+  await setup(page);
+  await page.getByText("Presets",{exact:true}).click();
+  await page.getByRole("button",{name:"Save as…",exact:true}).click();
+  await page.getByLabel("Stitch preset name").fill("My 3.85 iron");
+  await page.getByRole("button",{name:"Save preset",exact:true}).click();
+  await page.getByRole("button",{name:"Cancel",exact:true}).click();
+  await page.getByRole("button",{name:"New",exact:true}).click();
+  await page.reload();
+  await expect(page.getByRole("button",{name:"Open",exact:true})).toBeEnabled();
+  await page.getByRole("button",{name:"Stitch line",exact:true}).click();
+  await page.getByText("Presets",{exact:true}).click();
+  await page.getByLabel("Load stitch preset",{exact:true}).selectOption({label:"My 3.85 iron"});
+  await expect(page.getByLabel("Stitch spacing",{exact:true})).toHaveValue("3.85");
+});
+
+
+test("browser preset export restores a deleted library through import review",async({page})=>{
+ await setup(page);
+ await page.getByText("Presets",{exact:true}).click();
+ await page.getByRole("button",{name:"Save as…",exact:true}).click();
+ await page.getByLabel("Stitch preset name").fill("Backup iron");
+ await page.getByRole("button",{name:"Save preset",exact:true}).click();
+ const download=page.waitForEvent("download");
+ await page.getByRole("button",{name:"Export presets",exact:true}).click();
+ const backup=await readFile((await (await download).path())!,"utf8");
+ expect(JSON.parse(backup).format).toBe("leather-stitch-presets");
+ await page.locator(".stitch-presets").getByRole("button",{name:"Delete",exact:true}).click();
+ await expect(page.getByLabel("Load stitch preset",{exact:true})).toBeDisabled();
+ const chooser=page.waitForEvent("filechooser");await page.getByRole("button",{name:"Import presets",exact:true}).click();
+ await (await chooser).setFiles({name:"backup.json",mimeType:"application/json",buffer:Buffer.from(backup)});
+ await page.getByLabel("Preset import mode").selectOption("replace");
+ await page.getByRole("button",{name:"Replace library",exact:true}).click();
+ await page.getByLabel("Load stitch preset",{exact:true}).selectOption({label:"Backup iron"});
+ await expect(page.getByLabel("Stitch spacing",{exact:true})).toHaveValue("3.85");
 });

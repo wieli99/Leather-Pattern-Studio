@@ -28,5 +28,8 @@ test("linked stitching loads and displays controls", { tag: "@manual" }, async (
   await expect(page.getByRole("button", {name: "Unlink", exact: true})).toBeEnabled();
   await manualScreenshot(page, "stitch-links.png");
   await page.getByRole("button", {name: "Unlink", exact: true}).click();
+  await expect(page.getByRole("button", {name: "Unlink", exact: true})).toHaveAttribute("aria-pressed","true");
+  await expect(page.getByLabel("Stitch spacing",{exact:true})).toBeHidden();
+  await page.getByRole("button",{name:"Apply",exact:true}).click();
   await expect(page.getByRole("button", {name: "Unlink", exact: true})).toBeDisabled();
 });
