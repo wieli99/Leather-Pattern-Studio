@@ -266,3 +266,13 @@ test("panning keeps selection tools visible", async ({ page }) => {
   await page.getByRole("button", { name: "Resize", exact: true }).click();
   await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
 });
+
+test("window blur preserves a pending rotation until Apply", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Rotate", exact: true }).click();
+  await page.getByLabel("Angle (°)", { exact: true }).fill("35");
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  await expect(page.getByLabel("Angle (°)", { exact: true })).toHaveValue("35");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeEnabled();
+});

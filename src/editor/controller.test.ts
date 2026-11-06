@@ -1595,7 +1595,6 @@ test("stitch links combine equal counts and prune after unlink or deletion", asy
   expect(e.document.stitchLinks).toEqual([]);
 });
 
-
 test("linking rejects unequal hole counts without changing memberships", async () => {
   const e = editor();
   const shapes = ["a", "b"].map((id, i) => ({
@@ -2270,7 +2269,6 @@ test("Ctrl-click picks the painted area of a large hole at high zoom",async()=>{
  expect(e.stitchHoleSelection).toEqual([{groupId:group.id,number:1}]);
 });
 
-
 test("a rejected transfer keeps staged edits and the preview without committing history",async()=>{
  const e=editor(),{shape,group}=runFixture();
  const target={id:"target",name:"Target",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
@@ -2288,7 +2286,6 @@ test("a rejected transfer keeps staged edits and the preview without committing 
  expect(e.stitchOriginal).toBe(baseline);expect(e.stitchGroups[0].settings.holeCount).toBe(3);
  expect(e.document.stitchTransfers ?? []).toHaveLength(0);
 });
-
 
 test("copying a receiver retains editable detached guides and remaps their parent",async()=>{
  const {detachTransfer,makeTransfer}=await import("../model/stitchLayers");
@@ -2359,7 +2356,6 @@ test("split preview changes rebuild from the unsplit baseline and failed Apply r
  expect(e.stitchError).toContain("Refused");
  e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(1);
 });
-
 
 test("a geometry exception leaves the contextual operation cancellable without partial state",async()=>{
  const e=editor(),{shape,group}=runFixture();
@@ -2442,4 +2438,33 @@ test("Auto-filled rectangle sections cannot start Continue run",async()=>{
  await e.commit({version:21,shapes:[shape],stitchGroups:[{...group,shapeId:shape.id,edges:["rectangle:2:edge:1"],settings:{...group.settings,inset:3,holeCount:undefined}}]});
  e.activateStitch();e.stitchSelected=[group.id];expect(e.stitchToolReason("continue")).toContain("fixed hole count");
  await e.activateStitchTool("continue");expect(e.stitchGroups).toHaveLength(1);
+});
+
+test("focus loss preserves construction points and locks without committing", () => {
+  const e = editor();
+  e.pending = [{ x: 10, y: 20 }];
+  const pending = e.pending;
+  e.measurementLocks = { width: 25 };
+  const revision = e.revision;
+  e.space = true;
+  e.drawingShift = true;
+  e.pauseGesture();
+  e.pauseGesture();
+  e.pointerUp();
+  expect(e.pending).toBe(pending);
+  expect(e.measurementLocks).toEqual({ width: 25 });
+  expect(e.revision).toBe(revision);
+  expect(e.space).toBe(false);
+  expect(e.drawingShift).toBe(false);
+});
+
+test("focus loss preserves stitching sessions and their draft", () => {
+  const e = editor();
+  e.activateStitch();
+  const original = e.stitchOriginal;
+  const draft = e.stitchDraft;
+  e.pauseGesture();
+  expect(e.stitchMode).toBe(true);
+  expect(e.stitchOriginal).toBe(original);
+  expect(e.stitchDraft).toBe(draft);
 });
