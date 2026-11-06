@@ -119,6 +119,8 @@ Add run, Edit path and Delete are no longer toolbar tools. Continue run is avail
 
 DEL immediately removes selected lines in one undo step. Use Select (V) to edit path geometry. Ctrl/⌘+wheel always zooms during transfer placement; ordinary wheel rotates, Shift uses 5° steps and Alt bypasses snapping. Ctrl rotation is removed.
 
-Expand **Presets** to load or manage presets; it is collapsed initially. Presets are saved in this browser only. The Presets section contains Save as, Update, Rename, Delete, Export presets and Import presets. Export downloads all presets. Import previews the incoming library and offers safe Merge or explicit Replace all presets. Legacy project presets can be imported through that same review.
+Open **Presets** to load or manage presets in an attached box to the left of the settings. On narrow canvases it opens above them. It starts closed; use the same button or Escape to close it. Presets are saved in this browser only. The Presets section contains Save as, Update, Rename, Delete, Export presets and Import presets. Export downloads all presets. Import previews the incoming library and offers safe Merge or explicit Replace all presets. Legacy project presets can be imported through that same review.
 
 Continue run requires a fixed-count preceding section. Its new continuation can use Auto count. If an edited gap does not fit, its preview remains editable; reduce the gap or count before applying. Transfer hover shares one receiving-geometry snapshot between rendering and settings. Movement can snap compatible horizontal and vertical edges at the same time in Model, transfer placement and print layouts. Keyboard shortcuts are listed in the right-side Tool help rather than in the settings box. Standalone converted paths do not generate material-edge warnings.
+
+![Preset panel beside stitching settings](images/stitch-presets.png)

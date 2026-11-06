@@ -124,3 +124,5 @@ In Stitch line, click a free part of a partially stitched edge for an independen
 Continue run is available in the stitching toolbar as an alternative to Shift-click continuation. Stitching shortcut instructions are shown in Tool help. Simultaneous X/Y alignment follows the same snapping policy in Model, transfer placement and print layouts.
 
 For Transfer stitching, left-click places the hovering preview without committing. Further left-clicks reposition it. Apply, right-click or Enter confirms only after placement; Escape cancels. Rotation after placement keeps its center fixed. Continue run requires a fixed-count preceding section with space remaining.
+
+In the attached stitching Presets panel, Escape cancels an open naming or import form first. Otherwise it closes the panel and returns focus to Presets, leaving the stitching preview active.

@@ -234,7 +234,7 @@ test("browser preset export restores a deleted library through import review",as
  await page.getByRole("button",{name:"Export presets",exact:true}).click();
  const backup=await readFile((await (await download).path())!,"utf8");
  expect(JSON.parse(backup).format).toBe("leather-stitch-presets");
- await page.locator(".stitch-presets").getByRole("button",{name:"Delete",exact:true}).click();
+ await page.getByRole("region",{name:"Stitch presets",exact:true}).getByRole("button",{name:"Delete",exact:true}).click();
  await expect(page.getByLabel("Load stitch preset",{exact:true})).toBeDisabled();
  const chooser=page.waitForEvent("filechooser");await page.getByRole("button",{name:"Import presets",exact:true}).click();
  await (await chooser).setFiles({name:"backup.json",mimeType:"application/json",buffer:Buffer.from(backup)});
@@ -242,4 +242,31 @@ test("browser preset export restores a deleted library through import review",as
  await page.getByRole("button",{name:"Replace library",exact:true}).click();
  await page.getByLabel("Load stitch preset",{exact:true}).selectOption({label:"Backup iron"});
  await expect(page.getByLabel("Stitch spacing",{exact:true})).toHaveValue("3.85");
+});
+
+test("presets attach without enlarging settings and Escape closes only presets", {tag:"@manual"}, async ({ page }) => {
+  await setup(page);
+  await page.getByLabel("Pattern drawing canvas").click({position:{x:125,y:240}});
+  const settings=page.getByRole("region",{name:"Stitch line settings",exact:true});
+  const toggle=page.getByRole("button",{name:"Presets",exact:true});
+  const before=await settings.boundingBox();
+  await toggle.click();
+  const panel=page.getByRole("region",{name:"Stitch presets",exact:true});
+  await expect(panel).toBeVisible();
+  await manualScreenshot(page,"stitch-presets.png");
+  const after=await settings.boundingBox(),presetBox=await panel.boundingBox();
+  expect(after!.height).toBeCloseTo(before!.height,0);
+  expect(presetBox!.x+presetBox!.width).toBeLessThanOrEqual(after!.x);
+  await page.getByRole("button",{name:"Save as…",exact:true}).click();
+  await page.getByLabel("Stitch preset name").press("Escape");
+  await expect(panel).toBeVisible();
+  await panel.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(toggle).toBeFocused();
+  await expect(settings).toBeVisible();
+  await page.setViewportSize({width:760,height:800});
+  await toggle.click();
+  const narrow=await panel.boundingBox(),main=await settings.boundingBox();
+  expect(narrow!.y+narrow!.height).toBeLessThanOrEqual(main!.y);
+  expect(narrow!.x).toBeGreaterThanOrEqual(0);
 });

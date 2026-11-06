@@ -10,11 +10,13 @@ const props = defineProps<{ settings: StitchSettings }>();
 const e = useEditor(), chosen = ref(""), name = ref(""), action = ref<"save" | "rename" | null>(null), error = ref("");
 const nameInput=ref<HTMLInputElement>();
 watch(action, value => { if(value) void nextTick(() => nameInput.value?.focus()); });
-function escape(event: KeyboardEvent) { if(action.value) { event.preventDefault(); event.stopPropagation(); action.value=null; error.value=""; } }
-const scope = ref<"project" | "browser">("browser");
+function escape(event: KeyboardEvent) { if(action.value || incoming.value) { event.preventDefault(); event.stopPropagation(); action.value=null; incoming.value=null; error.value=""; void nextTick(()=>toggle.value?.focus()); } else if(open.value) { event.preventDefault(); event.stopPropagation(); close(); } }
+const open = ref(false);
+const toggle=ref<HTMLButtonElement>();
+function close() { open.value=false; action.value=null; incoming.value=null; error.value=""; void nextTick(()=>toggle.value?.focus()); }
 const library = ref<StitchPreset[]>([]);
 try { library.value = readStitchPresets(); } catch { error.value = "My presets could not be loaded from this browser."; }
-watch(scope, () => { chosen.value=""; action.value=null; error.value=""; });
+
 const presets = computed(() => library.value);
 async function store(presets: StitchPreset[]) {
 
@@ -73,7 +75,10 @@ function exportFile() {
 </script>
 <template>
   <div class="stitch-presets" @keydown.enter.stop @keydown.esc="escape">
-    <details><summary>Presets</summary>
+    <button ref="toggle" type="button" class="preset-toggle" :aria-expanded="open" aria-controls="stitch-preset-panel" @click="open ? close() : open=true"><span aria-hidden="true">{{ open ? "◂" : "▸" }}</span> <span>Presets</span></button>
+    <Teleport defer to="#stitch-panel-anchor">
+    <section tabindex="-1" v-if="open" @keydown.enter.stop @keydown.esc="escape" id="stitch-preset-panel" class="preset-panel transform-options" aria-label="Stitch presets">
+    <strong>Stitch presets</strong>
     <label>Load preset<select aria-label="Load stitch preset" :value="chosen" :disabled="e.busy || !presets.length" @change="apply"><option value="">Choose a preset…</option><option v-for="preset in presets" :key="preset.name">{{ preset.name }}</option></select></label>
     <small v-if="!presets.length">No saved presets. Save the current settings below or import a backup.</small>
 
@@ -96,15 +101,19 @@ function exportFile() {
       <label>Import mode<select v-model="importMode" aria-label="Preset import mode"><option value="merge">Merge</option><option value="replace">Replace all presets</option></select></label>
       <button type="submit">{{ importMode==='replace' ? 'Replace library' : 'Merge presets' }}</button><button type="button" @click="incoming=null">Cancel import</button>
     </form>
-    </details>
+
     <small v-if="status" role="status">{{ status }}</small>
     <p v-if="error" role="alert">{{ error }}</p>
+    </section>
+    </Teleport>
   </div>
 </template>
 <style scoped>
-.stitch-presets label {display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.stitch-presets select,.stitch-presets input:not([type=file]) {width:135px;box-sizing:border-box;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
-.stitch-presets summary {cursor:pointer;font-size:12px;padding:4px 0;}
+.preset-panel label {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.preset-panel select,.preset-panel input:not([type=file]) {width:135px;box-sizing:border-box;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
+.preset-toggle {align-self:start;text-align:left;}
+.preset-panel {position:absolute;right:calc(100% + 8px);top:0;box-sizing:border-box;width:302px;max-height:100%;}
+@container stitch-panels (max-width: 620px) { .preset-panel {right:0;top:auto;bottom:calc(100% + 8px);max-height:30vh;max-width:100%;} }
 .stitch-presets { display:grid; gap:8px; }
 .actions { display:flex; flex-wrap:wrap; gap:6px; }
 form { display:grid; gap:8px; }

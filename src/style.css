@@ -1081,3 +1081,11 @@ aside .inspector-hint dd { opacity: .8; }
 /* Stitch settings remain above their wider operation toolbar. */
 .transform-overlay:has(.stitch-toolbar) { flex-direction:column; }
 .transform-overlay > .stitch-options { bottom:72px; }
+
+.transform-overlay { container-type:inline-size; container-name:stitch-panels; }
+.stitch-panel-anchor { position:absolute;right:0;bottom:72px;width:302px;max-width:100%;pointer-events:none; }
+.stitch-panel-anchor > .stitch-options {pointer-events:auto;box-sizing:border-box;width:100%;}
+.stitch-panel-anchor .preset-panel {pointer-events:auto;}
+@container stitch-panels (max-width:620px) {
+  .stitch-panel-anchor:has(.preset-panel) > .stitch-options {max-height:30vh;}
+}

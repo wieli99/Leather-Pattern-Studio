@@ -110,6 +110,7 @@ const warnings = computed(() =>
 );
 </script>
 <template>
+  <div id="stitch-panel-anchor" class="stitch-panel-anchor">
   <section
     v-if="e.stitchMode && e.stitchTool"
     :key="`${e.stitchTool}:${selected?.id ?? 'defaults'}`"
@@ -244,6 +245,7 @@ const warnings = computed(() =>
       ><button @click="cancelDraft()">Cancel</button>
     </div>
   </section>
+  </div>
 </template>
 <style scoped>
 .stitch-options { max-height: min(60vh, calc(100vh - 220px)); }
