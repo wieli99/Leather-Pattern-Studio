@@ -134,6 +134,10 @@ test("canvas shortcuts open stitching, trim and merge previews", async ({
       "true",
     );
     await page.keyboard.press("Escape");
+    if (key === "i") {
+      await expect(page.getByLabel("Stitch line settings")).toBeHidden();
+      await page.keyboard.press("Escape");
+    }
     await expect(page.getByRole("button", { name, exact: true })).toHaveAttribute(
       "aria-pressed",
       "false",

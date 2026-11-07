@@ -219,7 +219,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.strokeStyle = s.strokeColor ?? color("shape");
         ctx.globalAlpha = s.strokeOpacity ?? 1;
       }
-      if (isClosedShape(s)) {
+      if (isClosedShape(s) && (!s.stitchOnly || selected || preview)) {
         ctx.save();
         ctx.globalAlpha = s.fillOpacity ?? (selected ? 0.12 : 0.05);
         ctx.fillStyle = s.fillColor ?? (selected ? color("accent") : color("shape"));
