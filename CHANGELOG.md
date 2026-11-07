@@ -1,5 +1,11 @@
 # Release notes
 
+## 0.3.0-beta.3
+
+Adds a **Feedback** link in the editor header that opens GitHub Discussions for ideas and general feedback. The bundled manual now explains how to use it, and its illustrations have been refreshed for this release.
+
+Browser acceptance tests now wait for print-page creation before selecting the new page. This release does not change the saved-project format.
+
 ## 0.2.0 — preparation
 
 This release prepares Leather Pattern Studio for public use with refreshed project and validation documentation, updated dependencies and CI tooling, and a documented release workflow.
