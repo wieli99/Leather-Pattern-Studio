@@ -40,4 +40,6 @@ The footer shows the application version. Include it when [reporting a problem](
 
 ## Share feedback
 
+**Feedback** and **Help (?)** sit alongside the file actions in the header, vertically centered with the buttons.
+
 Click **Feedback** in the header of either workspace to open the [GitHub Discussions page](https://github.com/wieli99/Leather-Pattern-Studio/discussions) in a new tab. This requires an internet connection. Use it for ideas and general feedback; use **Report a bug** for problems.
