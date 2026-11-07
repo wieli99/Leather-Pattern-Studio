@@ -205,12 +205,33 @@ export class Controller {
     return (Math.atan2(m.b, m.a) * 180) / Math.PI;
   }
   pauseGesture() {
-    if (this.transformTool) {
-      this.gesture = null;
-      this.previewId++;
-      this.notify();
-    } else this.cancel();
+    const gesture = this.gesture;
+    if (gesture && !this.transformTool && gesture.kind !== "pan") {
+      this.preview = null;
+      this.selected = gesture.selection;
+    }
+    if (gesture?.kind === "move" && this.transformTool) {
+      this.transformPivot = {
+        x: this.transformPivot.x + (gesture.displacement?.x ?? 0),
+        y: this.transformPivot.y + (gesture.displacement?.y ?? 0),
+      };
+    }
+    this.gesture = null;
+    this.drawingDown = null;
+    this.guideDrag = null;
+    this.pointerInside = false;
+    this.space = false;
+    this.anchorAlt = false;
+    this.drawingShift = false;
+    this.measurementsVisible = false;
+    this.smartGuides = [];
+    this.snapTarget = null;
+    this.snapKind = null;
+    // Invalidate interrupted drag responses, but retain pending tool previews.
+    if (gesture) this.previewId++;
+    this.notify();
   }
+
   get transformValid() {
     if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
     if (!this.preview) return !this.transformError;

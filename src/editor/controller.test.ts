@@ -1594,7 +1594,6 @@ test("stitch links combine equal counts and prune after unlink or deletion", asy
   expect(e.document.stitchLinks).toEqual([]);
 });
 
-
 test("linking rejects unequal hole counts without changing memberships", async () => {
   const e = editor();
   const shapes = ["a", "b"].map((id, i) => ({
@@ -2143,4 +2142,33 @@ test.each([1, 2, 5])("panning preserves tools and selection for %i objects", (co
   }
   expect(e.document).toBe(document);
   expect(e.revision).toBe(revision);
+});
+
+test("focus loss preserves construction points and locks without committing", () => {
+  const e = editor();
+  e.pending = [{ x: 10, y: 20 }];
+  const pending = e.pending;
+  e.measurementLocks = { width: 25 };
+  const revision = e.revision;
+  e.space = true;
+  e.drawingShift = true;
+  e.pauseGesture();
+  e.pauseGesture();
+  e.pointerUp();
+  expect(e.pending).toBe(pending);
+  expect(e.measurementLocks).toEqual({ width: 25 });
+  expect(e.revision).toBe(revision);
+  expect(e.space).toBe(false);
+  expect(e.drawingShift).toBe(false);
+});
+
+test("focus loss preserves stitching sessions and their draft", () => {
+  const e = editor();
+  e.activateStitch();
+  const original = e.stitchOriginal;
+  const draft = e.stitchDraft;
+  e.pauseGesture();
+  expect(e.stitchMode).toBe(true);
+  expect(e.stitchOriginal).toBe(original);
+  expect(e.stitchDraft).toBe(draft);
 });
