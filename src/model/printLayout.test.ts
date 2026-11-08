@@ -496,3 +496,28 @@ it("keeps a detached nested folder frozen while its live parent imports new sibl
   expect(printRows(reconciled).find((r) => r.node.id === child.id)?.node)
     .toEqual(printRows(detached).find((r) => r.node.id === child.id)?.node);
 });
+
+
+it("prints detached guide stitches with their piece once and freezes them in snapshots",async()=>{
+ const {detachTransfer,makeTransfer}=await import("./stitchLayers");
+ const {defaultStitchSettings}=await import("./stitch");
+ const {stitchEdges,stitchGeometry}=await import("./stitchGeometry");
+ const {parseProject}=await import("./project");
+ const master:Shape={...source,id:"master",points:[{x:100,y:20},{x:140,y:40}]};
+ const run={id:"run",shapeId:master.id,side:1 as const,closed:false,edges:[stitchEdges(master)[0].key],settings:{...defaultStitchSettings,spacing:4,inset:3}};
+ const baseline:Doc={version:21,shapes:[master,source],stitchGroups:[run]};
+ const data=detachTransfer(baseline,makeTransfer(baseline,run.id,source,{x:30,y:30},0,"placement"));
+ const doc:Doc={...baseline,shapes:[...baseline.shapes,...data.shapes],stitchGroups:[run,...data.groups]};
+ let layout=importPrintNode(doc,empty,source.id,90,90);
+ layout=importPrintNode(doc,layout,data.shapes[0].id,90,90);
+ expect(printStitchGroups(doc,layout,data.shapes[0].id)).toEqual([]);
+ const groups=printStitchGroups(doc,layout,source.id);
+ expect(groups).toHaveLength(1);
+ const holes=stitchGeometry(source,groups[0]).holes;
+ expect(holes.map(h=>h.point)).toEqual(stitchGeometry(data.shapes[0],data.groups[0]).holes.map(h=>h.point));
+ const frozen=unlinkPrintNode(doc,layout,layout.instances[0].id);
+ const loaded=parseProject(JSON.stringify({...doc,printLayouts:[frozen]}));
+ const snapshot=loaded.printLayouts![0].instances[0].snapshot!;
+ expect(snapshot.stitchGroups).toHaveLength(1);
+ expect(snapshot.shape.stitchParentId).toBeUndefined();
+});

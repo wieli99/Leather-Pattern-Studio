@@ -42,9 +42,9 @@ const group = computed(() =>
             : props.tool.id,
   ),
   active = computed(() =>
-    group.value
+    !e.value.stitchMode && (group.value
       ? (variants[group.value] as readonly string[]).includes(e.value.mode)
-      : e.value.mode === props.tool.id,
+      : e.value.mode === props.tool.id),
   );
 let timer: ReturnType<typeof setTimeout> | undefined,
   long = false;

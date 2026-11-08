@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::*;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
@@ -52,6 +52,13 @@ pub struct CurveHandles {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
 pub struct Shape {
+    #[serde(
+        default,
+        rename = "stitchParentId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stitch_parent_id: Option<String>,
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -175,6 +182,12 @@ pub enum StitchAlignment {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
 pub struct StitchSettings {
+    #[serde(default, rename = "holeCount", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hole_count: Option<u32>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub reversed: Option<bool>,
     #[serde(
         default,
         rename = "roundDiameter",
@@ -200,8 +213,72 @@ pub struct StitchSettings {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
+pub struct StitchPreset {
+    pub name: String,
+    pub settings: StitchSettings,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct StitchContinuation {
+    pub previous_id: String,
+    pub gap: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+pub struct StitchHole {
+    pub point: Point,
+    pub angle: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+pub struct StitchPlacement {
+    pub offset: Point,
+    pub angle: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "camelCase")]
+pub struct StitchTransfer {
+    pub id: String,
+    pub master_id: String,
+    pub target_id: String,
+    #[serde(
+        default,
+        rename = "placementId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub placement_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub number: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub pose: Option<StitchPlacement>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub master_points: Vec<Point>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub target_points: Vec<Point>,
+    pub visible: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct StitchGroup {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub continuation: Option<StitchContinuation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub holes: Option<Vec<StitchHole>>,
+    #[serde(
+        default,
+        rename = "holeOverrides",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub hole_overrides: Option<std::collections::BTreeMap<String, StitchSettings>>,
     pub id: String,
     pub shape_id: String,
     pub edges: Vec<String>,
@@ -406,6 +483,20 @@ impl PrintLayout {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
 pub struct Document {
+    #[serde(
+        default,
+        rename = "stitchTransfers",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stitch_transfers: Option<Vec<StitchTransfer>>,
+    #[serde(
+        default,
+        rename = "stitchPresets",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stitch_presets: Option<Vec<StitchPreset>>,
     #[serde(default, rename = "printLayouts")]
     pub print_layouts: Vec<PrintLayout>,
     #[serde(default, rename = "stitchLinks")]
@@ -582,7 +673,8 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
         keys.push(format!("{prefix}edge:0"));
     } else if !matches!(
         shape.kind,
-        Kind::Text
+        Kind::Image
+            | Kind::Text
             | Kind::Measurement
             | Kind::Arrow
             | Kind::ArrowHead
@@ -640,6 +732,8 @@ impl Document {
                     }
                     // Reuse all normal geometry, image and stitching validation in isolation.
                     Document {
+                        stitch_presets: None,
+                        stitch_transfers: None,
                         version: self.version,
                         shapes: vec![snapshot.shape.clone()],
                         stitch_groups: snapshot.stitch_groups.clone(),
@@ -679,10 +773,10 @@ impl Document {
         }
         if !matches!(
             self.version,
-            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18
+            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21). Reload the application.",
                 self.version
             ));
         }
@@ -931,8 +1025,23 @@ impl Document {
                 }
             }
         }
+        for shape in &self.shapes {
+            if let Some(parent) = &shape.stitch_parent_id {
+                let material = self
+                    .shapes
+                    .iter()
+                    .find(|s| &s.id == parent)
+                    .ok_or("Missing stitch guide parent")?;
+                if shape.stitch_only != Some(true)
+                    || material.stitch_only == Some(true)
+                    || !stitch_boundary(material).1
+                    || shape.id == *parent
+                {
+                    return Err("Invalid stitch guide attachment".into());
+                }
+            }
+        }
         let mut stitch_ids = HashSet::new();
-        let mut attached = HashSet::new();
         if self.stitch_groups.len() > 10000 {
             return Err("Too many stitch groups".into());
         }
@@ -943,6 +1052,36 @@ impl Document {
                 .iter()
                 .find(|s| s.id == group.shape_id)
                 .ok_or("Missing stitch parent")?;
+            if let Some(holes) = &group.holes {
+                if !matches!(group.side, -1 | 1)
+                    || group.closed
+                    || !group.edges.is_empty() && parent.stitch_parent_id.is_none()
+                    || matches!(
+                        parent.kind,
+                        Kind::Text
+                            | Kind::Image
+                            | Kind::Measurement
+                            | Kind::Arrow
+                            | Kind::ArrowHead
+                            | Kind::Crosshair
+                            | Kind::SizeSquare
+                            | Kind::SizeRuler
+                    )
+                {
+                    return Err("Invalid detached hole parent".into());
+                }
+                if group.id.is_empty()
+                    || !stitch_ids.insert(&group.id)
+                    || holes.is_empty()
+                    || holes.len() > 100000
+                    || holes.iter().any(|h| {
+                        !h.point.x.is_finite() || !h.point.y.is_finite() || !h.angle.is_finite()
+                    })
+                {
+                    return Err("Invalid detached holes".into());
+                }
+                continue;
+            }
             let (boundary, closed) = stitch_boundary(parent);
             let start = group
                 .edges
@@ -964,7 +1103,8 @@ impl Document {
                     s.id == group.shape_id
                         && !matches!(
                             s.kind,
-                            Kind::Text
+                            Kind::Image
+                                | Kind::Text
                                 | Kind::Measurement
                                 | Kind::Arrow
                                 | Kind::ArrowHead
@@ -987,12 +1127,147 @@ impl Document {
                 || v.spacing < 0.01
                 || !v.inset.is_finite()
                 || v.inset < 0.0
-                || group
-                    .edges
-                    .iter()
-                    .any(|edge| edge.is_empty() || !attached.insert((&group.shape_id, edge)))
+                || self.stitch_groups.iter().any(|other| {
+                    other.id != group.id
+                        && other.shape_id == group.shape_id
+                        && other.edges == group.edges
+                        && other.side == group.side
+                        && other.settings == group.settings
+                        && other.continuation == group.continuation
+                })
+                || group.edges.iter().any(|edge| edge.is_empty())
             {
                 return Err("Invalid stitch group".into());
+            }
+        }
+        let valid_settings = |v: &StitchSettings| {
+            v.hole_count.map_or(true, |n| n > 0 && n <= 100000)
+                && v.spacing.is_finite()
+                && v.spacing >= 0.01
+                && v.inset.is_finite()
+                && v.inset >= 0.0
+                && [v.start_clearance, v.end_clearance]
+                    .iter()
+                    .all(|n| n.is_finite() && *n >= 0.0)
+                && [v.round_diameter, v.flat_length]
+                    .into_iter()
+                    .flatten()
+                    .all(|n| n.is_finite() && (0.1..=5.0).contains(&n))
+        };
+        if let Some(presets) = &self.stitch_presets {
+            let mut names = std::collections::HashSet::new();
+            if presets.len() > 1000
+                || presets.iter().any(|p| {
+                    p.name.trim().is_empty()
+                        || p.name.len() > 200
+                        || !names.insert(&p.name)
+                        || !valid_settings(&p.settings)
+                })
+            {
+                return Err("Invalid stitch presets".into());
+            }
+        }
+        for group in &self.stitch_groups {
+            if let Some(overrides) = &group.hole_overrides {
+                if overrides.iter().any(|(index, settings)| {
+                    index
+                        .parse::<u32>()
+                        .map_or(true, |n| n == 0 || n > 100000 || n.to_string() != *index)
+                        || !valid_settings(settings)
+                }) {
+                    return Err("Invalid hole override".into());
+                }
+            }
+        }
+        for group in &self.stitch_groups {
+            if !valid_settings(&group.settings) {
+                return Err("Invalid stitch settings".into());
+            }
+            let mut seen = HashSet::new();
+            let mut current = group;
+            while let Some(link) = &current.continuation {
+                if !seen.insert(&current.id) || !link.gap.is_finite() || link.gap <= 0.0 {
+                    return Err("Invalid stitch continuation".into());
+                }
+                let previous = self
+                    .stitch_groups
+                    .iter()
+                    .find(|g| g.id == link.previous_id)
+                    .ok_or("Missing preceding run")?;
+                if current.shape_id != previous.shape_id
+                    || current.edges != previous.edges
+                    || current.side != previous.side
+                {
+                    return Err("Incompatible stitch continuation".into());
+                }
+                current = previous;
+            }
+        }
+        if let Some(transfers) = &self.stitch_transfers {
+            let mut ids = HashSet::new();
+            let mut pairs = HashSet::new();
+            if transfers.len() > 10000 {
+                return Err("Too many stitching transfers".into());
+            }
+            let mut placement_numbers = HashMap::new();
+            let mut number_placements = HashMap::new();
+            for t in transfers {
+                if let Some(number) = t.number {
+                    let placement = t.placement_id.as_deref().unwrap_or(&t.id);
+                    if number == 0
+                        || placement_numbers
+                            .insert(placement, number)
+                            .is_some_and(|old| old != number)
+                        || number_placements
+                            .insert(number, placement)
+                            .is_some_and(|old| old != placement)
+                    {
+                        return Err("Invalid transfer number".into());
+                    }
+                }
+                let master = self
+                    .stitch_groups
+                    .iter()
+                    .find(|g| g.id == t.master_id)
+                    .ok_or("Missing master run")?;
+                let target = self
+                    .shapes
+                    .iter()
+                    .find(|s| s.id == t.target_id)
+                    .ok_or("Missing receiving piece")?;
+                if t.id.is_empty()
+                    || !ids.insert(&t.id)
+                    || !pairs.insert((&t.placement_id, &t.master_id, &t.target_id))
+                    || self.stitch_groups.iter().any(|g| g.id == t.id)
+                    || master.shape_id == t.target_id
+                    || self
+                        .shapes
+                        .iter()
+                        .find(|s| s.id == master.shape_id)
+                        .and_then(|s| s.stitch_parent_id.as_ref())
+                        .is_some_and(|id| id == &t.target_id)
+                    || target.stitch_only.unwrap_or(false)
+                    || !stitch_boundary(target).1
+                    || t.pose.as_ref().is_some_and(|p| {
+                        !p.offset.x.is_finite() || !p.offset.y.is_finite() || !p.angle.is_finite()
+                    })
+                    || t.pose.is_some() && t.placement_id.as_ref().is_none_or(|id| id.is_empty())
+                {
+                    return Err("Invalid stitching transfer".into());
+                }
+                let length = |p: &Vec<Point>| (p[1].x - p[0].x).hypot(p[1].y - p[0].y);
+                if t.pose.is_none()
+                    && (t.master_points.len() != 2
+                        || t.target_points.len() != 2
+                        || t.master_points
+                            .iter()
+                            .chain(&t.target_points)
+                            .any(|p| !p.x.is_finite() || !p.y.is_finite())
+                        || length(&t.master_points) < 1e-7
+                        || length(&t.target_points) < 1e-7)
+                {
+                    return Err("Invalid legacy stitching transfer".into());
+                }
             }
         }
         Ok(())
@@ -1009,8 +1284,10 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
+                stitch_presets: None,
+                stitch_transfers: None,
                 print_layouts: vec![],
-                version: 18,
+                version: 21,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -1030,7 +1307,8 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18]}).to_string()
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]})
+            .to_string()
     }
     pub fn snapshot(&self) -> String {
         serde_json::json!({"revision":self.revision,"document":self.document,"canUndo":!self.past.is_empty(),"canRedo":!self.future.is_empty()}).to_string()
@@ -1142,7 +1420,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 18;
+                next.version = 21;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -1187,6 +1465,82 @@ impl Editor {
 mod tests {
     use super::*;
     #[test]
+    fn counted_runs_and_receiving_layers_roundtrip_and_validate() {
+        let value = serde_json::json!({"version":20,"shapes":[
+            {"id":"master","name":"Master","kind":"line","points":[{"x":0,"y":5},{"x":100,"y":5}],"rotation":0,"radius":0},
+            {"id":"receiver","name":"Receiver","kind":"rectangle","points":[{"x":200,"y":0},{"x":250,"y":20}],"rotation":0,"radius":0}],
+            "stitchGroups":[{"id":"run","shapeId":"master","edges":["line:2:edge:0"],"side":1,"closed":false,"settings":{"style":"round","spacing":3.38,"inset":0,"alignment":"start","holeCount":2}}],
+            "stitchTransfers":[{"id":"layer","masterId":"run","targetId":"receiver","visible":true,"masterPoints":[{"x":-50,"y":0},{"x":-40,"y":0}],"targetPoints":[{"x":-25,"y":-5},{"x":-15,"y":-5}]}]});
+        let doc: Document = serde_json::from_value(value).unwrap();
+        doc.validate().unwrap();
+        let text = serde_json::to_string(&doc).unwrap();
+        assert_eq!(serde_json::from_str::<Document>(&text).unwrap(), doc);
+        let mut editor = Editor::new();
+        editor.execute("commit", &text, 0).unwrap();
+        editor.execute("undo", "", 1).unwrap();
+        assert!(editor.document.stitch_transfers.is_none());
+        editor.execute("redo", "", 2).unwrap();
+        assert_eq!(editor.document.stitch_transfers, doc.stitch_transfers);
+        let mut bad = doc.clone();
+        bad.stitch_groups[0].continuation = Some(StitchContinuation {
+            previous_id: "run".into(),
+            gap: 1.0,
+        });
+        assert!(bad.validate().is_err());
+        let mut bad = doc.clone();
+        bad.stitch_groups[0].settings.hole_count = Some(0);
+        assert!(bad.validate().is_err());
+        let mut bad = doc.clone();
+        bad.stitch_transfers.as_mut().unwrap()[0].master_id = "missing".into();
+        assert!(bad.validate().is_err());
+    }
+    #[test]
+    fn transfer_placements_and_detached_guides_validate() {
+        let value = serde_json::json!({"version":21,"shapes":[
+            {"id":"master","name":"Master","kind":"line","points":[{"x":0,"y":5},{"x":100,"y":5}],"rotation":0,"radius":0},
+            {"id":"receiver","name":"Receiver","kind":"rectangle","points":[{"x":200,"y":0},{"x":300,"y":20}],"rotation":0,"radius":0}],
+            "stitchGroups":[{"id":"run","shapeId":"master","edges":["line:2:edge:0"],"side":1,"closed":false,"settings":{"style":"round","spacing":3.38,"inset":0,"alignment":"start","holeCount":2}}],
+            "stitchTransfers":[{"id":"one","placementId":"one","masterId":"run","targetId":"receiver","visible":true,"pose":{"offset":{"x":0,"y":0},"angle":0}},
+                {"id":"two","placementId":"two","masterId":"run","targetId":"receiver","visible":true,"pose":{"offset":{"x":0,"y":5},"angle":90}}]});
+        let mut doc: Document = serde_json::from_value(value).unwrap();
+        doc.validate().unwrap();
+        let text = serde_json::to_string(&doc).unwrap();
+        assert_eq!(serde_json::from_str::<Document>(&text).unwrap(), doc);
+        let mut invalid = doc.clone();
+        invalid.stitch_transfers.as_mut().unwrap()[1].placement_id = Some("one".into());
+        assert!(invalid.validate().is_err());
+        let mut invalid = doc.clone();
+        invalid.stitch_transfers.as_mut().unwrap()[0]
+            .pose
+            .as_mut()
+            .unwrap()
+            .angle = f64::INFINITY;
+        assert!(invalid.validate().is_err());
+        let mut invalid = doc.clone();
+        invalid.stitch_transfers.as_mut().unwrap()[0].number = Some(0);
+        assert!(invalid.validate().is_err());
+        let mut invalid = doc.clone();
+        for transfer in invalid.stitch_transfers.as_mut().unwrap() {
+            transfer.number = Some(1);
+        }
+        assert!(invalid.validate().is_err());
+        let mut guide = doc.shapes[0].clone();
+        guide.id = "guide".into();
+        guide.stitch_only = Some(true);
+        guide.stitch_parent_id = Some("receiver".into());
+        let mut group = doc.stitch_groups[0].clone();
+        group.id = "detached".into();
+        group.shape_id = guide.id.clone();
+        doc.shapes.push(guide);
+        doc.stitch_groups.push(group);
+        doc.validate().unwrap();
+        let mut invalid = doc.clone();
+        invalid.stitch_transfers.as_mut().unwrap()[0].master_id = "detached".into();
+        assert!(invalid.validate().is_err());
+        doc.shapes.last_mut().unwrap().stitch_parent_id = Some("missing".into());
+        assert!(doc.validate().is_err());
+    }
+    #[test]
     fn indicators_validate_roundtrip_and_history() {
         for kind in [
             "arrow",
@@ -1217,7 +1571,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 18;
+        doc.version = 21;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1306,7 +1660,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1338,7 +1692,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 18;
+        d.version = 21;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -1497,7 +1851,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 18;
+        doc.version = 21;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1624,7 +1978,7 @@ mod print_tests {
         editor
             .execute("load", r#"{"version":5,"shapes":[]}"#, 0)
             .unwrap();
-        assert_eq!(editor.document.version, 18);
+        assert_eq!(editor.document.version, 21);
         assert!(editor.document.print_layouts.is_empty());
         editor.execute("load", &project().to_string(), 1).unwrap();
         let original = editor.document.clone();

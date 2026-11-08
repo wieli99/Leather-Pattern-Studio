@@ -1,3 +1,4 @@
+import { stitchingOnPiece, resolvedStitchGroups } from "./stitchLayers";
 import { stitchGeometry, type StitchGroup } from "./stitchGeometry";
 import { stitchMarks } from "./stitch";
 import {
@@ -389,7 +390,11 @@ export function printStitchGroups(
           throw Error("Invalid snapshot stitch side");
         return { ...g, side: g.side, shapeId: sourceId };
       })
-    : (doc.stitchGroups ?? []).filter((g) => g.shapeId === sourceId);
+    : (()=>{
+      const shape=doc.shapes.find(s=>s.id===sourceId);
+      if(shape?.stitchParentId && layout.instances.some(i=>!i.snapshot && i.sourceId===shape.stitchParentId)) return [];
+      return stitchingOnPiece(doc,sourceId);
+    })();
 }
 
 export function unlinkPrintNode(
@@ -408,8 +413,8 @@ export function unlinkPrintNode(
     return {
       ...item,
       snapshot: structuredClone({
-        shape,
-        stitchGroups: (doc.stitchGroups ?? []).filter((g) => g.shapeId === shape.id),
+        shape:{...shape,stitchParentId:undefined},
+        stitchGroups: stitchingOnPiece(doc,shape.id),
       }),
     };
   });
@@ -871,7 +876,8 @@ export function printArtworkBounds(
   for (const group of printStitchGroups(doc, layout, item.source.id)) {
     try {
       const base = stitchMarks[group.settings.style];
-      const radius =
+      const overrideRadius = Math.max(0, ...Object.values(group.holeOverrides ?? {}).map(s => Math.hypot(s.roundDiameter ?? 1.4, s.flatLength ?? 1.4) / 2));
+      const radius = Math.max(overrideRadius,
         Math.hypot(
           group.settings.style === "round"
             ? (group.settings.roundDiameter ?? base.width)
@@ -879,7 +885,7 @@ export function printArtworkBounds(
               ? (group.settings.flatLength ?? base.width)
               : base.width,
           base.height,
-        ) / 2;
+        ) / 2);
       for (const { point } of stitchGeometry(item.shape, group).holes) {
         left = Math.min(left, point.x - radius);
         right = Math.max(right, point.x + radius);
@@ -972,6 +978,7 @@ export function printItemIntersects(
           group.settings.roundDiameter ?? 0,
           group.settings.flatLength ?? 0,
           stitchMarks[group.settings.style].width,
+          ...Object.values(group.holeOverrides ?? {}).flatMap(s => [s.roundDiameter ?? 0, s.flatLength ?? 0, stitchMarks[s.style].width]),
         ) / 2;
       if (
         stitchGeometry(shape, group).holes.some(

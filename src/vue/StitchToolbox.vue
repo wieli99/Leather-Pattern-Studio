@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import LengthInput from "./LengthInput.vue";
+import StitchPresetManager from "./StitchPresetManager.vue";
+import StitchTransfers from "./StitchTransfers.vue";
+import StitchHolePanel from "./StitchHolePanel.vue";
+import { receivingWarnings, holeAppearance, holeTouchesEdge, stitchEdgeContacts } from "../model/stitchLayers";
 import StitchPresets from "./StitchPresets.vue";
-import { computed, ref, watch } from "vue";
+import { stitchGeometry } from "../model/stitchGeometry";
+import { computed, watch } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import {
@@ -9,24 +14,49 @@ import {
   stitchInsetPresets,
   type StitchSettings,
 } from "../model/stitch";
-import { stitchGeometry } from "../model/stitchGeometry";
+
 const e = useEditor();
 const selected = computed(() =>
   e.value.stitchGroups.find((g) => g.id === e.value.stitchSelected[0]),
 );
+const operationLines = computed(() => {
+  const doc=e.value.stitchOriginal ?? e.value.document;
+  return e.value.stitchOperationGroups.map(group=>{
+    const shape=doc.shapes.find(s=>s.id===group.shapeId)!;
+    let holes: number | null=null;
+    try { holes=stitchGeometry(shape,group,doc.stitchGroups).holes.length; } catch { /* The operation reports invalid geometry. */ }
+    return {id:group.id,name:shape.name,holes,edges:group.edges.map(edgeLabel).join(", ")};
+  });
+});
+const dependentTransfers = computed(() => (e.value.stitchOriginal?.stitchTransfers ?? []).filter(t=>e.value.stitchOperationSelection.includes(t.masterId)).length);
 const settings = computed(
   () =>
     e.value.stitchDraft?.settings ??
     selected.value?.settings ??
     e.value.stitchSettings,
 );
-const junction = ref(1);
-watch(selected, () => {
-  junction.value = selected.value?.closed ? 0 : 1;
-});
+function fixedCount(event: Event) {
+  const value=(event.target as HTMLSelectElement).value;
+  let count=1;
+  if (selected.value) {
+    try { count=editor.stitchGeometry(e.value.document.shapes.find(s=>s.id===selected.value!.shapeId)!,selected.value).holes.length; } catch { /* A valid entered count can repair the line. */ }
+  }
+  editor.setStitchSettings({ ...settings.value, holeCount:value==="auto" ? undefined : Math.max(1,count) });
+}
+function countValue(event: Event) {
+  const text=(event.target as HTMLInputElement).value;
+  numberValue("holeCount",text.trim() ? Number(text) : NaN);
+}
+function applyFromKeyboard(event: KeyboardEvent) {
+  const target=event.target as HTMLElement;
+  if (target.closest("button,select,summary,form")) return;
+  event.preventDefault();
+  if(!editor.canApplyStitchTool)return;
+  void editor.applyStitch();
+}
 function cancelDraft() {
   invalidFields.clear();
-  editor.cancel();
+  editor.cancelStitchOperation();
 }
 function edgeLabel(key: string) {
   const parts = key.split(":");
@@ -60,50 +90,69 @@ function update(key: keyof StitchSettings, event: Event) {
   }
 }
 const warnings = computed(() =>
-  e.value.stitchGroups.flatMap((g) => {
+  [...e.value.stitchGroups.flatMap((g) => {
     try {
-      stitchGeometry(
-        e.value.document.shapes.find((s) => s.id === g.shapeId)!,
-        g,
-      );
-      return [];
+      const shape=e.value.document.shapes.find(s => s.id === g.shapeId)!;
+      const geometry=editor.stitchGeometry(shape,g);
+      const hits=stitchEdgeContacts(e.value.document,shape,g).size;
+      return hits ? [{ id:g.id, key:g.id, name:g.edges.map(edgeLabel).join(", ") || "Detached holes", message:`${hits} hole(s) touch or cross the material edge. Adjust the run or geometry.` }] : [];
     } catch (error) {
       return [
         {
           id: g.id,
+          key: g.id,
           name: g.edges.map(edgeLabel).join(", "),
           message: String(error),
         },
       ];
     }
-  }),
+  }), ...receivingWarnings(e.value.document).map(warning=>({ id:warning.masterId,key:warning.id,name:e.value.document.shapes.find(s=>s.id===warning.targetId)?.name ?? "Receiving piece",message:warning.message }))],
 );
 </script>
 <template>
+  <div id="stitch-panel-anchor" class="stitch-panel-anchor">
   <section
-    v-if="e.stitchMode"
-    :key="selected?.id ?? 'defaults'"
+    v-if="e.stitchMode && e.stitchTool"
+    :key="`${e.stitchTool}:${selected?.id ?? 'defaults'}`"
     class="transform-options stitch-options"
     aria-label="Stitch line settings"
     data-hint-edit="stitch"
     @keydown.esc.stop.prevent="cancelDraft()"
-    @keydown.enter.prevent="editor.applyStitch()"
+    @keydown.enter="applyFromKeyboard"
   >
-    <strong>Stitch line</strong>
-    <button
-      v-if="e.convertiblePath"
-      :disabled="
-        e.busy ||
-        !!e.stitchDraft ||
-        e.stitchGroups.some((g) => g.shapeId === e.convertiblePath?.id)
-      "
-      @click="editor.convertPathToStitch()"
-    >
-      Convert to stitching line
-    </button>
-    <small
-      >Hover an edge; click to place. Shift-click two lines to merge.</small
-    >
+    <strong>{{ e.stitchToolInfo?.label }}</strong>
+    <div v-if="e.stitchTransferPlacement" class="transfer-guide">
+      <strong>{{ e.stitchTransferPlacement.phase==='placed' ? 'Review transferred stitching' : 'Place transferred stitching' }}</strong>
+      <small>{{ e.stitchTransferPlacement.phase==='placed' ? 'Review the placement, then Apply to confirm. You can reposition it before applying.' : 'Move the master preview over receiving pieces and place it before applying.' }}</small>
+      <p>{{ e.stitchTransferPlacement.angle.toFixed(1) }}° · {{ e.stitchTransferPreview.results.length }} selected-line transfers ready</p>
+      <small v-if="!e.stitchTransferPreview.transfers.length">No eligible receiving piece here. Reposition the preview over an unlocked closed piece.</small>
+      <small v-for="result in e.stitchTransferPreview.results" :key="result.group.id">{{ result.target.name }}: {{ result.included }} holes, {{ result.excluded }} outside, {{ result.edgeHits.length }} edge contacts</small>
+      <small v-for="reason in e.stitchTransferPreview.skipped" :key="reason">Skipped: {{ reason }}</small>
+
+    </div>
+    <div v-else-if="['link','unlink','merge','split','delete'].includes(e.stitchTool!)" class="operation-settings">
+      <small>{{ e.stitchToolInfo?.hint }}</small>
+      <p>{{ e.stitchOperationSelection.length }} line(s) selected. Select the lines to include in this operation.</p>
+      <p v-for="line in operationLines" :key="line.id">{{ line.name }} · {{ line.holes ?? 'Invalid geometry' }}{{ line.holes===null ? '' : ' holes' }} · {{ line.edges }}</p>
+      <template v-if="e.stitchTool==='split'">
+        <label>Method<select aria-label="Stitch split method" :value="e.stitchSplitMethod" :disabled="e.stitchToolPending" @change="editor.stitchSplitMethod=($event.target as HTMLSelectElement).value as 'all'|'junction'; editor.previewStitchOperation()"><option value="all">All edges</option><option value="junction">At junction</option></select></label>
+        <label v-if="e.stitchSplitMethod==='junction'">Split location<select aria-label="Stitch split junction" :value="e.stitchSplitJunction" :disabled="e.stitchToolPending" @change="editor.stitchSplitJunction=Number(($event.target as HTMLSelectElement).value); editor.previewStitchOperation()"><option v-for="(edge,index) in e.stitchOperationGroups[0]?.edges ?? []" :key="edge" :value="index" :disabled="index===0 && !e.stitchOperationGroups[0]?.closed">Before {{ edgeLabel(edge) }}</option></select></label>
+      </template>
+      <small v-if="e.stitchTool==='delete'">Selected stitching and its live transfers will be removed. {{ dependentTransfers }} dependent transfer(s). The material outlines stay unchanged.</small>
+      <small v-else-if="e.stitchTool==='link'">The preview checks equal hole counts; it does not move holes.</small>
+      <small v-else-if="e.stitchTool==='merge'">The first selected line supplies the merged settings.</small>
+    </div>
+    <StitchHolePanel v-else-if="e.editingStitchHoles" />
+    <div v-else-if="e.selectedTransfer">
+      <p>Linked transferred stitching. Edit its source or detach it for independent editing.</p>
+      <button type="button" @click="editor.stitchSelected=[e.selectedTransfer!.masterId]; editor.notify()">Edit source</button>
+      <StitchTransfers />
+    </div>
+    <template v-else>
+    <small v-if="selected?.holes">Custom initial placement. Changing spacing or path geometry recalculates the holes.</small>
+    <small v-else>{{ selected ? 'Edit the selected run, or click another line.' : 'Hover an edge and click to place stitching.' }}</small>
+    <StitchPresetManager v-if="e.stitchTool==='line' || e.stitchTool==='convert'" :settings="settings" />
+    <template v-if="e.stitchTool!=='continue'">
     <label
       >Style
       <select
@@ -120,10 +169,10 @@ const warnings = computed(() =>
     >
     <label v-if="settings.style === 'round' || settings.style === 'flat'">
       {{ settings.style === 'round' ? `Diameter (${e.unitSymbol})` : `Length (${e.unitSymbol})` }}
-      <input v-if="e.units === 'mm'" type="range" min="0.1" max="5" step="0.1" :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'" :value="settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)" @input="update(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
-      <output v-if="e.units === 'mm'">{{ (settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)).toFixed(1) }} mm</output>
-      <LengthInput v-else :value="settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)" :min=".1" :max="5" :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'" @invalid="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', NaN)" @commit="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
+      <LengthInput :value="settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)" :min=".1" :max="5" :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'" @invalid="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', NaN)" @commit="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
     </label>
+    <label class="stitch-toggle">Reverse iron<input type="checkbox" :checked="settings.reversed" @change="editor.setStitchSettings({ ...settings, reversed: !settings.reversed })" /></label>
+    </template>
     <label
       >Spacing ({{ e.unitSymbol }})
       <span class="stitch-value"
@@ -134,6 +183,7 @@ const warnings = computed(() =>
           @choose="chooseNumber('spacing', $event)" /></span
     ></label>
 
+    <template v-if="e.stitchTool!=='continue'">
     <label
       >Inset ({{ e.unitSymbol }})
       <span class="stitch-value"
@@ -147,7 +197,7 @@ const warnings = computed(() =>
     <label
       >Alignment
       <select
-        :disabled="e.busy"
+        :disabled="e.busy || !!selected?.continuation"
         aria-label="Stitch alignment"
         :value="settings.alignment"
         @change="update('alignment', $event)"
@@ -158,101 +208,58 @@ const warnings = computed(() =>
       </select></label
     >
     <label
+      v-if="!selected?.continuation"
       v-for="field in ['startClearance', 'endClearance'] as const"
       :key="field"
       >{{
         field === "startClearance"
           ? `Start clearance (${e.unitSymbol})`
           : `End clearance (${e.unitSymbol})`
-      }}<LengthInput fixed :value="settings[field] ?? 0" :min="0" :disabled="e.busy" @invalid="numberValue(field, NaN)" @commit="numberValue(field, $event)" /></label>
+      }}<LengthInput fixed :value="settings[field] ?? 0" :min="0" :disabled="e.busy || !!selected?.continuation" @invalid="numberValue(field, NaN)" @commit="numberValue(field, $event)" /></label>
+    </template>
+    <label v-if="e.stitchTool==='continue'">End clearance ({{ e.unitSymbol }})<LengthInput :value="settings.endClearance ?? 0" :min="0" @commit="numberValue('endClearance', $event)" /></label>
+    <div class="stitch-count">
+      <label>Hole count<select aria-label="Stitch hole count mode" :value="settings.holeCount == null ? 'auto' : 'fixed'" :disabled="e.busy" @change="fixedCount"><option value="auto">Auto</option><option value="fixed">Fixed count</option></select></label>
+      <label v-if="settings.holeCount != null">Number of holes<input type="number" min="1" max="100000" step="1" aria-label="Stitch hole count" :value="settings.holeCount" :disabled="e.busy" @input="countValue" /></label>
+      <small v-if="settings.holeCount != null">Keeps your chisel spacing; the count sets the run length.</small>
+    </div>
+    <label v-if="selected?.continuation">Gap to next hole ({{ e.unitSymbol }})<LengthInput aria-label="Gap to next hole" :value="selected.continuation.gap" :min=".001" :disabled="e.busy" @commit="editor.setContinuationGap($event)" @invalid="editor.stitchError='Enter a positive continuation gap.'; editor.notify()" /></label>
+    <small v-if="e.addingStitchRun">Click the edge where the new run starts. Its spacing stays fixed.</small>
+    <StitchTransfers />
     <p v-if="selected">
       {{ e.stitchSelected.length }} selected. Master:
       {{ selected.edges.map(edgeLabel).join(", ") }} · {{ editor.stitchHoleInfo }}
     </p>
-    <p v-if="e.stitchSelected.length > 1 && editor.stitchLinkReason">
-      {{ editor.stitchLinkReason }}
-    </p>
-    <div class="actions">
-      <button
-        :disabled="!!editor.stitchLinkReason || !!e.stitchDraft || e.busy"
-        :title="editor.stitchLinkReason"
-        @click="editor.linkStitches()"
-      >
-        Link
-      </button>
-      <button
-        :disabled="!editor.canUnlinkStitches || !!e.stitchDraft || e.busy"
-        @click="editor.linkStitches(true)"
-      >
-        Unlink
-      </button>
-      <button
-        :disabled="e.stitchSelected.length !== 2 || !!e.stitchDraft || e.busy"
-        @click="editor.mergeStitches()"
-      >
-        Merge
-      </button>
-      <button
-        :disabled="
-          !selected || selected.edges.length < 2 || !!e.stitchDraft || e.busy
-        "
-        @click="editor.splitStitches()"
-      >
-        Split all
-      </button>
-      <button
-        :disabled="!selected || !!e.stitchDraft || e.busy"
-        @click="editor.deleteStitches()"
-      >
-        Delete stitching
-      </button>
-    </div>
-    <template v-if="selected && selected.edges.length > 1">
-      <label
-        >Junction
-        <select aria-label="Stitch split junction" v-model.number="junction">
-          <option
-            v-for="(_, i) in selected.edges.slice(selected.closed ? 0 : 1)"
-            :key="i"
-            :value="selected.closed ? i : i + 1"
-          >
-            Before {{ edgeLabel(selected.edges[selected.closed ? i : i + 1]) }}
-          </option>
-        </select></label
-      >
-      <button
-        :disabled="!!e.stitchDraft || e.busy"
-        @click="
-          editor.splitStitches(Math.min(junction, selected.edges.length - 1))
-        "
-      >
-        Split at junction
-      </button>
     </template>
     <p v-if="e.stitchError" role="alert">{{ e.stitchError }}</p>
-    <p v-for="warning in warnings" :key="warning.id" role="alert">
+    <p v-for="warning in warnings" :key="warning.key" role="alert">
       {{ warning.name }}: {{ warning.message }}
-      <button
-        @click="
-          editor.stitchSelected = [warning.id];
-          editor.notify();
-        "
-      >
-        Select
-      </button>
     </p>
 
     <div class="actions tool-popup-footer">
       <button
-        :disabled="!!e.stitchError || e.busy"
+        :disabled="!e.canApplyStitchTool"
         @click="editor.applyStitch()"
       >
         Apply</button
       ><button @click="cancelDraft()">Cancel</button>
     </div>
   </section>
+  </div>
 </template>
 <style scoped>
+.stitch-options { max-height: min(60vh, calc(100vh - 220px)); }
+details { flex-shrink:0; border-top: 1px solid var(--border); padding-top: 6px; }
+.stitch-count { display:grid; gap:6px; }
+.stitch-toggle { justify-content:space-between; }
+.transfer-guide, .operation-settings {display:grid;gap:8px;}
+summary { cursor:pointer; padding:4px 0; font-size:12px; font-weight:600; }
+summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+fieldset { border:0; padding:4px 0; margin:0; display:grid; gap:6px; min-width:0; }
+legend { font-size:12px; }
+label { align-items:center; }
+input[type="checkbox"] { width:auto; }
+
 label {
   display: flex;
   justify-content: space-between;

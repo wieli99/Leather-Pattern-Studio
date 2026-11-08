@@ -89,7 +89,7 @@ test("removed corner members split a merged group and undo data remains untouche
   expect(reconcileStitches({ ...doc, shapes: [] }).stitchGroups).toEqual([]);
 });
 test("version migration and ownership validation", () => {
-  expect(parseProject('{"version":7,"shapes":[]}').version).toBe(18);
+  expect(parseProject('{"version":7,"shapes":[]}').version).toBe(21);
   const g = group();
   expect(() =>
     parseProject(
@@ -299,4 +299,16 @@ test("project parsing preserves both stitch marker dimensions", () => {
   expect(parseProject(JSON.stringify(loaded)).stitchGroups![0].settings).toEqual(
     g.settings,
   );
+});
+
+test("project preserves reverse irons, presets and dormant numbered hole overrides", () => {
+  const g = group();
+  g.settings.reversed = true;
+  g.holeOverrides = { "100": { ...defaultStitchSettings, style: "round", roundDiameter: .8 } };
+  const saved = { version: 20, shapes: [rect], stitchGroups: [g], stitchPresets: [{ name: "My iron", settings: g.settings }] };
+  const loaded = parseProject(JSON.stringify(saved));
+  expect(loaded.stitchGroups![0]).toEqual(g);
+  expect(loaded.stitchPresets).toEqual(saved.stitchPresets);
+  expect(stitchGeometry(rect, g).holes).toEqual(stitchGeometry(rect, { ...g, settings: { ...g.settings, reversed: false } }).holes);
+  expect(parseProject(JSON.stringify(loaded))).toEqual(loaded);
 });

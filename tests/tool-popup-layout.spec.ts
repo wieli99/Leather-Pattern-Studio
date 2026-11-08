@@ -77,9 +77,14 @@ test("all selection tool popups align with the right canvas edge", async ({
       Math.abs(box.x + box.width - (canvas.x + canvas.width - 12)),
     ).toBeLessThan(2);
     expect(
-      Math.abs(box.y + box.height - (canvas.y + canvas.height - 28)),
+      Math.abs(box.y + box.height - (canvas.y + canvas.height - 28 - (name === "Stitch line" ? 72 : 0))),
     ).toBeLessThan(2);
-    expect(box.height).toBeLessThanOrEqual(800 * 0.48 + 1);
+    expect(box.height).toBeLessThanOrEqual(800 * (name === "Stitch line" ? .70 : .48) + 1);
+    if (name === "Stitch line") {
+      await expect(page.getByRole("toolbar", { name:"Transform selection" })).toBeHidden();
+      await page.getByRole("button", { name:"Cancel",exact:true }).click();
+      continue;
+    }
     const toolbar = (await page
       .getByRole("toolbar", { name: "Transform selection" })
       .boundingBox())!;

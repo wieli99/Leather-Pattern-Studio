@@ -10,6 +10,8 @@ The left toolbar selects drawing tools. Right-click or hold a grouped tool to op
 
 Select an object to show its Properties and the selection tools below the canvas. Tool help in the right panel describes the current operation. If a shortcut does nothing, click the canvas first and finish or cancel any active edit.
 
+Switching windows preserves unfinished drawings, stitching operations, and transform previews. Active mouse drags stop when the window loses focus; return to continue or confirm the pending tool. Held modifier keys are cleared.
+
 ## Use Properties and Tool help
 
 Properties groups settings under Object, Geometry, and Appearance. Select an object to see its available fields; expand Vertex coordinates for individual points. Enter or leaving a property field applies it. Esc restores the starting value. Each applied property edit can be undone.
@@ -37,5 +39,7 @@ Space+drag or middle-drag pans, preserving the selected objects and their select
 The footer shows the application version. Include it when [reporting a problem](#troubleshooting/report-a-bug). Save before accepting an application update; see [offline use](#files).
 
 ## Share feedback
+
+**Feedback** and **Help (?)** sit alongside the file actions in the header, vertically centered with the buttons.
 
 Click **Feedback** in the header of either workspace to open the [GitHub Discussions page](https://github.com/wieli99/Leather-Pattern-Studio/discussions) in a new tab. This requires an internet connection. Use it for ideas and general feedback; use **Report a bug** for problems.

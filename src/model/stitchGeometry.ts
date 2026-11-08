@@ -3,6 +3,10 @@ import { isClosedShape as stitchClosed } from "./closedShape";
 export { stitchClosed };
 import type { StitchGroup as CoreStitchGroup } from "../generated/StitchGroup";
 import {
+  cornerPoints,
+  localCenter,
+  inverse,
+  multiply,
   applyMatrix,
   shapeMatrix,
   polygonFillets,
@@ -57,7 +61,7 @@ const edgeCache = new WeakMap<Shape, StitchEdge[]>();
 export function stitchEdges(s: Shape): StitchEdge[] {
   const cached = edgeCache.get(s);
   if (cached) return cached;
-  if (isIndicator(s.kind) || s.kind === "text" || s.kind === "measurement") return [];
+  if (isIndicator(s.kind) || s.kind === "text" || s.kind === "image" || s.kind === "measurement") return [];
   const prefix = `${s.kind}:${s.points.length}:`;
   const edges: StitchEdge[] = [];
   const add = (key: string, points: Point[]) => {
@@ -109,6 +113,23 @@ export function stitchEdges(s: Shape): StitchEdge[] {
   }
   edgeCache.set(s, edges);
   return edges;
+}
+/** Extract a defining edge without turning curves into stored sample points. */
+export function extractStitchEdge(source: Shape, key: string): Shape {
+  const edge = stitchEdges(source).find(e => e.key === key);
+  if (!edge) throw Error("Choose an existing source edge.");
+  const base = { id: crypto.randomUUID(), name: `${source.name} stitching`, radius: 0, rotation: 0, stitchOnly: true };
+  if (stitchEdges(source).length === 1) return { ...source, ...base, radius: source.radius, rotation: source.rotation };
+  const index = Number(key.split(":").at(-1));
+  if (isCurve(source)) {
+    const [a,b,c,d] = worldCubics(source)[index];
+    return { ...base, kind: "control-curve", points: [a,d], handles: [{ incoming: {x:0,y:0}, outgoing: sub(b,a) }, { incoming: sub(c,d), outgoing: {x:0,y:0} }] };
+  }
+  if (key.includes(":corner:")) {
+    const corner = polygonFillets(source).corners[index];
+    return { ...base, kind: "arc", points: [corner.center,corner.start], sweep: corner.span * 180 / Math.PI, transform: shapeMatrix(source) };
+  }
+  return { ...base, kind: "line", points: [edge.points[0],edge.points.at(-1)!] };
 }
 function signedArea(edges: StitchEdge[]) {
   return (
@@ -287,7 +308,29 @@ function pointInside(points: Point[], p: Point): boolean {
 
 type Geometry = ReturnType<typeof computeStitchGeometry>;
 const geometryCache = new WeakMap<Shape, Map<string, Geometry | Error>>();
-export function stitchGeometry(s: Shape, g: StitchGroup): Geometry {
+export function resolveStitchRun(s: Shape, g: StitchGroup, groups: StitchGroup[], seen = new Set<string>()): StitchGroup {
+  if (!g.continuation) return g;
+  if (seen.has(g.id)) throw Error("Stitch continuations cannot form a cycle.");
+  seen.add(g.id);
+  const previous = groups.find(p => p.id === g.continuation!.previousId);
+  if (!previous || previous.shapeId !== g.shapeId || previous.side !== g.side || JSON.stringify(previous.edges) !== JSON.stringify(g.edges)) throw Error("Continuation requires sections on the same path and side.");
+  const resolved = resolveStitchRun(s, previous, groups, seen);
+  const geometry = stitchGeometry(s, resolved);
+  const start = geometry.distances.at(-1)! + g.continuation.gap;
+  return { ...g, continuation: undefined, settings: { ...g.settings, alignment: "start", startClearance: start } };
+}
+export function stitchGeometry(s: Shape, g: StitchGroup, groups?: StitchGroup[]): Geometry {
+  if (groups && g.continuation) g = resolveStitchRun(s, g, groups);
+  if (g.holes) {
+    const m = shapeMatrix(s), center=localCenter(s);
+    const holes = g.holes.map(h => ({ point: applyMatrix(m, {x:h.point.x+center.x,y:h.point.y+center.y}), angle: Math.atan2(m.b * Math.cos(h.angle) + m.d * Math.sin(h.angle), m.a * Math.cos(h.angle) + m.c * Math.sin(h.angle)) }));
+    const points = holes.map(h => h.point);
+    if (points.length === 1) points.push(points[0]);
+    const path=s.stitchParentId ? stitchEdges(s).flatMap((edge,index)=>index ? edge.points.slice(1) : edge.points) : points;
+    const cumulative=[0];path.slice(1).forEach((p,index)=>cumulative.push(cumulative[index]+distance(path[index],p)));
+    const distances=holes.map((h,index)=>{if(!s.stitchParentId)return cumulative[index];let nearest=Infinity,at=0;for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],span=distance(a,b),t=Math.max(0,Math.min(1,((h.point.x-a.x)*(b.x-a.x)+(h.point.y-a.y)*(b.y-a.y))/(span*span || 1))),p={x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)},d=distance(p,h.point);if(d<nearest){nearest=d;at=cumulative[i-1]+t*span;}}return at;});
+    return { points,holes,length:cumulative.at(-1) ?? 0,closed:false,distances };
+  }
   let cache = geometryCache.get(s);
   if (!cache) {
     cache = new Map();
@@ -399,8 +442,8 @@ function computeStitchGeometry(s: Shape, g: StitchGroup) {
   });
   if (holes.length > 1 && distance(holes[0].point, holes.at(-1)!.point) < 1e-7)
     holes.pop();
-  const start = g.settings.startClearance ?? 0,
-    end = g.settings.endClearance ?? 0;
+  const start = g.settings.holeCount != null ? distances[0] : (g.settings.startClearance ?? 0),
+    end = g.settings.holeCount != null ? length - distances.at(-1)! : (g.settings.endClearance ?? 0);
   const at = (d: number) => {
     let i = 1;
     while (i < cumulative.length - 1 && cumulative[i] < d) i++;
@@ -420,7 +463,7 @@ function computeStitchGeometry(s: Shape, g: StitchGroup) {
           at(length - end),
         ]
       : points;
-  return { points: visible, holes, length, closed: closed && !start && !end };
+  return { points: visible, holes, length, distances: distances.slice(0, holes.length), closed: closed && !start && !end && g.settings.holeCount == null };
 }
 export function validateStitchGroups(
   input: unknown,
@@ -430,7 +473,7 @@ export function validateStitchGroups(
     throw Error("Invalid stitch groups.");
   const ids = new Set<string>(),
     owned = new Set<string>();
-  return input.map((g) => {
+  const groups: StitchGroup[] = input.map((g) => {
     if (
       !g ||
       typeof g.id !== "string" ||
@@ -438,7 +481,7 @@ export function validateStitchGroups(
       ids.has(g.id) ||
       typeof g.shapeId !== "string" ||
       !Array.isArray(g.edges) ||
-      !g.edges.length ||
+      (!g.edges.length && !g.holes) ||
       g.edges.length > 20000 ||
       ![1, -1].includes(g.side) ||
       typeof g.closed !== "boolean" ||
@@ -447,9 +490,16 @@ export function validateStitchGroups(
       throw Error("Invalid stitch group.");
     ids.add(g.id);
     validateStitchSettings(g.settings);
+    if (g.holeOverrides !== undefined) {
+      if (!g.holeOverrides || typeof g.holeOverrides !== "object" || Array.isArray(g.holeOverrides)) throw Error("Invalid hole overrides");
+      for (const [index, settings] of Object.entries(g.holeOverrides)) {
+        if (!/^[1-9][0-9]*$/.test(index) || Number(index) > 100000) throw Error("Invalid hole number");
+        validateStitchSettings(settings as StitchSettings);
+      }
+    }
     const s = shapes.find((s) => s.id === g.shapeId);
-    if (!s || isIndicator(s.kind) || s.kind === "text") throw Error("Missing stitch parent.");
-    const keys = orderStitchEdges(s, g.edges, g.edges[0]);
+    if (!s || isIndicator(s.kind) || s.kind === "text" || s.kind === "image" || s.kind === "measurement") throw Error("Missing stitch parent.");
+    const keys = g.holes && !s.stitchParentId ? [] : orderStitchEdges(s, g.edges, g.edges[0]);
     if (
       keys.some((k, i) => k !== g.edges[i]) ||
       (g.closed && (!stitchClosed(s) || keys.length !== stitchEdges(s).length))
@@ -457,16 +507,20 @@ export function validateStitchGroups(
       throw Error("Invalid stitch topology.");
     for (const key of keys) {
       const id = JSON.stringify([g.shapeId, key]);
-      if (owned.has(id)) throw Error("An edge can only have one stitch line.");
       owned.add(id);
     }
     return {
+      ...(g.holes ? { holes: g.holes } : {}),
+      ...(g.continuation ? { continuation: g.continuation } : {}),
+      ...(g.holeOverrides ? { holeOverrides: g.holeOverrides } : {}),
       id: g.id,
       shapeId: g.shapeId,
       edges: [...keys],
       side: g.side,
       closed: g.closed,
       settings: {
+        ...(g.settings.holeCount != null ? { holeCount: g.settings.holeCount } : {}),
+        ...(g.settings.reversed != null ? { reversed: g.settings.reversed } : {}),
         ...(g.settings.roundDiameter !== undefined
           ? { roundDiameter: g.settings.roundDiameter }
           : {}),
@@ -482,19 +536,80 @@ export function validateStitchGroups(
       },
     };
   });
+  for (const g of groups) {
+    if (g.holes && (!Array.isArray(g.holes) || !g.holes.length || g.holes.length > 100000 || g.holes.some(h => !h || !Number.isFinite(h.point?.x) || !Number.isFinite(h.point?.y) || !Number.isFinite(h.angle)))) throw Error("Invalid detached holes");
+    const seen = new Set<string>();
+    let current = g;
+    while (current.continuation) {
+      if (seen.has(current.id) || !Number.isFinite(current.continuation.gap) || current.continuation.gap <= 0) throw Error("Invalid stitch continuation");
+      seen.add(current.id);
+      const previous = groups.find(p => p.id === current.continuation!.previousId);
+      if (!previous || previous.shapeId !== current.shapeId || previous.side !== current.side || JSON.stringify(previous.edges) !== JSON.stringify(current.edges)) throw Error("Incompatible stitch continuation");
+      current = previous;
+    }
+  }
+  validateRunPositions(groups, shapes, true);
+  return groups;
+}
+/** Invalidated source geometry remains loadable; valid runs must not duplicate holes. */
+export function validateRunPositions(groups: StitchGroup[], shapes: Shape[], retainInvalid = false) {
+  for (const shape of shapes) {
+    const spans:{edges:string[];start:number;end:number}[]=[];
+    const positions = new Map<string, { group: StitchGroup; point: Point }[]>();
+    for (const run of groups.filter(g => g.shapeId === shape.id && !g.holes)) {
+      let geometry: Geometry;
+      try { geometry=stitchGeometry(shape,run,groups); }
+      catch (error) { if (retainInvalid) continue; throw error; }
+      const start=geometry.distances[0],end=geometry.distances.at(-1)!;
+      if(!retainInvalid && spans.some(p=>p.edges.some(e=>run.edges.includes(e)) && Math.max(start,p.start)<=Math.min(end,p.end)+1e-6))throw Error("Stitch sections overlap. Reduce the count or adjust their start/gap and end clearance.");
+      spans.push({edges:run.edges,start,end});
+      for (const hole of geometry.holes) {
+        const x=Math.round(hole.point.x*1e6),y=Math.round(hole.point.y*1e6);
+        for (let dx=-1;dx<=1;dx++) for (let dy=-1;dy<=1;dy++) {
+          const others=positions.get(`${x+dx},${y+dy}`) ?? [];
+          if (others.some(p => p.group.id!==run.id && p.group.edges.some(e => run.edges.includes(e)) && distance(p.point,hole.point)<1e-6)) throw Error("Two runs would place a hole at the same position. Adjust the start or continuation gap.");
+        }
+        const key=`${x},${y}`;
+        positions.set(key,[...(positions.get(key) ?? []),{group:run,point:hole.point}]);
+      }
+    }
+  }
 }
 export const anchorReplacements = new WeakMap<Shape, Map<string, string[]>>();
 
 export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
+  const frame=(s:Shape)=>{
+    const m=shapeMatrix(s),center=applyMatrix(m,localCenter(s)),angle=Math.atan2(m.b,m.a),c=Math.cos(angle),sn=Math.sin(angle);
+    return {a:c,b:sn,c:-sn,d:c,e:center.x,f:center.y};
+  };
+  doc={...doc,shapes:doc.shapes.filter(s=>!s.stitchParentId || doc.shapes.some(p=>p.id===s.stitchParentId)).map(shape=>{
+    if(!shape.stitchParentId || !previous) return shape;
+    const old=previous.shapes.find(s=>s.id===shape.id),before=previous.shapes.find(s=>s.id===shape.stitchParentId),after=doc.shapes.find(s=>s.id===shape.stitchParentId);
+    if(!old || !before || !after || JSON.stringify(old)!==JSON.stringify(shape)) return shape;
+    const delta=multiply(frame(after),inverse(frame(before)));
+    if(Math.abs(delta.a-1)+Math.abs(delta.b)+Math.abs(delta.c)+Math.abs(delta.d-1)+Math.abs(delta.e)+Math.abs(delta.f)<1e-9) return shape;
+    return {...shape,rotation:0,transform:multiply(delta,shapeMatrix(shape))};
+  })};
   const stitchGroups: StitchGroup[] = [];
   const splitIds = new Set<string>();
   for (const original of doc.stitchGroups ?? []) {
     let g = original;
     const s = doc.shapes.find((s) => s.id === g.shapeId);
     if (!s) continue;
+    if (g.holes) {
+      const old=previous?.shapes.find(p=>p.id===s.id);
+      const moved=old && old.points.length===s.points.length && old.points.every((p,index)=>Math.abs((s.points[index].x-p.x)-(s.points[0].x-old.points[0].x))<1e-9 && Math.abs((s.points[index].y-p.y)-(s.points[0].y-old.points[0].y))<1e-9);
+      if(s.stitchParentId && old && (!moved || JSON.stringify(old.handles)!==JSON.stringify(s.handles))) g={...g,holes:undefined};
+      else { stitchGroups.push(g); continue; }
+    }
     const old = previous?.shapes.find((shape) => shape.id === s.id);
+    if(old?.kind==="rectangle" && s.kind==="polyline" && s.points.length===5) {
+      const corners=cornerPoints(old),base={...old,kind:"polyline" as const,points:[...corners,corners[0]]};
+      const before=stitchEdges(old),expanded=stitchEdges(base),after=stitchEdges(s);
+      const mapping=new Map(before.map(edge=>{const index=expanded.findIndex(e=>distance(e.points[0],edge.points[0])<1e-6 && distance(e.points.at(-1)!,edge.points.at(-1)!)<1e-6);return [edge.key,index<0 ? [] : [after[index].key]] as const;}));
+      anchorReplacements.set(s,mapping);
+    }
     const replacements =
-      s.stitchOnly &&
       old &&
       (old.kind !== s.kind || old.points.length !== s.points.length)
         ? anchorReplacements.get(s)
@@ -599,5 +714,11 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
   const stitchLinks = (doc.stitchLinks ?? []).map(link => ({
     ...link, members: link.members.filter(id => !splitIds.has(id) && stitchGroups.some(g => g.id === id)),
   })).filter(link => link.members.length >= 2);
-  return { ...doc, stitchGroups, stitchLinks };
+  const surviving = stitchGroups.map(g => {
+    if (!g.continuation || stitchGroups.some(p => p.id === g.continuation!.previousId)) return g;
+    const source = previous?.shapes.find(s => s.id === g.shapeId) ?? doc.shapes.find(s => s.id === g.shapeId)!;
+    try { return resolveStitchRun(source,g,previous?.stitchGroups ?? doc.stitchGroups ?? []); }
+    catch { return { ...g, continuation: undefined }; }
+  });
+  return { ...doc, stitchGroups: surviving, stitchLinks, ...(doc.stitchTransfers ? { stitchTransfers: doc.stitchTransfers.filter(t => surviving.some(g => g.id === t.masterId) && doc.shapes.some(s => s.id === t.targetId)) } : {}) };
 }

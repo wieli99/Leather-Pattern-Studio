@@ -1,6 +1,8 @@
+import { migrateDetachedGuides, transferMapping, makeTransfer, pieceFrame, stitchingOnPiece, validateStitchTransfers } from "./stitchLayers";
+import { validateStitchSettings } from "./stitch";
 import { validatePrintLayouts, findSource } from "./printLayout";
 import { objectTreeFromShapes, validateObjectTree, treeInDrawingOrder, type ObjectNode } from "./objectTree";
-import { validateStitchGroups } from "./stitchGeometry";
+import { stitchClosed, validateStitchGroups } from "./stitchGeometry";
 import type { StitchGroup } from "./stitchGeometry";
 import type { StitchLink } from "../generated/StitchLink";
 import type { Shape as CoreShape } from "../generated/Shape";
@@ -11,20 +13,22 @@ export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
   printLayouts?: import("./printLayout").PrintLayout[];
-  version: 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
+  stitchPresets?: import("../generated/StitchPreset").StitchPreset[];
+  stitchTransfers?: import("../generated/StitchTransfer").StitchTransfer[];
+  version: 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const DOCUMENT_VERSION = 18;
+export const DOCUMENT_VERSION = 21;
 export const emptyDocument = (): Doc => ({ version: DOCUMENT_VERSION, shapes: [] });
-export function parseProject(text: string): Doc {
+export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -237,6 +241,7 @@ export function parseProject(text: string): Doc {
     if (s.strokeWidth !== undefined && (!Number.isFinite(s.strokeWidth) || s.strokeWidth <= 0)) throw Error("Invalid outline width");
     ids.add(s.id);
     result.push({
+      ...(s.stitchParentId != null ? { stitchParentId:s.stitchParentId } : {}),
       id: s.id,
       name: s.name,
       ...(s.fillMode !== undefined ? { fillMode: s.fillMode } : {}),
@@ -286,6 +291,22 @@ export function parseProject(text: string): Doc {
   )
     throw Error("Invalid guidelines");
   const stitchGroups = validateStitchGroups(input.stitchGroups ?? [], result);
+  const originalShapes=[...result];
+  const addedGuides=options.frozen ? [] : migrateDetachedGuides(result,stitchGroups);
+  addedGuides.forEach(s=>ids.add(s.id));
+  for (const guide of result) if (guide.stitchParentId != null) {
+    const parent=result.find(s=>s.id===guide.stitchParentId);
+    if (typeof guide.stitchParentId!=="string" || !guide.stitchOnly || !parent || parent.stitchOnly || !stitchClosed(parent) || parent.stitchParentId || parent.id===guide.id) throw Error("Invalid stitch path attachment");
+  }
+  const transferDoc:Doc={version:DOCUMENT_VERSION,shapes:result,stitchGroups};
+  const stitchTransfers = validateStitchTransfers(input.stitchTransfers, result, stitchGroups).map(t=>{
+    if(t.pose) return t;
+    try {
+      const mapping=transferMapping(transferDoc,t),sf=pieceFrame(mapping.source),c=Math.cos(mapping.rotation),sn=Math.sin(mapping.rotation);
+      const dx=sf.center.x-mapping.a[0].x,dy=sf.center.y-mapping.a[0].y;
+      return {...makeTransfer(transferDoc,t.masterId,mapping.target,{x:mapping.b[0].x+c*dx-sn*dy,y:mapping.b[0].y+sn*dx+c*dy},mapping.rotation*180/Math.PI,t.placementId ?? t.id),id:t.id,visible:t.visible,number:t.number};
+    } catch { return t; }
+  });
   const stitchLinks = input.stitchLinks ?? [];
   const linkIds = new Set<number>(), members = new Set<string>();
   if (!Array.isArray(stitchLinks)) throw Error("Invalid stitch links");
@@ -298,13 +319,14 @@ export function parseProject(text: string): Doc {
       members.add(member);
     }
   }
-  const objectTree = input.objectTree === undefined ? objectTreeFromShapes(result) : validateObjectTree(input.objectTree, result);
+  const objectTree = input.objectTree === undefined ? objectTreeFromShapes(originalShapes) : validateObjectTree(input.objectTree, originalShapes);
+  objectTree.push(...addedGuides.map(s=>({kind:"object" as const,id:s.id})));
   const printLayouts = validatePrintLayouts(input.printLayouts ?? []);
   for (const layout of printLayouts) {
     for (const item of layout.instances) if (item.snapshot) {
       const snapshot = parseProject(JSON.stringify({ version: DOCUMENT_VERSION,
-        shapes: [item.snapshot.shape], stitchGroups: item.snapshot.stitchGroups }));
-      item.snapshot = { shape: snapshot.shapes[0], stitchGroups: snapshot.stitchGroups ?? [] };
+        shapes: [{...item.snapshot.shape,stitchParentId:undefined}], stitchGroups: item.snapshot.stitchGroups }),{frozen:true});
+      item.snapshot = { shape: snapshot.shapes[0], stitchGroups: stitchingOnPiece(snapshot,snapshot.shapes[0].id) };
     }
     if (layout.instances.some(i => !i.snapshot && !ids.has(i.sourceId))) throw Error("Unknown print source");
     function validateSources(nodes: import("./printLayout").PrintNode[]) {
@@ -315,7 +337,18 @@ export function parseProject(text: string): Doc {
     }
     validateSources(layout.tree ?? []);
   }
+  if (input.stitchPresets != null) {
+    if (!Array.isArray(input.stitchPresets) || input.stitchPresets.length > 1000) throw Error("Invalid stitch presets");
+    const names = new Set<string>();
+    for (const preset of input.stitchPresets) {
+      if (!preset || typeof preset.name !== "string" || !preset.name.trim() || preset.name.length > 200 || names.has(preset.name)) throw Error("Invalid stitch preset name");
+      names.add(preset.name);
+      validateStitchSettings(preset.settings);
+    }
+  }
   return {
+    ...(input.stitchTransfers != null ? { stitchTransfers } : {}),
+    ...(input.stitchPresets ? { stitchPresets: input.stitchPresets } : {}),
     printLayouts,
     objectTree,
     stitchLinks,

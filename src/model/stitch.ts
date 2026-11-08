@@ -23,6 +23,8 @@ export const stitchMarks = {
 } as const;
 
 export function validateStitchSettings(settings: StitchSettings, units: UnitMode = "mm"): void {
+  if (settings?.holeCount != null && (!Number.isInteger(settings.holeCount) || settings.holeCount < 1 || settings.holeCount > 100000)) throw Error("Hole count must be a whole number from 1 to 100000.");
+  if (!settings || (settings.reversed != null && typeof settings.reversed !== "boolean")) throw Error("Invalid stitch settings");
   if (
     [settings.startClearance ?? 0, settings.endClearance ?? 0].some(
       (n) =>
@@ -59,13 +61,14 @@ export function stitchDistances(
   length -= start + end;
   if (length <= 0)
     throw Error("Start and end clearances leave no usable stitch length.");
-  if (start || end) closed = false;
+  if (start || end || settings.holeCount != null) closed = false;
   const ratio = length / settings.spacing;
   const whole =
     Math.abs(ratio - Math.round(ratio)) < 1e-10
       ? Math.round(ratio)
       : Math.floor(ratio);
-  const count = closed ? Math.max(1, whole) : whole + 1;
+  const count = settings.holeCount ?? (closed ? Math.max(1, whole) : whole + 1);
+  if ((count - 1) * settings.spacing > length + 1e-7) throw Error("This hole count does not fit at the selected spacing.");
   if (count > 100000) throw new Error("Stitch path exceeds 100000 holes.");
   const remainder = Math.max(0, length - (count - 1) * settings.spacing);
   const offset =

@@ -40,3 +40,14 @@ it("snaps moving anchors to object geometry before grid points", () => {
   expect(result.delta).toEqual({ x: 10, y: 0 });
   expect(result.anchor).toBeDefined();
 });
+it("combines bottom and left alignment even when bottom is already exact",()=>{
+ const source:Shape={id:"small",name:"Small",kind:"rectangle",points:[{x:1,y:10},{x:21,y:30}],rotation:0,radius:0};
+ const target:Shape={...source,id:"big",points:[{x:0,y:0},{x:40,y:30}]};
+ const result=snapRigidMove([source,target],[source.id],{x:0,y:0},{grid:false,objects:true,gridSize:1,tolerance:2});
+ expect(result.delta).toEqual({x:-1,y:0});
+});
+it("a coincident midpoint does not block matching both material edges",()=>{
+ const source:Shape={id:"small",name:"Small",kind:"rectangle",points:[{x:1,y:10},{x:20,y:30}],radius:0,rotation:0};
+ const target:Shape={...source,id:"big",points:[{x:0,y:0},{x:40,y:30}]};
+ expect(snapRigidMove([source,target],[source.id],{x:0,y:0},{grid:false,objects:true,gridSize:1,tolerance:2}).delta).toEqual({x:-1,y:0});
+});

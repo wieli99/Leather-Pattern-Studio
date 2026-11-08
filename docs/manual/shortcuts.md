@@ -56,7 +56,8 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | Control | Action |
 | --- | --- |
 | G / E / S / M / B | Move / Rotate / Resize / Mirror / Corner radius |
-| I / K / J | Stitch line / Trim / Merge |
+| I | Stitch mode (also without a selection) |
+| K / J | Trim / Merge |
 | Tab / Shift+Tab | Enter or cycle transform fields |
 | X / Y | Constrain Move or Resize axis |
 | V during transform | Place pivot |
@@ -86,10 +87,14 @@ Rotation steps: 1° normally, Shift 5°, Ctrl 10°, Alt free. Guide and corner-r
 | --- | --- |
 | Click stitch path | Select its group; from Select, open stitch settings |
 | Shift+click stitch path | Add/remove groups for merging or linking |
+| Ctrl+click hole | Select a hole and show its appearance settings |
+| Ctrl+Shift+click hole | Add/remove individual holes |
+| Alt+click object | Select all stitching belonging to that object |
+| Alt+Shift+click object | Add all its stitching to the selection |
 | Shift while placing a new line | Merge compatible neighboring stitching |
-| Enter / right-click | Commit session and exit |
-| Esc | Discard session and exit |
-| Delete with canvas focus | Remove selected stitching in the preview |
+| Enter / right-click | Apply active operation; keep Stitch active |
+| Esc | Leave hole editing, then cancel operation; return to Select when idle |
+| Delete with canvas focus | Delete selected stitching immediately (Undo available) |
 | Hold Ctrl | Show healthy stitch-link indicators |
 
 See [stitch lines](#stitching) for master settings, clearances and equal hole counts.
@@ -111,3 +116,13 @@ Everyday save, history, copy/paste, duplication, grouping and deletion shortcuts
 | Esc / right-click during page move | Cancel page move |
 
 Delete removes selected pages only when every sheet touched by their artwork is selected. See [pages and assembly](#printing/pages-and-assembly).
+
+In Stitch mode, select operations from the bottom-center toolbar. Apply and Cancel stay in the contextual options box. Switching tools discards the unapplied preview. Escape leaves hole editing, then cancels the operation, then returns to Select when idle. During transfer placement the wheel rotates (Ctrl/⌘+wheel: zoom, Shift: 5° rotation, Alt: free rotation and no placement snapping); Space keeps viewport navigation available. Clicking or Enter applies eligible transfers. Form buttons and text entry retain normal keyboard behavior.
+
+In Stitch line, click a free part of a partially stitched edge for an independent section; Shift-click it to continue the selected section. Alt-click selects all stitching of a piece, and Alt+Shift-click adds it.
+
+Continue run is available in the stitching toolbar as an alternative to Shift-click continuation. Stitching shortcut instructions are shown in Tool help. Simultaneous X/Y alignment follows the same snapping policy in Model, transfer placement and print layouts.
+
+For Transfer stitching, left-click places the hovering preview without committing. Further left-clicks reposition it. Apply, right-click or Enter confirms only after placement; Escape cancels. Rotation after placement keeps its center fixed. Continue run requires a fixed-count preceding section with space remaining.
+
+In the attached stitching Presets panel, Escape cancels an open naming or import form first. Otherwise it closes the panel and returns focus to Presets, leaving the stitching preview active.

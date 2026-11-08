@@ -3,6 +3,7 @@ import { computed } from "vue";
 import PrintWorkspace from "./PrintWorkspace.vue";
 import brandIcon from "../assets/leather-studio-icon.svg?no-inline";
 import { editorHint } from "../editor/hint";
+import { stitchLineIcon } from "../editor/stitchTools";
 import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import TransformToolbox from "./TransformToolbox.vue";
 import { ref, watch, onMounted, onUnmounted } from "vue";
@@ -243,8 +244,13 @@ onMounted(() => {
             v-if="tool.id === 'text'"
             class="rail-divider"
             role="separator"
-            aria-label="Indicator tools"
+            aria-label="Stitching tools"
           />
+          <button v-if="tool.id === 'text'" title="Stitch line (I)" aria-label="Stitch line" aria-keyshortcuts="i" :aria-pressed="e.stitchMode" :disabled="!e.ready || !e.canStitch" @click="editor.activateStitch()">
+            <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path :d="stitchLineIcon" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+            <small>I</small>
+          </button>
+          <div v-if="tool.id === 'text'" class="rail-divider" role="separator" aria-label="Text and indicator tools" />
           <ToolButton :tool="tool" />
         </template>
         <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importImage" />

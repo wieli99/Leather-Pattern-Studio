@@ -5,5 +5,7 @@ import type { PrintLayout } from "./PrintLayout";
 import type { Shape } from "./Shape";
 import type { StitchGroup } from "./StitchGroup";
 import type { StitchLink } from "./StitchLink";
+import type { StitchPreset } from "./StitchPreset";
+import type { StitchTransfer } from "./StitchTransfer";
 
-export type Document = { printLayouts: Array<PrintLayout>, stitchLinks: Array<StitchLink>, version: number, shapes: Array<Shape>, objectTree?: Array<ObjectNode>, guides: Array<Guide>, stitchGroups: Array<StitchGroup>, };
+export type Document = { stitchTransfers?: Array<StitchTransfer>, stitchPresets?: Array<StitchPreset>, printLayouts: Array<PrintLayout>, stitchLinks: Array<StitchLink>, version: number, shapes: Array<Shape>, objectTree?: Array<ObjectNode>, guides: Array<Guide>, stitchGroups: Array<StitchGroup>, };

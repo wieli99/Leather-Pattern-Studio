@@ -1,5 +1,8 @@
+import { stitchTools, type StitchTool } from "./stitchTools";
+import { copyTransferPlacements, shareReceivingGeometry, hitStitchHole, detachTransfer, makeTransfer, pieceFrame, stitchPiece, materialContains, copyStitchData, resolvedStitchGroups, receivingStitches, holeAppearance, holeMark, holeTouchesEdge } from "../model/stitchLayers";
+import type { StitchTransfer } from "../generated/StitchTransfer";
 import { hitsTransformShaft } from "./transformUi";
-import {snapRotation} from "./rigidTransform";
+import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
 import { resizeText } from "../model/text";
@@ -20,7 +23,9 @@ import {
   stitchEdges,
   stitchClosed,
   insideStitchSide,
-  stitchGeometry,
+  stitchGeometry as computeStitches,
+  resolveStitchRun,
+  validateRunPositions,
   orderStitchEdges,
   reconcileStitches,
   type StitchGroup,
@@ -62,6 +67,7 @@ import {
   applyMatrix,
   inverse,
   localCenter,
+  multiply,
   bounds,
   center,
   distance,
@@ -205,12 +211,33 @@ export class Controller {
     return (Math.atan2(m.b, m.a) * 180) / Math.PI;
   }
   pauseGesture() {
-    if (this.transformTool) {
-      this.gesture = null;
-      this.previewId++;
-      this.notify();
-    } else this.cancel();
+    const gesture = this.gesture;
+    if (gesture && !this.transformTool && gesture.kind !== "pan") {
+      this.preview = null;
+      this.selected = gesture.selection;
+    }
+    if (gesture?.kind === "move" && this.transformTool) {
+      this.transformPivot = {
+        x: this.transformPivot.x + (gesture.displacement?.x ?? 0),
+        y: this.transformPivot.y + (gesture.displacement?.y ?? 0),
+      };
+    }
+    this.gesture = null;
+    this.drawingDown = null;
+    this.guideDrag = null;
+    this.pointerInside = false;
+    this.space = false;
+    this.anchorAlt = false;
+    this.drawingShift = false;
+    this.measurementsVisible = false;
+    this.smartGuides = [];
+    this.snapTarget = null;
+    this.snapKind = null;
+    // Invalidate interrupted drag responses, but retain pending tool previews.
+    if (gesture) this.previewId++;
+    this.notify();
   }
+
   get transformValid() {
     if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
     if (!this.preview) return !this.transformError;
@@ -643,20 +670,146 @@ export class Controller {
     this.transactionQueue = task.catch(() => {});
     await task;
   }
+  stitchGeometry(shape: Shape, group: StitchGroup) {
+    return computeStitches(shape, group, this.stitchGroups.map(g => g.id === group.id ? group : g));
+  }
+  stitchTool: StitchTool | null = null;
+  stitchToolPending = false;
+  stitchOperationSelection: string[] = [];
+  stitchSplitMethod: "all" | "junction" = "all";
+  get stitchToolInfo() { return stitchTools.find(t=>t.id===this.stitchTool); }
+  get stitchOperationGroups() {
+    const doc=this.stitchOriginal ?? this.document;
+    return this.stitchOperationSelection.flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
+  }
+  stitchToolReason(tool: StitchTool): string {
+    if(this.busy || this.stitchToolPending) return "Wait for the current operation.";
+    if(this.selectionLocked) return "Unlock the selection first.";
+    const doc=this.stitchOriginal ?? this.document;
+    const ids=this.stitchTool && !["line","add","continue","convert"].includes(this.stitchTool) ? this.stitchOperationSelection : this.stitchSelected;
+    const selectedIds=new Set(ids);
+    if(tool==="link")for(const link of doc.stitchLinks ?? [])if(link.members.some(id=>selectedIds.has(id)))link.members.forEach(id=>selectedIds.add(id));
+    const groups=[...selectedIds].flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
+    if(tool==="line" || tool==="add")return "";
+    if(tool==="convert")return this.convertiblePath && !(doc.stitchGroups ?? []).some(g=>g.shapeId===this.convertiblePath!.id) ? "" : "Select one unstitched path to convert.";
+    if(!groups.length || groups.length!==selectedIds.size)return "Select editable source stitching first.";
+    if(groups.some(g=>this.isLocked(g.shapeId)))return "Unlock the stitching first.";
+    const first=groups[0];
+    if(tool==="transfer")return new Set(groups.map(g=>stitchPiece(doc,g).id)).size===1 ? "" : "Select stitching from one source piece.";
+    if(tool==="continue") {
+      if(groups.length!==1 || first.holes)return "Select one editable section.";
+      if(!first.settings.holeCount)return "Set a fixed hole count before continuing this section.";
+      try {const geometry=computeStitches(doc.shapes.find(s=>s.id===first.shapeId)!,first,doc.stitchGroups);return geometry.distances.at(-1)!+first.settings.spacing<geometry.length-1e-6 ? "" : "Shorten this section or reserve end clearance first.";}catch{return "Correct invalid stitch geometry first.";}
+    }
+    if(tool==="path")return groups.length===1 && doc.shapes.find(s=>s.id===first.shapeId)?.stitchOnly ? "" : "Select one editable stitching path.";
+    if(tool==="delete")return "";
+    if(tool==="unlink")return (doc.stitchLinks ?? []).some(l=>l.members.some(id=>ids.includes(id))) ? "" : "Select a linked stitch line.";
+    if(tool==="link") {
+      if(groups.length<2)return "Select at least two lines with equal hole counts.";
+      try {return new Set(groups.map(g=>computeStitches(doc.shapes.find(s=>s.id===g.shapeId)!,g,doc.stitchGroups).holes.length)).size===1 ? "" : "Selected lines must have equal hole counts.";}catch{return "Correct invalid stitch geometry first.";}
+    }
+    if(groups.some(g=>g.settings.holeCount || g.holes))return "Only full-length edge lines can be merged or split.";
+    if(tool==="split")return groups.length===1 && first.edges.length>1 ? "" : "Select one line spanning multiple edges.";
+    if(groups.length<2 || groups.some(g=>g.shapeId!==first.shapeId))return "Select at least two connected lines on the same piece, in connection order.";
+    try {
+      const shape=doc.shapes.find(s=>s.id===first.shapeId)!;
+      if(!stitchClosed(shape) && groups.some(g=>g.side!==first.side))return "Select stitching on the same side.";
+      orderStitchEdges(shape,groups.flatMap(g=>g.edges),first.edges[0]);
+      const targets=(doc.stitchTransfers ?? []).filter(t=>ids.includes(t.masterId)).map(t=>t.targetId);
+      if(new Set(targets).size!==targets.length)return "Remove overlapping receiving assignments before merging.";
+      return "";
+    }catch{return "Select at least two connected lines on the same piece, in connection order.";}
+  }
+  resetStitchOperation() {
+    if(this.stitchOriginal)this.document=this.stitchOriginal;
+    if(this.stitchOriginalSettings)this.stitchSettings={...this.stitchOriginalSettings};
+    const ids=new Set(resolvedStitchGroups(this.document).map(g=>g.id));
+    const previousSelection=this.stitchOperationSelection.filter(id=>ids.has(id));
+    const currentSelection=this.stitchSelected.filter(id=>ids.has(id));
+    this.stitchSelected=this.stitchTool && ["link","unlink","merge","split","delete","transfer"].includes(this.stitchTool) ? previousSelection : currentSelection.length ? currentSelection : previousSelection;
+    this.stitchOperationSelection=[];this.stitchTool=null;
+    this.stitchDraft=null;this.stitchHover=null;this.stitchAbsorbed=[];
+    this.stitchTransferPlacement=null;this.editingStitchHoles=false;this.stitchHoleSelection=[];
+    this.addingStitchRun=false;this.stitchError="";this.smartGuides=[];this.snapTarget=null;
+  }
+  cancelStitchOperation() {
+    if(this.busy || this.stitchToolPending)return;
+    this.resetStitchOperation();this.notify();
+  }
+  async activateStitchTool(tool: StitchTool) {
+    if(this.stitchTool===tool || this.stitchToolReason(tool))return;
+    this.resetStitchOperation();
+    // Recheck against committed state after dropping the previous preview.
+    const reason=this.stitchToolReason(tool);
+    if(reason){this.stitchError=reason;this.notify();return;}
+    if(tool==="path"){await this.editStitchPath();return;}
+    this.stitchTool=tool;this.stitchOperationSelection=[...this.stitchSelected];
+    this.stitchSplitMethod="all";
+    this.stitchSplitJunction=this.stitchOperationGroups[0]?.closed ? 0 : 1;
+    if(tool==="add")this.addingStitchRun=true;
+    if(tool==="transfer")this.beginStitchTransfer();
+    else if(tool==="continue"){this.stitchToolPending=true;await this.continueStitchRun();this.stitchToolPending=false;}
+    else if(tool==="convert"){this.stitchToolPending=true;await this.convertPathToStitch();this.stitchToolPending=false;}
+    else await this.previewStitchOperation();
+    this.notify();
+  }
+  async previewStitchOperation() {
+    const tool=this.stitchTool;
+    if(!tool || !["link","unlink","merge","split","delete"].includes(tool) || this.busy || this.stitchToolPending)return;
+    this.document=this.stitchOriginal!;this.stitchSelected=[...this.stitchOperationSelection];this.stitchError="";
+    const reason=this.stitchToolReason(tool);
+    if(reason){this.stitchError=reason;this.notify();return;}
+    if(tool==="split" && this.stitchSplitMethod==="junction") {
+      const group=this.stitchGroups.find(g=>g.id===this.stitchOperationSelection[0])!;
+      this.stitchSplitJunction=Math.max(group.closed ? 0 : 1,Math.min(this.stitchSplitJunction,group.edges.length-1));
+    }
+    this.stitchToolPending=true;
+    try {
+      if(tool==="link" || tool==="unlink")await this.linkStitches(tool==="unlink");
+      else if(tool==="merge")await this.mergeStitches();
+      else if(tool==="split")await this.splitStitches(this.stitchSplitMethod==="junction" ? this.stitchSplitJunction : undefined);
+      else await this.deleteStitches();
+    } catch(reason) {
+      this.document=this.stitchOriginal!;
+      this.stitchSelected=[...this.stitchOperationSelection];
+      this.stitchError=String(reason);
+    } finally {this.stitchToolPending=false;this.notify();}
+  }
+  focusStitchLine(id: string) {
+    if(this.busy || this.stitchToolPending)return;
+    this.resetStitchOperation();
+    if(resolvedStitchGroups(this.document).some(g=>g.id===id)) {
+      this.stitchTool="line";this.stitchSelected=[id];
+    }
+    this.notify();
+  }
+  get canApplyStitchTool() {
+    return !!this.stitchTool && !this.busy && !this.stitchToolPending && !this.stitchError && (!this.stitchTransferPlacement || this.stitchTransferPlacement.phase==="placed" && this.stitchTransferPreview.transfers.length>0);
+  }
   stitchOriginal: Doc | null = null;
   stitchOriginalSettings: StitchSettings | null = null;
   stitchMode = false;
+  editingStitchHoles = false;
+  stitchHoleNumber = 1;
+  stitchHoleNumbers: number[] = [1];
+  addingStitchRun = false;
+  stitchTransferHighlight: string | null = null;
+  stitchHoleSelection: { groupId:string; number:number }[] = [];
+  stitchTransferPlacement: { placementId:string; sourceId:string; groupIds:string[]; center:Point; angle:number; rawAngle:number; phase?:"hover"|"placed" } | null = null;
+  stitchSplitJunction = 1;
   stitchSelected: string[] = [];
   stitchSettings: StitchSettings = { ...defaultStitchSettings };
   stitchDraft: StitchGroup | null = null;
   stitchHover: StitchGroup | null = null;
   stitchAbsorbed: string[] = [];
   updateStitchHover() {
+    if (!this.stitchTool || !["line","add"].includes(this.stitchTool)) {this.stitchHover=null;return;}
     if (this.stitchDraft) {
       this.stitchHover = null;
       return;
     }
     this.stitchAbsorbed = [];
+    if (this.stitchTransferPlacement) return;
     const target = this.stitchTarget(this.anchorPointer);
     this.stitchHover = target;
     if (target?.id === "preview") {
@@ -672,12 +825,185 @@ export class Controller {
     }
   }
   stitchError = "";
+  updateStitchTransferHighlight(raw: Point) {
+    this.stitchTransferHighlight=null;
+    if(!this.stitchMode && !this.measurementsVisible)return;
+    const ids=new Set((this.document.stitchTransfers ?? []).flatMap(t=>[t.id,t.masterId]));
+    for(const group of resolvedStitchGroups(this.document)) {
+      if(!ids.has(group.id))continue;
+      const shape=this.document.shapes.find(s=>s.id===group.shapeId);
+      if(!shape || this.isHidden(shape.id))continue;
+      try {const holes=this.stitchGeometry(shape,group).holes,p=holes[Math.floor(holes.length/2)]?.point;if(p && distance(raw,{x:p.x+10/this.zoom,y:p.y+12/this.zoom})<10/this.zoom)this.stitchTransferHighlight=group.id;}catch{continue;}
+    }
+  }
+  get selectedStitchLines() { return resolvedStitchGroups(this.document).filter(g=>this.stitchSelected.includes(g.id)); }
+  get selectedTransfer() { return this.document.stitchTransfers?.find(t=>this.stitchSelected.includes(t.id)); }
+  get transferStitchReason() {
+    if (!this.stitchSelected.length) return "Select the stitch lines to transfer.";
+    if (this.editingStitchHoles) return "Select stitch lines rather than individual holes.";
+    if (this.stitchSelected.some(id=>!this.stitchGroups.some(g=>g.id===id))) return "Detach linked transfers before transferring them again.";
+    const sources=new Set(this.selectedStitchLines.map(g=>stitchPiece(this.document,g).id));
+    if (sources.size!==1) return "Select stitching from one source piece.";
+    return "";
+  }
+  beginStitchTransfer() {
+    if (this.transferStitchReason || this.busy || this.stitchDraft || this.stitchError) return;
+    this.stitchTool="transfer";
+    this.stitchOperationSelection=[...this.stitchSelected];
+    const source=stitchPiece(this.document,this.selectedStitchLines[0]);
+    this.editingStitchHoles=false; this.addingStitchRun=false;
+    this.stitchTransferPlacement={placementId:crypto.randomUUID(),sourceId:source.id,groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
+    this.stitchHover=null; this.stitchError=""; this.notify();
+  }
+  get stitchTransferGhost(): Shape | null {
+    const placement=this.stitchTransferPlacement;
+    const source=this.document.shapes.find(s=>s.id===placement?.sourceId);
+    if (!placement || !source) return null;
+    const center=pieceFrame(source).center,angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
+    const matrix={a:c,b:sn,c:-sn,d:c,e:placement.center.x-c*center.x+sn*center.y,f:placement.center.y-sn*center.x-c*center.y};
+    return {...source,id:"stitch-transfer-preview",rotation:0,transform:multiply(matrix,shapeMatrix(source))};
+  }
+  updateStitchTransfer(raw: Point,alt=false) {
+    this.queuedTransferPointer=null;
+    const placement=this.stitchTransferPlacement;
+    if (!placement) return;
+    placement.center={...raw};
+    this.smartGuides=[];this.snapTarget=null;
+    if (!alt) {
+      const ghost=this.stitchTransferGhost!;
+      const result=snapRigidMove([...this.document.shapes.filter(s=>s.id!==placement.sourceId && !s.stitchParentId && !this.isHidden(s.id)),ghost],[ghost.id],{x:0,y:0},{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:this.document.guides});
+      placement.center={x:placement.center.x+result.delta.x,y:placement.center.y+result.delta.y};
+      this.smartGuides=result.guides;
+      if ("target" in result) this.snapTarget=result.target!;
+    }
+    this.stitchError=""; this.notify();
+  }
+  private transferPreviewCache: {doc:Doc;key:string;value:ReturnType<Controller["computeTransferPreview"]>} | null=null;
+  private transferRenderCache: {doc:Doc;preview:ReturnType<Controller["computeTransferPreview"]>;value:Doc} | null=null;
+  get stitchTransferPreview() {
+    const p=this.stitchTransferPlacement;
+    const key=p ? JSON.stringify([p.placementId,p.groupIds,p.center.x,p.center.y,p.angle]) : "";
+    if(this.transferPreviewCache?.doc===this.document && this.transferPreviewCache.key===key)return this.transferPreviewCache.value;
+    const value=this.computeTransferPreview();this.transferPreviewCache={doc:this.document,key,value};return value;
+  }
+  get stitchTransferRenderDocument():Doc {
+    if(!this.stitchTransferPlacement)return this.preview ?? this.document;
+    const preview=this.stitchTransferPreview;
+    if(this.transferRenderCache?.doc===this.document && this.transferRenderCache.preview===preview)return this.transferRenderCache.value;
+    const value={...this.document,stitchTransfers:[...(this.document.stitchTransfers ?? []),...preview.transfers]};
+    shareReceivingGeometry(this.document,value,preview.transfers);
+    this.transferRenderCache={doc:this.document,preview,value};return value;
+  }
+  private queuedTransferPointer: {placement:NonNullable<Controller["stitchTransferPlacement"]>;point:Point;alt:boolean}|null=null;
+  private transferPointerFrame=false;
+  queueStitchTransferPointer(point:Point,alt:boolean) {
+    if(!this.stitchTransferPlacement || this.stitchTransferPlacement.phase==="placed")return;
+    this.queuedTransferPointer={placement:this.stitchTransferPlacement,point,alt};
+    if(this.transferPointerFrame)return;
+    if(typeof requestAnimationFrame==="undefined"){this.flushTransferPointer();return;}
+    this.transferPointerFrame=true;
+    requestAnimationFrame(()=>{this.transferPointerFrame=false;this.flushTransferPointer();});
+  }
+  private flushTransferPointer() {
+    const pending=this.queuedTransferPointer;this.queuedTransferPointer=null;
+    if(pending?.placement===this.stitchTransferPlacement && pending?.placement.phase!=="placed")this.updateStitchTransfer(pending.point,pending.alt);
+  }
+  private computeTransferPreview() {
+    const placement=this.stitchTransferPlacement;
+    if (!placement) return {transfers:[] as StitchTransfer[],results:[] as ReturnType<typeof receivingStitches>[],skipped:[] as string[]};
+    const transfers:StitchTransfer[]=[],results:ReturnType<typeof receivingStitches>[]=[],skipped:string[]=[];
+    const ghost=this.stitchTransferGhost!,box=bounds([ghost]);
+    for (const target of this.document.shapes) {
+      if (target.id===placement.sourceId || target.stitchParentId || this.isHidden(target.id)) continue;
+      const other=bounds([target]);
+      if (box.x>other.x+other.width || other.x>box.x+box.width || box.y>other.y+other.height || other.y>box.y+box.height) continue;
+      if (!stitchClosed(target) || target.stitchOnly || !stitchEdges(target).length) { skipped.push(`${target.name}: unsupported outline`); continue; }
+      if (this.isLocked(target.id)) { skipped.push(`${target.name}: locked`); continue; }
+      let included=0;
+      for (const groupId of placement.groupIds) {
+        try {
+          const transfer={...makeTransfer(this.document,groupId,target,placement.center,placement.angle,placement.placementId),number:Math.max(0,...(this.document.stitchTransfers ?? []).map(t=>t.number ?? 0))+1,id:JSON.stringify([placement.placementId,groupId,target.id])};
+          const result=receivingStitches(this.document,transfer);
+          if(result.included) { transfers.push(transfer);results.push(result);included+=result.included; }
+        } catch (reason) { skipped.push(`${target.name}: ${String(reason)}`); }
+      }
+      if(!included && !skipped.some(message=>message.startsWith(`${target.name}:`))) skipped.push(`${target.name}: no selected holes inside`);
+    }
+    return {transfers,results,skipped};
+  }
+  async placeStitchTransfer() {
+    this.flushTransferPointer();
+    if (!this.stitchTransferPlacement || this.busy) return;
+    if(this.stitchTransferPlacement.phase!=="placed"){this.message="Left-click to place the preview first.";this.notify();return;}
+    const preview=this.stitchTransferPreview;
+    if (!preview.transfers.length) { this.stitchError=preview.skipped.join("; ") || "No receiving piece contains the selected stitching. Move the preview onto an unlocked closed piece.";this.notify();return; }
+    const placement=this.stitchTransferPlacement;
+    const next={...this.document,stitchTransfers:[...(this.document.stitchTransfers ?? []),...preview.transfers]};
+    const before=this.document,baseline=this.stitchOriginal,originalSettings=this.stitchOriginalSettings;
+    if (!(await this.commit(next))) return;
+    this.stitchTransferPlacement=null;
+    await this.applyStitch();
+    if(this.stitchError) {this.document=before;this.stitchOriginal=baseline;this.stitchOriginalSettings=originalSettings;this.stitchSelected=[...placement.groupIds];this.stitchTransferPlacement=placement;this.stitchTool="transfer";this.notify();return;}
+    this.stitchSelected=[...placement.groupIds];
+    const names=[...new Set(preview.results.map(r=>r.target.name))];
+    this.message=`Transferred stitching to ${names.join(", ")}.${preview.skipped.length ? ` Skipped: ${preview.skipped.join("; ")}.` : ""}`;
+    this.notify();
+  }
+  async removeStitchTransfer(id: string,detach=false) {
+    const transfer=this.document.stitchTransfers?.find(t=>t.id===id);
+    if(!transfer || this.busy || this.isLocked(transfer.targetId))return;
+    if(this.stitchMode && !this.stitchTool)this.stitchTool="line";
+    try {
+      const data=detach ? detachTransfer(this.document,transfer) : {shapes:[],groups:[]};
+      if(await this.commit({...this.document,shapes:[...this.document.shapes,...data.shapes],objectTree:[...this.tree,...data.shapes.map(shape=>({kind:"object" as const,id:shape.id}))],stitchTransfers:this.document.stitchTransfers?.filter(t=>t.id!==id),stitchGroups:[...this.stitchGroups,...data.groups]})) this.stitchSelected=data.groups.map(g=>g.id);
+    } catch(reason) {this.stitchError=String(reason);}
+    this.notify();
+  }
+  async editStitchPath() {
+    const group=this.stitchGroups.find(g=>g.id===this.stitchSelected[0]);
+    const shape=this.document.shapes.find(s=>s.id===group?.shapeId);
+    if(!shape?.stitchOnly || this.busy || this.stitchError)return;
+    this.cancel();this.selected=[shape.id];this.notify();
+  }
+  escapeStitch() {
+    if(this.busy || this.stitchToolPending)return;
+    if(this.editingStitchHoles){this.editingStitchHoles=false;this.stitchHoleSelection=[];this.notify();return;}
+    if(this.stitchTool || this.stitchTransferPlacement){this.cancelStitchOperation();return;}
+    this.cancel();this.notify();
+  }
+  validateRunHoles(groups: StitchGroup[]) {
+    validateRunPositions(groups,this.document.shapes);
+  }
+  async continueStitchRun() {
+    const previous = this.stitchGroups.find(g => g.id === this.stitchSelected[0]);
+    if (!previous || previous.holes || this.busy || this.stitchDraft) return;
+    const next: StitchGroup = { ...previous, id: crypto.randomUUID(), holeOverrides: undefined, closed: false, continuation: { previousId: previous.id, gap: previous.settings.spacing }, settings: { ...previous.settings, holeCount: 1, alignment: "start", startClearance: 0, endClearance: 0 } };
+    try {
+      if (await this.commit({ ...this.document, stitchGroups: [...this.stitchGroups,next] })) {
+        this.stitchSelected=[next.id]; this.stitchHoleNumber=1; this.stitchHoleNumbers=[1]; this.editingStitchHoles=false; this.addingStitchRun=false;
+        try {this.validateRunHoles(this.stitchGroups);}catch(reason){this.stitchError=String(reason);}
+      }
+    } catch (error) { this.stitchError = String(error); }
+    this.notify();
+  }
+  setContinuationGap(gap: number) {
+    const g = this.stitchGroups.find(g => g.id === this.stitchSelected[0]);
+    if (!g?.continuation) return;
+    if (!Number.isFinite(gap) || gap <= 0) { this.stitchError = "Gap to next hole must be positive."; this.notify(); return; }
+    const next = { ...g, continuation: { ...g.continuation, gap } };
+    try {
+      this.validateRunHoles(this.stitchGroups.map(p => p.id === g.id ? next : p));
+      void this.commit({ ...this.document, stitchGroups: this.stitchGroups.map(p => p.id === g.id ? next : p) });
+      this.stitchError = "";
+    } catch (error) { this.stitchError = String(error); }
+    this.notify();
+  }
   get convertiblePath() {
     if (this.selected.length !== 1) return undefined;
     return this.document.shapes.find(
       (s) =>
         s.id === this.selected[0] &&
-        ["polyline", "curve", "control-curve"].includes(s.kind) &&
+        stitchEdges(s).length > 0 &&
         !s.stitchOnly,
     );
   }
@@ -699,7 +1025,7 @@ export class Controller {
         closed: stitchClosed(shape),
         settings: { ...this.stitchSettings, inset: 0 },
       };
-      stitchGeometry(shape, group);
+      this.stitchGeometry(shape, group);
       const ok = await this.commit({
         ...this.document,
         shapes: this.document.shapes.map((s) =>
@@ -729,19 +1055,24 @@ export class Controller {
   }
   get canStitch() {
     return (
-      !this.selectionLocked &&
+      this.ready && !this.busy && !this.fileBusy && !this.selectionLocked &&
       (!this.selected.length ||
         this.active.some((shape) => stitchEdges(shape).length > 0))
     );
   }
   activateStitch() {
+    if (this.stitchMode) {if(!this.stitchTool)void this.activateStitchTool("line");return;}
     if (!this.canStitch) return;
     this.cancel();
     this.tool = "select";
     this.mode = "select";
+    this.editingStitchHoles = false;
+    this.stitchHoleSelection=[];this.stitchHoleNumbers=[1];this.stitchTransferHighlight=null;
     this.stitchOriginal = this.document;
     this.stitchOriginalSettings = { ...this.stitchSettings };
     this.stitchMode = true;
+    this.stitchTool = "line";
+    this.stitchOperationSelection=[];
     this.stitchSelected = [];
     this.notify();
   }
@@ -751,11 +1082,16 @@ export class Controller {
   stitchLineAt(raw: Point): StitchGroup | null {
     let closest = 8 / this.zoom,
       target: StitchGroup | null = null;
-    for (const group of this.stitchGroups) {
+    for (const group of resolvedStitchGroups(this.document)) {
       const shape = this.document.shapes.find((s) => s.id === group.shapeId);
       if (!shape || this.isHidden(shape.id) || this.isLocked(shape.id)) continue;
       try {
-        const points = stitchGeometry(shape, group).points;
+        const geometry = this.stitchGeometry(shape, group), points = geometry.points;
+        const pick = group;
+        for (const [index,hole] of geometry.holes.entries()) {
+          const d=distance(raw,hole.point);
+          if(hitStitchHole(group,index,hole,raw,8/this.zoom) && d<closest+Math.max(holeMark(holeAppearance(group,index)).width,holeMark(holeAppearance(group,index)).height)/2){target=pick;closest=Math.min(closest,d);}
+        }
         for (let i = 1; i < points.length; i++) {
           const d = distanceToSegment(raw, points[i - 1], points[i]);
           if (d < closest) {
@@ -771,11 +1107,12 @@ export class Controller {
   }
   stitchTarget(raw: Point): StitchGroup | null {
     const line = this.stitchLineAt(raw);
-    if (line) return line;
+    if (line && !this.addingStitchRun) return line;
+    const freeSection=this.stitchTool==="line";
     let best = 24 / this.zoom,
       target: StitchGroup | null = null;
     for (const s of this.document.shapes.filter((s) =>
-      this.selected.includes(s.id) && !this.isHidden(s.id) && !this.isLocked(s.id),
+      !this.isHidden(s.id) && !this.isLocked(s.id),
     )) {
       for (const edge of stitchEdges(s))
         for (let i = 1; i < edge.points.length; i++) {
@@ -787,7 +1124,11 @@ export class Controller {
           const existing = this.stitchGroups.find(
             (g) => g.shapeId === s.id && g.edges.includes(edge.key),
           );
-          target = existing ?? {
+          let occupied: StitchGroup | undefined;
+          if(freeSection && !this.addingStitchRun)occupied=this.stitchGroups.filter(g=>g.shapeId===s.id && g.edges.includes(edge.key)).find(g=>{
+            try {const points=this.stitchGeometry(s,g).points;return points.slice(1).some((b,index)=>{const a=points[index],dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy,t=((raw.x-a.x)*dx+(raw.y-a.y)*dy)/(length || 1);return length>1e-12 && t>=0 && t<=1 && distanceToSegment(raw,a,b)<=24/this.zoom;});}catch{return true;}
+          });
+          target = occupied ?? (this.addingStitchRun || freeSection ? undefined : existing) ?? {
             id: "preview",
             shapeId: s.id,
             edges: [edge.key],
@@ -799,7 +1140,7 @@ export class Controller {
                     ? 1
                     : -1,
                 ),
-            settings: { ...this.stitchSettings },
+            settings: { ...this.stitchSettings, ...(this.addingStitchRun || existing ? { holeCount: 1, alignment: "start" as const } : {}) },
             closed: stitchClosed(s) && stitchEdges(s).length === 1,
           };
         }
@@ -809,7 +1150,29 @@ export class Controller {
   stitchPlacement(target: StitchGroup, shift: boolean) {
     let next: StitchGroup = { ...target, id: crypto.randomUUID() };
     let absorbed: string[] = [];
-    if (shift) {
+    const onOccupiedEdge=this.stitchGroups.some(g=>g.shapeId===target.shapeId && g.edges.some(e=>target.edges.includes(e)));
+    if (this.addingStitchRun || onOccupiedEdge) {
+      const shape = this.document.shapes.find(s => s.id === next.shapeId)!;
+      const path = computeStitches(shape,{...next,settings:{...next.settings,holeCount:undefined,startClearance:0,endClearance:0}}).points;
+      let traversed = 0, best = Infinity, start = 0;
+      for (let i=1; i<path.length; i++) {
+        const a=path[i-1], b=path[i], length=distance(a,b);
+        const t=Math.max(0,Math.min(1,((this.anchorPointer.x-a.x)*(b.x-a.x)+(this.anchorPointer.y-a.y)*(b.y-a.y))/((length*length)||1)));
+        const point={x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y)}, d=distance(point,this.anchorPointer);
+        if (d<best) { best=d; start=traversed+t*length; }
+        traversed+=length;
+      }
+      next = { ...next, settings: { ...next.settings, startClearance: Math.min(start,Math.max(0,traversed-1e-6)), endClearance:0, alignment:"start", holeCount:1 } };
+    }
+    if(shift && onOccupiedEdge && this.stitchSelected.length===1) {
+      const previous=this.stitchGroups.find(g=>g.id===this.stitchSelected[0])!;
+      const shape=this.document.shapes.find(s=>s.id===next.shapeId)!;
+      const last=this.stitchGeometry(shape,previous).distances.at(-1)!;
+      const gap=(next.settings.startClearance ?? 0)-last;
+      if(previous.shapeId!==next.shapeId || JSON.stringify(previous.edges)!==JSON.stringify(next.edges) || gap<=0)throw Error("Continue farther along the same edge, after the selected section.");
+      next={...next,continuation:{previousId:previous.id,gap},settings:{...next.settings,spacing:previous.settings.spacing,inset:previous.settings.inset}};
+    }
+    if (shift && !onOccupiedEdge) {
       const source = this.document.shapes.find((s) => s.id === target.shapeId)!;
       const all = stitchEdges(source).map((e) => e.key),
         index = all.indexOf(target.edges[0]);
@@ -856,17 +1219,70 @@ export class Controller {
           edges,
           closed: stitchClosed(source) && edges.length === all.length,
         };
-        stitchGeometry(source, next);
+        this.stitchGeometry(source, next);
         absorbed = neighbors.map((g) => g.id);
       }
     }
-    stitchGeometry(
+    this.stitchGeometry(
       this.document.shapes.find((s) => s.id === next.shapeId)!,
       next,
     );
     return { next, absorbed };
   }
-  stitchClick(raw: Point, shift: boolean) {
+  stitchClick(raw: Point,shift: boolean,alt=false,ctrl=false) {
+    this.anchorPointer={...raw};
+    if(this.busy || this.stitchToolPending)return;
+    const tool=this.stitchTool;
+    if(tool && ["link","unlink","merge","split","delete"].includes(tool)) {
+      this.document=this.stitchOriginal!;this.stitchSelected=[...this.stitchOperationSelection];
+      if(alt)this.stitchLineClick(raw,shift,true,false);
+      else {
+        const hit=this.stitchLineAt(raw);
+        if(hit)this.stitchSelected=shift ? (this.stitchSelected.includes(hit.id) ? this.stitchSelected.filter(id=>id!==hit.id) : [...this.stitchSelected,hit.id]) : [hit.id];
+      }
+      this.stitchOperationSelection=[...this.stitchSelected];
+      void this.previewStitchOperation();return;
+    }
+    if(tool==="continue" || tool==="convert")return;
+    if(!tool)this.stitchTool="line";
+    this.stitchLineClick(raw,shift,alt,ctrl);
+  }
+  private stitchLineClick(raw: Point,shift: boolean,alt=false,ctrl=false) {
+    if (this.stitchTransferPlacement) { this.updateStitchTransfer(raw,alt);this.stitchTransferPlacement.phase="placed";this.notify();return; }
+    if (this.stitchDraft) { this.stitchError="Apply or cancel invalid settings before changing selection.";this.notify();return; }
+    if (alt) {
+      const hit=this.stitchLineAt(raw);
+      const piece=hit ? (this.document.stitchTransfers?.find(t=>t.id===hit.id) ? this.document.shapes.find(s=>s.id===hit.shapeId) : stitchPiece(this.document,hit)) : [...this.document.shapes].reverse().find(s=>!s.stitchParentId && !this.isHidden(s.id) && !this.isLocked(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || (stitchClosed(s) && materialContains(s,raw))));
+      if(piece) {
+        const ids=resolvedStitchGroups(this.document).filter(g=>{
+          const shape=this.document.shapes.find(s=>s.id===g.shapeId)!;
+          return (shape.id===piece.id || shape.stitchParentId===piece.id) && !this.isHidden(shape.id) && !this.isLocked(shape.id);
+        }).map(g=>g.id);
+        this.stitchSelected=shift ? [...new Set([...this.stitchSelected,...ids])] : ids;
+        this.editingStitchHoles=false;this.stitchHoleSelection=[];
+      }
+      this.notify();return;
+    }
+    if(ctrl) {
+      let nearest=Infinity,picked:{groupId:string;number:number}|undefined;
+      for(const group of resolvedStitchGroups(this.document)) {
+
+        const shape=this.document.shapes.find(s=>s.id===group.shapeId)!;
+        if(this.isHidden(shape.id)||this.isLocked(shape.id))continue;
+        try {this.stitchGeometry(shape,group).holes.forEach((hole,index)=>{const d=distance(raw,hole.point);if(hitStitchHole(group,index,hole,raw,10/this.zoom) && d<nearest){nearest=d;picked={groupId:group.id,number:index+1};}});}catch{continue;}
+      }
+      if(picked && this.document.stitchTransfers?.some(t=>t.id===picked!.groupId)) {
+        this.stitchSelected=[picked.groupId];this.editingStitchHoles=false;this.stitchHoleSelection=[];this.message="This transferred hole follows its source. Detach to edit it independently.";
+      } else if(picked) {
+        const pickedHole=picked;
+        this.stitchHoleSelection=shift ? (this.stitchHoleSelection.some(h=>h.groupId===pickedHole.groupId && h.number===pickedHole.number) ? this.stitchHoleSelection.filter(h=>h.groupId!==pickedHole.groupId || h.number!==pickedHole.number) : [...this.stitchHoleSelection,pickedHole]) : [pickedHole];
+        this.editingStitchHoles=this.stitchHoleSelection.length>0;
+        this.stitchSelected=[...new Set(this.stitchHoleSelection.map(h=>h.groupId))];
+        this.stitchHoleNumber=picked.number;this.stitchHoleNumbers=this.stitchHoleSelection.filter(h=>h.groupId===pickedHole.groupId).map(h=>h.number);
+      }
+      this.notify();return;
+    }
+    this.editingStitchHoles=false;this.stitchHoleSelection=[];
     if (this.stitchDraft) {
       this.stitchError =
         "Apply or cancel settings before selecting another line.";
@@ -876,6 +1292,7 @@ export class Controller {
     const target = this.stitchTarget(raw);
     if (!target) return;
     if (target.id !== "preview") {
+      if (this.stitchSelected[0] !== target.id) { this.stitchHoleNumber=1; this.stitchHoleNumbers=[1]; }
       this.stitchSelected = shift
         ? this.stitchSelected.includes(target.id)
           ? this.stitchSelected.filter((id) => id !== target.id)
@@ -886,7 +1303,8 @@ export class Controller {
       return;
     }
     try {
-      const { next, absorbed } = this.stitchPlacement(target, shift);
+      const { next, absorbed } = this.stitchPlacement(target, shift && !this.addingStitchRun);
+      this.validateRunHoles([...this.stitchGroups.filter(g => !absorbed.includes(g.id)),next]);
       void this.commit({
         ...this.document,
         stitchGroups: [
@@ -896,6 +1314,7 @@ export class Controller {
       }).then((ok) => {
         if (ok) {
           this.stitchSelected = [next.id];
+          this.addingStitchRun = false;
           this.stitchHover = null;
           this.stitchAbsorbed = [];
         }
@@ -910,15 +1329,16 @@ export class Controller {
   setStitchSettings(settings: StitchSettings) {
     this.stitchError = "";
     const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
-    if (g) this.stitchDraft = { ...g, settings: { ...settings } };
+    if (g) { const placementChanged=["spacing","inset","alignment","holeCount","startClearance","endClearance"].some(key=>settings[key as keyof StitchSettings]!==g.settings[key as keyof StitchSettings]); this.stitchDraft={...g,holes:placementChanged ? undefined : g.holes,settings:{...settings}}; }
     try {
       validateStitchSettings(settings, this.units);
       if (!g) this.stitchSettings = { ...settings };
       if (this.stitchDraft)
-        stitchGeometry(
+        this.stitchGeometry(
           this.document.shapes.find((s) => s.id === g!.shapeId)!,
           this.stitchDraft,
         );
+      if (this.stitchDraft) this.validateRunHoles(this.stitchGroups.map(p => p.id === this.stitchDraft!.id ? this.stitchDraft! : p));
       if (this.stitchOriginal && this.stitchDraft) {
         const draft = this.stitchDraft;
         this.stitchSettings = { ...draft.settings };
@@ -938,7 +1358,8 @@ export class Controller {
     this.notify();
   }
   async applyStitch() {
-    if (this.selectionLocked) return;
+    if(this.stitchTransferPlacement){await this.placeStitchTransfer();return;}
+    if (this.selectionLocked || this.stitchToolPending || !this.stitchTool) return;
     if (this.stitchOriginal) {
       if (this.busy || this.stitchError) return;
       const draft = this.stitchDraft;
@@ -952,7 +1373,7 @@ export class Controller {
         : this.document;
       try {
         if (draft)
-          stitchGeometry(
+          this.stitchGeometry(
             next.shapes.find((s) => s.id === draft.shapeId)!,
             draft,
           );
@@ -962,9 +1383,16 @@ export class Controller {
         return;
       }
       const defaults = { ...(draft?.settings ?? this.stitchSettings) };
+      const original=this.stitchOriginal, originalSettings=this.stitchOriginalSettings, selected=[...this.stitchSelected], operation=this.stitchTool, operationSelection=[...this.stitchOperationSelection];
       this.cancel();
-      await this.commit(next);
+      if (!(await this.commit(next))) {
+        this.document=next; this.stitchOriginal=original; this.stitchOriginalSettings=originalSettings;
+        this.stitchMode=true; this.stitchTool=operation;this.stitchOperationSelection=operationSelection;this.stitchSelected=selected; this.stitchError=this.message || "The stitching session could not be applied.";
+        this.notify(); return;
+      }
       this.stitchSettings = defaults;
+      this.activateStitch();
+      this.stitchTool=null;this.stitchSelected=selected.filter(id=>resolvedStitchGroups(this.document).some(g=>g.id===id));
       this.notify();
       return;
     }
@@ -981,7 +1409,7 @@ export class Controller {
       if (!group) throw Error("Missing stitch line");
       const shape = (this.preview ?? this.document).shapes.find(s => s.id === group.shapeId);
       if (!shape) throw Error("Missing shape");
-      return stitchGeometry(shape, group).holes.length;
+      return this.stitchGeometry(shape, group).holes.length;
     };
     try {
       const holes = count(id);
@@ -1006,7 +1434,7 @@ export class Controller {
     try {
       const counts = [...ids].map(id => {
         const g = this.stitchGroups.find(g => g.id === id)!;
-        return stitchGeometry(this.document.shapes.find(s => s.id === g.shapeId)!, g).holes.length;
+        return this.stitchGeometry(this.document.shapes.find(s => s.id === g.shapeId)!, g).holes.length;
       });
       return new Set(counts).size === 1 ? "" : "Linked lines must have the same number of holes.";
     } catch {
@@ -1042,33 +1470,55 @@ export class Controller {
     }
     this.notify();
   }
+  remapHoleOverrides(s: Shape, sources: StitchGroup[], targets: StitchGroup[]) {
+    for (const target of targets) target.holeOverrides = {};
+    for (const source of sources) {
+      const holes = this.stitchGeometry(s, source).holes;
+      for (const [number, settings] of Object.entries(source.holeOverrides ?? {})) {
+        const hole = holes[Number(number) - 1];
+        if (!hole) throw Error("Restore out-of-range overridden holes before changing stitch topology.");
+        let best: { group: StitchGroup; number: string; distance: number } | undefined;
+        for (const target of targets) this.stitchGeometry(s, target).holes.forEach((candidate, index) => {
+          const distance = Math.hypot(candidate.point.x - hole.point.x, candidate.point.y - hole.point.y);
+          if (!best || distance < best.distance) best = { group: target, number: String(index + 1), distance };
+        });
+        if (!best) throw Error("No resulting hole can retain this override.");
+        const previous = best.group.holeOverrides![best.number];
+        if (previous && JSON.stringify(previous) !== JSON.stringify(settings)) throw Error("Two different hole overrides would occupy the same hole.");
+        best.group.holeOverrides![best.number] = settings;
+      }
+    }
+  }
   async mergeStitches() {
-    if (this.stitchSelected.length !== 2 || this.stitchDraft || this.busy)
+    if (this.stitchSelected.length < 2 || this.stitchDraft || this.busy)
       return;
     try {
-      const [master, other] = this.stitchSelected.map((id) =>
+      const sources = this.stitchSelected.map((id) =>
         this.stitchGroups.find((g) => g.id === id)!,
       );
-      if (!master || !other || master.shapeId !== other.shapeId)
-        throw Error("Select two connected lines on the same shape.");
+      const master=sources[0];
+      if (!master || sources.some(g=>!g || g.shapeId!==master.shapeId))
+        throw Error("Select at least two connected lines on the same shape.");
+      if (sources.some(g=>g.settings.holeCount || g.holes)) throw Error("Only full-length edge lines can be merged. Counted runs stay independently adjustable.");
+      const receivers=(this.document.stitchTransfers ?? []).filter(t => this.stitchSelected.includes(t.masterId)).map(t=>t.targetId);
+      if (new Set(receivers).size !== receivers.length) throw Error("Both lines have a receiving assignment on the same piece. Remove one assignment before merging.");
       const s = this.document.shapes.find((s) => s.id === master.shapeId)!;
-      if (!stitchClosed(s) && master.side !== other.side)
+      if (!stitchClosed(s) && sources.some(g=>g.side!==master.side))
         throw Error("Stitch lines must use the same side.");
-      const edges = orderStitchEdges(
-        s,
-        [...master.edges, ...other.edges],
-        master.edges[0],
-      );
+      let edges=[...master.edges];
+      for(const group of sources.slice(1))edges=orderStitchEdges(s,[...edges,...group.edges],master.edges[0]);
       const merged = {
         ...master,
         edges,
         closed: stitchClosed(s) && edges.length === stitchEdges(s).length,
       };
-      stitchGeometry(s, merged);
+      this.remapHoleOverrides(s, sources, [merged]);
+      this.stitchGeometry(s, merged);
       await this.commit({
         ...this.document,
+        stitchTransfers: this.document.stitchTransfers?.map(t => this.stitchSelected.includes(t.masterId) ? { ...t, masterId:master.id } : t),
         stitchGroups: this.stitchGroups
-          .filter((g) => g.id !== other.id)
+          .filter((g) => g.id===master.id || !this.stitchSelected.includes(g.id))
           .map((g) => (g.id === master.id ? merged : g)),
       });
       this.stitchSelected = [master.id];
@@ -1081,6 +1531,7 @@ export class Controller {
   async splitStitches(junction?: number) {
     const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
     if (!g || this.stitchDraft || this.busy) return;
+    if (g.settings.holeCount || g.holes) { this.stitchError = "Only full-length edge lines can be split."; this.notify(); return; }
     let runs: string[][];
     if (junction === undefined) runs = g.edges.map((k) => [k]);
     else if (g.closed)
@@ -1095,8 +1546,11 @@ export class Controller {
       edges,
       closed: false,
     }));
+    try { this.remapHoleOverrides(this.document.shapes.find(s => s.id === g.shapeId)!, [g], groups); }
+    catch (error) { this.stitchError = String(error); this.notify(); return; }
     await this.commit({
       ...this.document,
+      stitchTransfers: this.document.stitchTransfers?.flatMap(t => t.masterId === g.id ? groups.map((run,index) => ({ ...t, id:index ? crypto.randomUUID() : t.id, masterId:run.id })) : [t]),
       stitchLinks: (this.document.stitchLinks ?? []).map(l => ({...l, members: l.members.filter(id => id !== g.id)})).filter(l => l.members.length >= 2),
       stitchGroups: [
         ...this.stitchGroups.filter((x) => x.id !== g.id),
@@ -1106,11 +1560,25 @@ export class Controller {
     this.stitchSelected = [groups[0].id];
     this.notify();
   }
+  async deleteStitchSelection() {
+    if(this.busy || this.stitchToolPending)return;
+    if(this.editingStitchHoles){this.message="Select a stitch line before deleting stitching.";this.notify();return;}
+    const selected=[...this.stitchSelected];
+    this.resetStitchOperation();
+    this.stitchSelected=selected.filter(id=>this.stitchGroups.some(g=>g.id===id));
+    if(!this.stitchSelected.length){this.notify();return;}
+    this.stitchTool="line";
+    try {await this.deleteStitches();await this.applyStitch();}
+    catch(reason){this.stitchError=String(reason);this.notify();}
+  }
   async deleteStitches() {
+    if(this.stitchTransferPlacement){this.escapeStitch();return;}
     if (this.busy) return;
-    const remaining = this.stitchGroups.filter(
-      (g) => !this.stitchSelected.includes(g.id),
-    );
+    let remaining = this.stitchGroups.filter(g => !this.stitchSelected.includes(g.id));
+    remaining = remaining.map(g => {
+      if (!g.continuation || remaining.some(p => p.id === g.continuation!.previousId)) return g;
+      return resolveStitchRun(this.document.shapes.find(s => s.id === g.shapeId)!, g, this.stitchGroups);
+    });
     await this.commit({
       ...this.document,
       shapes: this.document.shapes.filter(
@@ -1159,7 +1627,7 @@ export class Controller {
   async commit(document: Doc) {
     try {
       if (!this.canCommitFromView(document)) return false;
-      document = reconcilePrintLayouts(this.normalizeTree(document));
+      document = reconcilePrintLayouts(this.normalizeTree(reconcileStitches(document,this.document)));
     } catch (error) {
       this.preview = null;
       this.fail(error);
@@ -1731,6 +2199,11 @@ export class Controller {
       this.stitchOriginalSettings = null;
     }
     this.stitchMode = false;
+    this.stitchTool=null;this.stitchOperationSelection=[];
+    this.editingStitchHoles=false;this.stitchHoleSelection=[];this.stitchTransferHighlight=null;
+    this.stitchTransferPlacement=null;
+    this.addingStitchRun = false;
+
     this.stitchDraft = null;
     this.stitchHover = null;
     this.stitchError = "";
@@ -1799,6 +2272,7 @@ export class Controller {
         }
       }
       if (this.snapTarget) return this.snapTarget;
+      let edgeShape:Shape|undefined;
       for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
         if (this.gesture?.selection.includes(s.id)) continue;
         const box = bounds([s]);
@@ -1814,10 +2288,19 @@ export class Controller {
         if (d < best) {
           best = d;
           this.snapTarget = q;
-          this.snapKind = "edge";
+          this.snapKind = "edge";edgeShape=s;
         }
       }
-      if (this.snapTarget) return this.snapTarget;
+      if(this.snapTarget && edgeShape) {
+        const original=this.snapTarget;
+        const aligned=smartSnap(p,this.document.shapes.filter(s=>!this.isHidden(s.id) && !this.gesture?.selection.includes(s.id)),tolerance);
+        const combined={...original};
+        const guides=aligned.guides.filter(g=>Math.abs(original[g.axis]-p[g.axis])<1e-8);
+        for(const guide of guides)combined[guide.axis]=guide.coordinate;
+        if(guides.length && distance(nearestOutline(edgeShape,combined,0.25/this.zoom),combined)<1e-7){this.snapTarget=combined;this.smartGuides=guides;}
+        return this.snapTarget;
+      }
+
     }
     if (this.objects) {
       const q = { ...p };
@@ -1871,8 +2354,8 @@ export class Controller {
   }
   get tree(): ObjectNode[] { return this.document.objectTree ?? objectTreeFromShapes(this.document.shapes); }
   inheritedStateSource(id: string, field: "hidden" | "locked") { return inheritedStateSource(this.tree, id, field); }
-  isHidden(id: string) { return objectState(this.document, id).hidden; }
-  isLocked(id: string) { return objectState(this.document, id).locked; }
+  isHidden(id: string) { const shape=this.document.shapes.find(s=>s.id===id);return objectState(this.document,id).hidden || !!(shape?.stitchParentId && objectState(this.document,shape.stitchParentId).hidden); }
+  isLocked(id: string) { const shape=this.document.shapes.find(s=>s.id===id);return objectState(this.document,id).locked || !!(shape?.stitchParentId && objectState(this.document,shape.stitchParentId).locked); }
   selectedGroups: string[] = [];
   collapsedGroups = new Set<string>();
   panelRevision = 0;
@@ -2233,7 +2716,7 @@ export class Controller {
       }
     }
     if (this.stitchMode && button === 0 && !this.space) {
-      this.stitchClick(raw, shift);
+      this.stitchClick(raw,shift,alt,ctrl);
       return;
     }
     if (
@@ -2401,6 +2884,7 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    if(!this.stitchTransferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
     this.clipboardPixel = { ...pixel };
     this.mirrorHover = null;
     if (this.transformTool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
@@ -2423,7 +2907,7 @@ export class Controller {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
       this.drawingShift = shift;
-      this.updateStitchHover();
+      if(this.stitchTransferPlacement){this.queueStitchTransferPointer(this.anchorPointer,alt);return;}else this.updateStitchHover();
       this.notify();
       return;
     }
@@ -2500,51 +2984,11 @@ export class Controller {
       const selected = (s: Shape) => g.selection.includes(s.id);
       let document: Doc = g.original;
       if (g.kind === "move") {
-        let dx = raw.x - g.start.x,
-          dy = raw.y - g.start.y,
-          best = Infinity,
-          bestPriority = Infinity,
-          adjust = { x: 0, y: 0 },
-          target: Point | null = null;
-        let source: Point | undefined;
-        let targetGuides: SmartGuide[] = [];
-        let targetKind: SnapKind | null = null;
-        for (const s of g.original.shapes.filter(selected))
-          for (const a of g.snapAnchor ? [] : anchors(s)) {
-            const p = { x: a.x + dx, y: a.y + dy },
-              q = this.snap(p, alt),
-              d = distance(p, q);
-            const priority =
-              this.snapKind === "alignment"
-                ? 1
-                : this.snapKind === "grid"
-                  ? 2
-                  : 0;
-            if (
-              this.snapTarget &&
-              (priority < bestPriority ||
-                (priority === bestPriority && d < best))
-            ) {
-              bestPriority = priority;
-              best = d;
-              source = a;
-              adjust = { x: q.x - p.x, y: q.y - p.y };
-              target = this.snapTarget;
-              targetKind = this.snapKind;
-              targetGuides = this.smartGuides;
-            }
-          }
-        if (source) g.snapAnchor = source;
-        if (g.snapAnchor && !target) {
-          const p = { x: g.snapAnchor.x + dx, y: g.snapAnchor.y + dy },
-            q = this.snap(p, alt);
-          adjust = { x: q.x - p.x, y: q.y - p.y };
-          target = this.snapTarget;
-          targetKind = this.snapKind;
-          targetGuides = this.smartGuides;
-        }
-        dx += adjust.x;
-        dy += adjust.y;
+        const movement={x:raw.x-g.start.x,y:raw.y-g.start.y};
+        const snapped=alt ? {delta:movement,guides:[] as SmartGuide[],target:undefined} : snapRigidMove(g.original.shapes.filter(s=>!this.isHidden(s.id)),g.selection,movement,{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:g.original.guides,anchor:g.snapAnchor});
+        if(!g.snapAnchor && "anchor" in snapped)g.snapAnchor=snapped.anchor;
+        let dx=snapped.delta.x,dy=snapped.delta.y;
+        const target=snapped.target ?? null,targetGuides=snapped.guides,targetKind:SnapKind|null=target ? "alignment" : null;
         if (g.axis) {
           const t = ((g.orientation ?? 0) * Math.PI) / 180,
             u =
@@ -3075,12 +3519,14 @@ export class Controller {
     this.stylingClipboardFallback = false;
     this.notify();
     const ids = new Set(this.active.map(s => s.id));
-    const groups = this.stitchGroups.filter(g => ids.has(g.shapeId));
+    const { groups, transfers, shapes:extraShapes } = copyStitchData(this.document,ids);
+    const selectedShapes=[...this.document.shapes.filter(s=>ids.has(s.id) || !!s.stitchParentId && ids.has(s.stitchParentId)),...extraShapes];
+    selectedShapes.forEach(s=>ids.add(s.id));
     const groupIds = new Set(groups.map(g => g.id));
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
-      document: { version: DOCUMENT_VERSION, shapes: this.active, objectTree: filterObjectTree(this.tree, ids, new Set(this.selectedGroups)), stitchGroups: groups,
+      document: { version: DOCUMENT_VERSION, shapes: selectedShapes.map(s=>({...s,stitchParentId:s.stitchParentId && ids.has(s.stitchParentId) ? s.stitchParentId : undefined})), objectTree: [...filterObjectTree(this.tree, ids, new Set(this.selectedGroups)),...extraShapes.map(s=>({kind:"object" as const,id:s.id}))], stitchGroups: groups, stitchTransfers:transfers,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
         })).filter(l => l.members.length >= 2) },
@@ -3101,7 +3547,7 @@ export class Controller {
       const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, crypto.randomUUID()]));
       const copies = source.shapes.map(s => ({
         ...moveShape(s, anchor.x - payload.anchor.x, anchor.y - payload.anchor.y),
-        id: ids.get(s.id)!, name: `${s.name} copy`, locked: false,
+        id: ids.get(s.id)!, name: `${s.name} copy`, locked: false,stitchParentId:s.stitchParentId ? ids.get(s.stitchParentId) : undefined,
       }));
       const remap = (nodes: ObjectNode[]): ObjectNode[] => nodes.map(n => n.kind === "object"
         ? { ...n, id: ids.get(n.id)! } : { ...n, id: crypto.randomUUID(), locked: false, children: remap(n.children) });
@@ -3110,8 +3556,9 @@ export class Controller {
       const success = await this.commit({
         ...this.document, objectTree: [...copiedTree, ...this.tree], shapes: [...this.document.shapes, ...copies],
         stitchGroups: [...this.stitchGroups, ...(source.stitchGroups ?? []).map(g => ({
-          ...g, id: groupIds.get(g.id)!, shapeId: ids.get(g.shapeId)!,
+          ...g, id: groupIds.get(g.id)!, shapeId: ids.get(g.shapeId)!, continuation:g.continuation ? { ...g.continuation, previousId:groupIds.get(g.continuation.previousId)! } : undefined,
         }))],
+        stitchTransfers:[...(this.document.stitchTransfers ?? []), ...copyTransferPlacements(this.document.stitchTransfers ?? [],(source.stitchTransfers ?? []).map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId)!,targetId:ids.get(t.targetId)! })))],
         stitchLinks: [...(this.document.stitchLinks ?? []), ...(source.stitchLinks ?? []).map(l => ({
           ...l, id: ++linkId, members: l.members.map(id => groupIds.get(id)!),
         }))],
@@ -3121,14 +3568,13 @@ export class Controller {
   }
   async duplicate() {
     this.cancel();
-    const copies = this.active.map((s) => ({
-      ...moveShape(s, 10, 10),
-      id: crypto.randomUUID(),
-      name: `${s.name} copy`, locked: false,
-    }));
-    if (!copies.length && !this.selectedGroups.length) return;
-    const ids = new Map(this.active.map((s, i) => [s.id, copies[i].id]));
-    const chosen = new Set([...this.selectedGroups, ...this.selected]);
+    const initialIds=new Set(this.active.map(s=>s.id));
+    const data=copyStitchData(this.document,initialIds);
+    const originals=[...this.document.shapes.filter(s=>initialIds.has(s.id) || !!s.stitchParentId && initialIds.has(s.stitchParentId)),...data.shapes];
+    const ids=new Map(originals.map(s=>[s.id,crypto.randomUUID()]));
+    const copies=originals.map(s=>({...moveShape(s,10,10),id:ids.get(s.id)!,name:`${s.name} copy`,locked:false,stitchParentId:s.stitchParentId ? ids.get(s.stitchParentId) : undefined}));
+    if(!copies.length && !this.selectedGroups.length)return;
+    const chosen = new Set([...this.selectedGroups, ...this.selected,...originals.filter(s=>s.stitchParentId).map(s=>s.id)]);
     function copyNode(n: ObjectNode): ObjectNode {
       return n.kind === "object" ? { ...n, id: ids.get(n.id)! } :
         { ...n, id: crypto.randomUUID(), name: `${n.name} copy`, locked: false, children: n.children.map(copyNode) };
@@ -3137,28 +3583,16 @@ export class Controller {
       return nodes.flatMap(n => chosen.has(n.id) ? [copyNode(n), n] :
         [n.kind === "group" ? { ...n, children: duplicateNodes(n.children) } : n]);
     }
+    const {groups,transfers}=data;
+    const groupIds = new Map(groups.map(g => [g.id,crypto.randomUUID()]));
     const success = await this.commit({
-      ...this.document,
-      shapes: [...this.document.shapes, ...copies],
-      objectTree: duplicateNodes(this.tree),
-      stitchGroups: [
-        ...this.stitchGroups,
-        ...this.active.flatMap((source, i) =>
-          this.stitchGroups
-            .filter((g) => g.shapeId === source.id)
-            .map((g) => ({
-              ...g,
-              id: crypto.randomUUID(),
-              shapeId: copies[i].id,
-              edges: [...g.edges],
-              settings: { ...g.settings },
-            })),
-        ),
-      ],
+      ...this.document, shapes:[...this.document.shapes,...copies], objectTree:[...duplicateNodes(this.tree),...data.shapes.map(s=>({kind:"object" as const,id:ids.get(s.id)!}))],
+      stitchGroups:[...this.stitchGroups,...groups.map(g => ({ ...g,id:groupIds.get(g.id)!,shapeId:ids.get(g.shapeId)!,continuation:g.continuation ? { ...g.continuation,previousId:groupIds.get(g.continuation.previousId)! } : undefined }))],
+      stitchTransfers:[...(this.document.stitchTransfers ?? []),...copyTransferPlacements(this.document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId)!,targetId:ids.get(t.targetId)! })))],
     });
     if (success) {
       this.selectedGroups = [];
-      this.selected = copies.map((s) => s.id);
+      this.selected = copies.filter(s=>!s.stitchParentId).map((s) => s.id);
       this.notify();
     }
   }
@@ -3187,7 +3621,14 @@ export class Controller {
     };
     this.notify();
   }
-  wheel(pixel: Point, dx: number, dy: number, zoom: boolean) {
+  wheel(pixel: Point, dx: number, dy: number, zoom: boolean, modifiers: {ctrlKey?:boolean;shiftKey?:boolean;altKey?:boolean}={}) {
+    if(this.stitchTransferPlacement && !this.space && !zoom) {
+      const placement=this.stitchTransferPlacement,step=modifiers.shiftKey ? 5 : 1;
+      placement.rawAngle-=dy/100*step;
+      placement.angle=snapRotation(placement.rawAngle,{shiftKey:modifiers.shiftKey,altKey:modifiers.altKey});
+      if(placement.phase==="placed"){this.queuedTransferPointer=null;this.stitchError="";this.notify();}
+      else this.updateStitchTransfer(this.world(pixel),!!modifiers.altKey);return;
+    }
     if (zoom) {
       const p = this.world(pixel);
       this.zoom = Math.max(
