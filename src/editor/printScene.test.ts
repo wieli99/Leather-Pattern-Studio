@@ -32,8 +32,8 @@ it("uses physical paper dimensions, clips artwork, and pairs seam identifiers", 
     second = pageSvg(doc, layout, layout.pages[1]);
   expect(first).toContain('width="210mm"');
   expect(first).toContain('clip-path="url(#paper-clip)"');
-  expect(first).toContain("V1,0");
-  expect(second).toContain("V1,0");
+  expect(first).toContain("1–2 1");
+  expect(second).toContain("1–2 1");
   expect(
     orderedPrintPages({
       ...layout,
@@ -120,3 +120,91 @@ it("exports frozen artwork and stitching after unlinking and source deletion", (
   expect(pageSvg(stitched, detached, layout.pages[0])).toBe(before);
   expect(pageSvg({ ...stitched, shapes: [], stitchGroups: [] }, detached, layout.pages[0])).toBe(before);
 });
+
+it("keeps registration decorations inside pieces even with narrow margins", () => {
+  const svg = pageSvg(doc, layout, layout.pages[0]);
+  expect(svg.match(/data-assembly="registration"/g)).toHaveLength(1);
+  expect(svg).toContain("1–2 1");
+  expect(svg).toContain('data-assembly="trim"');
+  const narrow = pageSvg(doc, { ...layout, margin: 2 }, layout.pages[0]);
+  expect(narrow).toContain('data-assembly="registration"');
+  expect(narrow).toContain('data-assembly="label"');
+  expect(
+    pageSvg(doc, { ...layout, instances: [] }, layout.pages[0]),
+  ).not.toContain("data-assembly=");
+});
+
+it("leaves a clear gap between both diamond halves and their labels", () => {
+  const labelPosition = (svg: string) => {
+    const match = svg.match(
+      /data-assembly="label"[^>]*><text transform="translate\(([-\d.]+) ([-\d.]+)\)/,
+    );
+    expect(match).not.toBeNull();
+    return { x: Number(match![1]), y: Number(match![2]) };
+  };
+  const first = labelPosition(pageSvg(doc, layout, layout.pages[0]));
+  const second = labelPosition(pageSvg(doc, layout, layout.pages[1]));
+  const halfWidth = ("1–2 1".length * 1.2) / 2;
+  expect(200 - (first.x + halfWidth)).toBeGreaterThanOrEqual(3);
+  expect(second.x - halfWidth - 10).toBeGreaterThanOrEqual(3);
+  expect(first.y).toBe(second.y);
+});
+
+it("omits labels crossed by a concave notch even when their corners are inside", () => {
+  const notched: Shape = {
+    ...shape,
+    kind: "polyline",
+    radius: 0,
+    points: [
+      [0, 0],
+      [40, 0],
+      [40, 20],
+      [14, 20],
+      [14, 10],
+      [13, 10],
+      [13, 20],
+      [0, 20],
+      [0, 0],
+    ].map(([x, y]) => ({ x, y })),
+  };
+  const first = pageSvg({ ...doc, shapes: [notched] }, layout, layout.pages[0]);
+  expect(first).toContain('data-assembly="registration"');
+  expect(first).not.toContain('data-assembly="label"');
+  const second = pageSvg(
+    { ...doc, shapes: [notched] },
+    layout,
+    layout.pages[1],
+  );
+  expect(second).toContain('data-assembly="label"');
+  expect(second).toContain("1–2 1");
+});
+
+for (const vertical of [true, false]) {
+  it(`rejects touching pieces on both sides of a ${vertical ? "vertical" : "horizontal"} join`, () => {
+    const pieces = [
+      shape,
+      { ...shape, id: "before", radius: 0 },
+      { ...shape, id: "after", radius: 0 },
+    ];
+    const testLayout: PrintLayout = {
+      ...layout,
+      pages: [
+        { column: 0, row: 0 },
+        vertical ? { column: 1, row: 0 } : { column: 0, row: 1 },
+      ],
+      instances: pieces.map((p, i) => ({
+        id: `copy${i}`,
+        sourceId: p.id,
+        x: vertical ? [190, 170, 210][i] : 100,
+        y: vertical ? 100 : [277, 267, 287][i],
+        rotation: 0,
+      })),
+    };
+    for (const page of testLayout.pages) {
+      const svg = pageSvg({ ...doc, shapes: pieces }, testLayout, page);
+      expect(svg.match(/data-assembly="registration"/g)).toHaveLength(1);
+      expect(svg).toContain("1–2 1");
+      expect(svg).not.toContain("1–2 2");
+    }
+  });
+}

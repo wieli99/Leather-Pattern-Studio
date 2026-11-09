@@ -1642,6 +1642,74 @@ test("large print object lists scroll within their sections", async ({ page }, i
   await page.screenshot({ path: info.outputPath("scrolling-print-lists.png") });
 });
 
+test(
+  "assembly diamonds remain inside a four-sheet piece",
+  { tag: "@manual" },
+  async ({ page }) => {
+    await load(page, [
+      {
+        ...rectangle,
+        id: "large",
+        name: "Large piece",
+        points: [
+          { x: 0, y: 0 },
+          { x: 260, y: 340 },
+        ],
+      },
+    ]);
+    await create(page);
+    await page
+      .getByRole("button", { name: "Import Large piece", exact: true })
+      .click();
+    const project = await save(page);
+    const layout = project.printLayouts[0];
+    layout.instances[0].x = 190;
+    layout.instances[0].y = 277;
+    layout.pages = [
+      { column: 0, row: 0 },
+      { column: 1, row: 0 },
+      { column: 0, row: 1 },
+      { column: 1, row: 1 },
+    ];
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await (
+      await chooser
+    ).setFiles({
+      name: "assembly.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(project)),
+    });
+    await page.getByRole("tab", { name: "A4", exact: true }).click();
+    await expect
+      .poll(async () => (await save(page)).printLayouts[0].pages.length)
+      .toBe(4);
+    await page.getByRole("button", { name: "Fit", exact: true }).click();
+    await manualScreenshot(page, "print-assembly.png");
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Export print layout" });
+    await dialog.getByLabel("Format", { exact: true }).selectOption("svg");
+    await expect(
+      dialog.getByRole("button", { name: "Export", exact: true }),
+    ).toBeEnabled({ timeout: 40000 });
+    const pending = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "Export", exact: true }).click();
+    const stream = await (await pending).createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream!) chunks.push(chunk);
+    const { default: JSZip } = await import("jszip");
+    const archive = await JSZip.loadAsync(Buffer.concat(chunks));
+    const files = Object.values(archive.files).filter((file) =>
+      file.name.endsWith(".svg"),
+    );
+    expect(files).toHaveLength(4);
+    for (const file of files) {
+      const svg = await file.async("string");
+      expect(svg.match(/data-assembly="registration"/g)).toHaveLength(2);
+      expect(svg.match(/data-assembly="label"/g)).toHaveLength(2);
+    }
+  },
+);
 test("print rail matches Model button presentation without extra drawing tools", async ({ page }) => {
   await load(page);
   const model = page.getByRole("navigation", { name: "Drawing tools" });
