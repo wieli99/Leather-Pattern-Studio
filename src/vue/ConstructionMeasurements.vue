@@ -83,6 +83,8 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   pinned.value = item.point;
   pinnedAngle.value = item.angle;
   draft.value = ["Angle", "Sweep"].includes(item.key) ? String(item.value) : editableLength(item.value, editor.units);
+  // Wheel handlers read immediately after focus, before Vue renders the draft.
+  field.value = draft.value;
   error.value = "";
   // Select after Vue replaces the display value with the editable draft.
   await nextTick();
@@ -203,6 +205,7 @@ function style(item: (typeof items.value)[number]) {
         item.key === "Angle" ? "Direction" : item.key
       }}</span>
       <input
+        v-numeric-wheel="['Angle', 'Sweep'].includes(item.key) ? 'number' : editor.units"
         :readonly="!!editor.gesture"
         :type="editor.units === 'mm' || ['Angle', 'Sweep'].includes(item.key) ? 'number' : 'text'"
         step="any"

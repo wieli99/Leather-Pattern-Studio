@@ -148,3 +148,28 @@ for (const variant of ["Three-point rectangle", "Three-point circle"]) {
     await expect(page.locator(".construction-measurements input")).toHaveCount(0);
   });
 }
+
+test("first construction wheel adjustment preserves editable precision", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 250, y: 200 } });
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + 363, box.y + 287);
+  const width = page.locator(".construction-measurements input").first();
+  await expect(width).toBeVisible();
+  // Read the full precision exposed by focus, then restore the rounded display.
+  const original = await width.evaluate(el => {
+    const input = el as HTMLInputElement;
+    input.focus();
+    const value = Number(input.value);
+    input.blur();
+    return value;
+  });
+  await expect(width).not.toBeFocused();
+  await width.evaluate(el => el.dispatchEvent(new WheelEvent("wheel", {
+    altKey: true, deltaY: -100, bubbles: true, cancelable: true,
+  })));
+  await expect(width).toBeFocused();
+  expect(Number(await width.inputValue())).toBeCloseTo(original + 1, 10);
+});

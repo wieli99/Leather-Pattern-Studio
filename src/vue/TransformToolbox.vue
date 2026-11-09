@@ -89,7 +89,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
         >
           <label>{{ item[1] }}
             <LengthInput fixed v-if="e.transformTool === 'move'" :aria-label="item[1]" :value="e.transformValues[item[0] as 'x' | 'y']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
-            <input v-else type="number" :aria-label="item[1]" step="0.01" :value="focusedFactor === item[0] ? drafts[item[0]] : e.transformTool === 'rotate' ? e.transformValues.angle : e.transformValues[item[0] as keyof typeof e.transformValues].toFixed(2)" @focus="focusedFactor = item[0]; drafts[item[0]] = ($event.target as HTMLInputElement).value" @blur="focusedFactor = null" @input="value(item[0] as keyof typeof e.transformValues, $event)" />
+            <input v-else v-numeric-wheel type="number" :aria-label="item[1]" step="0.01" :value="focusedFactor === item[0] ? drafts[item[0]] : e.transformTool === 'rotate' ? e.transformValues.angle : e.transformValues[item[0] as keyof typeof e.transformValues].toFixed(2)" @focus="focusedFactor = item[0]; drafts[item[0]] = ($event.target as HTMLInputElement).value" @blur="focusedFactor = null" @input="value(item[0] as keyof typeof e.transformValues, $event)" />
           </label>
         </template>
       </div>

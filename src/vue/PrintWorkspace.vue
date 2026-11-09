@@ -3285,7 +3285,7 @@ defineExpose({
               @invalid="error = 'Enter a valid distance'" /></label
           ><label v-if="tool === 'rotate'"
             >Rotate °
-            <input v-model="turn" type="number" aria-label="Print rotation"
+            <input v-model="turn" v-numeric-wheel type="number" aria-label="Print rotation"
           /></label>
         </div>
         <label

@@ -64,6 +64,7 @@ function commit() {
 </script>
 <template>
   <input
+    v-numeric-wheel="inputUnits"
     v-bind="$attrs"
     :type="inputUnits === 'mm' ? 'number' : 'text'"
     :min="min"
