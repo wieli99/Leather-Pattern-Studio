@@ -103,7 +103,7 @@ const imageAspectLocked = ref(true);
 function size(axis: "x" | "y", v: string) {
   if (s.value!.kind === "image" && imageAspectLocked.value) {
     const factor = +v / (axis === "x" ? width.value : height.value);
-    edit(stretchShape(s.value!,factor,factor,c.value));
+    edit(stretchShape(s.value!, factor, factor, c.value));
     return;
   }
   if (["curve", "control-curve"].includes(s.value!.kind)) {
@@ -244,6 +244,22 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         :min="0.001"
         @commit="size('x', $event)"
       />
+      <button v-if="s.kind === 'image'" type="button" class="aspect-ratio-lock"
+        aria-label="Lock aspect ratio" :aria-pressed="imageAspectLocked"
+        :title="imageAspectLocked ? 'Unlink width and height' : 'Link width and height'"
+        :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+        @click="imageAspectLocked = !imageAspectLocked">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <template v-if="imageAspectLocked">
+            <path d="M10 8H6a4 4 0 0 0 0 8h4 M14 8h4a4 4 0 0 1 0 8h-4 M8 12h8" />
+          </template>
+          <template v-else>
+            <rect x="1" y="8.5" width="9" height="7" rx="3.5" />
+            <rect x="14" y="8.5" width="9" height="7" rx="3.5" />
+          </template>
+        </svg>
+      </button>
       <Field :controller="editor" dimension
         label="Height"
         :value="height"
@@ -279,7 +295,6 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       <Field :controller="editor" dimension v-if="s.kind === 'arrow'" label="Head size (local mm)"
         :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
     </template>
-    <label v-if="s.kind === 'image'"><input v-model="imageAspectLocked" type="checkbox" /> Lock aspect ratio</label>
     <Field :controller="editor" v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
       <Field :controller="editor" dimension
@@ -403,4 +418,17 @@ function vertex(i: number, axis: "x" | "y", v: string) {
 <style scoped>
 .object-properties,
 .vertex-properties { border: 0; padding: 0; margin: 0; min-width: 0; }
+.field-row > .aspect-ratio-lock {
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  height: 32px;
+  margin-top: 19px;
+  padding: 4px;
+}
+.aspect-ratio-lock[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
 </style>
