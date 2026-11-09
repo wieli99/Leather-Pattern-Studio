@@ -1641,3 +1641,25 @@ test("large print object lists scroll within their sections", async ({ page }, i
   }
   await page.screenshot({ path: info.outputPath("scrolling-print-lists.png") });
 });
+
+test("print rail matches Model button presentation without extra drawing tools", async ({ page }) => {
+  await load(page);
+  const model = page.getByRole("navigation", { name: "Drawing tools" });
+  const select = model.getByRole("button", { name: "Select (V)", exact: true });
+  const size = await select.boundingBox();
+  const icon = await select.locator("svg").innerHTML();
+  await create(page);
+  const rail = page.getByRole("navigation", { name: "Print tools" });
+  const printSelect = rail.getByRole("button", { name: "Select (V)", exact: true });
+  const printSize = await printSelect.boundingBox();
+  expect(printSize?.width).toBe(size?.width);
+  expect(printSize?.height).toBe(size?.height);
+  expect(await printSelect.locator("svg").innerHTML()).toBe(icon);
+  for (const [label, key] of [["Select", "V"], ["Move", "G"], ["Rotate", "E"], ["Mirror", "M"]]) {
+    const button = rail.getByRole("button", { name: `${label} (${key})`, exact: true });
+    await expect(button.locator("small")).toHaveText(key);
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+  }
+  await expect(rail.getByRole("button", { name: /Polyline|Rectangle|Circle|Shapes|Stitch line|Resize/ })).toHaveCount(0);
+});

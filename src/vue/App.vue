@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ToolRail from "./ToolRail.vue";
+import RailButton from "./RailButton.vue";
 import { computed } from "vue";
 import PrintWorkspace from "./PrintWorkspace.vue";
 import brandIcon from "../assets/leather-studio-icon.svg?no-inline";
@@ -238,7 +240,7 @@ onMounted(() => {
       @active="printActive = $event"
     />
     <section v-show="!printActive" class="workspace">
-      <nav v-if="left" aria-label="Drawing tools">
+      <ToolRail v-if="left" aria-label="Drawing tools">
         <template v-for="tool in tools" :key="tool.id">
           <div
             v-if="tool.id === 'text'"
@@ -246,41 +248,40 @@ onMounted(() => {
             role="separator"
             aria-label="Stitching tools"
           />
-          <button v-if="tool.id === 'text'" title="Stitch line (I)" aria-label="Stitch line" aria-keyshortcuts="i" :aria-pressed="e.stitchMode" :disabled="!e.ready || !e.canStitch" @click="editor.activateStitch()">
+          <RailButton v-if="tool.id === 'text'" shortcut="I" title="Stitch line (I)" aria-label="Stitch line" aria-keyshortcuts="i" :aria-pressed="e.stitchMode" :disabled="!e.ready || !e.canStitch" @click="editor.activateStitch()">
             <span class="tool-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path :d="stitchLineIcon" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
-            <small>I</small>
-          </button>
+          </RailButton>
           <div v-if="tool.id === 'text'" class="rail-divider" role="separator" aria-label="Text and indicator tools" />
           <ToolButton :tool="tool" />
         </template>
         <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importImage" />
-        <button title="Import image" aria-label="Import image" :disabled="!e.ready" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></button>
+        <RailButton title="Import image" aria-label="Import image" :disabled="!e.ready" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></RailButton>
         <div class="rail-divider" />
-        <button
+        <RailButton
           title="Undo (Ctrl/⌘+Z)"
           aria-label="Undo"
           :disabled="!e.canUndo"
           @click="editor.transact('undo')"
         >
           ↶
-        </button>
-        <button
+        </RailButton>
+        <RailButton
           title="Redo (Ctrl/⌘+Shift+Z)"
           aria-label="Redo"
           :disabled="!e.canRedo"
           @click="editor.transact('redo')"
         >
           ↷
-        </button>
-        <button
+        </RailButton>
+        <RailButton
           title="Fit (F)"
           aria-label="Fit"
           :disabled="!e.ready"
           @click="editor.fit()"
         >
           <span class="tool-icon"><FitIcon /></span>
-        </button>
-      </nav>
+        </RailButton>
+      </ToolRail>
       <div :class="`viewport tool-${e.tool}`">
         <TransformToolbox />
         <ConstructionMeasurements />

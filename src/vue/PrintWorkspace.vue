@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ToolRail from "./ToolRail.vue";
+import RailButton from "./RailButton.vue";
 const appVersion = __APP_VERSION__;
 import { Controller } from "../editor/controller";
 import { printDocument, applyPrintDocument } from "../model/printDocument";
@@ -3078,10 +3080,12 @@ defineExpose({
     ></DialogRoot
   >
   <section v-if="layout" class="print-workspace" aria-label="Print workspace">
-    <nav v-if="left" aria-label="Print tools">
-      <button
+    <ToolRail v-if="left" aria-label="Print tools">
+      <RailButton
         v-for="value in ['select', 'move', 'rotate', 'mirror'] as const"
         :key="value"
+        :shortcut="({ select: 'V', move: 'G', rotate: 'E', mirror: 'M' })[value]"
+        :aria-keyshortcuts="({ select: 'v', move: 'g', rotate: 'e', mirror: 'm' })[value]"
         :aria-pressed="drawingState.mode === 'select' && tool === value"
         :title="
           value === 'select'
@@ -3103,35 +3107,24 @@ defineExpose({
         "
         @click="chooseTool(value)"
       >
-        <svg
-          viewBox="0 0 24 24"
-          width="24"
-          height="24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          aria-hidden="true"
-        >
-          <path
-            :d="
-              value === 'select'
-                ? 'M5 3L19 12L12 14L9 21Z'
-                : value === 'move'
-                  ? 'M3 12H21M12 3V21M3 12L7 8M3 12L7 16M21 12L17 8M21 12L17 16M12 3L8 7M12 3L16 7M12 21L8 17M12 21L16 17'
-                  : value === 'rotate'
-                    ? 'M19 8A8 8 0 1 0 20 16M19 3V9H13'
-                    : 'M12 2V22M9 5L3 19H9ZM15 5L21 19H15Z'
-            "
-          />
-        </svg>
-      </button>
+        <span class="tool-icon">
+          <ModeIcon v-if="value === 'select'" mode="select" />
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path :d="value === 'move'
+              ? 'M3 12H21M12 3V21M3 12L7 8M3 12L7 16M21 12L17 8M21 12L17 16M12 3L8 7M12 3L16 7M12 21L8 17M12 21L16 17'
+              : value === 'rotate'
+                ? 'M19 8A8 8 0 1 0 20 16M19 3V9H13'
+                : 'M12 2V22M9 5L3 19H9ZM15 5L21 19H15Z'" />
+          </svg>
+        </span>
+      </RailButton>
       <div class="rail-divider" role="separator" />
       <ToolButton :controller="drawing" :tool="{ id: 'text', key: 'T', label: 'Text' }" />
       <ToolButton :controller="drawing" :tool="{ id: 'measurement', key: 'D', label: 'Measurement' }" />
-      <button aria-label="Import image" title="Import image" :disabled="!e.ready || busy" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></button>
+      <RailButton aria-label="Import image" title="Import image" :disabled="!e.ready || busy" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></RailButton>
       <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importLocalImage" />
       <div class="rail-divider" role="separator" />
-      <button
+      <RailButton
         title="Undo (Ctrl/⌘+Z)"
         aria-label="Undo"
         :disabled="!e.canUndo || busy"
@@ -3141,8 +3134,8 @@ defineExpose({
         "
       >
         ↶
-      </button>
-      <button
+      </RailButton>
+      <RailButton
         title="Redo (Ctrl/⌘+Shift+Z)"
         aria-label="Redo"
         :disabled="!e.canRedo || busy"
@@ -3152,11 +3145,11 @@ defineExpose({
         "
       >
         ↷
-      </button>
-      <button title="Fit (F)" aria-label="Fit" @click="fit">
+      </RailButton>
+      <RailButton title="Fit (F)" aria-label="Fit" @click="fit">
         <span class="tool-icon"><FitIcon /></span>
-      </button>
-    </nav>
+      </RailButton>
+    </ToolRail>
     <div class="print-canvas">
       <button
         class="edge-tab edge-left"
@@ -3749,9 +3742,6 @@ defineExpose({
 .print-canvas canvas {
   position: absolute;
   inset: 0;
-}
-.print-workspace nav {
-  padding: 8px 4px;
 }
 aside {
   width: 340px;
