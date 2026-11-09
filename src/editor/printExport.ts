@@ -2,7 +2,8 @@ import fontUrl from "../assets/fonts/PrintSans.ttf?url";
 import { orderedPrintPages, pageSvg } from "./printScene";
 import type { Doc } from "../model/project";
 import type { PrintLayout } from "../model/printLayout";
-export type PrintFormat = "pdf" | "svg" | "png";
+import { layoutDxf } from "./printDxf";
+export type PrintFormat = "pdf" | "svg" | "png" | "dxf";
 let font: Promise<string> | undefined;
 export function printFont() {
   return (font ??= fetch(fontUrl).then(async (response) => {
@@ -73,12 +74,20 @@ export type PrintArtifact = {
   filename: string;
   pages: { svg: string; png?: Blob }[];
   pdf?: Uint8Array;
+  previewWidth?: number;
+  previewHeight?: number;
 };
 export async function generatePrint(
   doc: Doc,
   layout: PrintLayout,
   format: PrintFormat,
 ): Promise<PrintArtifact> {
+  if (format === "dxf") {
+    const result = layoutDxf(doc, layout);
+    return { blob: new Blob([result.text], { type: "application/dxf" }),
+      filename: `${layout.name.replace(/[^a-zA-Z0-9_.-]/g, "_") || "print"}.dxf`,
+      pages: [{ svg: result.svg }], previewWidth: result.width, previewHeight: result.height };
+  }
   const pages = await Promise.all(
     orderedPrintPages(layout).map(async (page) => ({
       svg:

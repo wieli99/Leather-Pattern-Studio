@@ -9,7 +9,7 @@
     "desktop": "tauri dev",
     "wasm": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --dev",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test && playwright test --config playwright.dev.config.ts",
     "test:rust": "cargo test --manifest-path crates/document/Cargo.toml",
     "preview": "vite preview --host 0.0.0.0 --port 5173 --strictPort",
     "types": "cargo test --manifest-path crates/document/Cargo.toml export_bindings",

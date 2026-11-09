@@ -117,11 +117,11 @@ async function paint() {
       const scale =
         zoom.value ||
         Math.min(
-          (el.parentElement!.clientWidth - 32) / (props.layout.width * 3),
-          (el.parentElement!.clientHeight - 32) / (props.layout.height * 3),
+          (el.parentElement!.clientWidth - 32) / ((artifact.value.previewWidth ?? props.layout.width) * 3),
+          (el.parentElement!.clientHeight - 32) / ((artifact.value.previewHeight ?? props.layout.height) * 3),
         );
-      el.width = props.layout.width * 3 * scale;
-      el.height = props.layout.height * 3 * scale;
+      el.width = (artifact.value.previewWidth ?? props.layout.width) * 3 * scale;
+      el.height = (artifact.value.previewHeight ?? props.layout.height) * 3 * scale;
       el.getContext("2d")!.drawImage(image, 0, 0, el.width, el.height);
       if ("close" in image) image.close();
     }
@@ -173,6 +173,7 @@ onUnmounted(() => {
             <select v-model="format" aria-label="Format">
               <option value="pdf">PDF</option>
               <option value="svg">SVG</option>
+              <option value="dxf">DXF (outlines only)</option>
               <option value="png">PNG (300 DPI)</option>
             </select></label
           ><button
@@ -182,14 +183,15 @@ onUnmounted(() => {
             Export</button
           ><DialogClose>Close</DialogClose>
         </div>
+        <p v-if="format === 'dxf'">Complete outlines in one continuous layout, in millimetres. Stitch holes, annotations, images and paper decorations are omitted.</p>
         <p v-if="busy" role="status">Generating preview…</p>
         <p v-if="error" role="alert">{{ error }}</p>
         <div class="export-controls">
-          <button :disabled="page === 0 || busy" @click="page--">
+          <button v-if="format !== 'dxf'" :disabled="page === 0 || busy" @click="page--">
             Previous page</button
-          ><span>Page {{ page + 1 }} / {{ artifact?.pages.length ?? "…" }}</span
+          ><span v-if="format !== 'dxf'">Page {{ page + 1 }} / {{ artifact?.pages.length ?? "…" }}</span
           ><button
-            :disabled="!artifact || page >= artifact.pages.length - 1 || busy"
+            v-if="format !== 'dxf'" :disabled="!artifact || page >= artifact.pages.length - 1 || busy"
             @click="page++"
           >
             Next page</button

@@ -18,7 +18,7 @@ Go from an idea to a paper pattern with precise dimensions, stitch-hole placemen
 - **Refine your pieces.** Edit curves, round corners, move, rotate, resize, mirror, trim, and merge geometry. Group related objects and add labels, measurements, and reference images.
 - **Plan for leatherwork.** Mark skiving, glueing, and cutout areas, and add stitching with spacing and inset matched to your tools.
 - **Keep paper layouts in sync.** Arrange linked copies of your pieces on print tabs. Source edits update the artwork while preserving its placement on the page.
-- **Take your work with you.** Save editable `.leather.json` files and export print layouts as PDF, SVG, or PNG. The editor, manual, and exports work offline after caching completes.
+- **Take your work with you.** Save editable `.leather.json` files and export print layouts as PDF, SVG, PNG, or outline-only DXF. The editor, manual, and exports work offline after caching completes.
 
 ### Stitching that follows your pattern
 
