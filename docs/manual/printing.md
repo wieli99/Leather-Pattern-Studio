@@ -82,7 +82,9 @@ Return to Model to edit source geometry, resize pattern pieces, or paste styling
 
 White sheets show the physical paper; dashed inset lines show printable areas. Grey gutters separate sheets on screen and do not add distance to the artwork. Hold **Ctrl** to reveal **+** controls at exposed edges, then click one to add a blank neighbouring sheet.
 
-Artwork crossing a printable boundary is clipped onto adjacent sheets, which are added automatically after placement or source edits. Paired `|<` marks and matching edge identifiers show where to join the sheets. Trim away the blank margins along adjoining edges and align the matching marks. The Pages section is a read-only list of sheets and the objects they contain. An object spanning sheets appears under each of them.
+Artwork crossing a printable boundary is clipped onto adjacent sheets, which are added automatically after placement or source edits. Matching half-diamonds sit inside each closed pattern piece at the page join. Trim adjoining margins along the dashed guides, then match the halves into complete diamonds and tape the edges together. The marks remain on the piece after cutting away excess paper. Matching page-pair identifiers sit clear of the diamond tips and distinguish joins; labels are omitted where space is limited or a concave outline cuts into their area. Pieces that only touch a page join receive no connector. Narrow spans receive smaller diamonds; very small spans and open paths receive no automatic connector. The Pages section is a read-only list of sheets and the objects they contain. An object spanning sheets appears under each of them.
+
+![Assembly diamonds inside a four-sheet pattern piece](/manual/images/print-assembly.png)
 
 Hold **Ctrl** to show add-page + icons, page delete buttons and page numbers (top-left to bottom-right, skipping empty cells). Ctrl-click exposed paper to toggle page selection; objects in front take priority. Delete/Backspace deletes selected pages and their objects, but refuses if an affected object also appears on an unselected page. Select every page containing that object to delete it. Deleting all sheets leaves one empty sheet.
 
