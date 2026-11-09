@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RailButton from "./RailButton.vue";
 import { ref, computed, onUnmounted } from "vue";
 import {
   Primitive,
@@ -18,8 +19,7 @@ import ModeIcon from "./ModeIcon.vue";
 const props = defineProps<{ tool: (typeof tools)[number]; controller?: Controller }>(),
   editor = props.controller ?? defaultEditor,
   e = useEditor(editor),
-  open = ref(false),
-  trigger = ref<HTMLButtonElement | null>(null);
+  open = ref(false);
 const group = computed(() =>
     props.tool.id === "measurement" ? "indicator" :
     props.tool.id === "polygon" ||
@@ -77,8 +77,8 @@ onUnmounted(release);
   <div class="tool-group">
     <DropdownMenuRoot v-model:open="open" :modal="false">
       <component :is="group ? DropdownMenuTrigger : Primitive" as-child>
-        <button
-          ref="trigger"
+        <RailButton
+          :shortcut="tool.key + (group ? ' ▾' : '')"
           :disabled="!e.ready"
           :title="tool.key ? `${tool.label} (${tool.key})` : tool.label"
           :aria-label="tool.key ? `${tool.label} (${tool.key})` : tool.label"
@@ -93,8 +93,7 @@ onUnmounted(release);
           @keydown.down.prevent="group && (open = true)"
         >
           <span class="tool-icon"><ModeIcon :mode="current" /></span>
-          <small>{{ tool.key }}{{ group ? " ▾" : "" }}</small>
-        </button>
+        </RailButton>
       </component>
       <DropdownMenuPortal>
         <DropdownMenuContent
