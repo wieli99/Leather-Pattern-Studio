@@ -3386,7 +3386,7 @@ export class Controller {
             if (s.id !== id) return s;
             const updated = { ...s, ...changes };
             return s.kind === "text" &&
-              (changes.fontSize !== undefined || changes.text !== undefined)
+              (changes.fontSize !== undefined || changes.text !== undefined || changes.fontFamily !== undefined || changes.bold !== undefined || changes.italic !== undefined || changes.underline !== undefined || changes.strikethrough !== undefined || changes.textAlign !== undefined || changes.lineSpacing !== undefined)
               ? resizeText(updated)
               : updated;
           }),

@@ -8,7 +8,9 @@ Text also works directly on [print tabs](#printing), where new labels belong onl
 
 ## Change size and position
 
-Properties edits text and font size. The selection box automatically fits the updated text, including multiple lines, while keeping its starting point fixed. Text shapes support selection and transforms. Object names are separate from text contents.
+Properties controls font size and formatting. Double-click the label on the canvas to change its text. Choose Sans-serif, Serif, or Monospace from Font. These bundled fonts work offline and in PDF, SVG, and PNG exports without access to installed fonts. Under Style, the **B**, *I*, underline, and strikethrough icon buttons toggle formatting; highlighted buttons are active. Hover a button to see its name. These styles apply to the whole label and can be combined. Alignment positions shorter lines to the left, centre, or right within the longest line’s width. Line spacing is a positive multiplier of font size; its default is 1.2. The selection box automatically fits the updated text, including multiple lines, while keeping its starting point fixed. Text shapes support selection and transforms. Object names are separate from text contents.
+
+![Text formatting controls in the Properties panel](/manual/images/text-formatting.png)
 
 ## Name objects
 

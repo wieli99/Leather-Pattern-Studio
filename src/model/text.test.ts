@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { measureText, resizeText } from "./text";
+import { measureText, resizeText, textFont } from "./text";
 import { applyMatrix, shapeMatrix } from "./geometry";
 import type { Shape } from "./project";
 
@@ -31,4 +31,9 @@ test("text bounds follow font size and multiline content without moving a rotate
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+test("whole-object font styles combine and have stable defaults", () => {
+  expect(textFont({})).toBe("5px PatternSans");
+  expect(textFont({ fontFamily: "serif", fontSize: 8, bold: true, italic: true })).toBe("italic bold 8px PatternSerif");
 });

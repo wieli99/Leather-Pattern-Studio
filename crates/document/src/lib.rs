@@ -134,6 +134,40 @@ pub struct Shape {
     pub font_size: Option<f64>,
     #[serde(
         default,
+        rename = "fontFamily",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub font_family: Option<String>,
+    #[serde(default, rename = "bold", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bold: Option<bool>,
+    #[serde(default, rename = "italic", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub italic: Option<bool>,
+    #[serde(default, rename = "underline", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub underline: Option<bool>,
+    #[serde(
+        default,
+        rename = "strikethrough",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub strikethrough: Option<bool>,
+    #[serde(default, rename = "textAlign", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub text_align: Option<String>,
+    #[serde(
+        default,
+        rename = "lineSpacing",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub line_spacing: Option<f64>,
+
+    #[serde(
+        default,
         rename = "cornerRadii",
         skip_serializing_if = "Option::is_none"
     )]
@@ -901,7 +935,14 @@ impl Document {
                     .text
                     .as_ref()
                     .is_none_or(|t| t.trim().is_empty() || t.chars().count() > 10000)
-                    || s.font_size.is_none_or(|n| !n.is_finite() || n <= 0.0))
+                    || s.font_size.is_none_or(|n| !n.is_finite() || n <= 0.0)
+                    || s.line_spacing.is_some_and(|n| !n.is_finite() || n <= 0.0)
+                    || s.font_family
+                        .as_deref()
+                        .is_some_and(|f| !["sans", "serif", "mono"].contains(&f))
+                    || s.text_align
+                        .as_deref()
+                        .is_some_and(|a| !["left", "center", "right"].contains(&a)))
             {
                 return Err("Invalid text".into());
             }
