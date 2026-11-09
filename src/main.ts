@@ -7,7 +7,10 @@ async function start() {
     import("vue"),
     import("./vue/App.vue"),
   ]);
-  createApp(App).mount("#root");
+  const app = createApp(App);
+  const { numericWheel } = await import("./vue/numericWheel");
+  app.directive("numeric-wheel", numericWheel);
+  app.mount("#root");
 }
 void start().catch((error) => {
   const root = document.getElementById("root");

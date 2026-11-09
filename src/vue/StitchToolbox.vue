@@ -35,6 +35,27 @@ const settings = computed(
     selected.value?.settings ??
     e.value.stitchSettings,
 );
+// Probe the same geometry validation used by previews, including continuations.
+const wheelHoleLimit = computed(() => {
+  const group = e.value.stitchDraft ?? selected.value;
+  if (!group) return 100000;
+  const shape = e.value.document.shapes.find(s => s.id === group.shapeId);
+  if (!shape) return null;
+  const fits = (holeCount: number) => {
+    try {
+      editor.stitchGeometry(shape, { ...group, holes: undefined, settings: { ...settings.value, holeCount } });
+      return true;
+    } catch { return false; }
+  };
+  if (!fits(1)) return null;
+  let low = 1, high = 100000;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (fits(middle)) low = middle;
+    else high = middle - 1;
+  }
+  return low;
+});
 function fixedCount(event: Event) {
   const value=(event.target as HTMLSelectElement).value;
   let count=1;
@@ -220,7 +241,7 @@ const warnings = computed(() =>
     <label v-if="e.stitchTool==='continue'">End clearance ({{ e.unitSymbol }})<LengthInput :value="settings.endClearance ?? 0" :min="0" @commit="numberValue('endClearance', $event)" /></label>
     <div class="stitch-count">
       <label>Hole count<select aria-label="Stitch hole count mode" :value="settings.holeCount == null ? 'auto' : 'fixed'" :disabled="e.busy" @change="fixedCount"><option value="auto">Auto</option><option value="fixed">Fixed count</option></select></label>
-      <label v-if="settings.holeCount != null">Number of holes<input type="number" min="1" max="100000" step="1" aria-label="Stitch hole count" :value="settings.holeCount" :disabled="e.busy" @input="countValue" /></label>
+      <label v-if="settings.holeCount != null">Number of holes<input v-numeric-wheel="wheelHoleLimit === null ? false : 'number'" :data-wheel-max="wheelHoleLimit" type="number" min="1" max="100000" step="1" aria-label="Stitch hole count" :value="settings.holeCount" :disabled="e.busy" @input="countValue" /></label>
       <small v-if="settings.holeCount != null">Keeps your chisel spacing; the count sets the run length.</small>
     </div>
     <label v-if="selected?.continuation">Gap to next hole ({{ e.unitSymbol }})<LengthInput aria-label="Gap to next hole" :value="selected.continuation.gap" :min=".001" :disabled="e.busy" @commit="editor.setContinuationGap($event)" @invalid="editor.stitchError='Enter a positive continuation gap.'; editor.notify()" /></label>

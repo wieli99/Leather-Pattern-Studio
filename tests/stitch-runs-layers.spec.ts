@@ -89,3 +89,24 @@ test("Ctrl selects holes with a focused settings panel and Alt selects the piece
  await expect(page.getByLabel("Hole type",{exact:true})).toBeHidden();
  await expect(page.getByRole("button",{name:"Transfer stitching",exact:true})).toBeEnabled();
 });
+
+test("wheel counts clamp to the available stitch length and minimum", async ({ page }) => {
+  await open(page);
+  const count = page.getByLabel("Stitch hole count", { exact: true });
+  await expect(count).toBeVisible();
+  const maximum = Number(await count.getAttribute("data-wheel-max"));
+  expect(maximum).toBeGreaterThan(2);
+  expect(maximum).toBeLessThan(100000);
+  await count.fill(String(maximum - 1));
+  await count.evaluate(el => el.dispatchEvent(new WheelEvent("wheel", {
+    altKey: true, ctrlKey: true, deltaY: -100, bubbles: true, cancelable: true,
+  })));
+  await expect(count).toHaveValue(String(maximum));
+  await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+  await count.fill("2");
+  await count.evaluate(el => el.dispatchEvent(new WheelEvent("wheel", {
+    altKey: true, shiftKey: true, deltaY: 100, bubbles: true, cancelable: true,
+  })));
+  await expect(count).toHaveValue("1");
+  await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+});

@@ -86,6 +86,7 @@ function key(event: KeyboardEvent) {
   <label class="field" data-hint-edit="property">
     <span>{{ dimension ? label.replace(/mm/g, e.unitSymbol) : label }}</span>
     <input
+      v-numeric-wheel="typeof value === 'number' ? (dimension ? e.units : 'number') : false"
       :aria-label="dimension ? label.replace(/mm/g, e.unitSymbol) : label"
       :disabled="!e.ready || !!e.transformTool || e.stitchMode"
       :aria-invalid="invalid"
