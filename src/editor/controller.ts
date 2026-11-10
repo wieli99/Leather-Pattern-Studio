@@ -3386,7 +3386,7 @@ export class Controller {
             if (s.id !== id) return s;
             const updated = { ...s, ...changes };
             return s.kind === "text" &&
-              (changes.fontSize !== undefined || changes.text !== undefined)
+              (changes.fontSize !== undefined || changes.text !== undefined || changes.fontFamily !== undefined || changes.bold !== undefined || changes.italic !== undefined || changes.underline !== undefined || changes.strikethrough !== undefined || changes.textAlign !== undefined || changes.lineSpacing !== undefined)
               ? resizeText(updated)
               : updated;
           }),
@@ -3403,8 +3403,13 @@ export class Controller {
           "preview",
           revision,
           reconcileStitches(next, this.document),
-        );
+        ).catch((error) => {
+          // A committed or superseded field can invalidate an in-flight preview.
+          if (this.propertySession !== session || token !== this.previewId || this.revision !== revision) return null;
+          throw error;
+        });
         if (
+          result &&
           this.propertySession === session &&
           token === this.previewId &&
           this.revision === revision

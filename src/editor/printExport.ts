@@ -3,6 +3,19 @@ import { orderedPrintPages, pageSvg } from "./printScene";
 import type { Doc } from "../model/project";
 import type { PrintLayout } from "../model/printLayout";
 import { layoutDxf } from "./printDxf";
+const bundledFonts = import.meta.glob("../assets/fonts/Liberation*.ttf", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
+async function fontData(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) throw Error("Could not load text font");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function fontInfo(path: string) {
+  const match = /Liberation(Sans|Serif|Mono)-(Regular|BoldItalic|Bold|Italic)/.exec(path)!;
+  return { family: "Pattern" + match[1], style: match[2] === "Regular" ? "normal" : match[2].toLowerCase(), bold: match[2].includes("Bold"), italic: match[2].includes("Italic") };
+}
 export type PrintFormat = "pdf" | "svg" | "png" | "dxf";
 let font: Promise<string> | undefined;
 export function printFont() {
@@ -16,9 +29,13 @@ export function printFont() {
 }
 export async function selfContainedSvg(svg: string) {
   const base64 = await printFont();
+  const styles = await Promise.all(Object.entries(bundledFonts).map(async ([path, url]) => {
+    const f = fontInfo(path);
+    return `@font-face{font-family:${f.family};font-weight:${f.bold ? 700 : 400};font-style:${f.italic ? "italic" : "normal"};src:url(data:font/ttf;base64,${await fontData(url)}) format('truetype')}`;
+  }));
   return svg.replace(
     "<defs>",
-    `<defs><style>@font-face{font-family:PrintSans;src:url(data:font/ttf;base64,${base64}) format('truetype')}</style>`,
+    `<defs><style>${styles.join("")}@font-face{font-family:PrintSans;src:url(data:font/ttf;base64,${base64}) format('truetype')}</style>`,
   );
 }
 export function svgImage(svg: string): Promise<HTMLImageElement> {
@@ -112,6 +129,12 @@ export async function generatePrint(
     });
     pdf.addFileToVFS("PrintSans.ttf", await printFont());
     pdf.addFont("PrintSans.ttf", "PrintSans", "normal");
+    for (const [path, url] of Object.entries(bundledFonts)) {
+      const f = fontInfo(path);
+      const name = path.split("/").pop()!;
+      pdf.addFileToVFS(name, await fontData(url));
+      pdf.addFont(name, f.family, f.style);
+    }
     pdf.setFont("PrintSans");
     for (let i = 0; i < pages.length; i++) {
       if (i)

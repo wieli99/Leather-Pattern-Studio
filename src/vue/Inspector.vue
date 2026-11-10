@@ -207,12 +207,42 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     <PanelSection class="property-section" section-key="object" title="Object" :level="3" :disabled="editor.isLocked(s.id)">
     <Field :controller="editor" label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <template v-if="s.kind === 'text'">
-      <Field
-        :controller="editor"
-        label="Text"
-        :value="s.text ?? ''"
-        @commit="edit({ text: $event })"
-      />
+      <label class="field"><span>Font</span><select aria-label="Font" :value="s.fontFamily ?? 'sans'" @change="edit({ fontFamily: ($event.target as HTMLSelectElement).value })"><option value="sans">Sans-serif</option><option value="serif">Serif</option><option value="mono">Monospace</option></select></label>
+      <div class="field">
+        <span id="text-formatting-label">Style</span>
+        <div class="text-formatting" role="group" aria-labelledby="text-formatting-label">
+          <button type="button" aria-label="Bold" title="Bold"
+            :aria-pressed="s.bold ?? false" @click="edit({ bold: !s.bold })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 4h7a4 4 0 0 1 0 8H6z M6 12h8a4 4 0 0 1 0 8H6z" />
+            </svg>
+          </button>
+          <button type="button" aria-label="Italic" title="Italic"
+            :aria-pressed="s.italic ?? false" @click="edit({ italic: !s.italic })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 4h10 M4 20h10 M15 4 9 20" />
+            </svg>
+          </button>
+          <button type="button" aria-label="Underline" title="Underline"
+            :aria-pressed="s.underline ?? false" @click="edit({ underline: !s.underline })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 3v8a6 6 0 0 0 12 0V3 M4 21h16" />
+            </svg>
+          </button>
+          <button type="button" aria-label="Strikethrough" title="Strikethrough"
+            :aria-pressed="s.strikethrough ?? false" @click="edit({ strikethrough: !s.strikethrough })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 5c-2-3-12-3-12 2 0 2 2 3 6 4 M6 18c2 3 12 3 12-2 0-1-1-2-3-3 M3 12h18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <label class="field"><span>Alignment</span><select aria-label="Alignment" :value="s.textAlign ?? 'left'" @change="edit({ textAlign: ($event.target as HTMLSelectElement).value })"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
+      <Field :controller="editor" label="Line spacing" :value="s.lineSpacing ?? 1.2" @commit="edit({ lineSpacing: +$event })" />
       <Field :controller="editor" dimension
         label="Font size"
         :value="s.fontSize ?? 5"
@@ -418,6 +448,17 @@ function vertex(i: number, axis: "x" | "y", v: string) {
 <style scoped>
 .object-properties,
 .vertex-properties { border: 0; padding: 0; margin: 0; min-width: 0; }
+.text-formatting {
+  display: flex;
+  gap: 4px;
+}
+.text-formatting button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 5px;
+}
 .field-row > .aspect-ratio-lock {
   flex: 0 0 28px;
   display: grid;
@@ -426,6 +467,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
   margin-top: 19px;
   padding: 4px;
 }
+.text-formatting button[aria-pressed="true"],
 .aspect-ratio-lock[aria-pressed="true"] {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);

@@ -1,3 +1,4 @@
+import { textFamily, measureText } from "../model/text";
 import { flattenOutline } from "../model/flattenOutline";
 import { holeAppearance, holeMark } from "../model/stitchLayers";
 import { shapePath } from "./renderer";
@@ -129,9 +130,12 @@ function label(
   angle: number,
   size: number,
   centre = true,
+  shape?: Shape,
 ) {
-  // SVG and PDF use the bundled Liberation Sans face; text remains actual vector text.
-  return `<text transform="translate(${xy(point)}) rotate(${n((angle * 180) / Math.PI)})" font-family="PrintSans" font-size="${n(size)}" ${centre ? 'text-anchor="middle"' : ""} y="${n(size * 0.35)}">${escape(text)}</text>`;
+  const font = shape
+    ? `font-family="${textFamily(shape)}" font-weight="${shape.bold ? "bold" : "normal"}" font-style="${shape.italic ? "italic" : "normal"}" text-decoration="${[shape.underline ? "underline" : "", shape.strikethrough ? "line-through" : ""].join(" ")}"`
+    : 'font-family="PrintSans"';
+  return `<text transform="translate(${xy(point)}) rotate(${n((angle * 180) / Math.PI)})" ${font} font-size="${n(size)}" ${centre ? 'text-anchor="middle"' : ""} y="${n(size * 0.35)}">${escape(text)}</text>`;
 }
 function lines(segments: [Point, Point][]) {
   return segments.map(([a, b]) => `M${xy(a)} L${xy(b)}`).join(" ");
@@ -164,12 +168,13 @@ export function printShapeSvg(
         label(
           line,
           {
-            x: shape.points[0].x,
-            y: shape.points[0].y + size * 0.65 + i * size * 1.2,
+            x: shape.points[0].x + (shape.textAlign === "right" || shape.textAlign === "center" ? (shape.textAlign === "right" ? 1 : .5) * (measureText(shape.text ?? "", size, shape).width - measureText(line, size, shape).width) : 0),
+            y: shape.points[0].y + size * 0.65 + i * size * (shape.lineSpacing ?? 1.2),
           },
           0,
           size,
           false,
+          shape,
         ),
       )
       .join("")}</g>`;

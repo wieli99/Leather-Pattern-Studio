@@ -1,3 +1,4 @@
+import { textFont, measureText } from "../model/text";
 import { constructionGuides } from "./construction";
 import { drawAnnotation } from "./annotationRenderer";
 import {
@@ -260,18 +261,22 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         drawAnnotation(ctx, s, editor.units);
       } else if (s.kind === "text") {
         ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-        ctx.font = `${s.fontSize ?? 5}px sans-serif`;
+        ctx.font = textFont(s);
         ctx.textBaseline = "top";
         ctx.fillStyle = ctx.strokeStyle;
-        (s.text ?? "")
-          .split("\n")
-          .forEach((line, i) =>
-            ctx.fillText(
-              line,
-              s.points[0].x,
-              s.points[0].y + i * (s.fontSize ?? 5) * 1.2,
-            ),
-          );
+        const size = s.fontSize ?? 5;
+        const width = measureText(s.text ?? "", size, s).width;
+        (s.text ?? "").split("\n").forEach((line, i) => {
+          const w = ctx.measureText(line).width;
+          const x = s.points[0].x + (s.textAlign === "right" ? width - w : s.textAlign === "center" ? (width - w) / 2 : 0);
+          const y = s.points[0].y + i * size * (s.lineSpacing ?? 1.2);
+          ctx.fillText(line, x, y);
+          ctx.lineWidth = size / 15;
+          for (const offset of [s.underline ? size : null, s.strikethrough ? size * .5 : null]) {
+            if (offset === null) continue;
+            ctx.beginPath(); ctx.moveTo(x, y + offset); ctx.lineTo(x + w, y + offset); ctx.stroke();
+          }
+        });
       } else if (!s.stitchOnly || selected || preview) ctx.stroke(path);
       ctx.restore();
     }

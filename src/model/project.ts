@@ -113,6 +113,12 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
         s.fontSize <= 0)
     )
       throw Error("Invalid text");
+    if (s.kind === "text" && (
+      (s.fontFamily !== undefined && !["sans", "serif", "mono"].includes(s.fontFamily)) ||
+      (s.textAlign !== undefined && !["left", "center", "right"].includes(s.textAlign)) ||
+      (s.lineSpacing !== undefined && (!Number.isFinite(s.lineSpacing) || s.lineSpacing <= 0)) ||
+      ["bold", "italic", "underline", "strikethrough"].some(k => s[k] !== undefined && typeof s[k] !== "boolean")
+    )) throw Error("Invalid text formatting");
     if (s.kind === "image" && (s.points[0].x === s.points[1].x || s.points[0].y === s.points[1].y || typeof s.image !== "string" || !/^data:image\/(png|jpeg|webp|svg\+xml);base64,[A-Za-z0-9+/]+={0,2}$/.test(s.image))) throw Error("Invalid image");
     if (s.kind === "control-curve") {
       if (!Array.isArray(s.handles) || s.handles.length !== s.points.length)
@@ -257,7 +263,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       ...(s.headSize !== undefined ? { headSize: s.headSize } : {}),
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
-      ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize } : {}),
+      ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize, fontFamily: s.fontFamily, bold: s.bold, italic: s.italic, underline: s.underline, strikethrough: s.strikethrough, textAlign: s.textAlign, lineSpacing: s.lineSpacing } : {}),
       ...(s.kind === "measurement" ? { measurementOffset: s.measurementOffset } : {}),
       radius: s.radius,
       ...(s.cornerRadii ? { cornerRadii: [...s.cornerRadii] } : {}),
