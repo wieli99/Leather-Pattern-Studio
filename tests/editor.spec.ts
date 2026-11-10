@@ -193,7 +193,9 @@ test("move, cancel, scale, rotate and duplicate through the viewport", async ({
   await expect
     .poll(async () => Math.abs(await value("Rotation (degrees)")))
     .toBeGreaterThan(1);
-  await page.getByRole("button", { name: "Duplicate", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Duplicate", exact: true })).toHaveCount(0);
+  await c.focus();
+  await page.keyboard.press("Control+d");
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
 test("saved project opens and invalid file preserves current work", { tag: "@manual" }, async ({
