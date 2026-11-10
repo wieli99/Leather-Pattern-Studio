@@ -10,7 +10,9 @@ Prefer the provided **Podman** workflow for a reproducible Node.js, Rust/Wasm, a
 
 - `tools/dev/run.sh dev`: install locked dependencies, generate Wasm, and serve at `http://127.0.0.1:5174`.
 - `tools/dev/run.sh check`: run Rust tests, production build, unit tests, and three-engine browser tests.
-- `tools/dev/run.sh npm run build`: generate contracts/Wasm, check TypeScript, and build offline assets.
+- `tools/dev/run.sh npm run build`: generate contracts and release-optimized Wasm, check TypeScript, and build offline assets.
+- `tools/dev/run.sh npm run wasm`: generate contracts and development Wasm; used by the development runner.
+- `tools/dev/run.sh npm run wasm:release`: generate contracts and release-optimized Wasm; used by production builds.
 - `tools/dev/run.sh preview`: serve an existing production build, including offline support.
 
 ## Coding Style & Architecture
