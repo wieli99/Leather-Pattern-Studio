@@ -18,6 +18,7 @@ export interface HintState {
   measurementFields?: readonly string[];
   polygonSides?: number;
   measurementsVisible?: boolean;
+  gesture?: { kind: string; handleSide?: string } | null;
   guideDrag?: { axis: "x" | "y" } | null;
 }
 export interface HintControl {
@@ -93,6 +94,11 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     add("snap", "Alt", "Free placement");
     add("guide-remove", "Drop on ruler", "Remove guideline");
     add("cancel", "Esc", "Cancel guideline drag");
+  } else if (s.gesture?.kind === "vertex" && !s.gesture.handleSide) {
+    action = "Drag to move the anchor.";
+    add("angle", "Shift", "Constrain movement to 45°");
+    add("snap", "Alt", "Bypass grid/object snapping");
+    add("cancel", "Esc", "Cancel edit");
   } else if (s.placingPivot) {
     action = "Click to place the pivot.";
     add("snap", "Alt", "Bypass snapping");

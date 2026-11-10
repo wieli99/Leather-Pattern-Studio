@@ -139,6 +139,12 @@ export class Controller {
     if (this.gesture?.kind === "corner")
       this.pointerMove(this.screen(this.anchorPointer), alt, ctrl, shift);
   }
+  updateVertexModifiers(alt: boolean, ctrl: boolean, shift: boolean) {
+    if (this.gesture?.kind === "vertex" && !this.gesture.handleSide &&
+        (distance(this.gesture.start, this.anchorPointer) > 1e-9 ||
+         distance(this.gesture.start, this.gesture.end) > 1e-9))
+      this.pointerMove(this.screen(this.anchorPointer), alt, ctrl, shift);
+  }
   selectedCorner: { shapeId: string; index: number } | null = null;
   cornerHandles() {
     if (this.tool !== "select" || this.transformTool !== "corner") return [];
@@ -489,6 +495,8 @@ export class Controller {
       this.pending.length,
       this.selectionToolsAvailable,
       !!this.guideDrag,
+      this.gesture?.kind,
+      this.gesture?.handleSide,
       this.grid,
       this.objects,
       this.units,
@@ -2859,6 +2867,7 @@ export class Controller {
         vertex: handle.vertex,
         handleSide: handle.handleSide,
       };
+      this.notify();
       return;
     }
     const hit = [...(this.preview ?? this.document).shapes]
@@ -3149,6 +3158,28 @@ export class Controller {
       }
       if (g.kind === "vertex") {
         const original = rectanglePath(g.original.shapes.find((s) => selected(s))!);
+        if (shift && !g.handleSide) {
+          const origin = applyMatrix(shapeMatrix(original), original.points[g.vertex!]);
+          const angle = Math.round(Math.atan2(raw.y - origin.y, raw.x - origin.x) / (Math.PI / 4)) * Math.PI / 4;
+          const radius = distance(origin, raw);
+          const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+          const constrained = {
+            x: origin.x + radius * direction.x,
+            y: origin.y + radius * direction.y,
+          };
+          const snapped = this.snap(constrained, alt);
+          const dx = snapped.x - origin.x, dy = snapped.y - origin.y;
+          if (Math.abs(dx * direction.y - dy * direction.x) < 1e-7 &&
+              dx * direction.x + dy * direction.y >= -1e-7) {
+            g.end = snapped;
+          } else {
+            g.end = constrained;
+            this.smartGuides = [];
+            this.snapTarget = null;
+            this.snapKind = null;
+          }
+          this.cursor = g.end;
+        }
         const local = applyMatrix(inverse(shapeMatrix(original)), g.end);
         const closed =
           (original.kind === "polyline" || isCurve(original)) &&
@@ -3286,6 +3317,10 @@ export class Controller {
       this.addPoint(p);
       return;
     }
+    if (pixel && this.gesture?.kind === "vertex" && !this.gesture.handleSide &&
+        (distance(this.gesture.start, this.world(pixel)) > 1e-9 ||
+         distance(this.gesture.start, this.gesture.end) > 1e-9))
+      this.pointerMove(pixel, alt, ctrl, shift);
     const g = this.gesture;
     if (!g) return;
     this.previewId++;

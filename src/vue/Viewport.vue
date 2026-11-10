@@ -229,11 +229,13 @@ function updateModifiers(event: KeyboardEvent) {
   editor.setDrawingModifier(event.shiftKey);
   editor.setMeasurementModifier(event.ctrlKey);
   editor.updateCornerModifiers(event.altKey, event.ctrlKey, event.shiftKey);
+  editor.updateVertexModifiers(event.altKey, event.ctrlKey, event.shiftKey);
 }
 function clearModifiers() {
   editor.setAnchorModifier(false);
   editor.setDrawingModifier(false);
   editor.setMeasurementModifier(false);
+  editor.updateVertexModifiers(false, false, false);
 }
 let detach: (() => void) | undefined;
 onMounted(() => {
