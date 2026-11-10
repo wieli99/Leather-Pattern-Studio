@@ -2600,3 +2600,36 @@ test("duplicate receiver preserves external source and duplicates internal count
  expect(e.document.stitchLinks).toHaveLength(2);
  expect(e.document.stitchLinks![1].members.every(id=>id!==group.id && id!==second.id)).toBe(true);
 });
+
+test("copy and duplicate nested groups remap source links to the copied stitching",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group],objectTree:[{kind:"group",id:"folder",name:"Assembly",children:[{kind:"group",id:"nested",name:"Nested",children:[{kind:"object",id:shape.id},{kind:"object",id:receiver.id}]}]}]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selectGroup("folder");e.pointerMove(e.screen({x:100,y:100}),false);
+ const copied=e.copyObjects()!;
+ await e.duplicate();
+ const duplicate=e.document.stitchTransfers!.find(t=>t.targetId!==receiver.id)!;
+ expect(duplicate.masterId).not.toBe(group.id);
+ expect(e.stitchGroups.find(g=>g.id===duplicate.masterId)?.shapeId).not.toBe(shape.id);
+ const other=editor();other.pointerMove(other.screen({x:50,y:50}),false);await other.pasteObjects(copied);
+ expect(other.document.stitchTransfers).toHaveLength(1);
+ const transfer=other.document.stitchTransfers![0];
+ expect(transfer.masterId).not.toBe(group.id);
+ expect(other.stitchGroups.some(g=>g.id===transfer.masterId)).toBe(true);
+ expect(parseProject(JSON.stringify(other.document)).stitchTransfers).toHaveLength(1);
+});
+
+test("clipboard falls back when an external source disappears before paste",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selected=[receiver.id];e.pointerMove(e.screen({x:200,y:0}),false);const text=e.copyObjects()!;
+ await e.commit({...emptyDocument(),shapes:[receiver]});
+ await e.pasteObjects(text);
+ expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+ expect(e.stitchGroups.length).toBeGreaterThan(0);
+});
