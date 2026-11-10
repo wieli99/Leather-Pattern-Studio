@@ -6,17 +6,19 @@ on:
     branches: [dev, main]
 permissions:
   contents: read
+# Only superseded PR runs are cancelled. Protected-branch runs and deployments finish.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  check:
-    name: Build and test
+  build:
+    name: Build and unit tests
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
-      - name: Run containerized checks
-        run: tools/dev/run.sh check
-      - name: Verify manual illustrations
-        run: tools/dev/run.sh npm run manual:screenshots:check
+      - name: Build and test once
+        run: tools/dev/run.sh sh -c 'npm ci && npm run test:rust && npm run build && npm test'
       - name: Validate deployment bundle
         run: tools/dev/run.sh npx --yes wrangler@4.156.2 deploy --dry-run
       - uses: actions/upload-artifact@v7
@@ -32,15 +34,96 @@ jobs:
           path: ${{ runner.temp }}/dist-roundtrip
       - name: Verify deployment artifact round trip
         run: diff -qr dist "$RUNNER_TEMP/dist-roundtrip"
+      - name: Package generated source dependencies
+        run: tar -czf generated-source.tar.gz src/wasm src/generated
+      - uses: actions/upload-artifact@v7
+        with:
+          name: generated-source
+          path: generated-source.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  browsers:
+    name: Browser / ${{ matrix.browser }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: production-dist
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: generated-source
+      - run: tar -xzf generated-source.tar.gz
+      - name: Install browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Production browser tests
+        run: npx playwright test --project=${{ matrix.browser }}
+      - name: Source-module browser tests
+        run: npx playwright test --config playwright.dev.config.ts --project=${{ matrix.browser }}
       - name: Browser reports
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: browser-reports
+          name: browser-reports-${{ matrix.browser }}
           path: |
             test-results/
             playwright-report/
           if-no-files-found: ignore
+          retention-days: 7
+
+  manual:
+    name: Manual illustrations
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: production-dist
+          path: dist
+      - name: Verify illustrations in the reference container
+        run: tools/dev/run.sh manual-check
+      - name: Manual reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-reports-manual
+          path: |
+            test-results/manual/
+            playwright-report/manual/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  check:
+    name: Build and test
+    if: always()
+    needs: [build, browsers, manual]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      BUILD_RESULT: ${{ needs.build.result }}
+      BROWSER_RESULT: ${{ needs.browsers.result }}
+      MANUAL_RESULT: ${{ needs.manual.result }}
+    steps:
+      - name: Require every validation job to succeed
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$BROWSER_RESULT" = success
+          test "$MANUAL_RESULT" = success
   deploy:
     name: Deploy production
     needs: check

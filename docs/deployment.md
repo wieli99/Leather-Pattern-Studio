@@ -1,6 +1,6 @@
 # Deployment
 
-GitHub Actions builds and tests PRs and pushes to dev and main using Podman. Only a successful push to main deploys the tested dist artifact to the leather-pattern-studio Worker. No preview deployment is created. Wrangler is pinned in the workflow; update both occurrences together.
+GitHub Actions builds PRs and pushes to dev and main using Podman, then runs browser engines in parallel on standard Ubuntu runners. Only a successful push to main deploys the tested dist artifact to the leather-pattern-studio Worker. No preview deployment is created. Wrangler is pinned in the workflow; update both occurrences together.
 
 ## Maintainer setup
 
@@ -22,7 +22,22 @@ These settings apply to the upstream repository. Contributors do not need Cloudf
 
 The Podman runner keeps Vite's optimizer cache in container-local temporary storage, separate from the shared dependency volume. This prevents dependency installs in validation containers from deleting a running dev server's optimized modules. After changing dependencies, restart your development server and reload open editor/manual tabs. If an older running container reports `504 Outdated Optimize Dep` or a module MIME-type error, stop it and rerun `tools/dev/run.sh dev` to pick up the isolated-cache setting.
 
-CI checks PRs and pushes to both branches. It runs Rust tests, the TypeScript/production build, unit tests, and Playwright on Chromium, Firefox, and WebKit. Development changes do not deploy a preview site.
+### Validation cadence
+
+Between commits, run focused tests for the changed behavior. For a frontend TypeScript and unit-test pass, use `tools/dev/run.sh fast`. It installs locked dependencies but reuses generated Wasm/contracts: on a fresh checkout or after Rust/contract changes, run `tools/dev/run.sh npm run wasm` first. Regenerate these outputs and run `tools/dev/run.sh npm run test:rust` when Rust or document contracts change. This fast pass does not validate production assets or browser behavior.
+
+Before preparing a PR for editor changes, run `tools/dev/run.sh check` once. After subsequent edits, repeat affected checks; rerun the full suite when failures or unresolved concerns warrant it. For manual illustration changes, build production assets and run `tools/dev/run.sh manual-check`. A full suite is not required before each individual commit.
+
+CI retains full validation on every PR and protected-branch push:
+- One Podman job runs Rust tests, the production build and unit tests, validates the deployment bundle, and uploads the production assets plus generated Wasm/contracts.
+- Three parallel Node 22 jobs each run one browser engine's production and source-module tests against those same outputs. Each retains one Playwright worker and installs only its engine.
+- A parallel manual job checks every illustration against the shared production build in a Debian browser container with the same browser dependencies as the development container.
+- The required **Build and test** gate succeeds only when the build, every browser job, and screenshot verification succeed. Failed, cancelled or skipped dependencies block it.
+- Reports are stored separately for each engine and manual verification. Superseded runs of the same PR are cancelled; protected-branch runs and production deployments are not cancelled by this policy.
+
+All jobs use standard `ubuntu-24.04` runners. Standard hosted runner execution is free for this public repository; no larger runners are configured. PR merge commits and protected-branch pushes remain independently validated. No browser coverage is deferred to prerelease, and development changes do not deploy a preview site.
+
+Deployment downloads the same production artifact consumed by validation. A successful release PR does not bypass validation of the subsequent main push.
 
 ## Versioning and releases
 
@@ -53,9 +68,9 @@ Maintainers prepare one version bump per release; ordinary contribution PRs do n
    tools/dev/run.sh npm run manual:screenshots:check
    ```
 
-   The first build supplies the current editor for captures; the second packages the refreshed images into the offline manual. Review every changed image alongside its article and commit the refreshed images in the preparation PR. The check command regenerates screenshots in memory and compares their pixels with the committed files (zero differing pixels after Playwright’s 0.1 perceptual threshold for rasterization noise); differences fail CI before the production artifact is uploaded. Failure reports include actual, expected, and difference images under `test-results/manual/` and `playwright-report/manual/`. Do not update images merely to silence a failure: first check the UI and documentation agree.
+   The first build supplies the current editor for captures; the second packages the refreshed images into the offline manual. Review every changed image alongside its article and commit the refreshed images in the preparation PR. The check command regenerates screenshots in memory and compares their pixels with the committed files (zero differing pixels after Playwright’s 0.1 perceptual threshold for rasterization noise); differences fail the required CI gate before deployment. Failure reports include actual, expected, and difference images under `test-results/manual/` and `playwright-report/manual/`. Do not update images merely to silence a failure: first check the UI and documentation agree.
 
-   Captures use Chromium at 1280×800 and scale 1 in the development container. Each test starts with clean browser storage; locale, timezone, color scheme and reduced motion are fixed. `tests/manual-capture.ts` captures stable frames with animations and carets hidden. Existing browser scenarios supply the illustrated interaction and assert its state. Every referenced illustration must be captured in each run. Ordinary browser tests never update source illustrations. Add a named capture call and the `@manual` test tag when adding a manual image; remove its asset and capture when retiring it. Keep Playwright and the container environment aligned when updating dependencies.
+   Captures use Chromium at 1280×800 and scale 1 in the Debian reference environment. CI uses `tools/dev/Browser.Containerfile`, which installs the same browser dependencies as the development container without the Rust toolchain. Each test starts with clean browser storage; locale, timezone, color scheme and reduced motion are fixed. `tests/manual-capture.ts` captures stable frames with animations and carets hidden. Existing browser scenarios supply the illustrated interaction and assert its state. Every referenced illustration must be captured in each run. Ordinary browser tests never update source illustrations. Add a named capture call and the `@manual` test tag when adding a manual image; remove its asset and capture when retiring it. Keep Playwright and the container environment aligned when updating dependencies.
 
 4. Review and commit both files as a separate version-bump commit. Merge the preparation PR into `dev` after checks pass.
 5. Open a `dev` → `main` release PR with the target version, resulting behavior, breaking changes if any, and validation results.

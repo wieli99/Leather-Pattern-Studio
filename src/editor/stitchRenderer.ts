@@ -1,5 +1,5 @@
 import { receivingWarnings, receivingStitches, resolvedStitchGroups, holeAppearance, holeMark as effectiveHoleMark, holeTouchesEdge, stitchEdgeContacts } from "../model/stitchLayers";
-import { applyMatrix, shapeMatrix, localCenter } from "../model/geometry";
+import { applyMatrix, shapeMatrix } from "../model/geometry";
 import type { Controller } from "./controller";
 import {
   stitchGeometry,
@@ -160,9 +160,9 @@ export function drawStitches(
   const placement=editor.stitchTransferPlacement,ghost=editor.stitchTransferGhost;
   if(placement && ghost && (editor.pointerInside || placement.phase==="placed")) {
     ctx.save();ctx.strokeStyle=color("accent");ctx.lineWidth=1.5/editor.zoom;ctx.globalAlpha=.6;ctx.setLineDash([6/editor.zoom,4/editor.zoom]);
-    for(const edge of stitchEdges(ghost)){ctx.beginPath();edge.points.forEach((p,index)=>index ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));ctx.stroke();}
+    for(const ghost of editor.stitchTransferGhosts)for(const edge of stitchEdges(ghost)){ctx.beginPath();edge.points.forEach((p,index)=>index ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));ctx.stroke();}
     ctx.setLineDash([]);ctx.globalAlpha=.9;
-    const source=doc.shapes.find(s=>s.id===placement.sourceId)!,center=applyMatrix(shapeMatrix(source),localCenter(source));
+    const center=editor.transferSourceCenter;
     const angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
     for(const id of placement.groupIds) {
       const group=doc.stitchGroups?.find(g=>g.id===id),shape=doc.shapes.find(s=>s.id===group?.shapeId);

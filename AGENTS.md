@@ -9,7 +9,9 @@
 Prefer the provided **Podman** workflow for a reproducible Node.js, Rust/Wasm, and browser-test environment matching CI. It requires Bash and a working Podman installation. Contributors may use an equivalent local environment; use `tools/dev/Containerfile` and `package-lock.json` as the toolchain and dependency references. Do not assume a particular operating system or install system tools without the contributor's agreement.
 
 - `tools/dev/run.sh dev`: install locked dependencies, generate Wasm, and serve at `http://127.0.0.1:5174`.
+- `tools/dev/run.sh fast`: install locked dependencies, check TypeScript, and run unit tests using existing generated Wasm/contracts. Run `tools/dev/run.sh npm run wasm` first on a fresh checkout or after Rust/contract changes.
 - `tools/dev/run.sh check`: run Rust tests, production build, unit tests, and three-engine browser tests.
+- `tools/dev/run.sh manual-check`: verify all manual screenshots against an existing production build in the reference browser container.
 - `tools/dev/run.sh npm run build`: generate contracts and release-optimized Wasm, check TypeScript, and build offline assets.
 - `tools/dev/run.sh npm run wasm`: generate contracts and development Wasm; used by the development runner.
 - `tools/dev/run.sh npm run wasm:release`: generate contracts and release-optimized Wasm; used by production builds.
@@ -23,7 +25,7 @@ Geometry uses double-precision millimetres. Screen coordinates must not change s
 
 ## Testing Guidelines
 
-Run Vitest unit tests, Rust tests, and Playwright acceptance tests for meaningful editor changes. Test cancellation, invalid geometry, transaction boundaries, stale responses, and project round trips. Offline tests require the production build. No coverage percentage is mandated. Record browser-engine results separately from physical operating-system/device validation.
+Between commits, run focused tests for the behavior changed; use `tools/dev/run.sh fast` for a frontend TypeScript/unit pass. Regenerate Wasm/contracts and run Rust tests when Rust or document contracts change. Run `tools/dev/run.sh check` once before preparing a PR for meaningful editor changes; after further edits, repeat affected checks rather than the entire suite unless new failures or unresolved concerns justify it. CI independently runs full validation on PRs and protected-branch pushes. Test cancellation, invalid geometry, transaction boundaries, stale responses, and project round trips. Offline tests require the production build. No coverage percentage is mandated. Record browser-engine results separately from physical operating-system/device validation.
 
 ## Commits & Pull Requests
 

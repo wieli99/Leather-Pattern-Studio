@@ -386,6 +386,7 @@ export class Controller {
   snapTarget: Point | null = null;
   snapKind: SnapKind | null = null;
   pointerInside = false;
+  private clipboardOrigin=crypto.randomUUID();
   private clipboardPixel: Point | null = null;
   smartGuides: SmartGuide[] = [];
   grid = true;
@@ -650,6 +651,7 @@ export class Controller {
           await this.core.request(operation, this.revision, document),
         );
         if (operation === "load") {
+          this.clipboardOrigin=crypto.randomUUID();
           this.projectEpoch++;
           this.printLayoutActive = false;
         }
@@ -695,7 +697,7 @@ export class Controller {
     if(!groups.length || groups.length!==selectedIds.size)return "Select editable source stitching first.";
     if(groups.some(g=>this.isLocked(g.shapeId)))return "Unlock the stitching first.";
     const first=groups[0];
-    if(tool==="transfer")return new Set(groups.map(g=>stitchPiece(doc,g).id)).size===1 ? "" : "Select stitching from one source piece.";
+    if(tool==="transfer")return "";
     if(tool==="continue") {
       if(groups.length!==1 || first.holes)return "Select one editable section.";
       if(!first.settings.holeCount)return "Set a fixed hole count before continuing this section.";
@@ -795,7 +797,7 @@ export class Controller {
   addingStitchRun = false;
   stitchTransferHighlight: string | null = null;
   stitchHoleSelection: { groupId:string; number:number }[] = [];
-  stitchTransferPlacement: { placementId:string; sourceId:string; groupIds:string[]; center:Point; angle:number; rawAngle:number; phase?:"hover"|"placed" } | null = null;
+  stitchTransferPlacement: { placementId:string; groupIds:string[]; center:Point; angle:number; rawAngle:number; phase?:"hover"|"placed" } | null = null;
   stitchSplitJunction = 1;
   stitchSelected: string[] = [];
   stitchSettings: StitchSettings = { ...defaultStitchSettings };
@@ -842,27 +844,34 @@ export class Controller {
     if (!this.stitchSelected.length) return "Select the stitch lines to transfer.";
     if (this.editingStitchHoles) return "Select stitch lines rather than individual holes.";
     if (this.stitchSelected.some(id=>!this.stitchGroups.some(g=>g.id===id))) return "Detach linked transfers before transferring them again.";
-    const sources=new Set(this.selectedStitchLines.map(g=>stitchPiece(this.document,g).id));
-    if (sources.size!==1) return "Select stitching from one source piece.";
+
     return "";
   }
   beginStitchTransfer() {
     if (this.transferStitchReason || this.busy || this.stitchDraft || this.stitchError) return;
     this.stitchTool="transfer";
     this.stitchOperationSelection=[...this.stitchSelected];
-    const source=stitchPiece(this.document,this.selectedStitchLines[0]);
     this.editingStitchHoles=false; this.addingStitchRun=false;
-    this.stitchTransferPlacement={placementId:crypto.randomUUID(),sourceId:source.id,groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
+    this.stitchTransferPlacement={placementId:crypto.randomUUID(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
     this.stitchHover=null; this.stitchError=""; this.notify();
   }
-  get stitchTransferGhost(): Shape | null {
-    const placement=this.stitchTransferPlacement;
-    const source=this.document.shapes.find(s=>s.id===placement?.sourceId);
-    if (!placement || !source) return null;
-    const center=pieceFrame(source).center,angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
-    const matrix={a:c,b:sn,c:-sn,d:c,e:placement.center.x-c*center.x+sn*center.y,f:placement.center.y-sn*center.x-c*center.y};
-    return {...source,id:"stitch-transfer-preview",rotation:0,transform:multiply(matrix,shapeMatrix(source))};
+  get transferSourceCenter(): Point {
+    const ids=new Set(this.selectedTransferSources.map(s=>s.id));
+    const box=bounds(this.document.shapes.filter(s=>ids.has(s.id)));
+    return {x:box.x+box.width/2,y:box.y+box.height/2};
   }
+  get selectedTransferSources(): Shape[] {
+    const ids=new Set((this.stitchTransferPlacement?.groupIds ?? []).map(id=>this.stitchGroups.find(g=>g.id===id)).filter((g): g is StitchGroup=>!!g).map(g=>stitchPiece(this.document,g).id));
+    return this.document.shapes.filter(s=>ids.has(s.id));
+  }
+  get stitchTransferGhosts(): Shape[] {
+    const placement=this.stitchTransferPlacement;
+    if(!placement)return [];
+    const center=this.transferSourceCenter,angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
+    const matrix={a:c,b:sn,c:-sn,d:c,e:placement.center.x-c*center.x+sn*center.y,f:placement.center.y-sn*center.x-c*center.y};
+    return this.selectedTransferSources.map(source=>({...source,id:`stitch-transfer-preview:${source.id}`,rotation:0,transform:multiply(matrix,shapeMatrix(source))}));
+  }
+  get stitchTransferGhost(): Shape | null { return this.stitchTransferGhosts[0] ?? null; }
   updateStitchTransfer(raw: Point,alt=false) {
     this.queuedTransferPointer=null;
     const placement=this.stitchTransferPlacement;
@@ -870,8 +879,8 @@ export class Controller {
     placement.center={...raw};
     this.smartGuides=[];this.snapTarget=null;
     if (!alt) {
-      const ghost=this.stitchTransferGhost!;
-      const result=snapRigidMove([...this.document.shapes.filter(s=>s.id!==placement.sourceId && !s.stitchParentId && !this.isHidden(s.id)),ghost],[ghost.id],{x:0,y:0},{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:this.document.guides});
+      const ghosts=this.stitchTransferGhosts;
+      const result=snapRigidMove([...this.document.shapes.filter(s=>!this.selectedTransferSources.some(source=>source.id===s.id) && !s.stitchParentId && !this.isHidden(s.id)),...ghosts],ghosts.map(s=>s.id),{x:0,y:0},{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:this.document.guides});
       placement.center={x:placement.center.x+result.delta.x,y:placement.center.y+result.delta.y};
       this.smartGuides=result.guides;
       if ("target" in result) this.snapTarget=result.target!;
@@ -908,21 +917,27 @@ export class Controller {
     const pending=this.queuedTransferPointer;this.queuedTransferPointer=null;
     if(pending?.placement===this.stitchTransferPlacement && pending?.placement.phase!=="placed")this.updateStitchTransfer(pending.point,pending.alt);
   }
+  private transferGroupCenter(groupId:string): Point {
+    const placement=this.stitchTransferPlacement!,pivot=this.transferSourceCenter;
+    const source=pieceFrame(stitchPiece(this.document,this.stitchGroups.find(g=>g.id===groupId)!)).center;
+    const a=placement.angle*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),dx=source.x-pivot.x,dy=source.y-pivot.y;
+    return {x:placement.center.x+c*dx-sn*dy,y:placement.center.y+sn*dx+c*dy};
+  }
   private computeTransferPreview() {
     const placement=this.stitchTransferPlacement;
     if (!placement) return {transfers:[] as StitchTransfer[],results:[] as ReturnType<typeof receivingStitches>[],skipped:[] as string[]};
     const transfers:StitchTransfer[]=[],results:ReturnType<typeof receivingStitches>[]=[],skipped:string[]=[];
-    const ghost=this.stitchTransferGhost!,box=bounds([ghost]);
+    const sourceIds=new Set(this.selectedTransferSources.map(s=>s.id)),box=bounds(this.stitchTransferGhosts);
     for (const target of this.document.shapes) {
-      if (target.id===placement.sourceId || target.stitchParentId || this.isHidden(target.id)) continue;
+      if (sourceIds.has(target.id) || target.stitchParentId || this.isHidden(target.id)) continue;
       const other=bounds([target]);
-      if (box.x>other.x+other.width || other.x>box.x+box.width || box.y>other.y+other.height || other.y>box.y+box.height) continue;
+      if(box.x>other.x+other.width || other.x>box.x+box.width || box.y>other.y+other.height || other.y>box.y+box.height)continue;
       if (!stitchClosed(target) || target.stitchOnly || !stitchEdges(target).length) { skipped.push(`${target.name}: unsupported outline`); continue; }
       if (this.isLocked(target.id)) { skipped.push(`${target.name}: locked`); continue; }
       let included=0;
       for (const groupId of placement.groupIds) {
         try {
-          const transfer={...makeTransfer(this.document,groupId,target,placement.center,placement.angle,placement.placementId),number:Math.max(0,...(this.document.stitchTransfers ?? []).map(t=>t.number ?? 0))+1,id:JSON.stringify([placement.placementId,groupId,target.id])};
+          const transfer={...makeTransfer(this.document,groupId,target,this.transferGroupCenter(groupId),placement.angle,placement.placementId),number:Math.max(0,...(this.document.stitchTransfers ?? []).map(t=>t.number ?? 0))+1,id:JSON.stringify([placement.placementId,groupId,target.id])};
           const result=receivingStitches(this.document,transfer);
           if(result.included) { transfers.push(transfer);results.push(result);included+=result.included; }
         } catch (reason) { skipped.push(`${target.name}: ${String(reason)}`); }
@@ -1176,7 +1191,13 @@ export class Controller {
       const source = this.document.shapes.find((s) => s.id === target.shapeId)!;
       const all = stitchEdges(source).map((e) => e.key),
         index = all.indexOf(target.edges[0]);
-      const adjacent = [index - 1, index + 1]
+      const bridges:string[]=[],bridgeNeighbors:number[]=[];
+      for(const direction of [-1,1]) {
+        const corner=all[(index+direction+all.length)%all.length];
+        const beyond=all[(index+2*direction+all.length)%all.length];
+        if(corner?.includes(":corner:") && !this.stitchGroups.some(g=>g.shapeId===source.id && g.edges.includes(corner)) && this.stitchGroups.some(g=>g.shapeId===source.id && g.edges.includes(beyond))){bridges.push(corner);bridgeNeighbors.push(index+2*direction);}
+      }
+      const adjacent = [index - 1, index + 1,...bridgeNeighbors]
         .filter((i) => stitchClosed(source) || (i >= 0 && i < all.length))
         .map((i) => all[(i + all.length) % all.length]);
       const neighbors = this.stitchGroups.filter(
@@ -1211,7 +1232,7 @@ export class Controller {
           )[0];
         const edges = orderStitchEdges(
           source,
-          [...neighbors.flatMap((g) => g.edges), ...target.edges],
+          [...neighbors.flatMap((g) => g.edges), ...bridges, ...target.edges],
           master.edges[0],
         );
         next = {
@@ -3531,6 +3552,9 @@ export class Controller {
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
+      origin:this.clipboardOrigin,
+      externalTransfers:(this.document.stitchTransfers ?? []).filter(t=>ids.has(t.targetId) && !groupIds.has(t.masterId)),
+      fallbackShapeIds:extraShapes.map(s=>s.id),
       document: { version: DOCUMENT_VERSION, shapes: selectedShapes.map(s=>({...s,stitchParentId:s.stitchParentId && ids.has(s.stitchParentId) ? s.stitchParentId : undefined})), objectTree: [...filterObjectTree(this.tree, ids, new Set(this.selectedGroups)),...extraShapes.map(s=>({kind:"object" as const,id:s.id}))], stitchGroups: groups, stitchTransfers:transfers,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
@@ -3548,6 +3572,14 @@ export class Controller {
           !Number.isFinite(payload.anchor?.y)) throw Error("Invalid or unsupported object clipboard");
       const source = parseProject(JSON.stringify(payload.document));
       if (!source.shapes.length && !source.objectTree?.length) return;
+      const external = payload.origin===this.clipboardOrigin && Array.isArray(payload.externalTransfers) ? payload.externalTransfers : [];
+      const liveExternal=external.length>0 && external.every((t:StitchTransfer)=>this.stitchGroups.some(g=>g.id===t.masterId) && source.shapes.some(s=>s.id===t.targetId));
+      if(liveExternal) {
+        const fallbackIds=new Set(payload.fallbackShapeIds ?? []);
+        source.shapes=source.shapes.filter(s=>!fallbackIds.has(s.id));
+        source.stitchGroups=source.stitchGroups?.filter(g=>!fallbackIds.has(g.shapeId));
+        source.objectTree=filterObjectTree(source.objectTree ?? [],new Set(source.shapes.map(s=>s.id)),new Set());
+      }
       const ids = new Map(source.shapes.map(s => [s.id, crypto.randomUUID()]));
       const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, crypto.randomUUID()]));
       const copies = source.shapes.map(s => ({
@@ -3563,7 +3595,7 @@ export class Controller {
         stitchGroups: [...this.stitchGroups, ...(source.stitchGroups ?? []).map(g => ({
           ...g, id: groupIds.get(g.id)!, shapeId: ids.get(g.shapeId)!, continuation:g.continuation ? { ...g.continuation, previousId:groupIds.get(g.continuation.previousId)! } : undefined,
         }))],
-        stitchTransfers:[...(this.document.stitchTransfers ?? []), ...copyTransferPlacements(this.document.stitchTransfers ?? [],(source.stitchTransfers ?? []).map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId)!,targetId:ids.get(t.targetId)! })))],
+        stitchTransfers:[...(this.document.stitchTransfers ?? []), ...copyTransferPlacements(this.document.stitchTransfers ?? [],[...(source.stitchTransfers ?? []),...(liveExternal ? external : [])].map((t:StitchTransfer) => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
         stitchLinks: [...(this.document.stitchLinks ?? []), ...(source.stitchLinks ?? []).map(l => ({
           ...l, id: ++linkId, members: l.members.map(id => groupIds.get(id)!),
         }))],
@@ -3574,7 +3606,7 @@ export class Controller {
   async duplicate() {
     this.cancel();
     const initialIds=new Set(this.active.map(s=>s.id));
-    const data=copyStitchData(this.document,initialIds);
+    const data=copyStitchData(this.document,initialIds,true);
     const originals=[...this.document.shapes.filter(s=>initialIds.has(s.id) || !!s.stitchParentId && initialIds.has(s.stitchParentId)),...data.shapes];
     const ids=new Map(originals.map(s=>[s.id,crypto.randomUUID()]));
     const copies=originals.map(s=>({...moveShape(s,10,10),id:ids.get(s.id)!,name:`${s.name} copy`,locked:false,stitchParentId:s.stitchParentId ? ids.get(s.stitchParentId) : undefined}));
@@ -3592,8 +3624,9 @@ export class Controller {
     const groupIds = new Map(groups.map(g => [g.id,crypto.randomUUID()]));
     const success = await this.commit({
       ...this.document, shapes:[...this.document.shapes,...copies], objectTree:[...duplicateNodes(this.tree),...data.shapes.map(s=>({kind:"object" as const,id:ids.get(s.id)!}))],
+      stitchLinks:[...(this.document.stitchLinks ?? []),...(this.document.stitchLinks ?? []).map((l,index)=>({...l,id:Math.max(0,...(this.document.stitchLinks ?? []).map(l=>l.id))+index+1,members:l.members.filter(id=>groupIds.has(id)).map(id=>groupIds.get(id)!)})).filter(l=>l.members.length>=2)],
       stitchGroups:[...this.stitchGroups,...groups.map(g => ({ ...g,id:groupIds.get(g.id)!,shapeId:ids.get(g.shapeId)!,continuation:g.continuation ? { ...g.continuation,previousId:groupIds.get(g.continuation.previousId)! } : undefined }))],
-      stitchTransfers:[...(this.document.stitchTransfers ?? []),...copyTransferPlacements(this.document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId)!,targetId:ids.get(t.targetId)! })))],
+      stitchTransfers:[...(this.document.stitchTransfers ?? []),...copyTransferPlacements(this.document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
     });
     if (success) {
       this.selectedGroups = [];

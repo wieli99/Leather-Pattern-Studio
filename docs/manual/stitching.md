@@ -97,12 +97,14 @@ Switch to **Select (V)** to edit stitching path geometry. Alt-click inserts anch
 
 Unlike ordinary count-check links, Transfer stitching preserves actual source hole positions rather than centering each receiving line independently.
 
-1. Select the lines to transfer from one source piece.
+1. Select the lines to transfer from one or more source pieces. Their current relative positions and angles are preserved during placement.
 2. Choose **Transfer stitching** (two stitched corners connected by an arrow) in the bottom toolbar. The hovering preview shows the master outline and only selected lines.
 3. Move it over receiving pieces using normal grid/object snapping. Wheel rotates by 1°, Ctrl/⌘+wheel zooms, Shift gives 5°, and Alt allows free rotation and bypasses placement snapping. Hold Space for viewport navigation; Space+Ctrl+wheel zooms.
 4. Review receiving-piece results. Left-click to place and freeze the preview. Further left-clicks reposition it. Apply, right-click, or Enter then commits all eligible receivers together. With no eligible receiver, the preview stays active with an explanation. Cancel discards it.
 
 ![Hovering master preview for transferring selected stitching](/manual/images/stitch-transfer.png)
+
+![Transferring stitching from multiple source pieces together](/manual/images/stitch-transfer-multiple.png)
 
 Visible, unlocked closed pieces containing selected hole centers can receive stitching. Outside centers are excluded; red rings flag hole footprints touching or crossing an edge. The status message names successes and skipped pieces. Repeating the tool adds independent placements, including on the same receiver.
 
@@ -110,7 +112,7 @@ Master edits update live transfers; layout moves and rotations preserve assembly
 
 **Detach** preserves currently included holes and creates independent, editable native guide paths; separate clipped runs retain their gaps. Spacing, inset, alignment, count and appearance become editable. Edit path changes the guide without changing the material outline. Guide objects follow their receiving piece’s layout moves/rotations.
 
-Copying a receiver alone creates independent editable stitching; copying source and receiver together retains links. Removing a master removes its live transfers. Old detached records preserve initial positions on reconstructed guides; changing placement settings or geometry recalculates those holes.
+Copying a receiver within the current editor session retains its live source link. Pasting into another project or editor creates independent editable stitching. Copying source and receiver together retains links between their copies. Removing a master removes its live transfers. Old detached records preserve initial positions on reconstructed guides; changing placement settings or geometry recalculates those holes.
 
 
 ## Updated section workflow and preset backups
@@ -124,3 +126,5 @@ Open **Presets** to load or manage presets in an attached box to the left of the
 Continue run requires a fixed-count preceding section. Its new continuation can use Auto count. If an edited gap does not fit, its preview remains editable; reduce the gap or count before applying. Transfer hover shares one receiving-geometry snapshot between rendering and settings. Movement can snap compatible horizontal and vertical edges at the same time in Model, transfer placement and print layouts. Keyboard shortcuts are listed in the right-side Tool help rather than in the settings box. Standalone converted paths do not generate material-edge warnings.
 
 ![Preset panel beside stitching settings](images/stitch-presets.png)
+
+Shift-add an adjacent side of a rounded rectangle to include its intervening unstitched corner automatically. Duplicating a receiver retains its external stitching source; duplicating both source and receiver links the new copies together. Internal count-check links are also duplicated.

@@ -75,6 +75,8 @@ tools/dev/run.sh check
 
 Runs Rust tests, generated TypeScript contracts, production build, unit tests, and Chromium/Firefox/WebKit acceptance tests. Browser system libraries are baked into the cached development image, using the locked Playwright version, so individual test containers retain the required libraries. Browser binaries use a persistent Podman volume; `check` installs any missing binaries. To test offline behavior, build and run `tools/dev/run.sh preview`; development mode intentionally does not register a service worker. Offline use starts after the first successful online load and cache installation. Serve deployments over HTTPS (localhost also works).
 
+For a quicker TypeScript and unit-test pass between commits, run `tools/dev/run.sh fast` after generating Wasm/contracts with `tools/dev/run.sh npm run wasm` (or starting development). Run the full check once before preparing a PR for editor changes, rather than before every commit. CI keeps full coverage with parallel browser jobs; see the [validation cadence](docs/deployment.md#validation-cadence).
+
 See the [contributor guidelines](AGENTS.md) and [development and release workflow](docs/deployment.md) for contribution and pull request guidance.
 
 ### Code organization
