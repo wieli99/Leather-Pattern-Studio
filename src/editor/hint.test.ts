@@ -90,3 +90,9 @@ test("shape-specific controls stay relevant", () => {
   expect(text.controls.map((row) => row.id)).toContain("text");
   expect(text.controls.map((row) => row.id)).not.toContain("handles");
 });
+
+test("vertex dragging advertises angle constraint without changing handle guidance", () => {
+  const hint = editorHint({ ...base, gesture: { kind: "vertex" } });
+  expect(hint.controls).toContainEqual({ id: "angle", gesture: "Shift", action: "Constrain movement to 45°" });
+  expect(editorHint({ ...base, gesture: { kind: "vertex", handleSide: "outgoing" } }).controls.some(c => c.id === "angle")).toBe(false);
+});

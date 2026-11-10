@@ -6,6 +6,10 @@ Click an edge or drag an empty area to select fully enclosed outlines. Shift+cli
 
 Alt+click a non-text edge inserts an anchor where supported. Select a single path to drag its anchors. You can keep Alt held while clicking or dragging visible anchors and curve handles. On control point curves, drag handles to shape the curve; double-click an anchor toggles sharp/smooth. Sharp and Smooth buttons are also available in Vertex coordinates.
 
+Hold Shift while dragging an anchor to constrain movement to 45° increments from its original position, along canvas axes even for rotated objects. Press or release Shift during the drag to switch the constraint immediately. Grid/object snapping applies only when it preserves that direction; Alt bypasses it while keeping the angle constraint. Curve control handles retain their usual behavior. Esc cancels the edit.
+
+![Anchor movement constrained with Shift](/manual/images/vertex-snap.png)
+
 Delete or Backspace removes the selection, including after clicking an object in the Model objects panel. Shift-click object rows to select an inclusive range, or Ctrl/⌘-click to toggle individual rows for deletion. While renaming an object, these keys edit its name. Ctrl/⌘+D duplicates the selection. See [transforms](#transforms) to move, rotate, or resize.
 
 Converted stitching paths can be selected in Select mode to edit their geometry. Alt+click inserts an anchor; drag anchors or curve handles to reshape the line. Stitching follows these edits and remains continuous across inserted anchors. Open **Stitch line** to change stitch settings.

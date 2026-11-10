@@ -661,7 +661,7 @@ test("curve duplicate clicks and invalid short paths do not create extra anchors
   await vi.waitFor(() => expect(e.revision).toBe(1));
   expect(e.document.shapes[0].points).toHaveLength(2);
 });
-test("selected Bézier handles mirror when edited and cancellation restores original", async () => {
+test.each([false, true])("selected Bézier handles mirror when edited and cancellation restores original (Shift=%s)", async (shift) => {
   const e = editor();
   e.setMode("control-curve");
   e.addPoint({ x: 0, y: 0 });
@@ -678,7 +678,7 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
     .handles()
     .find((h) => h.vertex === 0 && h.handleSide === "outgoing")!;
   e.pointerDown(e.screen(h.point), 0, false, false);
-  e.pointerMove(e.screen({ x: 20, y: 30 }), true);
+  e.pointerMove(e.screen({ x: 20, y: 30 }), true, false, shift);
   expect(e.preview!.shapes[0].handles![0]).toEqual({
     incoming: { x: -10, y: 0 },
     outgoing: { x: 20, y: 30 },
@@ -687,7 +687,7 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
   expect(JSON.stringify(e.document)).toBe(original);
   expect(e.revision).toBe(1);
   e.pointerDown(e.screen(h.point), 0, false, false);
-  e.pointerMove(e.screen({ x: 20, y: 30 }), true);
+  e.pointerMove(e.screen({ x: 20, y: 30 }), true, false, shift);
   e.pointerUp();
   await vi.waitFor(() => expect(e.revision).toBe(2));
   await e.transact("undo");
@@ -2655,4 +2655,121 @@ test("clipboard falls back when an external source disappears before paste",asyn
  await e.pasteObjects(text);
  expect(e.document.stitchTransfers ?? []).toHaveLength(0);
  expect(e.stitchGroups.length).toBeGreaterThan(0);
+});
+
+async function vertexEditor(rotation = 0, closed = false, curve = false) {
+  const e = editor();
+  await e.commit({ ...emptyDocument(), shapes: [{
+    id: "path", name: "Path", kind: curve ? "control-curve" : "polyline",
+    points: [{ x: 10, y: 10 }, { x: 110, y: 10 }, { x: 110, y: 110 }, ...(closed ? [{ x: 10, y: 10 }] : [])],
+    radius: 0, rotation,
+    ...(curve ? { handles: Array.from({ length: closed ? 4 : 3 }, () => ({ incoming: { x: -2, y: -3 }, outgoing: { x: 2, y: 3 } })) } : {}),
+  }] });
+  e.setMode("select");
+  e.selected = ["path"];
+  return e;
+}
+
+const firstVertex = (e: Controller) => e.handles().find(h => h.kind === "vertex" && h.vertex === 0 && !h.handleSide)!.point;
+
+test.each([
+  [30, 5, 0], [30, 20, 45], [5, 30, 90], [-20, 30, 135],
+  [-30, 5, 180], [-30, -20, -135], [-5, -30, -90], [20, -30, -45], [0, 0, 0],
+])("Shift constrains vertex displacement (%s, %s) to %s degrees", async (dx, dy, degrees) => {
+  const e = await vertexEditor();
+  const origin = firstVertex(e);
+  // Pick up off-center; snapping must still use the vertex itself.
+  e.pointerDown(e.screen({ x: origin.x + 1, y: origin.y + 1 }), 0, false, false);
+  e.pointerMove(e.screen({ x: origin.x + dx, y: origin.y + dy }), true, false, true);
+  const point = e.preview!.shapes[0].points[0];
+  const radius = Math.hypot(dx, dy), angle = degrees * Math.PI / 180;
+  expect(point.x).toBeCloseTo(origin.x + radius * Math.cos(angle));
+  expect(point.y).toBeCloseTo(origin.y + radius * Math.sin(angle));
+  expect(e.revision).toBe(1);
+  e.cancel();
+  expect(e.document.shapes[0].points[0]).toEqual(origin);
+});
+
+test("vertex constraint follows world axes for rotated closed curves and preserves handles", async () => {
+  const e = await vertexEditor(27, true, true);
+  const before = e.document;
+  const origin = firstVertex(e);
+  e.pointerDown(e.screen(origin), 0, false, false);
+  e.pointerMove(e.screen({ x: origin.x + 30, y: origin.y + 5 }), true, false, true);
+  const preview = e.preview!;
+  expect(preview.shapes[0].points[0]).toEqual(preview.shapes[0].points[3]);
+  expect(preview.shapes[0].handles).toEqual(before.shapes[0].handles);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  const moved = firstVertex(e);
+  expect(moved.x).toBeCloseTo(origin.x + Math.hypot(30, 5));
+  expect(moved.y).toBeCloseTo(origin.y);
+  await e.transact("undo");
+  expect(e.document).toEqual(before);
+});
+
+test("vertex modifiers update stationary previews and pointer release uses current modifiers", async () => {
+  const e = await vertexEditor();
+  const origin = firstVertex(e), target = { x: origin.x + 30, y: origin.y + 5 };
+  e.pointerDown(e.screen(origin), 0, false, false);
+  e.pointerMove(e.screen(target), true);
+  e.updateVertexModifiers(true, false, true);
+  expect(e.preview!.shapes[0].points[0].y).toBeCloseTo(origin.y);
+  e.updateVertexModifiers(true, false, false);
+  expect(e.preview!.shapes[0].points[0]).toEqual(target);
+  e.pointerUp(e.screen(target), true, true);
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.document.shapes[0].points[0].y).toBeCloseTo(origin.y);
+});
+
+test("vertex grid/object snapping respects the constrained ray and Alt bypasses it", async () => {
+  const e = await vertexEditor();
+  const origin = firstVertex(e);
+  e.grid = true;
+  e.gridSize = 10;
+  e.pointerDown(e.screen(origin), 0, false, false);
+  const move = (dx: number, dy: number, alt = false) => {
+    e.pointerMove(e.screen({ x: origin.x + dx, y: origin.y + dy }), alt, false, true);
+    return e.preview!.shapes[0].points[0];
+  };
+  expect(move(28, 3)).toEqual({ x: 40, y: 10 });
+  expect(move(28, 3, true).x).toBeCloseTo(10 + Math.hypot(28, 3));
+  e.grid = false;
+  e.objects = true;
+  e.document.shapes.push({ id: "target", name: "Target", kind: "polyline", points: [{ x: 40, y: 11 }, { x: 100, y: 150 }], rotation: 0, radius: 0 });
+  expect(move(28, 3).x).toBeCloseTo(10 + Math.hypot(28, 3));
+  expect(move(28, 3).y).toBeCloseTo(10);
+  expect(e.snapTarget).toBeNull();
+  e.document.shapes[1].points[0].y = 10;
+  expect(move(28, 3)).toEqual({ x: 40, y: 10 });
+});
+
+test("off-axis grid snapping cannot break a vertex constraint", async () => {
+  const e = await vertexEditor();
+  e.document.shapes[0].points[0].y = 11;
+  const origin = firstVertex(e);
+  e.grid = true;
+  e.gridSize = 10;
+  e.pointerDown(e.screen(origin), 0, false, false);
+  e.pointerMove(e.screen({ x: origin.x + 28, y: origin.y + 3 }), false, false, true);
+  expect(e.preview!.shapes[0].points[0].x).toBeCloseTo(origin.x + Math.hypot(28, 3));
+  expect(e.preview!.shapes[0].points[0].y).toBeCloseTo(origin.y);
+  // Releasing Shift at pointer-up commits the unconstrained grid result.
+  e.pointerUp(e.screen({ x: 39, y: 12 }), false, false);
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.document.shapes[0].points[0]).toEqual({ x: 40, y: 10 });
+});
+
+test("clicking a rectangle vertex with Shift leaves its geometry and history unchanged", async () => {
+  const e = editor();
+  e.setMode("rectangle");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 100, y: 50 });
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  const original = e.document, origin = firstVertex(e);
+  e.pointerDown(e.screen(origin), 0, true, false);
+  e.pointerUp(e.screen(origin), false, true);
+  expect(e.document).toEqual(original);
+  expect(e.revision).toBe(1);
 });

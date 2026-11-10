@@ -65,6 +65,7 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | Esc | Cancel active preview |
 | Shift+click / Shift+drag | Toggle selection / add enclosed objects |
 | Ctrl+click / Ctrl+drag | Select by interior / include crossing outlines |
+| Shift while dragging an anchor | Constrain movement to 45° from its original position |
 | Alt+click edge | Insert anchor where supported |
 | Double-click anchor | Toggle sharp/smooth where supported |
 | Alt+drag curve handle | Move handle independently |
