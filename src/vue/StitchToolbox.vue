@@ -64,10 +64,6 @@ function fixedCount(event: Event) {
   }
   editor.setStitchSettings({ ...settings.value, holeCount:value==="auto" ? undefined : Math.max(1,count) });
 }
-function countValue(event: Event) {
-  const text=(event.target as HTMLInputElement).value;
-  numberValue("holeCount",text.trim() ? Number(text) : NaN);
-}
 function applyFromKeyboard(event: KeyboardEvent) {
   const target=event.target as HTMLElement;
   if (target.closest("button,select,summary,form")) return;
@@ -241,7 +237,7 @@ const warnings = computed(() =>
     <label v-if="e.stitchTool==='continue'">End clearance ({{ e.unitSymbol }})<LengthInput :value="settings.endClearance ?? 0" :min="0" @commit="numberValue('endClearance', $event)" /></label>
     <div class="stitch-count">
       <label>Hole count<select aria-label="Stitch hole count mode" :value="settings.holeCount == null ? 'auto' : 'fixed'" :disabled="e.busy" @change="fixedCount"><option value="auto">Auto</option><option value="fixed">Fixed count</option></select></label>
-      <label v-if="settings.holeCount != null">Number of holes<input v-numeric-wheel="wheelHoleLimit === null ? false : 'number'" :data-wheel-max="wheelHoleLimit" type="number" min="1" max="100000" step="1" aria-label="Stitch hole count" :value="settings.holeCount" :disabled="e.busy" @input="countValue" /></label>
+      <label v-if="settings.holeCount != null">Number of holes<LengthInput scalar integer :value="settings.holeCount" :min="1" :max="100000" :step="1" :wheel="wheelHoleLimit !== null" :data-wheel-max="wheelHoleLimit" aria-label="Stitch hole count" :disabled="e.busy" @invalid="numberValue('holeCount', NaN)" @commit="numberValue('holeCount', $event)" /></label>
       <small v-if="settings.holeCount != null">Keeps your chisel spacing; the count sets the run length.</small>
     </div>
     <label v-if="selected?.continuation">Gap to next hole ({{ e.unitSymbol }})<LengthInput aria-label="Gap to next hole" :value="selected.continuation.gap" :min=".001" :disabled="e.busy" @commit="editor.setContinuationGap($event)" @invalid="editor.stitchError='Enter a positive continuation gap.'; editor.notify()" /></label>

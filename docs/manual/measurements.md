@@ -14,6 +14,18 @@ Choose units in Settings. Inch fields accept decimal values (`1.375`), fractions
 
 In inch mode, guide and corner adjustments use 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. Alt keeps its existing free-placement or all-corners behavior. Rotation steps remain in degrees.
 
+## Calculate values in numeric fields
+
+Every numeric field accepts `+`, `-`, `*`, `/`, parentheses, negative numbers, and scientific notation, such as `(10+5)*2` or `1e-3`. Multiplication and division take precedence over addition and subtraction. Values update live as the expression becomes valid; the expression stays visible while you type. Enter or leaving the field uses the result, following the field’s normal confirmation behavior. Tab still cycles construction fields; Enter confirms a construction measurement or selected edge edit.
+
+Length formulas use the field’s current unit: `(2+1)/2` means 1.5 mm in millimetre mode and 1.5 inches in inch mode. Mixed inch fractions remain supported: `(1 1/2)*2` gives 3 inches. Unit suffixes, variables, and functions are unsupported. Counts still require whole numbers, and each field retains its limits.
+
+Incomplete formulas, division by zero, and out-of-range results do not change the last valid geometry. Invalid tool inputs block confirmation until repaired or discarded. Leaving a property or settings field discards an invalid draft. Esc keeps the field’s normal cancellation behavior. Alt+wheel adjusts the evaluated result and replaces the formula with a number; it ignores invalid drafts.
+
+Displayed and editable values hide floating-point noise. Display rounding never changes saved geometry, and focusing a field without editing preserves its stored precision. Only evaluated numbers are saved; formulas are temporary input.
+
+![A formula entered in grid spacing](/manual/images/numeric-formula.png)
+
 ## Align objects with snapping
 
 Grid snap and Object snap are independent footer controls. Object snap defaults to enabled and remembers your preference. It snaps to exact object features such as corners, endpoints, midpoints, and centers, and also aligns points with other objects’ world-axis bounding edges and horizontal and vertical centers. The reference object is highlighted with a contrasting outline. Dashed guides stop at the reference object’s world-aligned bounds; center alignment displays the corresponding horizontal or vertical axis. Snapping to the object’s center point highlights both axes. Labels identify the alignment and reference object. Exact object features take priority over alignment, followed by Grid snap. Grid spacing is in Settings. Hold Alt to bypass positional snapping while drawing, moving, or placing a pivot.
