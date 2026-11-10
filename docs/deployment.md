@@ -72,6 +72,8 @@ Dependabot monitors dependencies and opens update PRs; review them before mergin
 
 Keep `@types/node` on Node 22 to match the build container and deployment tooling. TypeScript 7 is deferred because the current `vue-tsc` integration imports `typescript/lib/tsc`, which TypeScript 7 does not export. Dependabot ignores those upgrades until the toolchain is migrated; compatible updates remain enabled. Revisit these limits when updating the runtime or Vue type checker.
 
+Playwright is pinned to 1.64.1 while [the Firefox file chooser regression in 1.65.0](https://github.com/microsoft/playwright/issues/43994) remains unresolved. Dependabot skips 1.65.x; verify project Open and file import on Firefox before accepting a later version.
+
 CI uploads and downloads the production artifact and compares its contents before merging dependency updates, exercising both artifact actions without deploying a PR.
 
 ## Domains and verification
