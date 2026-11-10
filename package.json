@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
-    "build": "npm run wasm && vue-tsc --noEmit && vite build",
+    "build": "npm run wasm:release && vue-tsc --noEmit && vite build",
     "desktop": "tauri dev",
     "wasm": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --dev",
+    "wasm:release": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --release",
     "test": "vitest run",
     "test:e2e": "playwright test && playwright test --config playwright.dev.config.ts",
     "test:rust": "cargo test --manifest-path crates/document/Cargo.toml",
