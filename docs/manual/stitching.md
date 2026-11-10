@@ -104,6 +104,8 @@ Unlike ordinary count-check links, Transfer stitching preserves actual source ho
 
 ![Hovering master preview for transferring selected stitching](/manual/images/stitch-transfer.png)
 
+![Transferring stitching from multiple source pieces together](/manual/images/stitch-transfer-multiple.png)
+
 Visible, unlocked closed pieces containing selected hole centers can receive stitching. Outside centers are excluded; red rings flag hole footprints touching or crossing an edge. The status message names successes and skipped pieces. Repeating the tool adds independent placements, including on the same receiver.
 
 Master edits update live transfers; layout moves and rotations preserve assembly alignment. Numbered chain-and-equals badges distinguish transfers from count-check links. A placement uses the same number on its source and all receiving lines; multiple placements on one source list their numbers. Numbers persist through saving and deletion of other placements. Hover a badge or focus transfer controls to highlight related stitching. Select a transferred line to edit its source or manage its individual transfer records. Broken legacy transfers retain their data and show warnings.

@@ -4,12 +4,12 @@ import { manualScreenshot } from "./manual-capture";
 const master={id:"master",name:"Pocket",kind:"rectangle",points:[{x:15,y:20},{x:115,y:60}],radius:0,rotation:0};
 const receiver={id:"receiver",name:"Backing",kind:"rectangle",points:[{x:145,y:20},{x:255,y:60}],radius:0,rotation:0};
 const group={id:"run",shapeId:"master",edges:["rectangle:2:edge:1"],side:1,closed:false,settings:{style:"round",roundDiameter:.8,spacing:3.38,inset:3,alignment:"start",startClearance:0,endClearance:0,holeCount:2}};
-async function open(page: Page) {
+async function open(page: Page, multipleSources=false) {
  await page.goto("/"); await expect(page.getByRole("button",{name:"Open",exact:true})).toBeEnabled();
  await page.evaluate(()=>{delete (window as any).showOpenFilePicker;delete (window as any).showSaveFilePicker;});
  const chooser=page.waitForEvent("filechooser"); await page.getByRole("button",{name:"Open",exact:true}).click();
- await (await chooser).setFiles({name:"layers.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify({version:20,shapes:[master,receiver],stitchGroups:[group]}))});
- await expect(page.locator(".objects .object-select")).toHaveCount(2);
+ await (await chooser).setFiles({name:"layers.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify({version:20,shapes:multipleSources ? [master,{...master,id:"second",name:"Second source",points:[{x:15,y:80},{x:115,y:120}]},{...receiver,points:[{x:145,y:-40},{x:255,y:160}]}] : [master,receiver],stitchGroups:multipleSources ? [group,{...group,id:"second-run",shapeId:"second"}] : [group]}))});
+ await expect(page.locator(".objects .object-select")).toHaveCount(multipleSources ? 3 : 2);
  await page.getByRole("button",{name:"Stitch line",exact:true}).click();
  await expect(page.getByLabel("Stitch line settings")).toBeVisible();
  await page.getByLabel("Pattern drawing canvas").click({position:{x:140,y:169}});
@@ -109,4 +109,22 @@ test("wheel counts clamp to the available stitch length and minimum", async ({ p
   })));
   await expect(count).toHaveValue("1");
   await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+});
+
+test("multiple source pieces transfer together without collapsing their spacing",{tag:"@manual"},async({page})=>{
+ await open(page,true);
+ const canvas=page.getByLabel("Pattern drawing canvas");
+ await canvas.click({position:{x:140,y:349},modifiers:["Alt","Shift"]});
+ await page.getByRole("button",{name:"Transfer stitching",exact:true}).click();
+ const box=(await canvas.boundingBox())!;await page.mouse.move(box.x+680,box.y+220);
+ await expect(page.getByText("Place transferred stitching",{exact:true})).toBeVisible();
+ await manualScreenshot(page,"stitch-transfer-multiple.png");
+ await canvas.click({position:{x:680,y:220}});
+ await page.getByRole("button",{name:"Apply",exact:true}).click();
+ const doc=await saved(page);
+ expect(doc.stitchTransfers).toHaveLength(2);
+ expect(new Set(doc.stitchTransfers.map((t:any)=>t.masterId)).size).toBe(2);
+ expect(new Set(doc.stitchTransfers.map((t:any)=>t.placementId)).size).toBe(1);
+ const offsets=doc.stitchTransfers.map((t:any)=>t.pose.offset);
+ expect(Math.hypot(offsets[1].x-offsets[0].x,offsets[1].y-offsets[0].y)).toBeCloseTo(60,5);
 });

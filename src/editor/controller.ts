@@ -651,6 +651,7 @@ export class Controller {
           await this.core.request(operation, this.revision, document),
         );
         if (operation === "load") {
+          this.clipboardOrigin=crypto.randomUUID();
           this.projectEpoch++;
           this.printLayoutActive = false;
         }
@@ -3686,7 +3687,6 @@ export class Controller {
     if (this.fileBusy) return;
     if (!this.confirmReplace()) return;
     this.cancel();
-    this.clipboardOrigin=crypto.randomUUID();
     await this.transact("load", emptyDocument());
     this.files.handle = null;
     this.collapsedGroups.clear(); this.selectedGroups = []; this.panelRevision++;
@@ -3703,8 +3703,7 @@ export class Controller {
       const file = await this.files.open();
       if (!file) return;
       this.cancel();
-      this.clipboardOrigin=crypto.randomUUID();
-    await this.transact("load", file.document);
+      await this.transact("load", file.document);
       this.collapsedGroups = new Set(file.collapsedGroupIds ?? []);
       this.selectedGroups = []; this.panelRevision++;
       this.name = file.name;
@@ -3762,7 +3761,6 @@ export class Controller {
     const value = this.restore;
     this.restore = undefined;
     this.cancel();
-    this.clipboardOrigin=crypto.randomUUID();
     await this.transact("load", parseProject(JSON.stringify(value.document)));
     this.collapsedGroups = new Set(value.collapsedGroupIds ?? []);
     this.selectedGroups = []; this.panelRevision++;
