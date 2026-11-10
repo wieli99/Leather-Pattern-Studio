@@ -3403,8 +3403,13 @@ export class Controller {
           "preview",
           revision,
           reconcileStitches(next, this.document),
-        );
+        ).catch((error) => {
+          // A committed or superseded field can invalidate an in-flight preview.
+          if (this.propertySession !== session || token !== this.previewId || this.revision !== revision) return null;
+          throw error;
+        });
         if (
+          result &&
           this.propertySession === session &&
           token === this.previewId &&
           this.revision === revision

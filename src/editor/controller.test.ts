@@ -2468,3 +2468,24 @@ test("focus loss preserves stitching sessions and their draft", () => {
   expect(e.stitchOriginal).toBe(original);
   expect(e.stitchDraft).toBe(draft);
 });
+
+test("a rejected property preview cannot overwrite the status after its field commits", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [shape] });
+  let rejectPreview!: (error: Error) => void;
+  const request = e.core.request.bind(e.core);
+  vi.spyOn(e.core, "request").mockImplementation((op, revision, next) =>
+    op === "preview"
+      ? new Promise((_, reject) => { rejectPreview = reject; })
+      : request(op, revision, next),
+  );
+  e.beginProperty();
+  const preview = e.edit("a", { rotation: 20 });
+  await e.finishProperty();
+  const message = e.message;
+  rejectPreview(Error("Stale document revision"));
+  await preview;
+  expect(e.message).toBe(message);
+  expect(e.document.shapes[0].rotation).toBe(20);
+  expect(e.preview).toBeNull();
+});

@@ -91,6 +91,7 @@ test("whole label formatting survives inline editing and undo @manual", async ({
   const spacing = page.getByLabel("Line spacing", { exact: true });
   await spacing.fill("1.8");
   await spacing.press("Enter");
+  await expect(page.getByRole("status").first()).toHaveText("Ready");
   await manualScreenshot(page, "text-formatting.png");
   await canvas.dblclick({ position: { x: 245, y: 245 } });
   await expect(input).toHaveCSS("font-family", "PatternSerif");
