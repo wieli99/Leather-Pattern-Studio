@@ -9,6 +9,7 @@
     "desktop": "tauri dev",
     "wasm": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --dev",
     "wasm:release": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --release",
+    "check:fast": "vue-tsc --noEmit && vitest run",
     "test": "vitest run",
     "test:e2e": "playwright test && playwright test --config playwright.dev.config.ts",
     "test:rust": "cargo test --manifest-path crates/document/Cargo.toml",
