@@ -2961,7 +2961,7 @@ export class Controller {
     }
     if (
       this.drawingDown?.initial &&
-      (pointCount(this.mode) === 2 || this.mode === "polyline") &&
+      (pointCount(this.mode) === 2 || this.mode === "polyline" || this.mode === "measurement") &&
       distance(pixel, this.drawingDown.pixel) >= 4
     ) {
       this.pending = [this.drawingDown.point];
@@ -3222,7 +3222,7 @@ export class Controller {
     }
     if (this.drawingDown) {
       const d = this.drawingDown;
-      if (d.initial && pixel && distance(pixel,d.pixel) >= 4 && ["arrow","arrow-head","crosshair","size-ruler"].includes(this.mode)) this.pending=[d.point];
+      if (d.initial && pixel && distance(pixel,d.pixel) >= 4 && ["arrow","arrow-head","crosshair","size-ruler","measurement"].includes(this.mode)) this.pending=[d.point];
       this.drawingDown = null;
       const p = pixel
         ? this.drawingPoint(this.world(pixel), alt, shift)

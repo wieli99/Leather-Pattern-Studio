@@ -147,6 +147,7 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     add("snap", "Alt", "Bypass snapping");
     if (s.mode !== "size-square") add("angle", "Shift", "Constrain to 45°");
   } else if (s.mode === "measurement") {
+    if (!n) add("draw-drag", "Drag", "Set measurement endpoints");
     if (n === 1) add("angle", "Shift", "Constrain to 45°");
     action = n === 0 ? "Click point A." : n === 1 ? "Click point B."
       : "Click to place the dimension line; Tab edits its offset.";
