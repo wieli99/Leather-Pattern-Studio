@@ -387,8 +387,6 @@ function vertex(i: number, axis: "x" | "y", v: string) {
           @commit="fill({ fillOpacity: +$event / 100 })" />
       </div>
     </template>
-    <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-      @click="edit({ fillColor: undefined, fillOpacity: undefined, fillMode: undefined, strokeColor: undefined, strokeOpacity: undefined, strokeWidth: undefined })">Reset styling</button>
     </PanelSection>
     <fieldset :disabled="editor.isLocked(s.id)" class="vertex-properties">
     <details
@@ -439,10 +437,6 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       }}
     </p>
   </template>
-  <div v-if="selected.length" class="actions">
-    <button :disabled="!e.ready" @click="editor.duplicate()">Duplicate</button>
-    <button :disabled="!e.ready || editor.selectionLocked" @click="editor.delete()">Delete</button>
-  </div>
 </template>
 
 <style scoped>

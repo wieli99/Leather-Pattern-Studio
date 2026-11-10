@@ -412,10 +412,10 @@ test("object context menu duplicates, renames and captures styling", { tag: "@ma
   await expect(rows).toHaveCount(2);
   await page.getByLabel("Fill mode", { exact: true }).selectOption("cutout");
   await page.getByLabel("Outline color", { exact: true }).fill("#123456");
-  await page.getByRole("button", { name: "Reset styling", exact: true }).click();
-  await expect(page.getByLabel("Fill mode", { exact: true })).toHaveValue("solid");
-  await expect(page.getByLabel("Outline color", { exact: true })).not.toHaveValue("#123456");
-  await expect(color).not.toHaveValue("#ff0000");
+  await color.fill("#00ff00");
+  await color.dispatchEvent("input");
+  await color.blur();
+  await expect(page.getByRole("button", { name: "Reset styling", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Rectangle 1 copy", exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Paste Styling", exact: true }).click();
   await expect(color).toHaveValue("#ff0000");

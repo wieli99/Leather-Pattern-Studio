@@ -3609,21 +3609,6 @@ defineExpose({
   width: min(480px, 94vw);
   box-shadow: 0 12px 50px #0008;
 }
-.print-dialog button {
-  color: var(--text);
-  background: var(--button);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-.print-dialog button:hover {
-  border-color: var(--accent);
-}
-.print-dialog button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 .print-dialog form {
   display: grid;
   gap: 12px;
