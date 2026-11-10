@@ -1,5 +1,5 @@
 import { test, expect, vi, afterEach } from "vitest";
-import { emptyDocument, parseProject, type Doc } from "../model/project";
+import { DOCUMENT_VERSION, emptyDocument, parseProject, type Doc } from "../model/project";
 vi.mock("./core", () => ({
   Core: class {
     document = emptyDocument();
@@ -1826,17 +1826,40 @@ test("clipboard preserves cursor offsets across viewports and snapshots copied g
   await target.transact("undo");
   expect(target.document.shapes).toHaveLength(1);
 });
-test("clipboard ignores unrelated text and requires an idle canvas pointer", async () => {
+test("clipboard ignores unrelated text and requires an idle editor with a canvas position", async () => {
   const e = editor();
   expect(e.copyObjects()).toBeNull();
   e.pointerMove({ x: 100, y: 100 }, false);
   await e.pasteObjects("ordinary text");
   expect(e.document.shapes).toHaveLength(0);
   e.leavePointer();
-  expect(e.canUseClipboard).toBe(false);
+  expect(e.canUseClipboard).toBe(true);
   e.pointerMove({ x: 100, y: 100 }, false);
   e.busy = true;
   expect(e.canUseClipboard).toBe(false);
+});
+
+test("Select tool clipboard keeps the last canvas position after the pointer leaves", async () => {
+  const e = editor();
+  await e.commit({ version: DOCUMENT_VERSION, shapes: [{
+    id: "source", name: "Original", kind: "rectangle",
+    points: [{ x: 10, y: 20 }, { x: 30, y: 40 }], radius: 0, rotation: 0,
+  }] });
+  e.setTool("select");
+  const pixel = e.screen({ x: 20, y: 20 });
+  e.pointerDown(pixel, 0, false, false);
+  e.pointerUp(pixel);
+  expect(e.selected).toEqual(["source"]);
+  e.leavePointer();
+  const text = e.copyObjects();
+  expect(text).not.toBeNull();
+  e.pointerMove(e.screen({ x: 60, y: 70 }), false);
+  e.leavePointer();
+  await e.pasteObjects(text!);
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.document.shapes[1].points).toEqual([{ x: 50, y: 70 }, { x: 70, y: 90 }]);
+  await e.transact("undo");
+  expect(e.document.shapes).toHaveLength(1);
 });
 
 test("group tree moves reject stale revisions and grouping preserves effective locks", async () => {

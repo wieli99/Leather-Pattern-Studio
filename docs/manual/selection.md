@@ -16,7 +16,7 @@ Selected rectangles expose four corner anchors. Dragging one freely converts the
 
 ## Duplicate, copy and paste
 
-Ctrl/⌘+D duplicates the selection. Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. Keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste works across tabs and sessions and creates one undo step. Finish active edits before copying or pasting.
+Ctrl/⌘+D duplicates the selection. Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. In Model, both commands also work after the pointer leaves the canvas, using its last canvas position. Move the pointer over the desired canvas position before pasting to place the copies there. In print tabs, keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste works across tabs and sessions and creates one undo step. Finish active edits before copying or pasting. While typing in a field, copy and paste edit its text.
 
 ## Copy appearance
 
