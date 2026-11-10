@@ -1494,9 +1494,10 @@ test("delayed recovery excludes pending stitching and inspector edits cannot cha
   expect(e.document.shapes[0].name).toBe("Safe");
   await vi.advanceTimersByTimeAsync(301);
   const { recovery } = await import("./persistence");
-  expect(
-    vi.mocked(recovery).mock.calls.at(-1)?.[0]?.document.stitchGroups,
-  ).toEqual([]);
+  // Startup also reads recovery asynchronously; inspect the latest write.
+  const writes = vi.mocked(recovery).mock.calls.filter(([value]) => value !== undefined);
+  expect(writes.length).toBeGreaterThan(0);
+  expect(writes.at(-1)![0]!.document.stitchGroups).toEqual([]);
   e.cancel();
 });
 
@@ -2488,4 +2489,44 @@ test("a rejected property preview cannot overwrite the status after its field co
   expect(e.message).toBe(message);
   expect(e.document.shapes[0].rotation).toBe(20);
   expect(e.preview).toBeNull();
+});
+
+
+test("measurement drag sets endpoints without committing, including release without movement events", async () => {
+  for (const move of [false, true]) {
+    const e = editor();
+    e.setMode("measurement");
+    const a = {x:100,y:100}, b = {x:200,y:100};
+    e.pointerDown(a,0,false,false);
+    if (move) {
+      e.pointerMove(b,false);
+      expect(e.pending).toHaveLength(1);
+      expect(e.constructionPreview).not.toBeNull();
+    }
+    e.pointerUp(b);
+    expect(e.pending).toHaveLength(2);
+    expect(e.measurementFields).toEqual(["Offset"]);
+    expect(e.document.shapes).toHaveLength(0);
+    e.measurementLocks.Offset = 12;
+    e.confirmMeasurement();
+    await vi.waitFor(() => expect(e.document.shapes).toHaveLength(1));
+    expect(e.document.shapes[0].measurementOffset).toBe(12);
+    await e.transact("undo");
+    expect(e.document.shapes).toHaveLength(0);
+  }
+});
+
+test("measurement short clicks and cancelled drags leave no committed shapes", () => {
+  const e = editor();
+  e.setMode("measurement");
+  e.pointerDown({x:100,y:100},0,false,false);
+  e.pointerUp({x:101,y:100});
+  expect(e.pending).toHaveLength(1);
+  e.cancel();
+  e.pointerDown({x:100,y:100},0,false,false);
+  e.pointerMove({x:200,y:150},false);
+  e.cancel();
+  e.pointerUp({x:200,y:150});
+  expect(e.pending).toHaveLength(0);
+  expect(e.document.shapes).toHaveLength(0);
 });

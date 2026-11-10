@@ -46,7 +46,7 @@ Guideline increments update when modifiers change without moving the pointer, in
 
 ## Persistent measurements
 
-Choose **Measurement** (the ruler icon) below Text in the toolbar, or press **D** with the canvas focused. Click point A, click point B, then move the pointer perpendicular to A–B and click a third time to place the indicator. The preview shows the direct A–B distance in the selected units, with closed arrowheads and extension lines reaching the measurement points. Place the indicator on either side of the endpoints. Short dimensions put arrowheads outside the endpoints and the label above the line to keep them readable.
+Choose **Measurement** (the ruler icon) below Text in the toolbar, or press **D** with the canvas focused. Click point A and click point B, or drag from A to B and release. Then move the pointer perpendicular to A–B and click a third time to place the indicator. The preview shows the direct A–B distance in the selected units, with closed arrowheads and extension lines reaching the measurement points. Place the indicator on either side of the endpoints. Short dimensions put arrowheads outside the endpoints and the label above the line to keep them readable.
 
 After choosing B, press Tab to enter a signed **Offset** in the selected units. A positive value places the indicator to the left of the A-to-B direction; a negative value places it on the other side. Enter confirms placement, or click the canvas to place it with the entered offset. Clearing the field restores pointer control. Esc or changing tools cancels an unfinished measurement. The tool stays active after placement for another measurement.
 

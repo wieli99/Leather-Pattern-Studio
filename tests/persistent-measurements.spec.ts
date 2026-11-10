@@ -105,3 +105,24 @@ test('short measurement labels remain selectable above outside arrowheads', asyn
   await expect(page.getByLabel('Distance (mm)',{exact:true})).toHaveText('5.00');
   await page.screenshot({path:info.outputPath('short-measurement-arrowheads.png')});
 });
+
+
+test('measurement drag releases into offset placement', async ({page}) => {
+  await page.goto('/');
+  await page.getByRole('button',{name:'Measurement (D)',exact:true}).click();
+  const canvas = page.getByLabel('Pattern drawing canvas');
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x+220,box.y+220);
+  await page.mouse.down();
+  await page.mouse.move(box.x+520,box.y+220,{steps:8});
+  await page.mouse.up();
+  await expect(page.locator('.objects .object-select')).toHaveCount(0);
+  await canvas.press('Tab');
+  const offset = page.getByRole('spinbutton',{name:'Offset',exact:true});
+  await expect(offset).toBeFocused();
+  await offset.fill('12');
+  await offset.press('Enter');
+  await expect(page.locator('.objects .object-select')).toHaveCount(1);
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect(page.locator('.objects .object-select')).toHaveCount(0);
+});

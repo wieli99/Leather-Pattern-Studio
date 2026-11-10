@@ -1680,7 +1680,13 @@ test(
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(project)),
     });
+    // The old A4 tab remains clickable until Open finishes loading the project.
+    // Wait for the load and its workspace reset before selecting the new tab.
+    await expect(page.getByRole("textbox", { name: "Project filename" })).toHaveValue("assembly.json");
+    await expect(page.getByRole("tab", { name: "Model", exact: true })).toHaveAttribute("aria-selected", "true");
     await page.getByRole("tab", { name: "A4", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "A4", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("Print layout canvas", { exact: true })).toBeVisible();
     await expect
       .poll(async () => (await save(page)).printLayouts[0].pages.length)
       .toBe(4);
