@@ -3535,7 +3535,7 @@ export class Controller {
   }
   get canUseClipboard() {
     if (this.printLayoutActive) return false;
-    return this.ready && !this.busy && this.pointerInside && !!this.clipboardPixel &&
+    return this.ready && !this.busy && !!this.clipboardPixel &&
       !this.gesture && !this.pending.length && !this.transformTool &&
       !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }

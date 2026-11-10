@@ -11,7 +11,7 @@ Click the canvas before using single-letter shortcuts. While typing in a field, 
 | Ctrl+Y | Additional redo binding |
 | Ctrl/⌘+A | Select all available objects |
 | Ctrl/⌘+D | Duplicate selection |
-| Ctrl/⌘+C / Ctrl/⌘+V | Copy / paste objects at pointer; keep pointer over canvas |
+| Ctrl/⌘+C / Ctrl/⌘+V | Copy / paste objects at pointer (last canvas position in Model); keep pointer over canvas in print tabs |
 | Delete / Backspace | Delete selected unlocked objects |
 | F2 on an object row | Rename |
 | Ctrl/⌘+G | Group selection |

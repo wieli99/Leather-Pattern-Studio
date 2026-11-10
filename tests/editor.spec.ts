@@ -58,6 +58,26 @@ test("precise rectangle, rounded corners, undo, redo and download", async ({
   await page.getByRole("button", { name: "Save", exact: true }).click();
   expect((await download).suggestedFilename()).toContain(".json");
 });
+test("Select tool copies and pastes with the pointer outside the canvas", async ({ page }) => {
+  await ready(page);
+  await rect(page);
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  // Clear the drawing's automatic selection, then select its edge with Select.
+  await canvas.click({ position: { x: 550, y: 450 } });
+  await canvas.click({ position: { x: 300, y: 180 } });
+  const objects = page.locator(".objects .object-select");
+  await expect(page.getByLabel("Width", { exact: true })).toBeVisible();
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.mouse.move(5, 5);
+  await page.keyboard.press(`${modifier}+c`);
+  await canvas.hover({ position: { x: 500, y: 430 } });
+  await page.mouse.move(5, 5);
+  await page.keyboard.press(`${modifier}+v`);
+  await expect(objects).toHaveCount(2);
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(objects).toHaveCount(1);
+});
+
 test("draw every primitive, multi-select and delete", async ({ page }) => {
   await ready(page);
   const canvas = page.getByLabel("Pattern drawing canvas");
