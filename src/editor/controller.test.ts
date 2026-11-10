@@ -2227,7 +2227,7 @@ test("a failed Apply retains the staged stitching session for correction",async(
  expect(e.stitchError).toContain("Worker refused");
 });
 
-test("Alt replaces, Alt+Shift adds object stitching, and transfer rejects multiple source pieces",async()=>{
+test("Alt replaces, Alt+Shift adds object stitching, and transfer accepts multiple source pieces",async()=>{
  const e=editor(),{shape,group}=runFixture();
  const other={...shape,id:"other",points:[{x:0,y:25},{x:100,y:25}]};
  const second={...group,id:"other-line",shapeId:other.id};
@@ -2237,7 +2237,8 @@ test("Alt replaces, Alt+Shift adds object stitching, and transfer rejects multip
  expect(e.stitchSelected).toEqual([group.id]);
  e.stitchClick({x:50,y:25},true,true);
  expect(e.stitchSelected).toEqual([group.id,second.id]);
- expect(e.transferStitchReason).toContain("one source piece");
+ expect(e.transferStitchReason).toBe("");
+ e.beginStitchTransfer();expect(e.stitchTransferGhosts).toHaveLength(2);
 });
 
 test("transfer preview rotates with shared modifiers and places all eligible pieces in one transaction",async()=>{
@@ -2529,4 +2530,73 @@ test("measurement short clicks and cancelled drags leave no committed shapes", (
   e.pointerUp({x:200,y:150});
   expect(e.pending).toHaveLength(0);
   expect(e.document.shapes).toHaveLength(0);
+});
+
+test.each([.5,8])("Shift-add bridges a rounded corner of radius %s in either direction",async radius=>{
+ const e=editor();
+ const {stitchEdges,insideStitchSide}=await import("../model/stitchGeometry");
+ const {defaultStitchSettings}=await import("../model/stitch");
+ const shape={id:"rounded",name:"Rounded",kind:"rectangle" as const,points:[{x:0,y:0},{x:40,y:30}],radius,rotation:0};
+ const keys=stitchEdges(shape).map(e=>e.key);
+ const base={shapeId:shape.id,side:insideStitchSide(shape),settings:{...defaultStitchSettings,inset:.2},closed:false};
+ for(const [from,to] of [[0,2],[2,0],[6,0]]) {
+   await e.commit({...emptyDocument(),shapes:[shape],stitchGroups:[{...base,id:"first",edges:[keys[from]]}]});
+   const target={...base,id:"preview",edges:[keys[to]]};
+   const joined=e.stitchPlacement(target,true);
+   expect(joined.next.edges).toHaveLength(3);
+   expect(joined.next.edges).toContain(keys[from]);expect(joined.next.edges).toContain(keys[to]);
+   expect(joined.absorbed).toEqual(["first"]);
+   expect(e.stitchPlacement(target,false).next.edges).toEqual([keys[to]]);
+ }
+});
+
+test("receiver clipboard keeps same-editor live sources and falls back in another editor",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selected=[receiver.id];e.pointerMove(e.screen({x:200,y:0}),false);
+ const text=e.copyObjects()!;
+ await e.pasteObjects(text);
+ expect(e.document.stitchTransfers).toHaveLength(2);
+ expect(e.document.stitchTransfers![1].masterId).toBe(group.id);
+ expect(e.document.shapes).toHaveLength(3);
+ const other=editor();other.pointerMove(other.screen({x:0,y:0}),false);
+ await other.pasteObjects(text);
+ expect(other.document.stitchTransfers ?? []).toHaveLength(0);
+ expect(other.stitchGroups.length).toBeGreaterThan(0);
+ expect(other.document.shapes.some(s=>s.stitchParentId)).toBe(true);
+});
+
+test("multi-source transfers preserve hole distances under shared rotation and undo",async()=>{
+ const {receivingStitches}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const other={...shape,id:"other",rotation:30,points:[{x:0,y:35},{x:100,y:35}]};
+ const second={...group,id:"second",shapeId:other.id};
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:150,y:-100},{x:450,y:200}],radius:0,rotation:0};
+ await e.commit({...emptyDocument(),shapes:[shape,other,receiver],stitchGroups:[group,second]});
+ const before=[e.stitchGeometry(shape,group).holes[0].point,e.stitchGeometry(other,second).holes[0].point];
+ e.activateStitch();e.stitchSelected=[group.id,second.id];e.beginStitchTransfer();
+ e.stitchTransferPlacement!.angle=47;e.updateStitchTransfer({x:300,y:50},true);
+ const transfers=e.stitchTransferPreview.transfers;
+ expect(transfers).toHaveLength(2);
+ const after=transfers.map(t=>receivingStitches(e.document,t).geometry.holes[0].point);
+ expect(Math.hypot(after[1].x-after[0].x,after[1].y-after[0].y)).toBeCloseTo(Math.hypot(before[1].x-before[0].x,before[1].y-before[0].y),6);
+ e.cancelStitchOperation();expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+});
+
+test("duplicate receiver preserves external source and duplicates internal count links",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const second={...group,id:"second",settings:{...group.settings,startClearance:20}};
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group,second],stitchLinks:[{id:1,members:[group.id,second.id]}]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selected=[receiver.id];await e.duplicate();
+ expect(e.document.stitchTransfers).toHaveLength(2);
+ expect(e.document.stitchTransfers![1].masterId).toBe(group.id);
+ e.selected=[shape.id];await e.duplicate();
+ expect(e.document.stitchLinks).toHaveLength(2);
+ expect(e.document.stitchLinks![1].members.every(id=>id!==group.id && id!==second.id)).toBe(true);
 });

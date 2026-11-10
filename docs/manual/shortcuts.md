@@ -130,3 +130,5 @@ In the attached stitching Presets panel, Escape cancels an open naming or import
 Hover over an editable numeric field and use **Alt+wheel** to increase (up) or decrease (down) its value by 1. Add **Shift** for steps of 5 or **Ctrl** for steps of 10 (Ctrl takes precedence). Length fields use the displayed unit, including inches. The field receives focus and respects its limits. Empty, mixed, invalid, disabled and read-only fields are skipped. Existing Apply, Cancel and property-edit undo behavior still applies.
 
 Wheel adjustments stop at minimum and maximum values even when a larger step overshoots. Stitch hole counts stop at the count that fits the current path, spacing and clearances.
+
+Shift-add the next side of a rounded outline to include the intervening unstitched corner. Transfer accepts lines from multiple objects and keeps their current spacing and relative angles under a shared move and rotation.

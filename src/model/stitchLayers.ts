@@ -196,7 +196,7 @@ export function resolvedStitchGroups(doc: Doc): StitchGroup[] {
 }
 
 /** Copying a receiving piece alone creates independent editable stitching paths. */
-export function copyStitchData(doc: Doc, shapeIds: Set<string>) {
+export function copyStitchData(doc: Doc, shapeIds: Set<string>, preserveExternal=false) {
   const ids=new Set([...shapeIds,...doc.shapes.filter(s=>s.stitchParentId && shapeIds.has(s.stitchParentId)).map(s=>s.id)]);
   const groups = (doc.stitchGroups ?? []).filter(g => ids.has(g.shapeId));
   const groupIds = new Set(groups.map(g => g.id));
@@ -206,7 +206,7 @@ export function copyStitchData(doc: Doc, shapeIds: Set<string>) {
   const shapes:Shape[]=[];
   for (const t of doc.stitchTransfers ?? []) {
     if (!shapeIds.has(t.targetId)) continue;
-    if (groupIds.has(t.masterId)) transfers.push(t);
+    if (groupIds.has(t.masterId) || preserveExternal) transfers.push(t);
     else {
       try {if(!receivingStitches(doc,t).included)continue;const data=detachTransfer(doc,t);shapes.push(...data.shapes);independent.push(...data.groups);}catch{/* A receiver-only copy preserves visible geometry, not broken source dependencies. */}
     }
