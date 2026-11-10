@@ -8,9 +8,37 @@ test("import an image and edit opacity and dimensions", { tag: "@manual" }, asyn
   await button.click();
   await (await chooser).setFiles({name:"Reference.png",mimeType:"image/png",buffer:Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVR4nGP4z8DwnwGM/zMwAAAf7gP9NRsAMwAAAABJRU5ErkJggg==","base64")});
   await expect(page.locator(".object-select")).toHaveCount(1);
-  await expect(page.getByText("Lock aspect ratio", {exact:true})).toBeVisible();
+  const aspectLock = page.getByRole("button", { name: "Lock aspect ratio", exact: true });
+  await expect(aspectLock).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Image opacity (%)", {exact:true})).toBeVisible();
   await manualScreenshot(page, "image-import.png");
+  const width = page.getByRole("spinbutton", { name: "Width", exact: true });
+  const height = page.getByRole("spinbutton", { name: "Height", exact: true });
+  await width.fill("120");
+  await width.press("Enter");
+  await expect(height).toHaveValue("120");
+  await height.fill("100");
+  await height.press("Enter");
+  await expect(width).toHaveValue("100");
+  await aspectLock.click();
+  await expect(aspectLock).toHaveAttribute("aria-pressed", "false");
+  const originalHeight = await height.inputValue();
+  await width.fill("120");
+  await width.press("Enter");
+  await expect(width).toHaveValue("120");
+  await expect(height).toHaveValue(originalHeight);
+  await height.fill("80");
+  await height.press("Enter");
+  await expect(height).toHaveValue("80");
+  await expect(width).toHaveValue("120");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(height).toHaveValue(originalHeight);
+  await expect(width).toHaveValue("120");
+  await aspectLock.click();
+  await expect(aspectLock).toHaveAttribute("aria-pressed", "true");
+  await width.fill("60");
+  await width.press("Enter");
+  await expect(height).toHaveValue("50");
 });
 
 for (const mimeType of ["image/svg+xml", ""]) {
