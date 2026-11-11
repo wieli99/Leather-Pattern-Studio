@@ -50,6 +50,6 @@ The desktop editor uses the same controls as the website. New projects use `.lea
 
 The desktop application checks GitHub automatically once each time it starts. A newer compatible release produces a notification; offline or failed background checks do not interrupt editing. Open **Settings → Check for updates** to check again manually. When an update is available, **Open GitHub release** opens your browser. Save your project, close the application and install the package for your system and CPU. Linux Flatpak bundles must be installed again to update; they do not provide an automatic update repository. Browser recovery and desktop recovery are separate.
 
-Closing the desktop editor with unsaved changes asks whether to discard them. **OK** discards the changes and closes the editor; **Cancel** keeps the editor open. Save first to keep your changes. Closing is blocked while a file operation is running.
+Closing the desktop editor or choosing the operating system’s Quit action (including ⌘+Q on macOS) with unsaved changes asks whether to discard them. **OK** discards the changes and closes the editor; **Cancel** keeps the editor open. Save first to keep your changes. Closing is blocked while a file operation is running.
 
 ![Desktop update controls in Settings, shown with the High Contrast theme](/manual/images/desktop-updates.png)

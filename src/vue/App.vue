@@ -16,7 +16,7 @@ import { editorHint } from "../editor/hint";
 import { stitchLineIcon } from "../editor/stitchTools";
 import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import TransformToolbox from "./TransformToolbox.vue";
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import Viewport from "./Viewport.vue";
@@ -50,6 +50,7 @@ async function importImage(event: Event) {
   } catch (error) { editor.message = String(error); editor.notify(); }
 }
 let allowDesktopClose = false;
+const desktopBridgeReady = ref(!isTauri());
 const nativeSaving = isTauri() || "showSaveFilePicker" in window;
 const renaming = ref(false);
 const draftName = ref("");
@@ -132,7 +133,7 @@ onMounted(async () => {
   startDesktopUpdates();
   let opening = false;
   const openPending = async () => {
-    if (opening || !editor.ready || editor.fileBusy) return;
+    if (opening || !desktopBridgeReady.value || !editor.ready || editor.fileBusy) return;
     opening = true;
     try {
       const requestId = await invoke<number | null>("pending_files");
@@ -149,16 +150,20 @@ onMounted(async () => {
   const unerror = await listen<string>("desktop-error", event => { editor.message = event.payload; editor.notify(); });
   const unlisten = await listen("project-open", () => void openPending());
   const desktopWindow = getCurrentWindow();
-  const unclose = await desktopWindow.onCloseRequested(desktopCloseHandler({
+  const requestClose = desktopCloseHandler({
     busy: () => editor.fileBusy,
     confirm: () => editor.confirmReplacement(),
-    destroy: async () => {
+    destroy: async quit => {
       allowDesktopClose = true;
-      try { await desktopWindow.destroy(); }
+      try { await invoke("close_editor", { quit }); }
       catch (error) { allowDesktopClose = false; throw error; }
     },
     fail: error => editor.fail(error),
-  }));
+  });
+  const unclose = await desktopWindow.onCloseRequested(requestClose);
+  const unquit = await listen("app-quit-requested", () => {
+    void requestClose({ preventDefault() {}, quit: true });
+  });
   const links = (event: MouseEvent) => {
     const anchor = (event.target as Element)?.closest?.("a");
     if (!anchor) return;
@@ -166,7 +171,11 @@ onMounted(async () => {
     else if (/^https?:/.test(anchor.href)) { event.preventDefault(); void openExternal(anchor.href); }
   };
   document.addEventListener("click", links);
-  cleanupDesktop = () => { unerror(); unlisten(); unclose(); document.removeEventListener("click", links); };
+  cleanupDesktop = () => { unerror(); unlisten(); unclose(); unquit(); document.removeEventListener("click", links); };
+  await invoke("desktop_ready");
+  desktopBridgeReady.value = true;
+  await nextTick();
+  document.querySelector<HTMLCanvasElement>('[aria-label="Pattern drawing canvas"]')?.focus();
 });
 onMounted(() => {
   const key = (event: KeyboardEvent) =>
@@ -230,7 +239,7 @@ onMounted(() => {
 });
 </script>
 <template>
-  <main @focusin="hintFocus" @focusout="editing = ''">
+  <main :inert="!desktopBridgeReady" @focusin="hintFocus" @focusout="editing = ''">
     <header>
       <div class="brand">
         <img class="brand-icon" :src="brandIcon" alt="" width="32" height="32" />

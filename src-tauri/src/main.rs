@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod open_requests;
+mod quit_state;
 use open_requests::OpenRequests;
+use quit_state::QuitState;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, State};
 #[derive(Default)]
@@ -157,7 +159,7 @@ async fn release_list() -> Result<serde_json::Value, String> {
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn open_help(app: tauri::AppHandle) -> Result<(), String> {
+async fn open_help(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("manual") {
         window.set_focus().map_err(|e| e.to_string())?;
     } else {
@@ -183,7 +185,7 @@ fn pending_files(app: tauri::AppHandle) -> Option<u32> {
     requests.first()
 }
 #[tauri::command]
-fn focus_editor(app: tauri::AppHandle) -> Result<(), String> {
+async fn focus_editor(app: tauri::AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window("main") {
         Some(window) => window,
         None => {
@@ -203,6 +205,23 @@ fn focus_editor(app: tauri::AppHandle) -> Result<(), String> {
     window.show().map_err(|e| e.to_string())?;
     window.unminimize().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn desktop_ready(app: tauri::AppHandle) {
+    app.state::<QuitState>().arm();
+}
+#[tauri::command]
+async fn close_editor(app: tauri::AppHandle, quit: bool) -> Result<(), String> {
+    app.state::<QuitState>().approve();
+    if quit {
+        app.exit(0);
+    } else if let Some(window) = app.get_webview_window("main") {
+        if let Err(error) = window.destroy() {
+            app.state::<QuitState>().arm();
+            return Err(error.to_string());
+        }
+    }
+    Ok(())
 }
 #[tauri::command]
 async fn confirm_replace(app: tauri::AppHandle) -> bool {
@@ -225,6 +244,14 @@ fn clear_pending(app: tauri::AppHandle, request_id: u32) {
 fn desktop_target() -> String {
     format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
 }
+// Window construction must not block a native event handler on Windows.
+fn focus_editor_in_background(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = focus_editor(app.clone()).await {
+            let _ = app.emit("desktop-error", error);
+        }
+    });
+}
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
@@ -245,7 +272,7 @@ fn main() {
                 app.state::<PendingFiles>().0.lock().unwrap().enqueue(paths);
                 let _ = app.emit("project-open", ());
             }
-            let _ = focus_editor(app.clone());
+            focus_editor_in_background(app.clone());
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -261,6 +288,7 @@ fn main() {
             requests
         })))
         .manage(SelectedFile::default())
+        .manage(QuitState::default())
         .invoke_handler(tauri::generate_handler![
             open_project,
             save_project,
@@ -268,6 +296,8 @@ fn main() {
             release_list,
             open_help,
             focus_editor,
+            desktop_ready,
+            close_editor,
             pending_files,
             confirm_replace,
             clear_pending,
@@ -276,13 +306,37 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("failed to build desktop application")
         .run(|app, _event| {
+            if let tauri::RunEvent::WindowEvent {
+                ref label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } = _event
+            {
+                if label == "main" {
+                    app.state::<QuitState>().reset();
+                }
+            }
+            if let tauri::RunEvent::ExitRequested { ref api, .. } = _event {
+                if app
+                    .state::<QuitState>()
+                    .should_confirm(app.get_webview_window("main").is_some())
+                {
+                    api.prevent_exit();
+                    let _ = app.emit("app-quit-requested", ());
+                }
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { ref urls } = _event {
                 let paths: Vec<_> = urls.iter().filter_map(|u| u.to_file_path().ok()).collect();
                 if !paths.is_empty() {
                     app.state::<PendingFiles>().0.lock().unwrap().enqueue(paths);
                     let _ = app.emit("project-open", ());
+                    focus_editor_in_background(app.clone());
                 }
+            }
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                focus_editor_in_background(app.clone());
             }
             let _ = app;
         });

@@ -36,8 +36,8 @@ jobs:
         include:
           - { os: windows-2025, target: x86_64-pc-windows-msvc, arch: x86_64, bundle: nsis }
           - { os: windows-11-arm, target: aarch64-pc-windows-msvc, arch: aarch64, bundle: nsis }
-          - { os: macos-15-intel, target: x86_64-apple-darwin, arch: x86_64, bundle: dmg }
-          - { os: macos-15, target: aarch64-apple-darwin, arch: aarch64, bundle: dmg }
+          - { os: macos-15-intel, target: x86_64-apple-darwin, arch: x86_64, bundle: app }
+          - { os: macos-15, target: aarch64-apple-darwin, arch: aarch64, bundle: app }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -54,6 +54,9 @@ jobs:
           path: .
       - run: npm run check:fast
       - run: npx tauri build --config src-tauri/tauri.ci.conf.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+      - name: Create macOS disk image
+        if: runner.os == 'macOS'
+        run: tools/dev/package-dmg.sh ${{ matrix.target }}
       - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v7
         with:

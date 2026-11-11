@@ -35,3 +35,15 @@ test('errors leave the window open and permit retry', async () => {
   await s.handle(s.event); expect(s.fail).toHaveBeenCalledTimes(2);
   await s.handle(s.event); expect(s.destroy).toHaveBeenCalledTimes(2);
 });
+test('native Quit uses the same confirmation and completes the whole-app action', async () => {
+  const s = setup();
+  s.confirm.mockResolvedValueOnce(false);
+  await s.handle({ preventDefault: vi.fn(), quit: true });
+  expect(s.destroy).not.toHaveBeenCalled();
+  await s.handle({ preventDefault: vi.fn(), quit: true });
+  expect(s.destroy).toHaveBeenCalledWith(true);
+});
+test('ordinary window close does not request whole-app Quit', async () => {
+  const s = setup(); await s.handle(s.event);
+  expect(s.destroy).toHaveBeenCalledWith(false);
+});

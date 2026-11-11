@@ -16,6 +16,7 @@ Click the canvas before using single-letter shortcuts. While typing in a field, 
 | F2 on an object row | Rename |
 | Ctrl/⌘+G | Group selection |
 | ? | Open manual |
+| ⌘+Q (macOS desktop) | Quit the application; asks before discarding unsaved changes |
 
 Copy/paste works between Model and print tabs and across browser tabs. Pasted objects are independent, including copies of linked print objects. After **Copy Styling**, Ctrl/⌘+V applies styling instead; copy objects again to return to object paste. See [selection](#selection).
 
