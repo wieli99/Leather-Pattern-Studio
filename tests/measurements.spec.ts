@@ -228,7 +228,8 @@ test("selected edge measurements cycle without moving the surrounding UI", async
   await page.keyboard.down("Control");
   const fields = page.locator(".construction-measurements input");
   await expect(fields).toHaveCount(4);
-  await fields.last().click();
+  // Focus an off-screen field without relying on native document scrolling.
+  await fields.last().focus();
   await page.keyboard.up("Control");
   for (const key of ["Tab", "Tab", "Shift+Tab", "Shift+Tab"]) {
     await page.keyboard.press(key);

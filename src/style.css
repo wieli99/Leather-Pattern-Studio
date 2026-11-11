@@ -10,9 +10,13 @@
 * {
   box-sizing: border-box;
 }
+html,
+body {
+  /* The editor pans its canvases; focus must never scroll the document. */
+  overflow: clip;
+}
 body {
   margin: 0;
-  overflow: hidden;
 }
 button,
 input {
