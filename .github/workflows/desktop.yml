@@ -34,8 +34,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, arch: x86_64, bundle: '' }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, arch: aarch64, bundle: '' }
           - { os: windows-2025, target: x86_64-pc-windows-msvc, arch: x86_64, bundle: nsis }
           - { os: windows-11-arm, target: aarch64-pc-windows-msvc, arch: aarch64, bundle: nsis }
           - { os: macos-15-intel, target: x86_64-apple-darwin, arch: x86_64, bundle: dmg }
@@ -55,17 +53,7 @@ jobs:
           name: desktop-frontend
           path: .
       - run: npm run check:fast
-      - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf flatpak-builder
-      - if: runner.os != 'Linux'
-        run: npx tauri build --config src-tauri/tauri.ci.conf.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
-      - if: runner.os == 'Linux'
-        run: |
-          npx tauri build --config src-tauri/tauri.ci.conf.json --no-bundle --target ${{ matrix.target }}
-          cp src-tauri/target/${{ matrix.target }}/release/leather-pattern-studio packaging/
-          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak-builder --user --install-deps-from=flathub --repo=flatpak-repo flatpak-build packaging/studio.leather.pattern-designer.yml
-          flatpak build-bundle flatpak-repo Leather-Pattern-Studio-${{ matrix.arch }}.flatpak studio.leather.pattern-designer --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+      - run: npx tauri build --config src-tauri/tauri.ci.conf.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
       - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v7
         with:
@@ -75,9 +63,47 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
           if-no-files-found: error
+  linux:
+    name: Linux packages / ${{ matrix.arch }}
+    needs: frontend
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, arch: aarch64 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-frontend
+          path: .
+      - name: Build the Debian desktop toolchain
+        run: sudo podman build -t localhost/leather-desktop -f tools/dev/Desktop.Containerfile .
+      - name: Build, test and package Linux
+        # Flatpak's nested build sandbox needs mount/user namespaces inside this disposable runner container.
+        run: |
+          sudo podman run --rm --privileged -v "$PWD:/app" -w /app localhost/leather-desktop sh -ec '
+            npm ci
+            npm run check:fast
+            npx tauri build --config src-tauri/tauri.ci.conf.json --no-bundle --target ${{ matrix.target }}
+            cargo test --release --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+            cp src-tauri/target/${{ matrix.target }}/release/leather-pattern-studio packaging/
+            flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+            flatpak-builder --user --disable-rofiles-fuse --install-deps-from=flathub --repo=flatpak-repo flatpak-build packaging/studio.leather.pattern-designer.yml
+            flatpak build-bundle flatpak-repo Leather-Pattern-Studio-${{ matrix.arch }}.flatpak studio.leather.pattern-designer --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+          '
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          path: '*.flatpak'
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: packages
+    needs: [packages, linux]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -111,12 +137,14 @@ jobs:
   desktop-check:
     name: Desktop build and test
     if: always()
-    needs: [frontend, packages]
+    needs: [frontend, packages, linux]
     runs-on: ubuntu-24.04
     steps:
       - env:
+          LINUX_RESULT: ${{ needs.linux.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
           RESULT: ${{ needs.packages.result }}
         run: |
+          test "$LINUX_RESULT" = success
           test "$FRONTEND_RESULT" = success
           test "$RESULT" = success

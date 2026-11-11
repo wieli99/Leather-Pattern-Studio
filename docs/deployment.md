@@ -30,12 +30,12 @@ Before preparing a PR for editor changes, run `tools/dev/run.sh check` once. Aft
 
 CI retains full validation on every PR and protected-branch push:
 - One Podman job runs Rust tests, the production build and unit tests, validates the deployment bundle, and uploads the production assets plus generated Wasm/contracts.
-- Three parallel Node 22 jobs each run one browser engine's production and source-module tests against those same outputs. Each retains one Playwright worker and installs only its engine.
+- Three parallel jobs each run one browser engine's production and source-module tests against those same outputs inside the Debian reference browser container. Each retains one Playwright worker and installs only its engine.
 - A parallel manual job checks every illustration against the shared production build in a Debian browser container with the same browser dependencies as the development container.
 - The required **Build and test** gate succeeds only when the build, every browser job, and screenshot verification succeed. Failed, cancelled or skipped dependencies block it.
 - Reports are stored separately for each engine and manual verification. Superseded runs of the same PR are cancelled; protected-branch runs and production deployments are not cancelled by this policy.
 
-All jobs use standard `ubuntu-24.04` runners. Standard hosted runner execution is free for this public repository; no larger runners are configured. PR merge commits and protected-branch pushes remain independently validated. No browser coverage is deferred to prerelease, and development changes do not deploy a preview site.
+All web validation and deployment jobs use standard `ubuntu-24.04` runners. Desktop packaging uses the OS/architecture matrix described below. Standard hosted runner execution is free for this public repository; no larger runners are configured. PR merge commits and protected-branch pushes remain independently validated. No browser coverage is deferred to prerelease, and development changes do not deploy a preview site.
 
 Deployment downloads the same production artifact consumed by validation. A successful release PR does not bypass validation of the subsequent main push.
 
@@ -118,3 +118,5 @@ Require **Desktop build and test** alongside **Build and test** in branch protec
 The Linux bundle disables WebKit DMA-BUF rendering because the native Wayland launch failed with a protocol error on the reference Bluefin host; the same installed app stayed running with this workaround. Reassess it when updating WebKit/runtime versions. This can affect rendering performance and does not establish compatibility with every GPU.
 
 Desktop CI builds optimized Wasm and the Vue frontend once in the Linux project container, then downloads the identical frontend and generated source into all six native build jobs. The CI-only Tauri configuration disables the redundant frontend hook; local desktop builds retain the normal hook. This avoids the unavailable wasm-opt binary on Windows ARM. Native Rust tests run against release builds on their explicit target architecture.
+
+Linux desktop jobs use `tools/dev/Desktop.Containerfile` (Node 22, Rust 1.90 and Debian Bookworm desktop libraries); browser jobs use the existing Debian reference browser container. This keeps dependencies aligned with local validation and avoids failing Ubuntu runner package mirrors. Linux packaging uses a privileged disposable CI container solely to permit Flatpak’s nested mount/user namespaces; it receives no deployment credentials.

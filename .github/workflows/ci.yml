@@ -54,11 +54,6 @@ jobs:
         browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
       - uses: actions/download-artifact@v8
         with:
           name: production-dist
@@ -67,12 +62,16 @@ jobs:
         with:
           name: generated-source
       - run: tar -xzf generated-source.tar.gz
-      - name: Install browser
-        run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Production browser tests
-        run: npx playwright test --project=${{ matrix.browser }}
-      - name: Source-module browser tests
-        run: npx playwright test --config playwright.dev.config.ts --project=${{ matrix.browser }}
+      - name: Build the reference browser container
+        run: podman build -t localhost/leather-browser -f tools/dev/Browser.Containerfile .
+      - name: Production and source-module browser tests
+        run: |
+          podman run --rm -e VITE_CACHE_DIR=/tmp/leather-vite -v "$PWD:/app:z" -w /app localhost/leather-browser sh -ec '
+            npm ci
+            npx playwright install ${{ matrix.browser }}
+            npx playwright test --project=${{ matrix.browser }}
+            npx playwright test --config playwright.dev.config.ts --project=${{ matrix.browser }}
+          '
       - name: Browser reports
         if: failure()
         uses: actions/upload-artifact@v7
