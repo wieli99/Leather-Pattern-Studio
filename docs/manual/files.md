@@ -46,7 +46,7 @@ Print layouts and their links are included in saved JSON and recovery. The Model
 
 ## Desktop application
 
-The desktop editor uses the same controls as the website. New projects use `.leather`, containing JSON; existing `.leather.json` and `.json` projects remain readable. Open and Save use operating-system dialogs. Renaming disconnects the previous file; the next Save requests a destination. Export uses a save dialog for the generated PDF, SVG, PNG, DXF or ZIP. The manual is bundled and opens in a separate application window without a network connection.
+The desktop editor uses the same controls as the website. Files opened through the operating system while Open or Save is running stay queued until the editor can process them. New projects use `.leather`, containing JSON; existing `.leather.json` and `.json` projects remain readable. Open and Save use operating-system dialogs. Renaming disconnects the previous file; the next Save requests a destination. Export uses a save dialog for the generated PDF, SVG, PNG, DXF or ZIP. The manual is bundled and opens in a separate application window without a network connection.
 
 The desktop application checks GitHub automatically once each time it starts. A newer compatible release produces a notification; offline or failed background checks do not interrupt editing. Open **Settings → Check for updates** to check again manually. When an update is available, **Open GitHub release** opens your browser. Save your project, close the application and install the package for your system and CPU. Linux Flatpak bundles must be installed again to update; they do not provide an automatic update repository. Browser recovery and desktop recovery are separate.
 

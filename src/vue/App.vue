@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { openHelp, openExternal } from "../platform";
+import { desktopOpenRequestPump } from "../desktopOpenRequests";
 import { desktopCloseHandler } from "../desktopClose";
 import { startDesktopUpdates, useDesktopUpdates } from "../desktopUpdates";
 const desktopUpdates = useDesktopUpdates();
@@ -131,19 +132,13 @@ function reload() {
 onMounted(async () => {
   if (!isTauri()) return;
   startDesktopUpdates();
-  let opening = false;
-  const openPending = async () => {
-    if (opening || !desktopBridgeReady.value || !editor.ready || editor.fileBusy) return;
-    opening = true;
-    try {
-      const requestId = await invoke<number | null>("pending_files");
-      if (requestId !== null) {
-        try { await editor.open(requestId); }
-        finally { await invoke("clear_pending", { requestId }); }
-      }
-    } catch (error) { editor.fail(error); }
-    finally { opening = false; }
-  };
+  const openPending = desktopOpenRequestPump({
+    available: () => desktopBridgeReady.value && editor.ready && !editor.fileBusy,
+    pending: () => invoke<number | null>("pending_files"),
+    open: requestId => editor.open(requestId),
+    acknowledge: requestId => invoke<void>("clear_pending", { requestId }),
+    fail: error => editor.fail(error),
+  });
   const timer = setInterval(() => void openPending(), 500);
   let cleanupDesktop = () => {};
   onUnmounted(() => { clearInterval(timer); cleanupDesktop(); });
