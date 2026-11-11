@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import { openHelp, openExternal } from "../platform";
+import { desktopOpenRequestPump } from "../desktopOpenRequests";
+import { desktopCloseHandler } from "../desktopClose";
+import { startDesktopUpdates, useDesktopUpdates } from "../desktopUpdates";
+const desktopUpdates = useDesktopUpdates();
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "@tauri-apps/api/core";
 import ToolRail from "./ToolRail.vue";
 import RailButton from "./RailButton.vue";
 import { computed } from "vue";
@@ -8,7 +17,7 @@ import { editorHint } from "../editor/hint";
 import { stitchLineIcon } from "../editor/stitchTools";
 import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import TransformToolbox from "./TransformToolbox.vue";
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import Viewport from "./Viewport.vue";
@@ -41,11 +50,13 @@ async function importImage(event: Event) {
     await editor.insertImage(image);
   } catch (error) { editor.message = String(error); editor.notify(); }
 }
-const nativeSaving = "showSaveFilePicker" in window;
+let allowDesktopClose = false;
+const desktopBridgeReady = ref(!isTauri());
+const nativeSaving = isTauri() || "showSaveFilePicker" in window;
 const renaming = ref(false);
 const draftName = ref("");
 function editableName(name: string) {
-  return name.replace(/\.leather\.json$/i, "");
+  return name.replace(/\.leather(?:\.json)?$/i, "");
 }
 function startRename(event: FocusEvent) {
   if (editor.fileBusy) {
@@ -118,10 +129,53 @@ function reload() {
     );
   }
 }
+onMounted(async () => {
+  if (!isTauri()) return;
+  startDesktopUpdates();
+  const openPending = desktopOpenRequestPump({
+    available: () => desktopBridgeReady.value && editor.ready && !editor.fileBusy,
+    pending: () => invoke<number | null>("pending_files"),
+    open: requestId => editor.open(requestId),
+    acknowledge: requestId => invoke<void>("clear_pending", { requestId }),
+    fail: error => editor.fail(error),
+  });
+  const timer = setInterval(() => void openPending(), 500);
+  let cleanupDesktop = () => {};
+  onUnmounted(() => { clearInterval(timer); cleanupDesktop(); });
+  const unerror = await listen<string>("desktop-error", event => { editor.message = event.payload; editor.notify(); });
+  const unlisten = await listen("project-open", () => void openPending());
+  const desktopWindow = getCurrentWindow();
+  const requestClose = desktopCloseHandler({
+    busy: () => editor.fileBusy,
+    confirm: () => editor.confirmReplacement(),
+    destroy: async quit => {
+      allowDesktopClose = true;
+      try { await invoke("close_editor", { quit }); }
+      catch (error) { allowDesktopClose = false; throw error; }
+    },
+    fail: error => editor.fail(error),
+  });
+  const unclose = await desktopWindow.onCloseRequested(requestClose);
+  const unquit = await listen("app-quit-requested", () => {
+    void requestClose({ preventDefault() {}, quit: true });
+  });
+  const links = (event: MouseEvent) => {
+    const anchor = (event.target as Element)?.closest?.("a");
+    if (!anchor) return;
+    if (anchor.pathname === "/manual/index.html") { event.preventDefault(); void openHelp(); }
+    else if (/^https?:/.test(anchor.href)) { event.preventDefault(); void openExternal(anchor.href); }
+  };
+  document.addEventListener("click", links);
+  cleanupDesktop = () => { unerror(); unlisten(); unclose(); unquit(); document.removeEventListener("click", links); };
+  await invoke("desktop_ready");
+  desktopBridgeReady.value = true;
+  await nextTick();
+  document.querySelector<HTMLCanvasElement>('[aria-label="Pattern drawing canvas"]')?.focus();
+});
 onMounted(() => {
   const key = (event: KeyboardEvent) =>
     !printActive.value && handleShortcut(event, () => {
-      window.open("/manual/index.html", "_blank", "noopener");
+      void openHelp();
     });
   const clipboard = (event: ClipboardEvent) => { if (!printActive.value) handleClipboard(event); };
   const up = (e: KeyboardEvent) => {
@@ -132,7 +186,7 @@ onMounted(() => {
     editor.pauseGesture();
   };
   const leave = (e: BeforeUnloadEvent) => {
-    if (editor.dirty) {
+    if (!allowDesktopClose && editor.dirty) {
       e.preventDefault();
       e.returnValue = "";
     }
@@ -158,7 +212,7 @@ onMounted(() => {
   });
 });
 onMounted(() => {
-  if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+  if (isTauri() || !import.meta.env.PROD || !("serviceWorker" in navigator)) return;
   void navigator.serviceWorker
     .register("/sw.js")
     .then((reg) => {
@@ -180,7 +234,7 @@ onMounted(() => {
 });
 </script>
 <template>
-  <main @focusin="hintFocus" @focusout="editing = ''">
+  <main :inert="!desktopBridgeReady" @focusin="hintFocus" @focusout="editing = ''">
     <header>
       <div class="brand">
         <img class="brand-icon" :src="brandIcon" alt="" width="32" height="32" />
@@ -235,6 +289,10 @@ onMounted(() => {
         >
       </div>
     </header>
+    <div v-if="isTauri() && desktopUpdates.url.value" class="notice" role="status">
+      <span>{{ desktopUpdates.message.value }}</span>
+      <button @click="openExternal(desktopUpdates.url.value)">Open GitHub release</button>
+    </div>
     <PrintWorkspace
       ref="printWorkspace"
       v-model:left="left"

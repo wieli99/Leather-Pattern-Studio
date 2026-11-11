@@ -141,6 +141,9 @@ test("edge tabs persist, settings center, and themes remain selectable", async (
   for (const theme of ["dark", "light", "solarized", "nord", "contrast"]) {
     await page.getByLabel("Theme", { exact: true }).selectOption(theme);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const select = page.getByLabel("Theme", { exact: true });
+    await expect(select).toHaveCSS("appearance", "none");
+    if (theme !== "light") await expect(select).not.toHaveCSS("background-color", "rgb(255, 255, 255)");
   }
   await page.getByLabel("Theme", { exact: true }).selectOption("light");
   await page.getByText("Settings", { exact: true }).click();

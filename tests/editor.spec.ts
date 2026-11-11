@@ -56,7 +56,7 @@ test("precise rectangle, rounded corners, undo, redo and download", async ({
   });
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  expect((await download).suggestedFilename()).toContain(".json");
+  expect((await download).suggestedFilename()).toContain(".leather");
 });
 test("Select tool copies and pastes with the pointer outside the canvas", async ({ page }) => {
   await ready(page);
@@ -351,5 +351,5 @@ test("inline rename controls download filename", { tag: "@manual" }, async ({ pa
   const pending = page.waitForEvent("download");
   await page.getByLabel("Project filename").press("Enter");
   await expect(filename).toHaveValue("Wallet");
-  expect((await pending).suggestedFilename()).toBe("Wallet.leather.json");
+  expect((await pending).suggestedFilename()).toBe("Wallet.leather");
 });

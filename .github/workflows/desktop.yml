@@ -1,0 +1,153 @@
+name: Desktop packages
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: desktop-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  frontend:
+    name: Shared desktop frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - run: tools/dev/run.sh sh -c 'npm ci && npm run build && npm test'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-frontend
+          path: |
+            dist/
+            src/wasm/
+            src/generated/
+          if-no-files-found: error
+
+  packages:
+    needs: frontend
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, arch: x86_64, bundle: nsis }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, arch: aarch64, bundle: nsis }
+          - { os: macos-15-intel, target: x86_64-apple-darwin, arch: x86_64, bundle: app }
+          - { os: macos-15, target: aarch64-apple-darwin, arch: aarch64, bundle: app }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-frontend
+          path: .
+      - run: npm run check:fast
+      - run: npx tauri build --config src-tauri/tauri.ci.conf.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+      - name: Create macOS disk image
+        if: runner.os == 'macOS'
+        run: tools/dev/package-dmg.sh ${{ matrix.target }}
+      - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            *.flatpak
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+  linux:
+    name: Linux packages / ${{ matrix.arch }}
+    needs: frontend
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, arch: aarch64 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-frontend
+          path: .
+      - name: Build the Debian desktop toolchain
+        run: sudo podman build -t localhost/leather-desktop -f tools/dev/Desktop.Containerfile .
+      - name: Build, test and package Linux
+        # Flatpak's nested build sandbox needs mount/user namespaces inside this disposable runner container.
+        run: |
+          sudo podman run --rm --privileged -v "$PWD:/workspace" -w /workspace localhost/leather-desktop sh -ec '
+            npm ci
+            npm run check:fast
+            npx tauri build --config src-tauri/tauri.ci.conf.json --no-bundle --target ${{ matrix.target }}
+            cargo test --release --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+            cp src-tauri/target/${{ matrix.target }}/release/leather-pattern-studio packaging/
+            flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+            flatpak-builder --user --disable-rofiles-fuse --install-deps-from=flathub --repo=flatpak-repo flatpak-build packaging/studio.leather.pattern-designer.yml
+            flatpak build-bundle flatpak-repo Leather-Pattern-Studio-${{ matrix.arch }}.flatpak studio.leather.pattern-designer --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+          '
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          path: '*.flatpak'
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [packages, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Validate release version and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
+          git merge-base --is-ancestor HEAD origin/main
+          gh api repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs --jq '.check_runs[] | select(.name == "Build and test") | .conclusion' | grep -qx success
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*-*
+          path: packages
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir release
+          find packages -type f \( -name '*.flatpak' -o -name '*-setup.exe' -o -name '*.dmg' \) -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes "${flags[@]}" ./*
+  desktop-check:
+    name: Desktop build and test
+    if: always()
+    needs: [frontend, packages, linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          LINUX_RESULT: ${{ needs.linux.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          RESULT: ${{ needs.packages.result }}
+        run: |
+          test "$LINUX_RESULT" = success
+          test "$FRONTEND_RESULT" = success
+          test "$RESULT" = success

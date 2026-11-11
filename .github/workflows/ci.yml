@@ -13,6 +13,9 @@ concurrency:
 jobs:
   build:
     name: Build and unit tests
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -22,15 +25,31 @@ jobs:
       - name: Validate deployment bundle
         run: tools/dev/run.sh npx --yes wrangler@4.156.2 deploy --dry-run
       - uses: actions/upload-artifact@v7
+        id: production_dist
         with:
           name: production-dist
           path: dist/
           if-no-files-found: error
           retention-days: 7
+      - name: Wait for the uploaded artifact to be visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.production_dist.outputs['artifact-id'] }}
+        run: |
+          test -n "$ARTIFACT_ID"
+          for delay in 0 2 4 8 16; do
+            if [ "$delay" -gt 0 ]; then sleep "$delay"; fi
+            if found=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" --jq ".artifacts[] | select(.id == $ARTIFACT_ID) | .id"); then
+              if [ "$found" = "$ARTIFACT_ID" ]; then exit 0; fi
+            fi
+          done
+          echo "Uploaded artifact $ARTIFACT_ID did not become visible" >&2
+          exit 1
       - name: Download artifact for compatibility check
         uses: actions/download-artifact@v8
         with:
-          name: production-dist
+          github-token: ${{ github.token }}
+          artifact-ids: ${{ steps.production_dist.outputs['artifact-id'] }}
           path: ${{ runner.temp }}/dist-roundtrip
       - name: Verify deployment artifact round trip
         run: diff -qr dist "$RUNNER_TEMP/dist-roundtrip"
@@ -54,11 +73,6 @@ jobs:
         browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
       - uses: actions/download-artifact@v8
         with:
           name: production-dist
@@ -67,12 +81,16 @@ jobs:
         with:
           name: generated-source
       - run: tar -xzf generated-source.tar.gz
-      - name: Install browser
-        run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Production browser tests
-        run: npx playwright test --project=${{ matrix.browser }}
-      - name: Source-module browser tests
-        run: npx playwright test --config playwright.dev.config.ts --project=${{ matrix.browser }}
+      - name: Build the reference browser container
+        run: podman build -t localhost/leather-browser -f tools/dev/Browser.Containerfile .
+      - name: Production and source-module browser tests
+        run: |
+          podman run --rm -e VITE_CACHE_DIR=/tmp/leather-vite -v "$PWD:/app:z" -w /app localhost/leather-browser sh -ec '
+            npm ci
+            npx playwright install ${{ matrix.browser }}
+            npx playwright test --project=${{ matrix.browser }}
+            npx playwright test --config playwright.dev.config.ts --project=${{ matrix.browser }}
+          '
       - name: Browser reports
         if: failure()
         uses: actions/upload-artifact@v7

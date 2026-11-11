@@ -1647,15 +1647,15 @@ test("renaming disconnects files and requires saving without changing geometry",
   const document = e.document;
   e.files.handle = { name: e.name };
   e.rename("  Wallet  ");
-  expect(e.name).toBe("Wallet.leather.json");
+  expect(e.name).toBe("Wallet.leather");
   expect(e.files.handle).toBeNull();
   expect(e.dirty).toBe(true);
   expect(e.document).toBe(document);
   e.rename(" ");
-  expect(e.name).toBe("Wallet.leather.json");
+  expect(e.name).toBe("Wallet.leather");
   e.fileBusy = true;
   e.rename("Other");
-  expect(e.name).toBe("Wallet.leather.json");
+  expect(e.name).toBe("Wallet.leather");
 });
 
 test('merge previews, cancels, and commits one selected object', async () => {

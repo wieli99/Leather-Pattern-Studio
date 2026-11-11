@@ -49,11 +49,17 @@ Follow [your first pattern](https://leather.wieli.at/manual/index.html#getting-s
 
 Projects save as version 21, including linked print layouts, embedded images, text, object groups, indicators, measurements, and attached stitch groups. Versions 1–20 migrate on open; older application builds cannot open version-21 files. Keep backup copies before upgrading.
 
-Save/Save As use native browser file pickers where supported; other browsers download JSON copies. Browser recovery is separate from saved files and can be cleared or evicted. Save before accepting an application update.
+New project files use `.leather` and contain JSON. Existing `.leather.json` and `.json` projects remain readable. Save uses native file dialogs on desktop and browser file pickers where supported; other browsers download copies. Recovery is separate from saved files and can be cleared or evicted. Save before accepting an application update.
+
+## Desktop builds
+
+The Tauri 2 desktop builds share the website’s Vue editor and Rust/Wasm engine. Packages target Linux (Flatpak), Windows (NSIS) and macOS (DMG), each for x64 and ARM64. Development packages are attached to the Desktop packages GitHub Actions runs; release downloads are published through GitHub Releases separately.
+
+Desktop launches check for updates automatically. **Settings → Check for updates** retries manually; installation is through GitHub. Windows packages are unsigned, and macOS packages use ad-hoc signing without notarization. See [desktop packaging and installation](docs/deployment.md#desktop-packages) for platform restrictions and release instructions.
 
 ## Current limitations
 
-The desktop browser workflow is the validation target. CI exercises Chromium, Firefox, and WebKit on Linux; this does not certify physical Windows/macOS devices, native file dialogs, or touch/mobile editing. General-purpose booleans and offsets are outside the supported workflow. Offline use requires an initial successful online load and completed cache installation.
+Browser CI exercises Chromium, Firefox, and WebKit in Linux containers. Desktop CI builds packages and runs native Rust tests on both CPU architectures for each target OS. These checks do not certify physical Windows/macOS devices, native file dialogs, or touch/mobile editing. General-purpose booleans and offsets are outside the supported workflow. Browser offline use requires an initial successful online load and completed cache installation; desktop builds bundle the editor and manual.
 
 Bug reports may include project contents and system information. Review attachments before submitting a public GitHub issue. See the bundled manual for current procedures and limitations.
 
@@ -81,7 +87,7 @@ See the [contributor guidelines](AGENTS.md) and [development and release workflo
 
 ### Code organization
 
-`src/editor/` contains the controller, renderer, worker client and persistence; `src/model/` contains migration and geometry helpers; `crates/document/` owns validated documents and history in Rust/Wasm. `src/generated/` contains Rust-generated TypeScript contracts; `src/wasm/` is generated and ignored. The Tauri shell remains optional and is not required for browser delivery.
+`src/editor/` contains the controller, renderer, worker client and persistence; `src/model/` contains migration and geometry helpers; `crates/document/` owns validated documents and history in Rust/Wasm. `src/generated/` contains Rust-generated TypeScript contracts; `src/wasm/` is generated and ignored. `src-tauri/` owns the native desktop shell and file access; `packaging/` contains Flatpak metadata. Desktop packaging is not required for browser delivery.
 
 ## License
 

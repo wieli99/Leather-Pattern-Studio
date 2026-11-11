@@ -110,7 +110,7 @@ function exportFile() {
 </template>
 <style scoped>
 .preset-panel label {display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.preset-panel select,.preset-panel input:not([type=file]) {width:135px;box-sizing:border-box;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
+.preset-panel select,.preset-panel input:not([type=file]) {width:135px;box-sizing:border-box;background-color:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
 .preset-toggle {align-self:start;text-align:left;}
 .preset-panel {position:absolute;right:calc(100% + 8px);top:0;box-sizing:border-box;width:302px;max-height:100%;}
 @container stitch-panels (max-width: 620px) { .preset-panel {right:0;top:auto;bottom:calc(100% + 8px);max-height:30vh;max-width:100%;} }

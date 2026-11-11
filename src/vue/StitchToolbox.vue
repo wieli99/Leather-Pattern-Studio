@@ -286,7 +286,7 @@ label {
 input,
 select {
   width: 135px;
-  background: var(--panel);
+  background-color: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
