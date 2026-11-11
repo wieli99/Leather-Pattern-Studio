@@ -7,8 +7,10 @@ describe('measurement units', () => {
     expect(parseLength('3/8', 'in-decimal')).toBeCloseTo(9.525);
   });
   it('rejects invalid entries', () => {
-    for (const input of ['', '1/0', '1/2/3', 'Infinity', '1 + 2']) expect(parseLength(input, 'in-fractional')).toBeNull();
-    expect(parseLength('1/2', 'mm')).toBeNull();
+    for (const input of ['', '1/0', '1/(2-2)', 'Infinity', '1 +' ]) expect(parseLength(input, 'in-fractional')).toBeNull();
+    expect(parseLength('1/2', 'mm')).toBe(0.5);
+    expect(parseLength('1 + 2', 'in-decimal')).toBeCloseTo(76.2);
+    expect(parseLength('(1 1/2)*2', 'in-fractional')).toBeCloseTo(76.2);
   });
   it('reduces fractions and marks rounding', () => {
     expect(formatLength(34.925, 'in-fractional')).toBe('1 3/8');

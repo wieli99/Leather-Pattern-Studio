@@ -189,7 +189,10 @@ test("layouts are optional, import folders repeatedly, arrange copies, persist, 
     .click();
   await expect(page.getByLabel("Print move X")).toHaveCount(0);
   await page.getByRole("button", { name: "Rotate (E)", exact: true }).click();
-  await page.getByLabel("Print rotation", { exact: true }).fill("45");
+  await page.getByLabel("Print rotation", { exact: true }).fill("(30+60)/2");
+  await page.getByLabel("Print rotation", { exact: true }).press("ArrowUp");
+  await expect(page.getByLabel("Print rotation", { exact: true })).toHaveValue("46");
+  await page.getByLabel("Print rotation", { exact: true }).press("ArrowDown");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await save(page);
   expect(doc.version).toBe(21);

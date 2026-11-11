@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { editableNumber, parseExpression } from "../model/expression";
 import { editableLength, parseLength } from "../model/units";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
@@ -82,7 +83,7 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   active.value = item.id;
   pinned.value = item.point;
   pinnedAngle.value = item.angle;
-  draft.value = ["Angle", "Sweep"].includes(item.key) ? String(item.value) : editableLength(item.value, editor.units);
+  draft.value = ["Angle", "Sweep"].includes(item.key) ? editableNumber(item.value) : editableLength(item.value, editor.units);
   // Wheel handlers read immediately after focus, before Vue renders the draft.
   field.value = draft.value;
   error.value = "";
@@ -107,13 +108,13 @@ function input(item: (typeof items.value)[number], event: Event) {
         editor.measurementLocks[signKey] ??=
           Math.sign(editor.cursor[axis] - editor.pending.at(-1)![axis]) || 1;
       }
-      editor.measurementLocks[item.key] = (["Angle", "Sweep"].includes(item.key) ? Number(draft.value) : (parseLength(draft.value, editor.units) ?? NaN));
+      editor.measurementLocks[item.key] = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
     }
     editor.notify();
   }
 }
 async function confirm(item: (typeof items.value)[number]) {
-  const value = (["Angle", "Sweep"].includes(item.key) ? Number(draft.value) : (parseLength(draft.value, editor.units) ?? NaN));
+  const value = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
   const signedHeight = item.key === "Height" &&
     ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
     editor.pending.length === 2;
@@ -207,7 +208,7 @@ function style(item: (typeof items.value)[number]) {
       <input
         v-numeric-wheel="['Angle', 'Sweep'].includes(item.key) ? 'number' : editor.units"
         :readonly="!!editor.gesture"
-        :type="editor.units === 'mm' || ['Angle', 'Sweep'].includes(item.key) ? 'number' : 'text'"
+        type="text"
         step="any"
         :aria-label="item.key || 'Edge length'"
         :value="active === item.id ? draft : (['Angle', 'Sweep'].includes(item.key) ? Number(item.value.toFixed(2)) : editor.formatLength(item.value))"

@@ -103,7 +103,10 @@ test("wheel counts clamp to the available stitch length and minimum", async ({ p
   })));
   await expect(count).toHaveValue(String(maximum));
   await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
-  await count.fill("2");
+  await count.fill("5/2");
+  await expect(count).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
+  await count.fill("(2+2)/2");
   await count.evaluate(el => el.dispatchEvent(new WheelEvent("wheel", {
     altKey: true, shiftKey: true, deltaY: 100, bubbles: true, cancelable: true,
   })));

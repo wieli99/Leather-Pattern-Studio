@@ -133,3 +133,5 @@ Hover over an editable numeric field and use **Alt+wheel** to increase (up) or d
 Wheel adjustments stop at minimum and maximum values even when a larger step overshoots. Stitch hole counts stop at the count that fits the current path, spacing and clearances.
 
 Shift-add the next side of a rounded outline to include the intervening unstitched corner. Transfer accepts lines from multiple objects and keeps their current spacing and relative angles under a shared move and rotation.
+
+Numeric fields accept arithmetic (`+`, `-`, `*`, `/`, parentheses) in the current unit. Alt+wheel evaluates a valid formula before adjusting its result. See [numeric formulas](#measurements) for entry and validation behavior.

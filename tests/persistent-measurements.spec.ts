@@ -15,7 +15,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
   await canvas.click({position:{x:520,y:220}});
   await expect(page.locator('.objects .object-select')).toHaveCount(0);
   await canvas.press('Tab');
-  const constructionOffset = page.getByRole('spinbutton',{name:'Offset',exact:true});
+  const constructionOffset = page.getByRole('textbox',{name:'Offset',exact:true});
   await expect(constructionOffset).toBeFocused();
   await constructionOffset.pressSequentially('-15');
   await constructionOffset.press('Tab');
@@ -118,7 +118,7 @@ test('measurement drag releases into offset placement', async ({page}) => {
   await page.mouse.up();
   await expect(page.locator('.objects .object-select')).toHaveCount(0);
   await canvas.press('Tab');
-  const offset = page.getByRole('spinbutton',{name:'Offset',exact:true});
+  const offset = page.getByRole('textbox',{name:'Offset',exact:true});
   await expect(offset).toBeFocused();
   await offset.fill('12');
   await offset.press('Enter');

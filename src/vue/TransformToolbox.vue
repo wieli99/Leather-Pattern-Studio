@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { parseLength } from "../model/units";
 import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import { cornerRadii } from "../model/geometry";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
@@ -16,14 +15,6 @@ const radii = computed(() =>
   cornerShape.value ? cornerRadii(cornerShape.value) : [],
 );
 const squareSelection = computed(() => e.value.active.some(s => s.kind === "size-square"));
-const focusedFactor = ref<string | null>(null);
-const drafts = ref<Record<string, string>>({});
-function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
-  const text = (event.target as HTMLInputElement).value;
-  drafts.value[key] = text;
-  const n = key === "x" || key === "y" ? (parseLength(text, e.value.units) ?? NaN) : text.trim() ? Number(text) : NaN;
-  editor.setTransformValues({ [key]: n });
-}
 </script>
 <template>
   <div
@@ -89,7 +80,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
         >
           <label>{{ item[1] }}
             <LengthInput fixed v-if="e.transformTool === 'move'" :aria-label="item[1]" :value="e.transformValues[item[0] as 'x' | 'y']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
-            <input v-else v-numeric-wheel type="number" :aria-label="item[1]" step="0.01" :value="focusedFactor === item[0] ? drafts[item[0]] : e.transformTool === 'rotate' ? e.transformValues.angle : e.transformValues[item[0] as keyof typeof e.transformValues].toFixed(2)" @focus="focusedFactor = item[0]; drafts[item[0]] = ($event.target as HTMLInputElement).value" @blur="focusedFactor = null" @input="value(item[0] as keyof typeof e.transformValues, $event)" />
+            <LengthInput v-else scalar :precision="e.transformTool === 'scale' ? 2 : undefined" :aria-label="item[1]" :value="e.transformValues[item[0] as 'angle' | 'sx' | 'sy']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
           </label>
         </template>
       </div>

@@ -13,11 +13,11 @@ test("construction measurements cycle and retain typed sizes", { tag: "@manual" 
   const initialBox = (await canvas.boundingBox())!;
   await page.mouse.move(initialBox.x + 363, initialBox.y + 287);
   await canvas.press("Tab");
-  const width = page.getByRole("spinbutton", { name: "Width", exact: true });
+  const width = page.getByRole("textbox", { name: "Width", exact: true });
   await expect(width).toBeFocused();
-  await width.pressSequentially("60");
+  await width.pressSequentially("(20+10)*2");
   await width.press("Tab");
-  const height = page.getByRole("spinbutton", { name: "Height", exact: true });
+  const height = page.getByRole("textbox", { name: "Height", exact: true });
   await expect(height).toBeFocused();
   await height.pressSequentially("40");
   for (let i = 0; i < 3; i++) {
@@ -86,8 +86,8 @@ test("center rectangle displays separate dimensions before sizing", { tag: "@man
   await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click({ button: "right" });
   await page.getByRole("menuitemradio", { name: "Center rectangle", exact: true }).click();
   await page.getByLabel("Pattern drawing canvas").click({ position: { x: 350, y: 300 } });
-  const width = page.locator(".construction-measurements label").filter({ has: page.getByRole("spinbutton", { name: "Width", exact: true }) });
-  const height = page.locator(".construction-measurements label").filter({ has: page.getByRole("spinbutton", { name: "Height", exact: true }) });
+  const width = page.locator(".construction-measurements label").filter({ has: page.getByRole("textbox", { name: "Width", exact: true }) });
+  const height = page.locator(".construction-measurements label").filter({ has: page.getByRole("textbox", { name: "Height", exact: true }) });
   await expect(width).toBeVisible();
   await expect(height).toBeVisible();
   const a = (await width.boundingBox())!;
@@ -108,7 +108,7 @@ for (const variant of ["Three-point rectangle", "Center ellipse"]) {
       const box = (await canvas.boundingBox())!;
       await page.mouse.move(box.x + 450, box.y + 250);
       await canvas.press("Tab");
-      const height = page.getByRole("spinbutton", { name: "Height", exact: true });
+      const height = page.getByRole("textbox", { name: "Height", exact: true });
       await expect(height).toBeFocused();
       expect(Number(await height.inputValue())).toBeLessThan(0);
       if (typed) {

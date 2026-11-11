@@ -3265,7 +3265,7 @@ defineExpose({
               :units="layout.units"
               :value="parseLength(moveX, layout.units) ?? 0"
               aria-label="Print move X"
-              @commit="moveX = editableLength($event, layout.units)"
+              @commit="error = ''; moveX = editableLength($event, layout.units)"
               @invalid="error = 'Enter a valid distance'" /></label
           ><label v-if="tool === 'move'"
             >Move Y
@@ -3274,12 +3274,11 @@ defineExpose({
               :units="layout.units"
               :value="parseLength(moveY, layout.units) ?? 0"
               aria-label="Print move Y"
-              @commit="moveY = editableLength($event, layout.units)"
+              @commit="error = ''; moveY = editableLength($event, layout.units)"
               @invalid="error = 'Enter a valid distance'" /></label
           ><label v-if="tool === 'rotate'"
             >Rotate °
-            <input v-model="turn" v-numeric-wheel type="number" aria-label="Print rotation"
-          /></label>
+            <LengthInput scalar :step="1" :value="Number(turn)" aria-label="Print rotation" @commit="error = ''; turn = String($event)" @invalid="error = 'Enter a finite rotation'" /></label>
         </div>
         <label
           >Axes<select v-model="axes">

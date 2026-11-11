@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { parseExpression } from "../model/expression";
 import { editableLength, formatLength, parseLength } from "../model/units";
 import { ref, watch } from "vue";
 import { useEditor } from "./useEditor";
@@ -39,7 +40,7 @@ watch(
 function change(event: Event) {
   const text = (event.target as HTMLInputElement).value;
   draft.value = text;
-  const n = props.dimension ? (parseLength(text, e.value.units) ?? NaN) : Number(text);
+  const n = props.dimension ? (parseLength(text, e.value.units) ?? NaN) : (parseExpression(text) ?? NaN);
   if (
     typeof props.value === "number" &&
     (!text.trim() ||
@@ -53,7 +54,7 @@ function change(event: Event) {
   invalid.value = false;
   if (text !== last) {
     last = text;
-    emit("commit", props.dimension ? String(n) : text);
+    emit("commit", typeof props.value === "number" ? String(n) : text);
   }
 }
 function focus(event: FocusEvent) {
@@ -68,6 +69,7 @@ function focus(event: FocusEvent) {
 }
 function blur() {
   focused = false;
+  invalid.value = false;
   draft.value = format(props.value);
   void editor.finishProperty();
 }
@@ -90,7 +92,7 @@ function key(event: KeyboardEvent) {
       :aria-label="dimension ? label.replace(/mm/g, e.unitSymbol) : label"
       :disabled="!e.ready || !!e.transformTool || e.stitchMode"
       :aria-invalid="invalid"
-      :type="typeof value === 'number' && (!dimension || e.units === 'mm') ? 'number' : 'text'"
+      type="text"
       :min="min"
       :max="max"
       :maxlength="typeof value === 'string' ? 200 : undefined"

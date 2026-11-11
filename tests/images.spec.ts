@@ -12,8 +12,8 @@ test("import an image and edit opacity and dimensions", { tag: "@manual" }, asyn
   await expect(aspectLock).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Image opacity (%)", {exact:true})).toBeVisible();
   await manualScreenshot(page, "image-import.png");
-  const width = page.getByRole("spinbutton", { name: "Width", exact: true });
-  const height = page.getByRole("spinbutton", { name: "Height", exact: true });
+  const width = page.getByRole("textbox", { name: "Width", exact: true });
+  const height = page.getByRole("textbox", { name: "Height", exact: true });
   await width.fill("120");
   await width.press("Enter");
   await expect(height).toHaveValue("120");
@@ -78,12 +78,12 @@ for (const aspect of ['width="120" height="60"', 'viewBox="0 0 120 60"', 'viewBo
     await expect.poll(async () => (await artwork()).width).toBeGreaterThan(10);
     const before=await artwork();
     await page.getByRole("button",{name:"Resize",exact:true}).click();
-    await page.getByRole("spinbutton",{name:"X factor",exact:true}).fill("1.4");
+    await page.getByRole("textbox",{name:"X factor",exact:true}).fill("1.4");
     await page.getByRole("button",{name:"Apply",exact:true}).click();
     await expect.poll(async () => (await artwork()).width/before.width).toBeCloseTo(1.4,1);
     expect((await artwork()).height).toBeCloseTo(before.height,0);
     await page.getByRole("button",{name:"Resize",exact:true}).click();
-    await page.getByRole("spinbutton",{name:"Y factor",exact:true}).fill("1.2");
+    await page.getByRole("textbox",{name:"Y factor",exact:true}).fill("1.2");
     await page.getByRole("button",{name:"Apply",exact:true}).click();
     await expect.poll(async () => (await artwork()).height/before.height).toBeCloseTo(1.2,1);
     if (aspect === 'width="120" height="60"') await manualScreenshot(page, "svg-resize.png");

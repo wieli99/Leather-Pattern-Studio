@@ -10,7 +10,7 @@ test('global units accept fractions, preserve dimensions and persist', { tag: "@
   await canvas.click({ position: { x: 450, y: 390 } });
   await page.getByRole('button', { name: 'Select (V)', exact: true }).click();
   const width = page.getByLabel('Width', { exact: true });
-  await width.fill('25.4');
+  await width.fill('12.7*2');
   await width.press('Enter');
   async function units(value: string) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -106,7 +106,8 @@ test('fractional corner drafts survive clamping and invalid stitches block Apply
   await spacing.press('Enter');
   await expect(spacing).toBeVisible();
   await page.getByLabel('Stitch inset', { exact: true }).fill('1/16');
-  await expect(apply).toBeDisabled();
+  // Leaving an invalid draft restores its last valid value.
+  await expect(apply).toBeEnabled();
   await spacing.fill('1/8');
   await expect(apply).toBeEnabled();
   await spacing.fill('');

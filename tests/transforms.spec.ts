@@ -57,7 +57,7 @@ test("numeric transforms, pivot, cancellation, history and affine file recovery"
     .getByLabel("Position X", { exact: true })
     .inputValue();
   await page.getByRole("button", { name: "Resize", exact: true }).click();
-  await page.getByLabel("X factor", { exact: true }).fill("2");
+  await page.getByLabel("X factor", { exact: true }).fill("(3+1)/2");
   await page.getByLabel("Y factor", { exact: true }).fill("0.5");
   await manualScreenshot(page, "transforms.png");
   await page.locator(".transform-options strong").click();
