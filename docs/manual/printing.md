@@ -19,9 +19,9 @@ Drag print tabs left or right to reorder them. An empty dashed outline reserves 
 
 ## Draw directly on a print tab
 
-The left tool sidebar uses the same button layout, selection styling, and shortcut captions as Model. Print keeps its own existing tool set: Select, Move, Rotate, Mirror, Text, Measurement and its variants, Import image, Undo, Redo, and Fit.
+The left tool sidebar uses the same button layout, selection styling, and shortcut captions as Model. Print keeps its own existing tool set: Select, Move, Rotate, Mirror, Text, Measurements, Drawing tools, Import image, Undo, Redo, and Fit.
 
-Choose **Text (T)**, **Measurement (D)**, or **Import image** below Mirror in the print toolbar. The Measurement variant menu includes Measurement, Square size guide, Ruler size guide, Arrow, Bodyless arrow, and Crosshair; D and Shift+D cycle variants. Placement, numeric construction fields, Shift constraints, Alt snapping bypass, and cancellation work as on Model. Measurements use this layout’s units.
+Choose **Text (T)**, **Measurements (D)**, **Drawing tools (A)**, or **Import image** below Mirror in the print toolbar. Measurements contains Measurement, Square size guide, and Ruler size guide; D and Shift+D cycle these variants. Drawing tools contains Arrow, Bodyless arrow, and Crosshair; A and Shift+A cycle these variants. Placement, numeric construction fields, Shift constraints, Alt snapping bypass, and cancellation work as on Model. Measurements use this layout’s units.
 
 New objects belong only to the active print tab. They are never linked or synced to Model or another print tab. Select an independent object to edit its Properties below Pages in the right sidebar. Double-click text on paper to edit it; Ctrl/⌘+Enter applies and Escape cancels. Image import uses the same formats and initial viewport-relative size as Model. Each completed creation or edit is one undo step; switching tabs cancels unfinished placement.
 

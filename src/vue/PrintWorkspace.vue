@@ -2775,11 +2775,11 @@ function keyboard(event: KeyboardEvent) {
     editor.space = true;
     return;
   }
-  if (!mod && (key === "t" || key === "d")) {
+  if (!mod && (key === "t" || key === "d" || key === "a")) {
     event.preventDefault();
     syncDrawing();
     if (key === "t") drawing.setMode("text");
-    else drawing.cycle("indicator", event.shiftKey ? -1 : 1);
+    else drawing.cycle(key === "a" ? "drawing" : "measurement", event.shiftKey ? -1 : 1);
     return;
   }
   if (drawing.mode !== "select" && key === "enter") { event.preventDefault(); drawing.confirmMeasurement(); return; }
@@ -3129,7 +3129,8 @@ defineExpose({
       </RailButton>
       <div class="rail-divider" role="separator" />
       <ToolButton :controller="drawing" :tool="{ id: 'text', key: 'T', label: 'Text' }" />
-      <ToolButton :controller="drawing" :tool="{ id: 'measurement', key: 'D', label: 'Measurement' }" />
+      <ToolButton :controller="drawing" :tool="{ id: 'measurement', key: 'D', label: 'Measurements' }" />
+      <ToolButton :controller="drawing" :tool="{ id: 'arrow', key: 'A', label: 'Drawing tools' }" />
       <RailButton aria-label="Import image" title="Import image" :disabled="!e.ready || busy" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></RailButton>
       <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importLocalImage" />
       <div class="rail-divider" role="separator" />

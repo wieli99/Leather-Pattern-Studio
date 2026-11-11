@@ -21,7 +21,8 @@ const props = defineProps<{ tool: (typeof tools)[number]; controller?: Controlle
   e = useEditor(editor),
   open = ref(false);
 const group = computed(() =>
-    props.tool.id === "measurement" ? "indicator" :
+    props.tool.id === "measurement" ? "measurement" :
+    props.tool.id === "arrow" ? "drawing" :
     props.tool.id === "polygon" ||
     props.tool.id === "rectangle" ||
     props.tool.id === "circle" ||
@@ -30,7 +31,8 @@ const group = computed(() =>
       : null,
   ),
   current = computed(() =>
-    group.value === "indicator" ? e.value.lastIndicator :
+    group.value === "measurement" ? e.value.lastMeasurement :
+    group.value === "drawing" ? e.value.lastDrawing :
     group.value === "rectangle"
       ? e.value.lastRectangle
       : group.value === "circle"

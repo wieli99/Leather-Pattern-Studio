@@ -4,11 +4,11 @@ import { test, expect } from "@playwright/test";
 
 test("indicator variants, gestures, edits, undo and saved roundtrip", { tag: "@manual" },async({page})=>{
   await page.goto("/");
-  const button=page.getByRole("button",{name:"Measurement (D)",exact:true});
+  const button=page.getByRole("button",{name:"Measurements (D)",exact:true});
   await expect(button).toBeEnabled();
   const canvas=page.getByLabel("Pattern drawing canvas");
   for (const [index,name] of ["Arrow","Bodyless arrow","Crosshair","Square size guide","Ruler size guide"].entries()) {
-    await button.click({button:"right"});
+    await page.getByRole("button",{name:index < 3 ? "Drawing tools (A)" : "Measurements (D)",exact:true}).click({button:"right"});
     await page.getByRole("menuitemradio",{name,exact:true}).click();
     if (index%2) {
       const box=(await canvas.boundingBox())!;

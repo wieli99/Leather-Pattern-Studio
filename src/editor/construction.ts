@@ -2,7 +2,8 @@ import type { Point, Shape } from "../model/project";
 import { zeroHandles } from "../model/curves";
 import { distance } from "../model/geometry";
 export const variants = {
-  indicator: ["measurement", "size-square", "size-ruler", "arrow", "arrow-head", "crosshair"],
+  measurement: ["measurement", "size-square", "size-ruler"],
+  drawing: ["arrow", "arrow-head", "crosshair"],
   polygon: ["polygon", "polygon-box"],
   polyline: ["polyline", "curve", "control-curve"],
   rectangle: ["rectangle", "rectangle-center", "rectangle-three"],
@@ -18,7 +19,8 @@ export const variants = {
 } as const;
 export type Mode =
   | (typeof variants.polygon)[number]
-  | (typeof variants.indicator)[number]
+  | (typeof variants.measurement)[number]
+  | (typeof variants.drawing)[number]
   | "text"
   | "measurement"
   | "select"
@@ -90,7 +92,7 @@ export function construct(
     out = points,
     rotation = 0;
   if (!a || !b) throw Error("Place another point");
-  if (mode !== "measurement" && (variants.indicator as readonly string[]).includes(mode)) {
+  if (mode !== "measurement" && ([...variants.measurement, ...variants.drawing] as readonly string[]).includes(mode)) {
     if (distance(a,b) < 1e-9) throw Error("Indicator must have positive size");
     if (mode === "crosshair") {
       const radius = distance(a,b);

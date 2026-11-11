@@ -1395,7 +1395,7 @@ test("Model source selection clears outside the list and resets its range anchor
 test("tool rails keep separators and share history and fit icons", async ({ page }) => {
   await load(page);
   const grid = page.getByRole("navigation", { name: "Drawing tools" });
-  const textDivider = grid.getByRole("separator", { name: "Indicator tools" });
+  const textDivider = grid.getByRole("separator", { name: "Text and indicator tools" });
   for (const height of [600, 768, 800, 900]) {
     await page.setViewportSize({ width: 1280, height });
     expect((await textDivider.boundingBox())!.height).toBe(1);
@@ -1474,7 +1474,7 @@ test("all print indicator variants, image import, editing, cancellation and tab 
   await create(page);
   const canvas = page.getByLabel("Print layout canvas");
   for (const [index, label] of ["Square size guide", "Ruler size guide", "Arrow", "Bodyless arrow", "Crosshair"].entries()) {
-    await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+    await page.getByRole("button", { name: index < 2 ? "Measurements (D)" : "Drawing tools (A)", exact: true }).click({ button: "right" });
     await page.getByRole("menuitemradio", { name: label, exact: true }).click();
     await canvas.click({ position: { x: 180, y: 170 + index * 30 } });
     await canvas.click({ position: { x: 250, y: 190 + index * 30 } });
@@ -1560,7 +1560,7 @@ test("print property edits use layout units, preview locally, cancel and undo on
   await dialog.getByLabel("Units", { exact: true }).selectOption("in-decimal");
   await dialog.getByRole("button", { name: "Create", exact: true }).click();
   const canvas = page.getByLabel("Print layout canvas");
-  await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+  await page.getByRole("button", { name: "Measurements (D)", exact: true }).click({ button: "right" });
   await page.getByRole("menuitemradio", { name: "Square size guide", exact: true }).click();
   const box = (await canvas.boundingBox())!;
   await canvas.click({ position: { x: box.width / 2, y: 210 } });
@@ -1609,9 +1609,9 @@ test("print drawing layout and previews avoid asynchronous image generation", as
   await load(page); await create(page);
   const rail = page.getByRole("navigation", { name: "Print tools" });
   const order = await rail.locator('button[aria-label], [role=separator]').evaluateAll(elements => elements.map(el => el.getAttribute('aria-label') ?? 'separator'));
-  expect(order.slice(0, 9)).toEqual(['Select (V)', 'Move (G)', 'Rotate (E)', 'Mirror (M)', 'separator', 'Text (T)', 'Measurement (D)', 'Import image', 'separator']);
+  expect(order.slice(0, 10)).toEqual(['Select (V)', 'Move (G)', 'Rotate (E)', 'Mirror (M)', 'separator', 'Text (T)', 'Measurements (D)', 'Drawing tools (A)', 'Import image', 'separator']);
   const canvas = page.getByLabel('Print layout canvas');
-  await page.getByRole('button', { name: 'Measurement (D)', exact: true }).click({button: 'right'});
+  await page.getByRole('button', { name: 'Measurements (D)', exact: true }).click({button: 'right'});
   await page.getByRole('menuitemradio', { name: 'Ruler size guide', exact: true }).click();
   await canvas.click({position: {x: 180, y: 200}});
   await page.evaluate(() => {

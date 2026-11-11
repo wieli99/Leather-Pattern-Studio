@@ -13,6 +13,9 @@ const editor = vi.hoisted(() => ({
   notify: vi.fn(),
   mode: "select",
   cycle: vi.fn(),
+  cancel: vi.fn(),
+  selectedGroups: [] as string[],
+  document: { shapes: [{ id: "a" }] },
   activateTransform: vi.fn(),
   activateStitch: vi.fn(),
   activateTrim: vi.fn(),
@@ -164,7 +167,7 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
 
 test("D selects Measurement without taking over text fields or modified shortcuts", () => {
   press("d");
-  expect(editor.cycle).toHaveBeenLastCalledWith("indicator", 1);
+  expect(editor.cycle).toHaveBeenLastCalledWith("measurement", 1);
   vi.clearAllMocks();
   editor.pending = [];
   press("d", { target: new ElementStub("INPUT", true) });
@@ -198,4 +201,16 @@ test("pivot and axis shortcuts remain active while a transform gesture blocks to
   expect(editor.notify).toHaveBeenCalledTimes(3);
   editor.transformTool = null;
   editor.selectionToolsAvailable = true;
+});
+
+test("A cycles drawing tools forward and backward without taking over text input", () => {
+  press("a");
+  expect(editor.cycle).toHaveBeenLastCalledWith("drawing", 1);
+  press("A", { shiftKey: true });
+  expect(editor.cycle).toHaveBeenLastCalledWith("drawing", -1);
+  vi.clearAllMocks();
+  press("a", { target: new ElementStub("INPUT", true) });
+  press("a", { ctrlKey: true });
+  press("a", { metaKey: true });
+  expect(editor.cycle).not.toHaveBeenCalled();
 });
