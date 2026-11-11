@@ -89,7 +89,7 @@ Keep `@types/node` on Node 22 to match the build container and deployment toolin
 
 Playwright is pinned to 1.64.1 while [the Firefox file chooser regression in 1.65.0](https://github.com/microsoft/playwright/issues/43994) remains unresolved. Dependabot skips 1.65.x; verify project Open and file import on Firefox before accepting a later version.
 
-CI uploads and downloads the production artifact and compares its contents before merging dependency updates, exercising both artifact actions without deploying a PR.
+CI uploads and downloads the production artifact and compares its contents before merging dependency updates, exercising both artifact actions without deploying a PR. The immediate compatibility download uses the upload’s artifact ID and the REST API after a bounded visibility check, avoiding transient name-lookup failures immediately after upload finalization. Missing artifacts still fail validation.
 
 ## Domains and verification
 
