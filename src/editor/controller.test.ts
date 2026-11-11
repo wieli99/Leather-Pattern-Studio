@@ -1494,8 +1494,11 @@ test("delayed recovery excludes pending stitching and inspector edits cannot cha
   expect(e.document.shapes[0].name).toBe("Safe");
   await vi.advanceTimersByTimeAsync(301);
   const { recovery } = await import("./persistence");
-  // Startup also reads recovery asynchronously; inspect the latest write.
-  const writes = vi.mocked(recovery).mock.calls.filter(([value]) => value !== undefined);
+  // Other editor instances can still have recovery timers pending. Inspect only
+  // writes for this document, rather than whichever editor happened to run last.
+  const writes = vi.mocked(recovery).mock.calls.filter(([value]) =>
+    value?.document.shapes.some(shape => shape.id === "safe"),
+  );
   expect(writes.length).toBeGreaterThan(0);
   expect(writes.at(-1)![0]!.document.stitchGroups).toEqual([]);
   e.cancel();
