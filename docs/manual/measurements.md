@@ -8,7 +8,9 @@ While constructing a shape, Tab enters available dimension fields and selects th
 
 ![Entering exact width and height during rectangle construction](/manual/images/construction-dimensions.png)
 
-Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Enter applies the edit; Esc leaves the field.
+Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Enter applies the edit; Esc leaves the field.
+
+![Canvas panned to reveal an off-screen dimension field](/manual/images/offscreen-measurement-focus.png)
 
 Choose units in Settings. Inch fields accept decimal values (`1.375`), fractions (`3/8`), and mixed fractions (`1 3/8`), including negative coordinates (`-1 3/8`). Fractional labels round to the nearest 1/64 inch and show ≈ when approximate. Focus a dimensional field to see its precise decimal value; leaving it unchanged preserves the stored measurement. Areas use decimal square inches. Angles and resize factors retain their existing units. The setting applies to properties, construction dimensions, transforms, stitching, guides, rulers, coordinates, and measurement objects. Free text is unchanged.
 

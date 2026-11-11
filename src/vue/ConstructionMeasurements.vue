@@ -89,7 +89,26 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   error.value = "";
   // Select after Vue replaces the display value with the editable draft.
   await nextTick();
-  if (document.activeElement === field) field.select();
+  if (document.activeElement !== field) return;
+  const canvas = field.closest(".viewport")?.querySelector("canvas");
+  const label = field.closest("label");
+  if (canvas && label) {
+    const view = canvas.getBoundingClientRect();
+    const box = label.getBoundingClientRect();
+    const displacement = (start: number, end: number, low: number, high: number) =>
+      end - start > high - low ? (low + high - start - end) / 2
+        : start < low ? low - start : end > high ? high - end : 0;
+    const dx = displacement(box.left, box.right, view.left + 16, view.right - 16);
+    const dy = displacement(box.top, box.bottom, view.top + 16, view.bottom - 16);
+    if (dx || dy) {
+      editor.pan = { x: editor.pan.x + dx, y: editor.pan.y + dy };
+      pinned.value = { x: pinned.value.x + dx, y: pinned.value.y + dy };
+      editor.notify();
+      await nextTick();
+    }
+  }
+  // Set the selection without select() asking Firefox to scroll the field.
+  if (document.activeElement === field) field.setSelectionRange(0, field.value.length);
 }
 function input(item: (typeof items.value)[number], event: Event) {
   draft.value = (event.target as HTMLInputElement).value;
@@ -162,11 +181,11 @@ async function confirm(item: (typeof items.value)[number]) {
 function cancel() {
   active.value = undefined;
   error.value = "";
-  document.querySelector<HTMLCanvasElement>("canvas")?.focus();
+  document.querySelector<HTMLCanvasElement>("canvas")?.focus({ preventScroll: true });
 }
 function cycleField(event: KeyboardEvent) {
   if (
-    !editor.measurementFields.length || event.isComposing || event.ctrlKey ||
+    event.isComposing || event.ctrlKey ||
     event.metaKey || event.altKey
   ) return;
   const input = event.target as HTMLInputElement;
@@ -179,8 +198,8 @@ function cycleField(event: KeyboardEvent) {
   event.preventDefault();
   const next =
     fields[(index + (event.shiftKey ? -1 : 1) + fields.length) % fields.length];
-  next.focus();
-  if (next === input) next.select();
+  next.focus({ preventScroll: true });
+  if (next === input) next.setSelectionRange(0, next.value.length);
 }
 function style(item: (typeof items.value)[number]) {
   const p = active.value === item.id ? pinned.value : item.point;
