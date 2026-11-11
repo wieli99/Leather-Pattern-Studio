@@ -2685,6 +2685,7 @@ test.each([
   const radius = Math.hypot(dx, dy), angle = degrees * Math.PI / 180;
   expect(point.x).toBeCloseTo(origin.x + radius * Math.cos(angle));
   expect(point.y).toBeCloseTo(origin.y + radius * Math.sin(angle));
+  expect(e.message).toBe(`Move ${e.formatLength(point.x - origin.x)}, ${e.formatLength(point.y - origin.y)} ${e.unitSymbol}`);
   expect(e.revision).toBe(1);
   e.cancel();
   expect(e.document.shapes[0].points[0]).toEqual(origin);
