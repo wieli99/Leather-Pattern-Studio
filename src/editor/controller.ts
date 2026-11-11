@@ -3740,15 +3740,20 @@ export class Controller {
   }
   async newProject() {
     if (this.fileBusy) return;
-    if (!(await this.confirmReplacement())) return;
-    this.cancel();
-    await this.transact("load", emptyDocument());
-    this.files.handle = null;
-    this.collapsedGroups.clear(); this.selectedGroups = []; this.panelRevision++;
-    this.name = "Untitled.leather";
-    this.savedBaseline = fingerprint(this.document);
-    this.dirty = false;
-    this.notify();
+    this.fileBusy = true;
+    try {
+      if (!(await this.confirmReplacement())) return;
+      this.cancel();
+      await this.transact("load", emptyDocument());
+      this.files.handle = null;
+      this.collapsedGroups.clear(); this.selectedGroups = []; this.panelRevision++;
+      this.name = "Untitled.leather";
+      this.savedBaseline = fingerprint(this.document);
+      this.dirty = false;
+      this.notify();
+    } finally {
+      this.fileBusy = false;
+    }
   }
   async open(requestId?: number) {
     if (this.fileBusy) return;
@@ -3814,17 +3819,23 @@ export class Controller {
     }
   }
   async restoreProject() {
-    if (this.fileBusy || !this.restore || !(await this.confirmReplacement())) return;
-    const value = this.restore;
-    this.restore = undefined;
-    this.cancel();
-    await this.transact("load", parseProject(JSON.stringify(value.document)));
-    this.collapsedGroups = new Set(value.collapsedGroupIds ?? []);
-    this.selectedGroups = []; this.panelRevision++;
-    this.files.handle = null;
-    this.name = value.name;
-    this.savedBaseline = "";
-    this.dirty = true;
-    this.notify();
+    if (this.fileBusy || !this.restore) return;
+    this.fileBusy = true;
+    try {
+      if (!(await this.confirmReplacement())) return;
+      const value = this.restore;
+      this.restore = undefined;
+      this.cancel();
+      await this.transact("load", parseProject(JSON.stringify(value.document)));
+      this.collapsedGroups = new Set(value.collapsedGroupIds ?? []);
+      this.selectedGroups = []; this.panelRevision++;
+      this.files.handle = null;
+      this.name = value.name;
+      this.savedBaseline = "";
+      this.dirty = true;
+      this.notify();
+    } finally {
+      this.fileBusy = false;
+    }
   }
 }
