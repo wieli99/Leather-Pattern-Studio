@@ -8,7 +8,7 @@ While constructing a shape, Tab enters available dimension fields and selects th
 
 ![Entering exact width and height during rectangle construction](/manual/images/construction-dimensions.png)
 
-Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Enter applies the edit; Esc leaves the field.
+Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Focusing a distant field never scrolls the page itself. Enter applies the edit; Esc leaves the field.
 
 ![Canvas panned to reveal an off-screen dimension field](/manual/images/offscreen-measurement-focus.png)
 
