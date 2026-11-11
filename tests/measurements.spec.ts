@@ -188,11 +188,14 @@ test("off-screen construction fields pan the canvas without scrolling the UI", {
   const height = page.getByRole("textbox", { name: "Height", exact: true });
   await expect(height).toBeFocused();
   const label = height.locator("..");
-  const box = (await label.boundingBox())!;
-  expect(box.x).toBeGreaterThanOrEqual(original.x + 15);
-  expect(box.x + box.width).toBeLessThanOrEqual(original.x + original.width - 15);
-  expect(box.y).toBeGreaterThanOrEqual(original.y + 15);
-  expect(box.y + box.height).toBeLessThanOrEqual(original.y + original.height - 15);
+  // Focus is synchronous; revealing the field waits for Vue's next render.
+  await expect(async () => {
+    const box = (await label.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(original.x + 15);
+    expect(box.x + box.width).toBeLessThanOrEqual(original.x + original.width - 15);
+    expect(box.y).toBeGreaterThanOrEqual(original.y + 15);
+    expect(box.y + box.height).toBeLessThanOrEqual(original.y + original.height - 15);
+  }).toPass();
   expect(await canvas.boundingBox()).toEqual(original);
   expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
   await manualScreenshot(page, "offscreen-measurement-focus.png");
