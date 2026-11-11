@@ -83,6 +83,7 @@ export function construct(
   points: Point[],
   sweep?: number,
   sides = 3,
+  sections = 1,
 ): Shape {
   const [a, b, c] = points;
   let kind: Shape["kind"] = "polyline",
@@ -108,6 +109,7 @@ export function construct(
     if (len < 1e-9) throw Error("Choose distinct measurement endpoints");
     return {
       id: "", name: "", kind: "measurement", points: [a, b], rotation: 0, radius: 0,
+      ...(sections > 1 ? { measurementSections: sections } : {}),
       measurementOffset: c
         ? ((c.x - a.x) * -(b.y - a.y) + (c.y - a.y) * (b.x - a.x)) / len
         : 0,

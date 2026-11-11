@@ -233,6 +233,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
           Math.abs(s.measurementOffset) > 1e7 ||
           Math.hypot(s.points[1].x - s.points[0].x, s.points[1].y - s.points[0].y) < 1e-9))
       throw Error("Invalid measurement");
+    if (s.measurementSections !== undefined && (!Number.isInteger(s.measurementSections) || s.measurementSections < 1 || s.measurementSections > 100)) throw Error("Invalid measurement sections");
     if (s.headSize !== undefined && (!Number.isFinite(s.headSize) || s.headSize <= 0 || s.headSize > 1e7))
       throw Error("Invalid arrowhead size");
     if (s.kind === "size-square") {
@@ -264,7 +265,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize, fontFamily: s.fontFamily, bold: s.bold, italic: s.italic, underline: s.underline, strikethrough: s.strikethrough, textAlign: s.textAlign, lineSpacing: s.lineSpacing } : {}),
-      ...(s.kind === "measurement" ? { measurementOffset: s.measurementOffset } : {}),
+      ...(s.kind === "measurement" ? { measurementOffset: s.measurementOffset, ...(s.measurementSections !== undefined ? {measurementSections:s.measurementSections} : {}) } : {}),
       radius: s.radius,
       ...(s.cornerRadii ? { cornerRadii: [...s.cornerRadii] } : {}),
       ...(s.handles

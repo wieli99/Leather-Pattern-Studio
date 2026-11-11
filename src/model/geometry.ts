@@ -1,6 +1,6 @@
 import type { UnitMode } from "./units";
 import { isIndicator, indicatorGeometry } from "./indicators";
-import { measurementGeometry } from "./measurement";
+import { measurementSegments, measurementGeometry } from "./measurement";
 import {
   isCurve,
   cubicSegments,
@@ -266,6 +266,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number, units: UnitMo
     });
   }
   if (s.kind === "measurement") {
+    if (s.measurementSections) return measurementSegments(s).some(part => hitTest(part, point, tolerance, units));
     const g = measurementGeometry(s, units);
     const dx = point.x - g.middle.x, dy = point.y - g.middle.y;
     const x = dx * Math.cos(g.angle) + dy * Math.sin(g.angle);

@@ -327,6 +327,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     </template>
     <Field :controller="editor" v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
+      <Field :controller="editor" label="Sections" :value="s.measurementSections ?? 1" :min="1" :max="100" @commit="edit({ measurementSections: Math.round(+$event) })" />
       <Field :controller="editor" dimension
         label="Offset (mm)"
         :value="measurementGeometry(s).offset"

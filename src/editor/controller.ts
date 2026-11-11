@@ -1730,8 +1730,14 @@ export class Controller {
     }
   }
 
+  measurementSections = 1;
   polygonSides = 3;
-  adjustPolygonSides(delta: number) {
+  adjustConstructionCount(delta: number) {
+    if (this.mode === "measurement") {
+      this.measurementSections = Math.max(1, Math.min(100, this.measurementSections + delta));
+      this.notify();
+      return;
+    }
     this.polygonSides = Math.max(3, Math.min(100, this.polygonSides + delta));
     this.message = "Ready";
     this.notify();
@@ -2046,6 +2052,7 @@ export class Controller {
         [...this.pending, this.constrainMeasurement(this.cursor)],
         this.mode === "arc" ? this.arcSweep : undefined,
         this.polygonSides,
+        this.measurementSections,
       );
     } catch {
       return null;
@@ -3390,6 +3397,7 @@ export class Controller {
         points,
         this.mode === "arc" ? this.arcSweep : undefined,
         this.polygonSides,
+        this.measurementSections,
       );
       if (this.mode === "control-curve")
         shape.handles = this.pendingHandles.slice(0, points.length);

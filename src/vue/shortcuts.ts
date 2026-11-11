@@ -137,12 +137,12 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     }
   }
   if (
-    editor.mode.startsWith("polygon") &&
+    (editor.mode.startsWith("polygon") || editor.mode === "measurement") &&
     !mod &&
     (e.key === "ArrowUp" || e.key === "ArrowDown")
   ) {
     e.preventDefault();
-    editor.adjustPolygonSides(e.key === "ArrowUp" ? 1 : -1);
+    editor.adjustConstructionCount(e.key === "ArrowUp" ? 1 : -1);
     return;
   }
   if (editor.stitchMode && (e.key === "Enter" || e.key === "Escape")) {

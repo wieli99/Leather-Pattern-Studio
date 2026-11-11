@@ -96,3 +96,11 @@ test("vertex dragging advertises angle constraint without changing handle guidan
   expect(hint.controls).toContainEqual({ id: "angle", gesture: "Shift", action: "Constrain movement to 45°" });
   expect(editorHint({ ...base, gesture: { kind: "vertex", handleSide: "outgoing" } }).controls.some(c => c.id === "angle")).toBe(false);
 });
+
+test.each([0, 1, 2])("measurement help explains equal sections at placement stage %i", (count) => {
+  const hint = editorHint({...base, mode:"measurement", pending:Array.from({length:count},()=>({})), measurementSections:4});
+  expect(hint.controls).toContainEqual({
+    id:"sections", gesture:"Up / Down / Shift+wheel",
+    action:"Add / remove equal sections",
+  });
+});
