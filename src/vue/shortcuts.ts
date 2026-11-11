@@ -86,7 +86,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     );
     if (field) {
       e.preventDefault();
-      field.focus();
+      field.focus({ preventScroll: true });
     }
     return;
   }
