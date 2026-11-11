@@ -107,7 +107,8 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
       await nextTick();
     }
   }
-  if (document.activeElement === field) field.select();
+  // Set the selection without select() asking Firefox to scroll the field.
+  if (document.activeElement === field) field.setSelectionRange(0, field.value.length);
 }
 function input(item: (typeof items.value)[number], event: Event) {
   draft.value = (event.target as HTMLInputElement).value;
@@ -198,7 +199,7 @@ function cycleField(event: KeyboardEvent) {
   const next =
     fields[(index + (event.shiftKey ? -1 : 1) + fields.length) % fields.length];
   next.focus({ preventScroll: true });
-  if (next === input) next.select();
+  if (next === input) next.setSelectionRange(0, next.value.length);
 }
 function style(item: (typeof items.value)[number]) {
   const p = active.value === item.id ? pinned.value : item.point;

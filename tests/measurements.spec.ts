@@ -191,7 +191,14 @@ test("off-screen construction fields pan the canvas without scrolling the UI", {
   // Focus is synchronous; revealing the field waits for Vue's next render.
   await expect(async () => {
     const box = (await label.boundingBox())!;
-    expect(box.x).toBeGreaterThanOrEqual(original.x + 15);
+    const layout = await height.evaluate(field => {
+      const ancestors = [];
+      for (let node = field.parentElement; node; node = node.parentElement) {
+        ancestors.push({ tag: node.className, x: node.getBoundingClientRect().x, scrollX: node.scrollLeft });
+      }
+      return ancestors;
+    });
+    expect(box.x, JSON.stringify(layout)).toBeGreaterThanOrEqual(original.x + 15);
     expect(box.x + box.width).toBeLessThanOrEqual(original.x + original.width - 15);
     expect(box.y).toBeGreaterThanOrEqual(original.y + 15);
     expect(box.y + box.height).toBeLessThanOrEqual(original.y + original.height - 15);
