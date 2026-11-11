@@ -348,9 +348,8 @@ test("inline rename controls download filename", { tag: "@manual" }, async ({ pa
   await expect(filename).toHaveValue("Untitled");
   await filename.fill("Wallet");
   await manualScreenshot(page, "rename.png");
+  const pending = page.waitForEvent("download");
   await page.getByLabel("Project filename").press("Enter");
   await expect(filename).toHaveValue("Wallet");
-  const pending = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
   expect((await pending).suggestedFilename()).toBe("Wallet.leather.json");
 });
