@@ -102,3 +102,17 @@ For the manual, wait until the editor's service worker controls the page, then o
 ## Rollback
 
 Use the Worker's Deployments dashboard to roll back to a previous successful deployment. Then revert the faulty change through dev and main so the next automated deployment retains the correction. Verify offline/update behavior after rollback; installed clients may still have cached assets until they accept an update.
+
+## Desktop packages
+
+Desktop packages use the same Vue application and Rust/Wasm document engine as the website. `.github/workflows/desktop.yml` builds Linux Flatpak, Windows NSIS, and macOS DMG packages for x64 and ARM64. GitHub Actions artifacts are available for PR verification. A `vVERSION` tag matching `package.json`, on a commit contained in main with a successful Build and test check, creates a draft release after all packages build. Review the packages and generated SHA256SUMS before publishing the draft. A hyphenated version creates a prerelease. No publisher certificates or updater signing secrets are used.
+
+On Linux install the matching GitHub bundle with `flatpak install --user ./Leather-Pattern-Studio-x86_64.flatpak` (or aarch64), then launch `flatpak run studio.leather.pattern-designer`. Flathub supplies the GNOME runtime; installing may require network access. Install a newer bundle the same way to update. No system layering or OS package installation is needed on Bluefin. Flatpak launcher integration registers `.leather`; choose the application in your file manager's Open With dialog if needed.
+
+Windows packages are unsigned and may show publisher warnings or be blocked by Smart App Control or organization policy. macOS packages are ad-hoc signed without notarization; users may need to allow the application in Privacy & Security. Do not promise that unsigned packages run under every security policy.
+
+The desktop application queries published GitHub Releases automatically once per launch. Background failures remain silent; Settings → Check for updates retries manually and reports failures. Stable installations exclude prereleases. An available update links to its release page; installation is manual. No private download server is required. Validate native dialogs, file associations, clipboard, offline help, exports and upgrade behavior on each target before publishing. Build success and browser-engine tests alone do not establish native OS compatibility.
+
+Require **Desktop build and test** alongside **Build and test** in branch protection. This additional gate fails when any desktop package job fails or is skipped; it does not certify physical-device validation.
+
+The Linux bundle disables WebKit DMA-BUF rendering because the native Wayland launch failed with a protocol error on the reference Bluefin host; the same installed app stayed running with this workaround. Reassess it when updating WebKit/runtime versions. This can affect rendering performance and does not establish compatibility with every GPU.

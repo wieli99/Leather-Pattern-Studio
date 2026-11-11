@@ -1,3 +1,4 @@
+import { saveArtifact } from "../platform";
 import fontUrl from "../assets/fonts/PrintSans.ttf?url";
 import { orderedPrintPages, pageSvg } from "./printScene";
 import type { Doc } from "../model/project";
@@ -198,10 +199,5 @@ export async function generatePrint(
   };
 }
 export function downloadArtifact(artifact: PrintArtifact) {
-  const url = URL.createObjectURL(artifact.blob),
-    link = document.createElement("a");
-  link.href = url;
-  link.download = artifact.filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  void saveArtifact(artifact.blob, artifact.filename).catch(error => alert(String(error)));
 }

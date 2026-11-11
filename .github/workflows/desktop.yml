@@ -1,0 +1,96 @@
+name: Desktop packages
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  packages:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, arch: x86_64, bundle: '' }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, arch: aarch64, bundle: '' }
+          - { os: windows-2025, target: x86_64-pc-windows-msvc, arch: x86_64, bundle: nsis }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, arch: aarch64, bundle: nsis }
+          - { os: macos-15-intel, target: x86_64-apple-darwin, arch: x86_64, bundle: dmg }
+          - { os: macos-15, target: aarch64-apple-darwin, arch: aarch64, bundle: dmg }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }},wasm32-unknown-unknown
+      - run: cargo install wasm-pack --version 0.13.1 --locked
+      - run: npm ci
+      - run: npm run wasm
+      - run: npm run check:fast
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf flatpak-builder
+      - if: runner.os != 'Linux'
+        run: npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+      - if: runner.os == 'Linux'
+        run: |
+          npx tauri build --no-bundle --target ${{ matrix.target }}
+          cp src-tauri/target/${{ matrix.target }}/release/leather-pattern-studio packaging/
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak-builder --user --install-deps-from=flathub --repo=flatpak-repo flatpak-build packaging/studio.leather.pattern-designer.yml
+          flatpak build-bundle flatpak-repo Leather-Pattern-Studio-${{ matrix.arch }}.flatpak studio.leather.pattern-designer --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            *.flatpak
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: packages
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Validate release version and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
+          git merge-base --is-ancestor HEAD origin/main
+          gh api repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs --jq '.check_runs[] | select(.name == "Build and test") | .conclusion' | grep -qx success
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: packages
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir release
+          find packages -type f \( -name '*.flatpak' -o -name '*-setup.exe' -o -name '*.dmg' \) -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes "${flags[@]}" ./*
+  desktop-check:
+    name: Desktop build and test
+    if: always()
+    needs: packages
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULT: ${{ needs.packages.result }}
+        run: test "$RESULT" = success

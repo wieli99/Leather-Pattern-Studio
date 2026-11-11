@@ -4,3 +4,10 @@ target/
 src/wasm/
 test-results/
 playwright-report/
+
+src-tauri/gen/
+packaging/leather-pattern-studio
+flatpak-build/
+flatpak-repo/
+/.flatpak-builder/
+/Leather-Pattern-Studio-*.flatpak

@@ -38,5 +38,5 @@ function lineSettings(){editor.editingStitchHoles=false;editor.stitchHoleSelecti
   </div>
 </template>
 <style scoped>
-.hole-settings{display:grid;gap:8px;}label{display:flex;align-items:center;justify-content:space-between;gap:8px;}select,input{width:135px;box-sizing:border-box;background:var(--input);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
+.hole-settings{display:grid;gap:8px;}label{display:flex;align-items:center;justify-content:space-between;gap:8px;}select,input{width:135px;box-sizing:border-box;background-color:var(--input);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
 </style>

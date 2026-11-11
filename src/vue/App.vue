@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { openHelp, openExternal } from "../platform";
+import { desktopCloseHandler } from "../desktopClose";
+import { startDesktopUpdates, useDesktopUpdates } from "../desktopUpdates";
+const desktopUpdates = useDesktopUpdates();
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "@tauri-apps/api/core";
 import ToolRail from "./ToolRail.vue";
 import RailButton from "./RailButton.vue";
 import { computed } from "vue";
@@ -41,11 +49,12 @@ async function importImage(event: Event) {
     await editor.insertImage(image);
   } catch (error) { editor.message = String(error); editor.notify(); }
 }
-const nativeSaving = "showSaveFilePicker" in window;
+let allowDesktopClose = false;
+const nativeSaving = isTauri() || "showSaveFilePicker" in window;
 const renaming = ref(false);
 const draftName = ref("");
 function editableName(name: string) {
-  return name.replace(/\.leather\.json$/i, "");
+  return name.replace(/\.leather(?:\.json)?$/i, "");
 }
 function startRename(event: FocusEvent) {
   if (editor.fileBusy) {
@@ -118,10 +127,51 @@ function reload() {
     );
   }
 }
+onMounted(async () => {
+  if (!isTauri()) return;
+  startDesktopUpdates();
+  let opening = false;
+  const openPending = async () => {
+    if (opening || !editor.ready || editor.fileBusy) return;
+    opening = true;
+    try {
+      const requestId = await invoke<number | null>("pending_files");
+      if (requestId !== null) {
+        try { await editor.open(requestId); }
+        finally { await invoke("clear_pending", { requestId }); }
+      }
+    } catch (error) { editor.fail(error); }
+    finally { opening = false; }
+  };
+  const timer = setInterval(() => void openPending(), 500);
+  let cleanupDesktop = () => {};
+  onUnmounted(() => { clearInterval(timer); cleanupDesktop(); });
+  const unerror = await listen<string>("desktop-error", event => { editor.message = event.payload; editor.notify(); });
+  const unlisten = await listen("project-open", () => void openPending());
+  const desktopWindow = getCurrentWindow();
+  const unclose = await desktopWindow.onCloseRequested(desktopCloseHandler({
+    busy: () => editor.fileBusy,
+    confirm: () => editor.confirmReplacement(),
+    destroy: async () => {
+      allowDesktopClose = true;
+      try { await desktopWindow.destroy(); }
+      catch (error) { allowDesktopClose = false; throw error; }
+    },
+    fail: error => editor.fail(error),
+  }));
+  const links = (event: MouseEvent) => {
+    const anchor = (event.target as Element)?.closest?.("a");
+    if (!anchor) return;
+    if (anchor.pathname === "/manual/index.html") { event.preventDefault(); void openHelp(); }
+    else if (/^https?:/.test(anchor.href)) { event.preventDefault(); void openExternal(anchor.href); }
+  };
+  document.addEventListener("click", links);
+  cleanupDesktop = () => { unerror(); unlisten(); unclose(); document.removeEventListener("click", links); };
+});
 onMounted(() => {
   const key = (event: KeyboardEvent) =>
     !printActive.value && handleShortcut(event, () => {
-      window.open("/manual/index.html", "_blank", "noopener");
+      void openHelp();
     });
   const clipboard = (event: ClipboardEvent) => { if (!printActive.value) handleClipboard(event); };
   const up = (e: KeyboardEvent) => {
@@ -132,7 +182,7 @@ onMounted(() => {
     editor.pauseGesture();
   };
   const leave = (e: BeforeUnloadEvent) => {
-    if (editor.dirty) {
+    if (!allowDesktopClose && editor.dirty) {
       e.preventDefault();
       e.returnValue = "";
     }
@@ -158,7 +208,7 @@ onMounted(() => {
   });
 });
 onMounted(() => {
-  if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+  if (isTauri() || !import.meta.env.PROD || !("serviceWorker" in navigator)) return;
   void navigator.serviceWorker
     .register("/sw.js")
     .then((reg) => {
@@ -235,6 +285,10 @@ onMounted(() => {
         >
       </div>
     </header>
+    <div v-if="isTauri() && desktopUpdates.url.value" class="notice" role="status">
+      <span>{{ desktopUpdates.message.value }}</span>
+      <button @click="openExternal(desktopUpdates.url.value)">Open GitHub release</button>
+    </div>
     <PrintWorkspace
       ref="printWorkspace"
       v-model:left="left"

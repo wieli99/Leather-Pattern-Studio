@@ -1,3 +1,4 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { stitchTools, type StitchTool } from "./stitchTools";
 import { copyTransferPlacements, shareReceivingGeometry, hitStitchHole, detachTransfer, makeTransfer, pieceFrame, stitchPiece, materialContains, copyStitchData, resolvedStitchGroups, receivingStitches, holeAppearance, holeMark, holeTouchesEdge } from "../model/stitchLayers";
 import type { StitchTransfer } from "../generated/StitchTransfer";
@@ -413,7 +414,7 @@ export class Controller {
   space = false;
   gesture: Gesture | null = null;
   message = "Starting geometry engine…";
-  name = "Untitled.leather.json";
+  name = "Untitled.leather";
   restore: Recovery | undefined;
   listeners = new Set<() => void>();
   version = 0;
@@ -3727,6 +3728,10 @@ export class Controller {
     } else this.pan = { x: this.pan.x - dx, y: this.pan.y - dy };
     this.notify();
   }
+  async confirmReplacement() {
+    if (isTauri()) return !this.dirty || await invoke<boolean>("confirm_replace");
+    return this.confirmReplace();
+  }
   confirmReplace() {
     return (
       !this.dirty ||
@@ -3735,22 +3740,23 @@ export class Controller {
   }
   async newProject() {
     if (this.fileBusy) return;
-    if (!this.confirmReplace()) return;
+    if (!(await this.confirmReplacement())) return;
     this.cancel();
     await this.transact("load", emptyDocument());
     this.files.handle = null;
     this.collapsedGroups.clear(); this.selectedGroups = []; this.panelRevision++;
-    this.name = "Untitled.leather.json";
+    this.name = "Untitled.leather";
     this.savedBaseline = fingerprint(this.document);
     this.dirty = false;
     this.notify();
   }
-  async open() {
+  async open(requestId?: number) {
     if (this.fileBusy) return;
-    if (!this.confirmReplace()) return;
+    const previousHandle = this.files.handle;
     this.fileBusy = true;
     try {
-      const file = await this.files.open();
+      if (!(await this.confirmReplacement())) return;
+      const file = await this.files.open(requestId);
       if (!file) return;
       this.cancel();
       await this.transact("load", file.document);
@@ -3762,6 +3768,7 @@ export class Controller {
       this.scheduleRecovery();
       this.notify();
     } catch (e) {
+      this.files.handle = previousHandle;
       this.fail(e);
     } finally {
       this.fileBusy = false;
@@ -3772,7 +3779,7 @@ export class Controller {
     if (this.fileBusy) return;
     let name = value.trim();
     if (!name) return;
-    if (!/\.json$/i.test(name)) name += ".leather.json";
+    if (!/\.(json|leather)$/i.test(name)) name += ".leather";
     if (name === this.name) return;
     this.name = name;
     this.files.handle = null;
@@ -3807,7 +3814,7 @@ export class Controller {
     }
   }
   async restoreProject() {
-    if (this.fileBusy || !this.restore || !this.confirmReplace()) return;
+    if (this.fileBusy || !this.restore || !(await this.confirmReplacement())) return;
     const value = this.restore;
     this.restore = undefined;
     this.cancel();

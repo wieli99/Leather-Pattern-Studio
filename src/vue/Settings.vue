@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DesktopUpdates from "./DesktopUpdates.vue";
+import { isTauri } from "../platform";
 import StitchPresets from "./StitchPresets.vue";
 import LengthInput from "./LengthInput.vue";
 import type { UnitMode } from "../model/units";
@@ -97,6 +99,7 @@ const e = useEditor(),
             </option>
           </select>
         </label>
+        <DesktopUpdates v-if="isTauri()" />
       </PopoverContent>
     </PopoverPortal>
   </PopoverRoot>
