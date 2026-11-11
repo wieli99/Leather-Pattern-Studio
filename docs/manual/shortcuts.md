@@ -37,7 +37,8 @@ Copy/paste works between Model and print tabs and across browser tabs. Pasted ob
 | P / R / C / H | Path / rectangle / circle / polygon tool group |
 | Repeat group letter / Shift+letter | Next / previous variant |
 | T | Text |
-| D / Shift+D | Measurement group, next / previous variant |
+| D / Shift+D | Measurements group, next / previous variant |
+| A / Shift+A | Drawing tools group, next / previous variant |
 | Tab / Shift+Tab | Enter or cycle numeric construction fields |
 | Enter | Confirm entered dimensions or finish a path |
 | Esc | Leave numeric entry, or cancel drawing and return to Select |
@@ -102,7 +103,7 @@ See [stitch lines](#stitching) for master settings, clearances and equal hole co
 
 ## Print layouts
 
-Everyday save, history, copy/paste, duplication, grouping and deletion shortcuts also work in print layouts. Text (T), Measurement variants (D/Shift+D), Select (V), Move (G), Rotate (E), and Mirror (M) are available. Use Model for source geometry edits and resizing.
+Everyday save, history, copy/paste, duplication, grouping and deletion shortcuts also work in print layouts. Text (T), Measurements (D/Shift+D), Drawing tools (A/Shift+A), Select (V), Move (G), Rotate (E), and Mirror (M) are available. Use Model for source geometry edits and resizing.
 
 | Control | Action |
 | --- | --- |

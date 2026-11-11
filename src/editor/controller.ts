@@ -368,7 +368,8 @@ export class Controller {
   tool: Tool = "select";
   mode: Mode = "select";
   lastRectangle: Mode = "rectangle";
-  lastIndicator: Mode = "measurement";
+  lastMeasurement: Mode = "measurement";
+  lastDrawing: Mode = "arrow";
   lastPolygon: Mode = "polygon";
   lastCircle: Mode = "circle";
   lastPolyline: Mode = "polyline";
@@ -486,7 +487,8 @@ export class Controller {
       this.mode,
       this.lastRectangle,
       this.lastCircle,
-      this.lastIndicator,
+      this.lastMeasurement,
+      this.lastDrawing,
       this.lastPolygon,
       this.lastPolyline,
       this.selected.join(","),
@@ -1765,7 +1767,8 @@ export class Controller {
                   : mode.startsWith("arc")
                     ? "arc"
                     : "circle";
-    if (isIndicator(mode) || mode === "measurement") this.lastIndicator = mode;
+    if ((variants.measurement as readonly string[]).includes(mode)) this.lastMeasurement = mode;
+    if ((variants.drawing as readonly string[]).includes(mode)) this.lastDrawing = mode;
     if ((variants.polygon as readonly string[]).includes(mode))
       this.lastPolygon = mode;
     if ((variants.polyline as readonly string[]).includes(mode))
@@ -1782,7 +1785,7 @@ export class Controller {
       current = list.indexOf(this.mode);
     this.setMode(
       current < 0
-        ? group === "indicator" ? this.lastIndicator : group === "rectangle"
+        ? group === "measurement" ? this.lastMeasurement : group === "drawing" ? this.lastDrawing : group === "rectangle"
           ? this.lastRectangle
           : group === "circle"
             ? this.lastCircle

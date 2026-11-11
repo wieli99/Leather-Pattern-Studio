@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 
 test('three-click measurements persist, edit, undo and cancel', { tag: "@manual" }, async ({page}, info) => {
   await page.goto('/');
-  const tool = page.getByRole('button',{name:'Measurement (D)',exact:true});
+  const tool = page.getByRole('button',{name:'Measurements (D)',exact:true});
   await expect(tool).toBeEnabled();
   const textBox = await page.getByRole('button',{name:'Text (T)',exact:true}).boundingBox();
   expect((await tool.boundingBox())!.y).toBeGreaterThan(textBox!.y);
@@ -59,7 +59,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
 
 test('measurement project files reopen with transformed distance and editable offset', async ({page}, info) => {
   await page.goto('/');
-  await expect(page.getByRole('button',{name:'Measurement (D)',exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Measurements (D)',exact:true})).toBeEnabled();
   await page.evaluate(() => {
     delete (window as any).showSaveFilePicker;
     delete (window as any).showOpenFilePicker;
@@ -95,7 +95,7 @@ test('measurement project files reopen with transformed distance and editable of
 
 test('short measurement labels remain selectable above outside arrowheads', async ({page}, info) => {
   await page.goto('/');
-  await page.getByRole('button',{name:'Measurement (D)',exact:true}).click();
+  await page.getByRole('button',{name:'Measurements (D)',exact:true}).click();
   const canvas = page.getByLabel('Pattern drawing canvas');
   await canvas.click({position:{x:220,y:220}});
   await canvas.click({position:{x:235,y:220}});
@@ -112,7 +112,7 @@ test('short measurement labels remain selectable above outside arrowheads', asyn
 
 test('measurement drag releases into offset placement', async ({page}) => {
   await page.goto('/');
-  await page.getByRole('button',{name:'Measurement (D)',exact:true}).click();
+  await page.getByRole('button',{name:'Measurements (D)',exact:true}).click();
   const canvas = page.getByLabel('Pattern drawing canvas');
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x+220,box.y+220);

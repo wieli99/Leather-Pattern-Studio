@@ -44,4 +44,4 @@ Shift constrains corner/center rectangles and bounding-box ellipses/polygons to 
 
 Every closed object has a subtle interior fill, including closed polylines and curves and full-circle arcs. Separate objects that together enclose a region are not filled as a single shape.
 
-Choose the **Measurement (D)** submenu below Text for [arrows, crosshairs and size guides](#indicators).
+Choose the **Measurements (D)** and **Drawing tools (A)** menus below Text for [arrows, crosshairs and size guides](#indicators).

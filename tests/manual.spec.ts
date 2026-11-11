@@ -122,7 +122,7 @@ test("first-pattern manual walkthrough produces a saved stitched pattern and pri
   await page.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();
   await page.getByRole("button", { name: "Import Rectangle 1", exact: true }).first().click();
   await expect(page.getByRole("region", { name: "Print objects", exact: true }).locator(".print-object-name")).toHaveCount(1);
-  await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+  await page.getByRole("button", { name: "Measurements (D)", exact: true }).click({ button: "right" });
   await page.getByRole("menuitemradio", { name: "Square size guide", exact: true }).click();
   const printCanvas = page.getByLabel("Print layout canvas");
   await printCanvas.click({ position: { x: 350, y: 330 } });

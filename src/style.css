@@ -117,6 +117,7 @@ header {
   min-height: 0;
 }
 nav {
+  overflow-y: auto;
   width: 62px;
   flex-shrink: 0;
   background: #20252c;

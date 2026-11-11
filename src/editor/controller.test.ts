@@ -2780,3 +2780,21 @@ test("clicking a rectangle vertex with Shift leaves its geometry and history unc
   expect(e.document).toEqual(original);
   expect(e.revision).toBe(1);
 });
+
+test("measurement and drawing groups remember and cycle independently", () => {
+  const e = editor();
+  e.cycle("measurement");
+  expect(e.mode).toBe("measurement");
+  e.cycle("measurement", -1);
+  expect(e.mode).toBe("size-ruler");
+  e.cycle("drawing");
+  expect(e.mode).toBe("arrow");
+  e.cycle("drawing", -1);
+  expect(e.mode).toBe("crosshair");
+  e.cycle("measurement");
+  expect(e.mode).toBe("size-ruler");
+  e.cycle("drawing");
+  expect(e.mode).toBe("crosshair");
+  e.cycle("drawing");
+  expect(e.mode).toBe("arrow");
+});
