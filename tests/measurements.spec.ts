@@ -173,3 +173,76 @@ test("first construction wheel adjustment preserves editable precision", async (
   await expect(width).toBeFocused();
   expect(Number(await width.inputValue())).toBeCloseTo(original + 1, 10);
 });
+
+test("off-screen construction fields pan the canvas without scrolling the UI", { tag: "@manual" }, async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 250, y: 200 } });
+  const original = (await canvas.boundingBox())!;
+  await page.mouse.move(original.x + 350, original.y + 300);
+  await canvas.press("Tab");
+  const width = page.getByRole("textbox", { name: "Width", exact: true });
+  await width.fill("2000");
+  await width.press("Tab");
+  const height = page.getByRole("textbox", { name: "Height", exact: true });
+  await expect(height).toBeFocused();
+  const label = height.locator("..");
+  // Focus is synchronous; revealing the field waits for Vue's next render.
+  await expect(async () => {
+    const box = (await label.boundingBox())!;
+    const layout = await height.evaluate(field => {
+      const ancestors = [];
+      for (let node = field.parentElement; node; node = node.parentElement) {
+        ancestors.push({ tag: node.className, x: node.getBoundingClientRect().x, scrollX: node.scrollLeft });
+      }
+      return ancestors;
+    });
+    expect(box.x, JSON.stringify(layout)).toBeGreaterThanOrEqual(original.x + 15);
+    expect(box.x + box.width).toBeLessThanOrEqual(original.x + original.width - 15);
+    expect(box.y).toBeGreaterThanOrEqual(original.y + 15);
+    expect(box.y + box.height).toBeLessThanOrEqual(original.y + original.height - 15);
+  }).toPass();
+  expect(await canvas.boundingBox()).toEqual(original);
+  expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
+  await manualScreenshot(page, "offscreen-measurement-focus.png");
+  await height.press("Shift+Tab");
+  await expect(width).toBeFocused();
+  await expect(width).toHaveValue("2000");
+  await width.press("Escape");
+  await expect(canvas).toBeFocused();
+});
+
+test("selected edge measurements cycle without moving the surrounding UI", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 250, y: 200 } });
+  const view = (await canvas.boundingBox())!;
+  await page.mouse.move(view.x + 350, view.y + 300);
+  await canvas.press("Tab");
+  const width = page.getByRole("textbox", { name: "Width", exact: true });
+  await width.fill("2000");
+  await width.press("Enter");
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  await page.keyboard.down("Control");
+  const fields = page.locator(".construction-measurements input");
+  await expect(fields).toHaveCount(4);
+  await fields.last().click();
+  await page.keyboard.up("Control");
+  for (const key of ["Tab", "Tab", "Shift+Tab", "Shift+Tab"]) {
+    await page.keyboard.press(key);
+    const focused = page.locator(".construction-measurements label:has(input:focus)");
+    await expect(focused).toHaveCount(1);
+    const box = (await focused.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(view.x + 15);
+    expect(box.x + box.width).toBeLessThanOrEqual(view.x + view.width - 15);
+    expect(box.y).toBeGreaterThanOrEqual(view.y + 15);
+    expect(box.y + box.height).toBeLessThanOrEqual(view.y + view.height - 15);
+    expect(await canvas.boundingBox()).toEqual(view);
+    expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
+  }
+  await page.keyboard.press("Escape");
+  await expect(canvas).toBeFocused();
+  await expect(page.getByLabel("Width", { exact: true })).toHaveValue("2000");
+});
