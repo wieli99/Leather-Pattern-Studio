@@ -85,7 +85,7 @@ jobs:
       - name: Build, test and package Linux
         # Flatpak's nested build sandbox needs mount/user namespaces inside this disposable runner container.
         run: |
-          sudo podman run --rm --privileged -v "$PWD:/app" -w /app localhost/leather-desktop sh -ec '
+          sudo podman run --rm --privileged -v "$PWD:/workspace" -w /workspace localhost/leather-desktop sh -ec '
             npm ci
             npm run check:fast
             npx tauri build --config src-tauri/tauri.ci.conf.json --no-bundle --target ${{ matrix.target }}
