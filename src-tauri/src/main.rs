@@ -184,9 +184,22 @@ fn pending_files(app: tauri::AppHandle) -> Option<u32> {
 }
 #[tauri::command]
 fn focus_editor(app: tauri::AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or("Editor window is unavailable")?;
+    let window = match app.get_webview_window("main") {
+        Some(window) => window,
+        None => {
+            let config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == "main")
+                .ok_or("Editor configuration is unavailable")?;
+            tauri::WebviewWindowBuilder::from_config(&app, config)
+                .map_err(|e| e.to_string())?
+                .build()
+                .map_err(|e| e.to_string())?
+        }
+    };
     window.show().map_err(|e| e.to_string())?;
     window.unminimize().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
@@ -232,9 +245,7 @@ fn main() {
                 app.state::<PendingFiles>().0.lock().unwrap().enqueue(paths);
                 let _ = app.emit("project-open", ());
             }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-            }
+            let _ = focus_editor(app.clone());
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

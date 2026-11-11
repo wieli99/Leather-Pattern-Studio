@@ -116,3 +116,5 @@ The desktop application queries published GitHub Releases automatically once per
 Require **Desktop build and test** alongside **Build and test** in branch protection. This additional gate fails when any desktop package job fails or is skipped; it does not certify physical-device validation.
 
 The Linux bundle disables WebKit DMA-BUF rendering because the native Wayland launch failed with a protocol error on the reference Bluefin host; the same installed app stayed running with this workaround. Reassess it when updating WebKit/runtime versions. This can affect rendering performance and does not establish compatibility with every GPU.
+
+Desktop CI builds optimized Wasm and the Vue frontend once in the Linux project container, then downloads the identical frontend and generated source into all six native build jobs. The CI-only Tauri configuration disables the redundant frontend hook; local desktop builds retain the normal hook. This avoids the unavailable wasm-opt binary on Windows ARM. Native Rust tests run against release builds on their explicit target architecture.
