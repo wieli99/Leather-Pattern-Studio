@@ -75,7 +75,10 @@ function cancelRename(event: KeyboardEvent) {
   (event.target as HTMLInputElement).blur();
 }
 function applyRename(event: KeyboardEvent) {
+  if (event.isComposing || event.repeat) return;
+  finishRename();
   (event.target as HTMLInputElement).blur();
+  void editor.save();
 }
 const editing = ref("");
 const hint = computed(() => editorHint(e.value, editing.value));

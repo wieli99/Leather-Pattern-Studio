@@ -130,6 +130,12 @@ test("Fit restores the default page view on an empty print tab", async ({ page }
   const canvas = page.getByLabel("Print layout canvas");
   await expect(canvas).toBeVisible();
   await page.getByRole("button", { name: "Fit", exact: true }).click();
+  // Visibility does not mean the asynchronous SVG/font rendering has painted a page.
+  // Wait for the white paper before capturing the reference, rather than a blank canvas.
+  await expect.poll(() => canvas.evaluate((el: HTMLCanvasElement) => {
+    const ctx = el.getContext("2d")!;
+    return Array.from(ctx.getImageData(el.width / 2, el.height / 2, 1, 1).data);
+  })).toEqual([255, 255, 255, 255]);
   const initial = await canvas.screenshot();
   await canvas.hover({ position: { x: 300, y: 200 } });
   await page.keyboard.down("Control");

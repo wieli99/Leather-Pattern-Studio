@@ -20,9 +20,9 @@ When an application update offers **Reload**, save your project before accepting
 
 ## Save and reopen a project
 
-Edit the filename directly at the top left. The .leather.json suffix is hidden from the editable field; saved filenames retain it. Enter or clicking outside commits; Escape cancels. Blank names are ignored. Names without a .json suffix receive .leather.json. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
+Edit the filename directly at the top left. The .leather.json suffix is hidden from the editable field; saved filenames retain it. Enter commits the name and saves the project immediately. Clicking outside commits the name without saving; Escape cancels. Blank names are ignored. Names without a .json suffix receive .leather.json. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
 
-Choose **Save** (Ctrl/⌘+S). When Save opens a file dialog, choose a destination on the first save or after renaming; later saves overwrite that selected file. Other browsers download a copy using the current filename. The browser controls the destination and may rename duplicates.
+Choose **Save** (Ctrl/⌘+S). When Save opens a file dialog, choose a destination on the first save or after renaming; later saves overwrite that selected file. Other browsers download a copy using the current filename. The browser controls the destination and may rename duplicates. In Firefox, enable **Always ask you where to save files** in the browser’s download settings, then select the existing file and confirm replacement to avoid accumulating copies. The app cannot request replacement for ordinary downloads.
 
 “Download started” clears the change indicator for the exported revision but does not confirm a disk write. Keep the file and use **Open** to edit it again. Browser recovery remains separate.
 
