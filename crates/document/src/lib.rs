@@ -129,6 +129,13 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub measurement_offset: Option<f64>,
+    #[serde(
+        default,
+        rename = "measurementSections",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub measurement_sections: Option<u32>,
     #[serde(default, rename = "fontSize", skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub font_size: Option<f64>,
@@ -924,6 +931,11 @@ impl Document {
             {
                 return Err("Invalid shape".into());
             }
+            if s.measurement_sections
+                .is_some_and(|v| !(1..=100).contains(&v))
+            {
+                return Err("Invalid measurement sections".into());
+            }
             if s.kind == Kind::Measurement
                 && s.measurement_offset
                     .is_none_or(|v| !v.is_finite() || v.abs() > 1e7)
@@ -1677,10 +1689,11 @@ mod tests {
     }
     #[test]
     fn persistent_measurement_validation_and_history() {
-        let json = r#"{"version":14,"shapes":[{"id":"m","name":"Measurement","kind":"measurement","points":[{"x":0,"y":0},{"x":40,"y":0}],"measurementOffset":-12,"radius":0,"rotation":0}]}"#;
+        let json = r#"{"version":14,"shapes":[{"id":"m","name":"Measurement","kind":"measurement","points":[{"x":0,"y":0},{"x":40,"y":0}],"measurementOffset":-12,"measurementSections":3,"radius":0,"rotation":0}]}"#;
         let mut editor = Editor::new();
         editor.execute("commit", json, 0).unwrap();
         assert_eq!(editor.document.shapes[0].measurement_offset, Some(-12.0));
+        assert_eq!(editor.document.shapes[0].measurement_sections, Some(3));
         let saved = editor.document.clone();
         editor.execute("undo", "", 1).unwrap();
         assert!(editor.document.shapes.is_empty());

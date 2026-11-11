@@ -4,7 +4,7 @@ import { holeAppearance, holeMark } from "../model/stitchLayers";
 import { shapePath } from "./renderer";
 import { bounds, shapeMatrix } from "../model/geometry";
 import { isClosedShape } from "../model/closedShape";
-import { measurementGeometry } from "../model/measurement";
+import { measurementSegments, measurementGeometry } from "../model/measurement";
 import { indicatorGeometry, isIndicator } from "../model/indicators";
 import { stitchGeometry } from "../model/stitchGeometry";
 import { stitchMarks } from "../model/stitch";
@@ -146,6 +146,9 @@ export function printShapeSvg(
   sourceId: string,
   layout: PrintLayout,
 ): string {
+  if (shape.kind === "measurement" && shape.measurementSections)
+    return measurementSegments(shape)
+      .map(part => printShapeSvg(doc, part, sourceId, layout)).join("");
   const m = shapeMatrix(shape),
     matrix = `matrix(${[m.a, m.b, m.c, m.d, m.e, m.f].map(n).join(" ")})`;
   const color = shape.strokeColor ?? "#111111",

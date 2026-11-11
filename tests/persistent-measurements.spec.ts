@@ -13,6 +13,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
   await expect(tool).toHaveAttribute('aria-pressed', 'true');
   await canvas.click({position:{x:220,y:220}});
   await canvas.click({position:{x:520,y:220}});
+  await canvas.press('ArrowUp');
   await expect(page.locator('.objects .object-select')).toHaveCount(0);
   await canvas.press('Tab');
   const constructionOffset = page.getByRole('textbox',{name:'Offset',exact:true});
@@ -32,6 +33,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
   await expect(page.locator('.objects .object-select')).toHaveCount(1);
   await page.getByRole('button',{name:'Select (V)',exact:true}).click();
   const offset = page.getByLabel('Offset (mm)',{exact:true});
+  await expect(page.getByLabel('Sections',{exact:true})).toHaveValue('2');
   await expect(offset).toHaveValue('-15');
   await offset.fill('20');
   await offset.press('Enter');
@@ -47,6 +49,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
   await expect(page.locator('.objects .object-select')).toHaveCount(1);
   await page.locator('.objects .object-select').first().click();
   await expect(offset).toHaveValue('20');
+  await expect(page.getByLabel('Sections',{exact:true})).toHaveValue('2');
   await tool.click();
   await canvas.click({position:{x:300,y:400}});
   await canvas.press('Escape');

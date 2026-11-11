@@ -42,7 +42,7 @@ Copy/paste works between Model and print tabs and across browser tabs. Pasted ob
 | Enter | Confirm entered dimensions or finish a path |
 | Esc | Leave numeric entry, or cancel drawing and return to Select |
 | Backspace while drawing a path | Remove last pending anchor |
-| Up / Down or Shift+wheel | Change polygon sides |
+| Up / Down or Shift+wheel | Change polygon sides or measurement sections |
 | Shift while drawing | Constrain proportions or direction; see [drawing](#drawing) |
 | Alt | Bypass positional snapping |
 | Ctrl | Show selected edge lengths; click a label to edit |

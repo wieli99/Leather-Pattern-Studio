@@ -1,5 +1,5 @@
 import { isIndicator, indicatorGeometry } from "../model/indicators";
-import { measurementGeometry } from "../model/measurement";
+import { measurementSegments, measurementGeometry } from "../model/measurement";
 import type { Shape } from "../model/project";
 import type { UnitMode } from "../model/units";
 export function drawAnnotation(ctx: CanvasRenderingContext2D, s: Shape, units: UnitMode) {
@@ -26,6 +26,14 @@ export function drawAnnotation(ctx: CanvasRenderingContext2D, s: Shape, units: U
       ctx.fillText(l.text, 0, 0); ctx.restore();
     }
   } else if (s.kind === "measurement") {
+    if (s.measurementSections) {
+      for (const part of measurementSegments(s)) {
+        ctx.save();
+        drawAnnotation(ctx, part, units);
+        ctx.restore();
+      }
+      return;
+    }
     const g = measurementGeometry(s, units);
     ctx.lineWidth = s.strokeWidth ?? 0.35;
     ctx.beginPath();

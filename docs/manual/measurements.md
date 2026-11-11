@@ -73,3 +73,7 @@ Select one closed shape to see its read-only **Area (mm² or in²)** in Properti
 Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in Properties. Opacity ranges from 0% (transparent) to 100%. These settings affect only the interior. **Reset styling** restores the subtle theme fill.
 
 Closed shapes offer a **Fill mode** select: **Solid**, **Skiving** (full-length angled lines), **Glueing** (waves), and **Cutout** (crosshatched full-length diagonal lines). Markings overlay the fill and ignore fill opacity. **Outline color** and **Outline opacity (%)** control both outlines and markings. Pattern spacing is fixed in millimetres. **Reset styling** restores Solid, default fill settings, and theme outline styling. Outline controls also apply to open paths, text, and measurements.
+
+### Equal measurement sections
+
+Measurement starts with one section. Shift+wheel or Up/Down changes the count from 1 to 100 during placement, including while choosing the third-click offset. Each equal span shows its own distance and arrows. The count is retained for subsequent placements; Properties offers Sections and Offset. All spans share the offset and form one annotation for undo, saving, and printing. Rotating or transforming a measurement keeps its equal sections aligned along the same dimension line. Tool help lists Up/Down and Shift+wheel as “Add / remove equal sections” throughout placement.

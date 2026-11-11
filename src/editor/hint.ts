@@ -17,6 +17,7 @@ export interface HintState {
   active?: readonly { kind: string }[];
   measurementFields?: readonly string[];
   polygonSides?: number;
+  measurementSections?: number;
   measurementsVisible?: boolean;
   gesture?: { kind: string; handleSide?: string } | null;
   guideDrag?: { axis: "x" | "y" } | null;
@@ -153,6 +154,7 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     add("snap", "Alt", "Bypass snapping");
     if (s.mode !== "size-square") add("angle", "Shift", "Constrain to 45°");
   } else if (s.mode === "measurement") {
+    add("sections", "Up / Down / Shift+wheel", "Add / remove equal sections");
     if (!n) add("draw-drag", "Drag", "Set measurement endpoints");
     if (n === 1) add("angle", "Shift", "Constrain to 45°");
     action = n === 0 ? "Click point A." : n === 1 ? "Click point B."

@@ -1975,10 +1975,13 @@ test('measurement commits once after three points and supports exact signed offs
   e.addPoint({x:40,y:0});
   expect(e.document.shapes).toHaveLength(0);
   expect(e.measurementFields).toEqual(['Offset']);
+  e.adjustConstructionCount(2);
+  expect(e.constructionPreview?.measurementSections).toBe(3);
   e.measurementLocks.Offset = -15;
   e.addPoint({x:20,y:50});
   await vi.waitFor(() => expect(e.document.shapes).toHaveLength(1));
   expect(e.document.shapes[0].measurementOffset).toBe(-15);
+  expect(e.document.shapes[0].measurementSections).toBe(3);
   await e.transact('undo');
   expect(e.document.shapes).toHaveLength(0);
   e.addPoint({x:0,y:0});

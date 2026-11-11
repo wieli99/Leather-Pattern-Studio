@@ -2663,6 +2663,10 @@ async function up(event?: PointerEvent) {
   } else cancel();
 }
 function wheel(event: WheelEvent) {
+  if (drawing.mode === "measurement" && event.shiftKey) {
+    if (event.deltaY) drawing.adjustConstructionCount(event.deltaY < 0 ? 1 : -1);
+    return;
+  }
   if (!event.ctrlKey && !event.metaKey) {
     pan.value = {
       x: pan.value.x - event.deltaX,
@@ -2761,6 +2765,11 @@ function keyboard(event: KeyboardEvent) {
     return;
   }
   if (!target.closest(".print-workspace")) return;
+  if (drawing.mode === "measurement" && !mod && (key === "arrowup" || key === "arrowdown")) {
+    event.preventDefault();
+    drawing.adjustConstructionCount(key === "arrowup" ? 1 : -1);
+    return;
+  }
   if (event.code === "Space") {
     event.preventDefault();
     editor.space = true;
