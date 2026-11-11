@@ -3180,6 +3180,10 @@ export class Controller {
           }
           this.cursor = g.end;
         }
+        if (!g.handleSide) {
+          const origin = applyMatrix(shapeMatrix(original), original.points[g.vertex!]);
+          this.message = `Move ${this.formatLength(g.end.x - origin.x)}, ${this.formatLength(g.end.y - origin.y)} ${this.unitSymbol}`;
+        }
         const local = applyMatrix(inverse(shapeMatrix(original)), g.end);
         const closed =
           (original.kind === "polyline" || isCurve(original)) &&
