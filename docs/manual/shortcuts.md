@@ -58,6 +58,7 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | Control | Action |
 | --- | --- |
 | G / E / S / M / B | Move / Rotate / Resize / Mirror / Corner radius |
+| O | Offset selected outlines |
 | I | Stitch mode (also without a selection) |
 | K / J | Trim / Merge |
 | Tab / Shift+Tab | Enter or cycle transform fields |

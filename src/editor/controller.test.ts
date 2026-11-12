@@ -45,6 +45,127 @@ function editor() {
   return e;
 }
 afterEach(() => vi.useRealTimers());
+test("a competing commit cancels Offset and preserves the property edit", async () => {
+  const e=editor();
+  const shape={id:"piece",name:"Piece",kind:"rectangle" as const,points:[{x:0,y:0},{x:80,y:40}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape]});
+  e.selected=[shape.id];
+  e.activateOffset();
+  await e.commit({...e.document,shapes:[{...shape,name:"Edited"}]});
+  await e.applyOffset();
+  expect(e.offsetActive).toBe(false);
+  expect(e.document.shapes).toHaveLength(1);
+  expect(e.document.shapes[0].name).toBe("Edited");
+});
+test("Offset previews copies, commits one undo step, and leaves the source unchanged", async () => {
+  const e = editor();
+  const shape = { id: "piece", name: "Piece", kind: "rectangle" as const,
+    points: [{x:0,y:0},{x:80,y:40}], radius:0, rotation:0 };
+  await e.commit({ ...emptyDocument(), shapes: [shape] });
+  e.selected = [shape.id];
+  e.activateOffset();
+  expect(e.offsetActive).toBe(true);
+  expect(e.preview?.shapes).toHaveLength(2);
+  e.setOffsetDistance(-3);
+  expect(e.offsetError).toBe("");
+  expect(e.preview?.shapes[1].points[0]).toEqual({x:3,y:3});
+  e.setOffsetDistance(-30);
+  expect(e.offsetDraft).toBeNull();
+  expect(e.offsetError).toMatch(/Piece:/);
+  e.setOffsetDistance(-3);
+  await e.applyOffset();
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.document.shapes[0]).toEqual(shape);
+  expect(e.selected).toEqual([e.document.shapes[1].id]);
+  expect(e.canUndo).toBe(true);
+  await e.transact("undo");
+  expect(e.document.shapes).toHaveLength(1);
+});
+test("Offset cancel and unsupported selections make no document changes", () => {
+  const e = editor();
+  const line = { id: "line", name: "Line", kind: "line" as const,
+    points: [{x:0,y:0},{x:20,y:0}], radius:0, rotation:0 };
+  e.document = { ...emptyDocument(), shapes: [line] };
+  e.selected = [line.id];
+  e.activateOffset();
+  e.cancel();
+  expect(e.document.shapes).toEqual([line]);
+  expect(e.preview).toBeNull();
+  e.document.shapes.push({ ...line, id: "text", kind: "text", text: "T", fontSize: 10 });
+  e.selected = [line.id, "text"];
+  expect(e.canOffset).toBe(false);
+});
+test("Offset does not copy or alter stitching on its source", async () => {
+  const { stitchEdges, insideStitchSide } = await import("../model/stitchGeometry");
+  const { defaultStitchSettings } = await import("../model/stitch");
+  const e = editor();
+  const shape = { id: "piece", name: "Piece", kind: "rectangle" as const,
+    points: [{x:0,y:0},{x:80,y:40}], radius:0, rotation:0 };
+  const group = { id: "stitches", shapeId: shape.id,
+    edges: [stitchEdges(shape)[0].key], side: insideStitchSide(shape),
+    closed: false, settings: { ...defaultStitchSettings } };
+  await e.commit({ ...emptyDocument(), shapes: [shape], stitchGroups: [group] });
+  e.selected = [shape.id];
+  e.activateOffset();
+  await e.applyOffset();
+  expect(e.document.stitchGroups).toEqual([group]);
+  expect(e.document.shapes[0]).toEqual(shape);
+  expect(e.document.shapes[1].id).not.toBe(group.shapeId);
+});
+test("Offset copies multiple objects beside their sources in the object tree", async () => {
+  const e = editor();
+  const shapes = ["a", "b"].map((id, index) => ({ id, name: id, kind: "rectangle" as const,
+    points: [{x:index * 100,y:0},{x:index * 100 + 80,y:40}], radius:0, rotation:0 }));
+  await e.commit({ ...emptyDocument(), shapes,
+    objectTree: [{ kind: "group", id: "folder", name: "Folder", children: [{kind:"object",id:"a"}] }, {kind:"object",id:"b"}] });
+  e.selected = ["a", "b"];
+  e.activateOffset();
+  await e.applyOffset();
+  expect(e.document.shapes).toHaveLength(4);
+  expect(e.selected).toHaveLength(2);
+  expect(e.tree[0]).toMatchObject({kind:"group", children:[{kind:"object"},{kind:"object",id:"a"}]});
+  if (e.tree[0].kind !== "group") throw Error("Expected group");
+  expect(e.selected).toContain(e.tree[0].children[0].id);
+  expect(e.tree[1]).toMatchObject({kind:"object"});
+  expect(e.selected).toContain(e.tree[1].id);
+  expect(e.tree[2]).toEqual({kind:"object",id:"b"});
+});
+test("dragging an offset preview changes the shared distance and release keeps it pending", async () => {
+  const e = editor();
+  const shapes = [0, 100].map((x, i) => ({ id: `piece-${i}`, name: `Piece ${i}`, kind: "rectangle" as const,
+    points: [{x,y:0},{x:x+80,y:40}], radius:0, rotation:0 }));
+  await e.commit({ ...emptyDocument(), shapes });
+  e.selected = shapes.map(s => s.id);
+  e.activateOffset();
+  const start = e.screen({x:40,y:-3}), end = e.screen({x:40,y:-7});
+  e.pointerDown(start, 0, false, false);
+  e.pointerMove(end, false);
+  e.pointerUp(end);
+  expect(e.offsetDistance).toBeCloseTo(7);
+  expect(e.offsetDraft?.shapes).toHaveLength(4);
+  expect(e.document.shapes).toHaveLength(2);
+  e.pointerDown(e.screen({x:40,y:-7}), 0, false, false);
+  e.pointerMove(e.screen({x:40,y:-9}), false);
+  e.pauseGesture();
+  expect(e.offsetDistance).toBeCloseTo(7);
+  await e.applyOffset();
+  expect(e.document.shapes).toHaveLength(4);
+});
+test("offset drag follows grid snapping and Alt bypasses it", async () => {
+  const e = editor();
+  e.grid = true; e.gridSize = 5;
+  const shape = { id:"piece", name:"Piece", kind:"rectangle" as const,
+    points:[{x:0,y:0},{x:80,y:40}], radius:0, rotation:0 };
+  await e.commit({ ...emptyDocument(), shapes:[shape] });
+  e.selected = [shape.id]; e.activateOffset();
+  const start = e.screen({x:40,y:-3}), end = e.screen({x:40,y:-6});
+  e.pointerDown(start,0,false,false); e.pointerMove(end,false); e.pointerUp(end);
+  expect(e.offsetDistance).toBeCloseTo(5);
+  e.pointerDown(e.screen({x:40,y:-5}),0,false,false);
+  e.pointerMove(e.screen({x:40,y:-6}),true);
+  e.pointerUp(e.screen({x:40,y:-6}),true);
+  expect(e.offsetDistance).toBeCloseTo(6);
+});
 test("cancel discards drawing and transforms without document changes", () => {
   const e = editor();
   e.setTool("rectangle");

@@ -33,6 +33,25 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         <button @click="editor.cancel()">Cancel</button>
       </div>
     </section>
+    <section v-if="e.offsetActive" class="transform-options" aria-label="Offset settings"
+      @keydown.enter.prevent="!$event.isComposing && editor.applyOffset()" @keydown.esc.stop.prevent="editor.cancel()">
+      <strong>Offset</strong>
+      <small>Positive expands closed outlines; negative insets. On open paths, positive goes left from start to end.</small>
+      <div class="transform-inputs" data-hint-edit="transform">
+        <label>Distance ({{ e.unitSymbol }})<LengthInput fixed non-zero aria-label="Offset distance" :value="e.offsetDistance"
+          @invalid="editor.setOffsetDistance(NaN)" @commit="editor.setOffsetDistance($event)" /></label>
+      </div>
+      <label>Corner style
+        <select :value="e.offsetJoin" @change="editor.setOffsetJoin(($event.target as HTMLSelectElement).value as 'sharp' | 'rounded')">
+          <option value="sharp">Sharp</option><option value="rounded">Rounded</option>
+        </select>
+      </label>
+      <p v-if="e.offsetError" role="alert">{{ e.offsetError }}</p>
+      <div class="actions tool-popup-footer">
+        <button :disabled="!e.offsetDraft || !!e.offsetError || e.busy" @click="editor.applyOffset()">Apply</button>
+        <button @click="editor.cancel()">Cancel</button>
+      </div>
+    </section>
     <div
       v-if="e.transformTool && !e.stitchMode"
       class="transform-options"
@@ -164,6 +183,18 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
             v-else
             d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M4 4l6 6M20 20l-6-6M20 4l-6 6M4 20l6-6"
           />
+        </svg>
+      </button>
+      <button
+        :disabled="!e.canOffset"
+        aria-label="Offset"
+        title="Offset (O)"
+        aria-keyshortcuts="o"
+        :aria-pressed="e.offsetActive"
+        @click="editor.activateOffset()"
+      >
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="M4 18V9a5 5 0 0 1 5-5h9M8 21v-8a5 5 0 0 1 5-5h8" />
         </svg>
       </button>
       <button

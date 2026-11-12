@@ -16,6 +16,20 @@ Drag for proportional sizing, use an axis handle to resize one direction, or ent
 
 Transforms remain previews until applied. Selection changes are restricted while a transform is active. Apply or cancel before editing Properties.
 
+## Offset
+
+Select one or more outlines and choose **Offset (O)** in the bottom selection toolbar. Enter a signed distance or drag the preview outline to set it. Dragging one preview updates every selected object's offset by the same distance; releasing leaves the preview for review. Choose **Sharp** or **Rounded** corners; Sharp is the default. Apply, Enter, or right-click creates separate, unfilled outline copies in one undo step. Esc or Cancel discards the preview. The original objects and their stitching remain unchanged; new offsets are selected after applying.
+
+Positive distances expand closed outlines and negative distances inset them. On an open line or path, positive places the offset to the left while travelling from its start to end; negative places it to the right. Distances use the selected units. Lines, paths, curves, rectangles, circles, ellipses, and arcs are supported. Circles, circular arcs, and simple rectangles retain their exact editable shape when the transform permits it. Ellipses, stretched arcs, and curves become editable control point curves with a compact set of Bézier segments; other curved offsets become editable polylines. If a curve offset folds, develops a cusp, or needs too many segments for 0.01 mm accuracy, the preview reports an error and Apply stays disabled.
+
+Offset is unavailable when the selection contains text, images, indicators, hidden or locked objects, or stitching-only guides. If an inset collapses or another selected outline cannot be offset, the panel names the failing object and Apply stays disabled. Change the distance or corner style to continue.
+
+Alt+wheel or the arrow keys on the distance field skip zero when stepping between positive and negative values. A typed zero remains invalid.
+
+Dragging follows Grid snap and Object snap when enabled. Hold Alt while dragging to bypass snapping.
+
+![Inset offset preview and distance settings](/manual/images/offset.png)
+
 ![Resize preview with numeric scale factors and pivot controls](/manual/images/transforms.png)
 
 ![SVG artwork resized independently along X and Y](/manual/images/svg-resize.png)

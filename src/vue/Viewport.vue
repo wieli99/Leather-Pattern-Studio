@@ -173,6 +173,7 @@ const canvas = ref<HTMLCanvasElement | null>(null),
   hover = useEditorSelector(editor, editor.hoverSnapshot);
 const cursor = computed(() => {
   if (e.value.transformTool === "mirror" && e.value.mirrorHover) return "pointer";
+  if (e.value.offsetDrag) return "grabbing";
   hover.value;
   if (editor.tool === "text") return "none";
   if (editor.placingPivot) return "crosshair";
@@ -288,7 +289,7 @@ defineExpose({ beginText, cancelText });
     @click="editor.polylineClick($event.detail)"
     @pointerleave="editor.leavePointer()"
     @pointercancel="editor.pauseGesture()"
-    @lostpointercapture="editor.gesture && editor.pauseGesture()"
+    @lostpointercapture="(editor.gesture || editor.offsetDrag) && editor.pauseGesture()"
     @contextmenu.prevent
   />
   <div

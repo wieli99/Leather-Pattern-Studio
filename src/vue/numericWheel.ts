@@ -9,9 +9,11 @@ export function adjustedNumber(
   ctrl: boolean,
   min = -Infinity,
   max = Infinity,
+  nonZero = false,
 ) {
   const step = ctrl ? 10 : shift ? 5 : 1;
-  const next = Number((value + (delta < 0 ? step : -step)).toPrecision(15));
+  let next = Number((value + (delta < 0 ? step : -step)).toPrecision(15));
+  if (nonZero && next === 0) next = delta < 0 ? step : -step;
   return Math.min(max, Math.max(min, next));
 }
 
@@ -36,7 +38,7 @@ export const numericWheel: ObjectDirective<HTMLInputElement, Mode> = {
       const max = el.dataset.wheelMax ? Number(el.dataset.wheelMax) / scale : el.max ? Number(el.max) / scale : Infinity;
       event.preventDefault();
       event.stopPropagation();
-      const next = adjustedNumber(current, event.deltaY, event.shiftKey, event.ctrlKey, min, max);
+      const next = adjustedNumber(current, event.deltaY, event.shiftKey, event.ctrlKey, min, max, el.dataset.wheelNonzero === "true");
       if (next === current) return;
       el.value = String(next);
       el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -54,7 +56,9 @@ export const numericWheel: ObjectDirective<HTMLInputElement, Mode> = {
       if (!Number.isFinite(step) || step <= 0) return;
       const min = el.min ? Number(el.min) / scale : -Infinity;
       const max = el.dataset.wheelMax ? Number(el.dataset.wheelMax) / scale : el.max ? Number(el.max) / scale : Infinity;
-      const next = Math.min(max, Math.max(min, Number((parsed / scale + (event.key === "ArrowUp" ? step : -step)).toPrecision(15))));
+      let next = Number((parsed / scale + (event.key === "ArrowUp" ? step : -step)).toPrecision(15));
+      if (el.dataset.wheelNonzero === "true" && next === 0) next = event.key === "ArrowUp" ? step : -step;
+      next = Math.min(max, Math.max(min, next));
       event.preventDefault();
       el.value = String(next);
       el.dispatchEvent(new Event("input", { bubbles: true }));
