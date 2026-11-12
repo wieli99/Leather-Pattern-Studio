@@ -13,6 +13,8 @@ import { isIndicator } from "../model/indicators";
 import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
+import { offsetShape, type OffsetJoin } from "../model/offset";
+import { flattenOutline } from "../model/flattenOutline";
 import { trimAt } from "../model/trim";
 import {
   defaultStitchSettings,
@@ -202,6 +204,101 @@ export class Controller {
   transformError = "";
   transformGeneration = 0;
   transformDraft: Doc | null = null;
+  offsetActive = false;
+  offsetDistance = 3;
+  offsetJoin: OffsetJoin = "sharp";
+  offsetError = "";
+  offsetDraft: Doc | null = null;
+  offsetIds: string[] = [];
+  offsetDrag: { start: Point; distance: number; normal: Point } | null = null;
+  private offsetDragAt(raw: Point) {
+    const originals = this.document.shapes.filter(s => this.selected.includes(s.id));
+    const index = this.offsetIds.findIndex(id => {
+      const shape = this.offsetDraft?.shapes.find(s => s.id === id);
+      return shape && hitTest(shape, raw, 8 / this.zoom, this.units);
+    });
+    const source = originals[index];
+    if (!source) return null;
+    const { points, closed } = flattenOutline(source, 0.05);
+    const area = closed ? points.reduce((sum, a, i) => {
+      const b = points[(i + 1) % points.length];
+      return sum + a.x * b.y - a.y * b.x;
+    }, 0) : 0;
+    let best = Infinity, normal: Point | null = null;
+    for (let i = 0; i < points.length - (closed ? 0 : 1); i++) {
+      const a = points[i], b = points[(i + 1) % points.length];
+      const d = distanceToSegment(raw, a, b);
+      if (d >= best) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, size = Math.hypot(dx, dy);
+      if (size < 1e-9) continue;
+      best = d;
+      const side = closed ? Math.sign(area) : 1;
+      normal = { x: side * dy / size, y: -side * dx / size };
+    }
+    return normal;
+  }
+  get canOffset() {
+    return this.ready && !this.busy && !this.printLayoutActive && this.selectionToolsAvailable &&
+      !this.selectionLocked && this.active.length > 0 && this.active.every(s =>
+        ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc"].includes(s.kind) &&
+        !s.stitchOnly && !this.isHidden(s.id));
+  }
+  activateOffset() {
+    if (!this.canOffset) return;
+    this.cancel();
+    this.tool = "select";
+    this.mode = "select";
+    this.offsetActive = true;
+    this.refreshOffset();
+  }
+  setOffsetDistance(value: number) {
+    this.offsetDistance = value;
+    this.refreshOffset();
+  }
+  setOffsetJoin(value: OffsetJoin) {
+    this.offsetJoin = value;
+    this.refreshOffset();
+  }
+  refreshOffset() {
+    if (!this.offsetActive) return;
+    this.offsetDraft = null;
+    this.offsetIds = [];
+    this.preview = null;
+    try {
+      if (!Number.isFinite(this.offsetDistance) || Math.abs(this.offsetDistance) < 1e-8)
+        throw Error("Enter a non-zero finite offset distance.");
+      const selected = new Set(this.selected);
+      const copies = this.document.shapes.filter(s => selected.has(s.id)).map(s => {
+        try { return { sourceId: s.id, shape: offsetShape(s, this.offsetDistance, this.offsetJoin) }; }
+        catch (error) { throw Error(`${s.name}: ${String(error).replace(/^Error: /, "")}`); }
+      });
+      const bySource = new Map(copies.map(copy => [copy.sourceId, copy.shape]));
+      const insert = (nodes: ObjectNode[]): ObjectNode[] => nodes.flatMap<ObjectNode>(node => {
+        if (node.kind === "group") return [{ ...node, children: insert(node.children) }];
+        const copy = bySource.get(node.id);
+        return copy ? [{ kind: "object" as const, id: copy.id }, node] : [node];
+      });
+      const next = { ...this.document, shapes: [...this.document.shapes, ...copies.map(c => c.shape)], objectTree: insert(this.tree) };
+      parseProject(JSON.stringify(this.normalizeTree(next)));
+      this.offsetDraft = next;
+      this.offsetIds = copies.map(c => c.shape.id);
+      this.offsetError = "";
+      this.preview = next;
+    } catch (error) {
+      this.offsetError = String(error).replace(/^Error: /, "");
+    }
+    this.notify();
+  }
+  async applyOffset() {
+    if (!this.offsetActive || !this.offsetDraft || this.offsetError || this.busy) return;
+    const next = this.offsetDraft, ids = this.offsetIds;
+    this.cancel();
+    if (await this.commit(next)) {
+      this.selectedGroups = [];
+      this.selected = ids;
+      this.notify();
+    }
+  }
   get transformAngle() {
     const s = (this.transformOriginal?.shapes.filter((s) =>
       this.selected.includes(s.id),
@@ -218,6 +315,11 @@ export class Controller {
     return (Math.atan2(m.b, m.a) * 180) / Math.PI;
   }
   pauseGesture() {
+    if (this.offsetDrag) {
+      const startingDistance = this.offsetDrag.distance;
+      this.offsetDrag = null;
+      this.setOffsetDistance(startingDistance);
+    }
     const gesture = this.gesture;
     if (gesture && !this.transformTool && gesture.kind !== "pan") {
       this.preview = null;
@@ -479,6 +581,8 @@ export class Controller {
       this.stitchError,
       this.transformTool,
       this.transformTool ? this.version : 0,
+      this.offsetActive,
+      this.offsetActive ? this.version : 0,
       this.revision,
       this.ready,
       this.message,
@@ -1657,6 +1761,7 @@ export class Controller {
     return true;
   }
   async commit(document: Doc) {
+    if (this.offsetActive) this.cancel();
     try {
       if (!this.canCommitFromView(document)) return false;
       document = reconcilePrintLayouts(this.normalizeTree(reconcileStitches(document,this.document)));
@@ -2224,6 +2329,11 @@ export class Controller {
     this.notify();
   }
   cancel() {
+    this.offsetDrag = null;
+    this.offsetActive = false;
+    this.offsetDraft = null;
+    this.offsetIds = [];
+    this.offsetError = "";
     this.mirrorAxis = null;
     this.mirrorLine = null;
     this.mirrorHover = null;
@@ -2281,7 +2391,7 @@ export class Controller {
       y: (p.y - this.pan.y) / this.zoom,
     };
   }
-  snap(p: Point, disabled = false): Point {
+  snap(p: Point, disabled = false, excludedIds: readonly string[] = this.gesture?.selection ?? []): Point {
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
@@ -2290,7 +2400,7 @@ export class Controller {
     if (this.objects) {
       let best = tolerance;
       for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
-        if (this.gesture?.selection.includes(s.id)) continue;
+        if (excludedIds.includes(s.id)) continue;
         for (const candidate of snapCandidates(s)) {
           const d = distance(candidate.point, p);
           if (d < best) {
@@ -2314,7 +2424,7 @@ export class Controller {
       if (this.snapTarget) return this.snapTarget;
       let edgeShape:Shape|undefined;
       for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
-        if (this.gesture?.selection.includes(s.id)) continue;
+        if (excludedIds.includes(s.id)) continue;
         const box = bounds([s]);
         if (
           p.x < box.x - tolerance ||
@@ -2333,7 +2443,7 @@ export class Controller {
       }
       if(this.snapTarget && edgeShape) {
         const original=this.snapTarget;
-        const aligned=smartSnap(p,this.document.shapes.filter(s=>!this.isHidden(s.id) && !this.gesture?.selection.includes(s.id)),tolerance);
+        const aligned=smartSnap(p,this.document.shapes.filter(s=>!this.isHidden(s.id) && !excludedIds.includes(s.id)),tolerance);
         const combined={...original};
         const guides=aligned.guides.filter(g=>Math.abs(original[g.axis]-p[g.axis])<1e-8);
         for(const guide of guides)combined[guide.axis]=guide.coordinate;
@@ -2368,7 +2478,7 @@ export class Controller {
       const result = smartSnap(
         p,
         this.document.shapes.filter(
-          (shape) => !this.gesture?.selection.includes(shape.id),
+          (shape) => !excludedIds.includes(shape.id),
         ),
         tolerance,
       );
@@ -2706,6 +2816,13 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
+    if (this.offsetActive && button === 2) { void this.applyOffset(); return; }
+    if (this.offsetActive && button === 0 && !this.space) {
+      const raw = this.world(pixel), normal = this.offsetDragAt(raw);
+      if (normal) this.offsetDrag = { start: raw, distance: this.offsetDistance, normal };
+      this.notify();
+      return;
+    }
     if (button !== 1 && !(button === 0 && this.space)) {
       this.selectedGroups = []; this.panelRevision++;
     }
@@ -2925,6 +3042,11 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    if (this.offsetDrag) {
+      const drag = this.offsetDrag, raw = this.snap(this.world(pixel), alt, this.selected);
+      this.setOffsetDistance(drag.distance + (raw.x - drag.start.x) * drag.normal.x + (raw.y - drag.start.y) * drag.normal.y);
+      return;
+    }
     if(!this.stitchTransferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
     this.clipboardPixel = { ...pixel };
     this.mirrorHover = null;
@@ -3264,6 +3386,12 @@ export class Controller {
     this.notifyPointer();
   }
   pointerUp(pixel?: Point, alt = false, shift = false, ctrl = false) {
+    if (this.offsetDrag) {
+      if (pixel) this.pointerMove(pixel, alt, ctrl, shift);
+      this.offsetDrag = null;
+      this.notify();
+      return;
+    }
     if (this.guideDrag) {
       if (pixel) this.updateGuide(pixel, alt, ctrl, shift);
       const g = this.guideDrag;

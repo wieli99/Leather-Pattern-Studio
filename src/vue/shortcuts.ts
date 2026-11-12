@@ -80,7 +80,9 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   }
   if (e.key === "Tab" && !e.shiftKey && canvas) {
     const field = document.querySelector<HTMLInputElement>(
-      editor.stitchMode ? ".stitch-options input, .stitch-options select" : editor.transformTool
+      editor.stitchMode ? ".stitch-options input, .stitch-options select" : editor.offsetActive
+        ? ".transform-inputs input"
+        : editor.transformTool
         ? ".transform-inputs input"
         : ".construction-measurements input",
     );
@@ -100,6 +102,11 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       if (k === "i") editor.activateStitch();
       else if (k === "k") editor.activateTrim();
       else editor.activateMerge();
+      return;
+    }
+    if (k === "o") {
+      e.preventDefault();
+      editor.activateOffset();
       return;
     }
     if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
@@ -156,6 +163,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   }
   if (e.key === "Enter") {
     if (editor.trimMode) void editor.applyTrim();
+    else if (editor.offsetActive) void editor.applyOffset();
     else if (editor.transformTool) void editor.applyTransform();
     else editor.finish();
   }

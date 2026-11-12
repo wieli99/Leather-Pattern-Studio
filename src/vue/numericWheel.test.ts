@@ -15,3 +15,9 @@ test("larger steps reach and remain at limits", () => {
     expect(adjustedNumber(1, 1, shift, ctrl, 1, 23)).toBe(1);
   }
 });
+test("a nonzero field steps across zero without changing ordinary fields", () => {
+  expect(adjustedNumber(1, 1, false, false, -Infinity, Infinity, true)).toBe(-1);
+  expect(adjustedNumber(-1, -1, false, false, -Infinity, Infinity, true)).toBe(1);
+  expect(adjustedNumber(5, 1, true, false, -Infinity, Infinity, true)).toBe(-5);
+  expect(adjustedNumber(1, 1, false, false)).toBe(0);
+});

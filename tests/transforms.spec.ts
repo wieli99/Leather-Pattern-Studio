@@ -47,6 +47,47 @@ async function setup(page: any) {
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await page.getByRole("button", { name: "Rounded", exact: true }).click();
 }
+test("offset creates an inset copy with a live preview", { tag: "@manual" }, async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Offset", exact: true }).click();
+  await page.getByLabel("Offset distance").fill("-3");
+  await expect(page.getByLabel("Offset settings")).toBeVisible();
+  await manualScreenshot(page, "offset.png");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(3);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
+});
+test("dragging an offset outline changes its distance without committing", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Rectangle (R)", exact: true })).toBeEnabled();
+  await page.evaluate(() => { delete (window as any).showOpenFilePicker; });
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await (await chooser).setFiles({ name: "offset.json", mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ version: DOCUMENT_VERSION, shapes: [{
+      id: "r", name: "Rectangle", kind: "rectangle", points: [{x:20,y:20},{x:100,y:70}], radius:0, rotation:0,
+    }] })) });
+  await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+  await page.getByRole("button", { name: "Offset", exact: true }).click();
+  const field = page.getByLabel("Offset distance");
+  await field.fill("1");
+  await field.hover();
+  await page.keyboard.down("Alt");
+  await page.mouse.wheel(0, 100);
+  await page.keyboard.up("Alt");
+  await expect(field).toHaveValue("-1");
+  await field.fill("3");
+  const canvas = page.getByLabel("Pattern drawing canvas"), box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + 260, box.y + 151);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 260, box.y + 139, {steps: 5});
+  await page.mouse.up();
+  await expect(page.getByLabel("Offset distance")).toHaveValue("7.00");
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
+  await page.getByRole("button", {name:"Apply",exact:true}).click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
+});
 test("numeric transforms, pivot, cancellation, history and affine file recovery", { tag: "@manual" }, async ({
   page,
 }, info) => {

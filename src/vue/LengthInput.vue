@@ -9,6 +9,7 @@ const props = withDefaults(defineProps<{
   precision?: number;
   integer?: boolean;
   wheel?: boolean;
+  nonZero?: boolean;
   units?: import("../model/units").UnitMode;
   value: number;
   min?: number;
@@ -84,6 +85,7 @@ function blur() {
 <template>
   <input
     v-numeric-wheel="wheel === false ? false : scalar ? 'number' : inputUnits"
+    :data-wheel-nonzero="nonZero ? 'true' : undefined"
     v-bind="$attrs"
     type="text"
     :min="min"

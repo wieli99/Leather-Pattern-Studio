@@ -13,6 +13,7 @@ export interface HintState {
   pending: readonly unknown[];
   selected: readonly string[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
+  offsetActive?: boolean;
   placingPivot: boolean;
   active?: readonly { kind: string }[];
   measurementFields?: readonly string[];
@@ -103,6 +104,11 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
   } else if (s.placingPivot) {
     action = "Click to place the pivot.";
     add("snap", "Alt", "Bypass snapping");
+  } else if (s.offsetActive) {
+    action = "Enter a signed distance and choose Sharp or Rounded corners.";
+    add("apply", "Enter / Right-click", "Create offset outlines");
+    add("values", "Tab", "Edit distance");
+    add("cancel", "Esc", "Discard offset preview");
   } else if (s.transformTool) {
     action =
       s.transformTool === "mirror"
