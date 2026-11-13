@@ -1,6 +1,8 @@
 import { beforeEach, expect, test, vi } from "vitest";
 const editor = vi.hoisted(() => ({
   space: false,
+  booleanOperation: null as string | null,
+  applyTrim: vi.fn(),
   pending: [] as unknown[],
   drawingDown: false,
   busy: false,
@@ -43,6 +45,7 @@ class ElementStub {
 beforeEach(() => {
   vi.clearAllMocks();
   editor.pending = [];
+  editor.booleanOperation = null;
   editor.tool = "select";
   editor.selected = ["a"];
   editor.selectionToolsAvailable = true;
@@ -123,7 +126,7 @@ test("native clipboard writes snapshots and leaves text fields alone", () => {
   expect(event.preventDefault).not.toHaveBeenCalled();
 });
 
-test("I stitches, K trims, J merges, and M still mirrors", () => {
+test("I stitches, K trims, J joins, and M still mirrors", () => {
   press("i");
   press("k");
   press("j");
@@ -213,4 +216,19 @@ test("A cycles drawing tools forward and backward without taking over text input
   press("a", { ctrlKey: true });
   press("a", { metaKey: true });
   expect(editor.cycle).not.toHaveBeenCalled();
+});
+
+test("boolean buttons retain native Enter/Space and Escape cancels from the panel", () => {
+  editor.booleanOperation = "subtract";
+  expect(press("Enter",{target:new ElementStub("BUTTON")}).preventDefault).not.toHaveBeenCalled();
+  expect(press(" ",{code:"Space",target:new ElementStub("BUTTON")}).preventDefault).not.toHaveBeenCalled();
+  expect(editor.applyTrim).not.toHaveBeenCalled();
+  press("Escape",{target:new ElementStub("BUTTON")});
+  expect(editor.cancel).toHaveBeenCalledOnce();
+});
+
+test("Enter on the canvas applies a boolean preview", () => {
+  editor.booleanOperation = "union";
+  press("Enter");
+  expect(editor.applyTrim).toHaveBeenCalledOnce();
 });

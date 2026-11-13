@@ -1,3 +1,4 @@
+import { contourShape } from "./compound";
 import { shapePath } from "../editor/renderer";
 import { applyMatrix, shapeMatrix } from "./geometry";
 import { isClosedShape } from "./closedShape";
@@ -76,4 +77,13 @@ export function flattenOutline(shape: Shape, tolerance = 0.01) {
   const first = points[0], last = points.at(-1);
   if (closed && points.length > 1 && Math.hypot(first.x-last!.x,first.y-last!.y) < 1e-9) points.pop();
   return { points, closed };
+}
+
+/** Separate contours must never acquire connecting export edges. */
+export function flattenContours(shape: Shape, tolerance = 0.01) {
+  if (shape.kind !== "compound") return [flattenOutline(shape, tolerance)];
+  const matrix = shapeMatrix(shape);
+  return shape.contours!.map(contour => flattenOutline({
+    ...contourShape(shape, contour), rotation: 0, transform: matrix,
+  }, tolerance));
 }

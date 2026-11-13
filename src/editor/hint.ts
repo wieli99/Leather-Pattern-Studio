@@ -14,6 +14,8 @@ export interface HintState {
   selected: readonly string[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   offsetActive?: boolean;
+  booleanOperation?: string | null;
+  booleanPicker?: "target" | "cutters" | null;
   placingPivot: boolean;
   active?: readonly { kind: string }[];
   measurementFields?: readonly string[];
@@ -52,6 +54,18 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("blur", "Leave field", "Apply");
     add("fields", "Tab / Shift+Tab", "Next / previous field");
     return { action, controls };
+  }
+  if (s.booleanOperation) {
+    action = s.booleanPicker === "target"
+      ? "Choose a target from the original objects on the canvas or in Model objects."
+      : s.booleanPicker === "cutters"
+      ? "Click objects on the canvas or in Model objects to add or remove them."
+      : "Review the result, or activate a picker to change the objects.";
+    if (s.booleanPicker !== "target") add("apply", "Enter on canvas / Right-click", "Apply");
+    add("buttons", "Enter / Space on a button", "Activate button");
+    add("fields", "Tab / Shift+Tab", "Next / previous control");
+    add("cancel", "Esc", "Discard preview");
+    return {action, controls};
   }
   if (s.stitchMode) {
     if(s.stitchTool===null)return {action:"Select a stitching tool below, or click a line to edit it.",controls:[{id:"stitch-exit",gesture:"Esc",action:"Return to Select"},{id:"stitch-select",gesture:"Shift+click",action:"Toggle stitch line selection"},{id:"stitch-all",gesture:"Alt+click / Alt+Shift+click",action:"Select all stitching of a piece / add it"},{id:"stitch-holes",gesture:"Ctrl+click / Ctrl+Shift+click",action:"Select hole / toggle holes"},{id:"stitch-delete",gesture:"Delete",action:"Delete selected stitching (Undo available)"}]};

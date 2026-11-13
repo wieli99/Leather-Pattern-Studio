@@ -1,6 +1,6 @@
 import { resolvedPrintItems, type PrintLayout } from "../model/printLayout";
 import { isIndicator } from "../model/indicators";
-import { flattenOutline } from "../model/flattenOutline";
+import { flattenContours } from "../model/flattenOutline";
 import type { Doc } from "../model/project";
 
 /** Export shared numeric geometry in physical coordinates, independent of zoom. */
@@ -10,11 +10,12 @@ export function layoutDxf(doc: Doc, layout: PrintLayout) {
   for (const item of resolvedPrintItems(doc, layout)) {
     const s = item.shape;
     if (item.hidden || s.stitchOnly || isIndicator(s.kind) || ["text", "image", "measurement"].includes(s.kind)) continue;
-    const { points, closed } = flattenOutline(s, 0.01);
-    if (points.length < 2) continue;
-    vertices += points.length;
-    if (vertices > 500000) throw Error("Layout is too complex for DXF export");
-    paths.push({ points, closed });
+    for (const { points, closed } of flattenContours(s, 0.01)) {
+      if (points.length < 2) continue;
+      vertices += points.length;
+      if (vertices > 500000) throw Error("Layout is too complex for DXF export");
+      paths.push({ points, closed });
+    }
   }
   if (!paths.length) throw Error("No outlines to export");
   let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;

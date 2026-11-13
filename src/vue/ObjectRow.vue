@@ -17,8 +17,10 @@ const props = defineProps<{ shape: Shape; selected: boolean }>();
 const inheritedState = useEditorSelector(
   editor,
   () =>
-    `${editor.isHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}`,
+    `${editor.isHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}|${editor.booleanOperation}|${editor.booleanCutters.join(",")}`,
 );
+const booleanRole = useEditorSelector(editor, () => editor.booleanOperation ? editor.booleanTarget === props.shape.id ? "target" : "other" : null);
+const booleanOperand = useEditorSelector(editor, () => !!editor.booleanOperation && editor.booleanCutters.includes(props.shape.id));
 const canToggleObjectState = useEditorSelector(
   editor,
   () => editor.canToggleObjectState,
@@ -35,6 +37,7 @@ let settled = false;
 async function rename() {
   if (
     editor.transformTool ||
+    editor.booleanOperation ||
     editor.stitchMode ||
     editor.isLocked(props.shape.id)
   )
@@ -55,6 +58,7 @@ function finish(cancel = false) {
     void editor.edit(props.shape.id, { name });
 }
 function select(event: MouseEvent) {
+  if (editor.booleanOperation) { editor.pickBoolean(props.shape.id); return; }
   if (editor.transformTool || editor.stitchMode) return;
   editor.selectedGroups = [];
   editor.panelRevision++;
@@ -100,9 +104,9 @@ function openMenu() {
       <ContextMenuTrigger as-child @contextmenu="openMenu">
         <button
           class="object-select"
-          :class="{ selected }"
+          :class="{ selected: booleanRole ? booleanRole === 'target' : selected, 'boolean-operand': booleanOperand }"
           @click="select"
-          title="Rename (F2 or double-click)"
+          :title="booleanRole ? 'Use the active picker to choose this object' : 'Rename (F2 or double-click)'"
           @dblclick="rename"
           @keydown.f2.prevent="rename"
         >

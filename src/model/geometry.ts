@@ -280,7 +280,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number, units: UnitMo
   if (
     s.transform ||
     s.kind === "arc" ||
-    isCurve(s) ||
+    isCurve(s) || s.kind === "compound" ||
     (isPolygon(s) && s.radius > 0) ||
     !!s.cornerRadii
   )
@@ -345,7 +345,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number, units: UnitMo
     .some((b, i) => distanceToSegment(p, s.points[i], b) <= tolerance);
 }
 export const moveShape = (s: Shape, dx: number, dy: number): Shape =>
-  s.transform
+  (s.transform || s.kind === "compound")
     ? transformShape(s, { ...identity(), e: dx, f: dy })
     : {
         ...s,
@@ -378,7 +378,7 @@ export function rotateShape(
   };
 }
 export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
-  if (s.transform || isIndicator(s.kind) || s.kind === "measurement")
+  if (s.transform || s.kind === "compound" || isIndicator(s.kind) || s.kind === "measurement")
     return stretchShape(s, factor, factor, pivot);
   return {
     ...s,
@@ -415,6 +415,7 @@ export function anchors(s: Shape): Point[] {
         .corners.flatMap((q) => [q.start, q.end])
         .map((p) => applyMatrix(shapeMatrix(s), p)),
     ];
+  if (s.kind === "compound") return worldCubics(s).flatMap(c => [c[0], cubicAt(c,0.5)]);
   if (isCurve(s))
     return [...worldPoints(s), ...worldCubics(s).map((c) => cubicAt(c, 0.5))];
   const pts = worldPoints(s),
@@ -511,6 +512,12 @@ export function contains(s: Shape, p: Point): boolean {
       { ...s, transform: undefined },
       applyMatrix(inverse(s.transform), p),
     );
+  if (s.kind === "compound" || (isCurve(s) && distance(s.points[0],s.points.at(-1)!) < 1e-9)) {
+    let inside = false;
+    for (const [a,b] of curveBoundary(s, 0.0005).lines)
+      if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x) inside = !inside;
+    return inside;
+  }
   const q = rotatePoint(p, localCenter(s), -s.rotation),
     a = s.points[0],
     b = s.points[1],
@@ -571,6 +578,7 @@ export function boundary(s: Shape, units: UnitMode = "mm"): {
   lines: [Point, Point][];
   curves: Curve[];
 } {
+  if (s.kind === "compound") return curveBoundary(s, 0.001);
   if (isIndicator(s.kind)) return { lines: indicatorGeometry(s, units).lines, curves: [] };
   if (s.kind === "measurement") return { lines: measurementGeometry(s, units).lines, curves: [] };
   if (s.transform) {
@@ -679,7 +687,7 @@ function curveBoundary(s: Shape, tolerance: number) {
 }
 export function worldCubics(s: Shape): Cubic[] {
   const m = shapeMatrix(s);
-  return cubicSegments(s).map((c) => c.map((p) => applyMatrix(m, p)) as Cubic);
+  return (s.kind === "compound" ? s.contours!.flat() : cubicSegments(s)).map((c) => c.map((p) => applyMatrix(m, p)) as Cubic);
 }
 export function outlineBounds(s: Shape, units: UnitMode = "mm"): Point[] {
   if (isIndicator(s.kind)) { const g=indicatorGeometry(s, units); return [...g.lines.flat(),...g.labels.flatMap(l=>l.bounds)]; }
@@ -687,7 +695,7 @@ export function outlineBounds(s: Shape, units: UnitMode = "mm"): Point[] {
     const g = measurementGeometry(s, units);
     return [...g.lines.flat(), ...g.labelBounds];
   }
-  if (isCurve(s)) return worldCubics(s).flatMap(cubicExtrema);
+  if (isCurve(s) || s.kind === "compound") return worldCubics(s).flatMap(cubicExtrema);
   const q = boundary(s);
   return [
     ...q.lines.flat(),
@@ -703,7 +711,7 @@ export function outlineBounds(s: Shape, units: UnitMode = "mm"): Point[] {
   ];
 }
 export function nearestOutline(s: Shape, p: Point, tolerance = 0.001): Point {
-  const q = isCurve(s) ? curveBoundary(s, tolerance) : boundary(s);
+  const q = (isCurve(s) || s.kind === "compound") ? curveBoundary(s, tolerance) : boundary(s);
   let best: Point = s.points[0],
     d = Infinity;
   const consider = (v: Point) => {
@@ -762,7 +770,7 @@ export function intersectsBox(s: Shape, b: Bounds, tolerance = 0.001, units: Uni
     p.x <= b.x + b.width + 1e-9 &&
     p.y >= b.y - 1e-9 &&
     p.y <= b.y + b.height + 1e-9;
-  const q = isCurve(s) ? curveBoundary(s, tolerance) : boundary(s, units);
+  const q = (isCurve(s) || s.kind === "compound") ? curveBoundary(s, tolerance) : boundary(s, units);
   for (const [a, c] of q.lines) {
     if (inside(a) || inside(c)) return true;
     for (const [axis, value] of [

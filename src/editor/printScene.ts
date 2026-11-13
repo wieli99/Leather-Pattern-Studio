@@ -1,5 +1,5 @@
 import { textFamily, measureText } from "../model/text";
-import { flattenOutline } from "../model/flattenOutline";
+import { flattenContours } from "../model/flattenOutline";
 import { holeAppearance, holeMark } from "../model/stitchLayers";
 import { shapePath } from "./renderer";
 import { bounds, shapeMatrix } from "../model/geometry";
@@ -189,7 +189,7 @@ export function printShapeSvg(
       id = `clip-${shape.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
     let fill = "";
     if (isClosedShape(shape) && !shape.stitchOnly) {
-      fill = `<path d="${path}" fill="${shape.fillColor ?? "#111111"}" fill-opacity="${shape.fillOpacity ?? 0.05}"/>`;
+      fill = `<path d="${path}" fill-rule="${shape.kind === "compound" ? "evenodd" : "nonzero"}" fill="${shape.fillColor ?? "#111111"}" fill-opacity="${shape.fillOpacity ?? 0.05}"/>`;
       if (["skiving", "glueing", "cutout"].includes(shape.fillMode ?? "")) {
         const box = bounds([{ ...shape, rotation: 0, transform: undefined }]);
         if (box.width + box.height > 200000)
@@ -220,7 +220,7 @@ export function printShapeSvg(
               );
           }
         }
-        fill += `<defs><clipPath id="${id}"><path d="${path}"/></clipPath></defs><path clip-path="url(#${id})" d="${hatch.join(" ")}" ${style}/>`;
+        fill += `<defs><clipPath id="${id}"><path d="${path}" clip-rule="${shape.kind === "compound" ? "evenodd" : "nonzero"}"/></clipPath></defs><path clip-path="url(#${id})" d="${hatch.join(" ")}" ${style}/>`;
       }
     }
     result = `<g transform="${matrix}">${fill}${shape.stitchOnly ? "" : `<path d="${path}" ${style}/>`}</g>`;
@@ -370,9 +370,10 @@ export function pageSvg(
     let connector = 0;
     for (const item of items) {
       if (!isClosedShape(item.shape) || item.shape.stitchOnly) continue;
-      const { points } = flattenOutline(item.shape, 0.01);
+      const contours = flattenContours(item.shape, 0.01).map(c => c.points);
+      const interior = (p: Point) => contours.filter(points => polygonInterior(points,p)).length % 2 === 1;
       const hits: number[] = [];
-      for (let i = 0; i < points.length; i++) {
+      for (const points of contours) for (let i = 0; i < points.length; i++) {
         const a = points[i],
           b = points[(i + 1) % points.length];
         const av = dx ? a.x : a.y,
@@ -395,7 +396,7 @@ export function pageSvg(
         const offset = assemblyTolerance * 10;
         if (
           ![-1, 1].every((sign) =>
-            polygonInterior(points, {
+            interior({
               x: worldCentre.x + (dx ? sign * offset : 0),
               y: worldCentre.y + (dy ? sign * offset : 0),
             }),
@@ -409,11 +410,11 @@ export function pageSvg(
           at(along + radius, 0),
         ];
         const clipId = `assembly-${dx}-${dy}-${connector}`;
-        const localOutline = points.map((p) => ({
+        const localOutlines = contours.map(points => points.map((p) => ({
           x: p.x - x + layout.margin,
           y: p.y - y + layout.margin,
-        }));
-        marks += `<defs><clipPath id="${clipId}"><path d="M${localOutline.map(xy).join(" L")}Z"/></clipPath></defs><path data-assembly="registration" clip-path="url(#${clipId})" d="M${polygon.map(xy).join(" L")}Z" stroke="#111" stroke-width=".2" fill="none"/>`;
+        })));
+        marks += `<defs><clipPath id="${clipId}"><path clip-rule="evenodd" d="${localOutlines.map(points => `M${points.map(xy).join(" L")}Z`).join(" ")}"/></clipPath></defs><path data-assembly="registration" clip-path="url(#${clipId})" d="M${polygon.map(xy).join(" L")}Z" stroke="#111" stroke-width=".2" fill="none"/>`;
         const key = `${pair} ${++connector}`;
         const width = key.length * 1.2;
         // Leave 1 mm between the diamond tip and the nearest label edge.
@@ -434,7 +435,7 @@ export function pageSvg(
           top = worldCorners[0].y;
         const right = worldCorners[3].x,
           bottom = worldCorners[3].y;
-        const boundaryTouchesLabel = points.some((p, i) =>
+        const boundaryTouchesLabel = contours.some(points => points.some((p, i) =>
           segmentTouchesRectangle(
             p,
             points[(i + 1) % points.length],
@@ -443,7 +444,7 @@ export function pageSvg(
             right,
             bottom,
           ),
-        );
+        ));
         if (
           !boundaryTouchesLabel &&
           corners.every(
@@ -452,7 +453,7 @@ export function pageSvg(
               p.x <= layout.width - layout.margin &&
               p.y >= layout.margin &&
               p.y <= layout.height - layout.margin &&
-              polygonInterior(points, {
+              interior({
                 x: p.x - layout.margin + x,
                 y: p.y - layout.margin + y,
               }),

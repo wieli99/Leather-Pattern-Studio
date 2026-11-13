@@ -32,7 +32,7 @@ Copy Styling copies the base fill color, opacity, fill mode, and outline styling
 
 ## Hide and lock objects
 
-Use the eye and lock buttons at the right of any object row to hide/show or lock/unlock it without selecting it first. A solid gray lock marks a locally locked object or group; an unlocked padlock is outlined. Toggling another object preserves your selection. These buttons are disabled during unfinished drawings, property edits, and modifier previews; Apply or Cancel the edit to enable them again. Hidden objects remain in the panel but disappear from the canvas, snapping, and fit bounds. Hiding clears that object's selection. When any selected object is locked, all modifier tools (Move, Rotate, Resize, Mirror, Corner radius, Merge, Trim, and Stitch line) are disabled. Locked objects can be selected, copied, and duplicated, but cannot be edited or deleted until unlocked. Duplicates start unlocked. Visibility can be changed while locked. Both states are saved with the project and toggles support undo/redo.
+Use the eye and lock buttons at the right of any object row to hide/show or lock/unlock it without selecting it first. A solid gray lock marks a locally locked object or group; an unlocked padlock is outlined. Toggling another object preserves your selection. These buttons are disabled during unfinished drawings, property edits, and modifier previews; Apply or Cancel the edit to enable them again. Hidden objects remain in the panel but disappear from the canvas, snapping, and fit bounds. Hiding clears that object's selection. When any selected object is locked, all modifier tools (Move, Rotate, Resize, Mirror, Corner radius, Join, Trim, and Stitch line) are disabled. Locked objects can be selected, copied, and duplicated, but cannot be edited or deleted until unlocked. Duplicates start unlocked. Visibility can be changed while locked. Both states are saved with the project and toggles support undo/redo.
 
 ![Object visibility and lock controls](/manual/images/object-states.png)
 
@@ -55,3 +55,13 @@ For keyboard organization, focus a row and use Alt+Shift+Up/Down to reorder, Alt
 ![Nested object groups](/manual/images/object-groups.png)
 
 Hover an object or folder row to see a medium-sized preview of its current source artwork. The preview is read-only and closes when you leave the row or begin dragging.
+
+## Editing compound results
+
+Join and the boolean tools can produce one compound object containing an outer outline, holes, or separate contours. Drag its anchors and handles normally; double-click an anchor to toggle sharp/smooth. Numeric vertex controls in the Inspector remain available for the original path types.
+
+Alt-click an outline to insert an anchor. Existing stitching stays attached to the split edge and to untouched contours, preserving each closed contour’s spacing and seam. Undo restores both geometry and stitching together.
+
+Hold Ctrl to show a measurement for each cubic edge; curved edges are measured along the curve rather than its display subdivisions. Offset (O) also accepts compound objects. Cancel discards the offset preview without changing the source.
+
+![Compound outline with a curved edge, a hole, and logical edge measurements](/manual/images/compound-editing.png)

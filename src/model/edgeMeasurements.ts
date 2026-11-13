@@ -41,7 +41,7 @@ function measure(at: (t: number) => Point): EdgeMeasurement | undefined {
 
 export function edgeMeasurements(shape: Shape): EdgeMeasurement[] {
   if (isIndicator(shape.kind) || shape.kind === "text" || shape.kind === "measurement") return [];
-  if (isCurve(shape))
+  if (isCurve(shape) || shape.kind === "compound")
     return worldCubics(shape)
       .map((c) => measure((t) => cubicAt(c, t)))
       .filter((v): v is EdgeMeasurement => !!v);

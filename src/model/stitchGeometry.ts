@@ -1,3 +1,6 @@
+import type { Cubic } from "./curves";
+import { contains } from "./geometry";
+import { contourShape } from "./compound";
 import { isIndicator } from "./indicators";
 import { isClosedShape as stitchClosed } from "./closedShape";
 export { stitchClosed };
@@ -57,22 +60,32 @@ function sample(at: (t: number) => Point): Point[] {
     visit(i / 16, (i + 1) / 16, at(i / 16), at((i + 1) / 16), 0);
   return result;
 }
+/** The shortcut must preserve loops, backtracking, and collinear overshoot. */
+function straightCubic(c: Cubic) {
+  const v = sub(c[3],c[0]), lengthSquared = v.x*v.x+v.y*v.y;
+  const length = Math.sqrt(lengthSquared);
+  if (length <= 1e-9) return false;
+  return [c[1],c[2]].every(p => {
+    const q = sub(p,c[0]), along = q.x*v.x+q.y*v.y;
+    return Math.abs(cross(q,v))/length < 1e-9 && along >= 0 && along <= lengthSquared;
+  });
+}
 const edgeCache = new WeakMap<Shape, StitchEdge[]>();
 export function stitchEdges(s: Shape): StitchEdge[] {
   const cached = edgeCache.get(s);
   if (cached) return cached;
   if (isIndicator(s.kind) || s.kind === "text" || s.kind === "image" || s.kind === "measurement") return [];
-  const prefix = `${s.kind}:${s.points.length}:`;
+  const prefix = `${s.kind}:${s.kind === "compound" ? s.contours!.flat().length : s.points.length}:`;
   const edges: StitchEdge[] = [];
   const add = (key: string, points: Point[]) => {
     if (points.some((p) => distance(p, points[0]) > 1e-9))
       edges.push({ key: prefix + key, points });
   };
-  if (isCurve(s))
+  if (isCurve(s) || s.kind === "compound")
     worldCubics(s).forEach((c, i) =>
       add(
         `edge:${i}`,
-        sample((t) => cubicAt(c, t)),
+        straightCubic(c) ? [c[0],c[3]] : sample((t) => cubicAt(c, t)),
       ),
     );
   else if (s.kind === "rectangle" || isPolygon(s)) {
@@ -121,7 +134,7 @@ export function extractStitchEdge(source: Shape, key: string): Shape {
   const base = { id: crypto.randomUUID(), name: `${source.name} stitching`, radius: 0, rotation: 0, stitchOnly: true };
   if (stitchEdges(source).length === 1) return { ...source, ...base, radius: source.radius, rotation: source.rotation };
   const index = Number(key.split(":").at(-1));
-  if (isCurve(source)) {
+  if (isCurve(source) || source.kind === "compound") {
     const [a,b,c,d] = worldCubics(source)[index];
     return { ...base, kind: "control-curve", points: [a,d], handles: [{ incoming: {x:0,y:0}, outgoing: sub(b,a) }, { incoming: sub(c,d), outgoing: {x:0,y:0} }] };
   }
@@ -149,11 +162,36 @@ export function worldStitchSide(shape: Shape, side: 1 | -1): 1 | -1 {
 export function insideStitchSide(s: Shape): 1 | -1 {
   return signedArea(stitchEdges(s)) >= 0 ? 1 : -1;
 }
+export function stitchRunClosed(s: Shape, keys: string[]) {
+  if (!stitchClosed(s)) return false;
+  if (s.kind !== "compound") return keys.length === stitchEdges(s).length;
+  try { return keys.length === compoundStitchSource(s,keys).shape.points.length - 1; }
+  catch { return false; }
+}
+function compoundStitchSource(s: Shape, keys: string[]) {
+  const edges = stitchEdges(s);
+  const indexes = keys.map(key => edges.findIndex(e => e.key === key));
+  let offset = 0;
+  for (const contour of s.contours!) {
+    if (indexes.length && indexes.every(i => i >= offset && i < offset + contour.length)) {
+      const shape = {...contourShape(s,contour), rotation:0, transform:shapeMatrix(s)};
+      return { shape, offset, keys: indexes.map(i => `control-curve:${shape.points.length}:edge:${i-offset}`) };
+    }
+    offset += contour.length;
+  }
+  throw Error("Select connected stitch lines on one contour.");
+}
 export function orderStitchEdges(
   s: Shape,
   keys: string[],
   seam?: string,
 ): string[] {
+  if (s.kind === "compound") {
+    const part = compoundStitchSource(s,keys);
+    const seamIndex = keys.indexOf(seam ?? keys[0]);
+    const ordered = orderStitchEdges(part.shape,part.keys,part.keys[seamIndex]);
+    return ordered.map(key => stitchEdges(s)[part.offset + Number(key.split(":").at(-1))].key);
+  }
   const all = stitchEdges(s).map((e) => e.key),
     set = new Set(keys);
   if (set.size !== keys.length || keys.some((k) => !all.includes(k)))
@@ -350,14 +388,24 @@ export function stitchGeometry(s: Shape, g: StitchGroup, groups?: StitchGroup[])
     throw error;
   }
 }
-function computeStitchGeometry(s: Shape, g: StitchGroup) {
+function computeStitchGeometry(s: Shape, g: StitchGroup, materialSide = 1) {
+  if (s.kind === "compound") {
+    const part = compoundStitchSource(s,g.edges);
+    // Hole contours reverse material-side inset relative to an isolated outline.
+    const edge = stitchEdges(s).find(e => e.key === g.edges[0])!;
+    const a = edge.points[0], b = edge.points[1], length = distance(a,b);
+    const probe = {x:(a.x+b.x)/2-(b.y-a.y)/length*0.001,y:(a.y+b.y)/2+(b.x-a.x)/length*0.001};
+    const leftMaterial = contains(s,probe);
+    const partLeft = contains(part.shape,probe);
+    return computeStitchGeometry(part.shape,{...g,edges:part.keys},leftMaterial === partLeft ? 1 : -1);
+  }
   validateStitchSettings(g.settings);
   const all = stitchEdges(s),
     keys = orderStitchEdges(s, g.edges, g.edges[0]);
   if (keys.some((k, i) => k !== g.edges[i]))
     throw Error("Invalid stitch edge order.");
   const side = stitchClosed(s)
-    ? insideStitchSide(s)
+    ? (insideStitchSide(s)*materialSide) as 1 | -1
     : worldStitchSide(s, g.side);
   const parts = keys.map((key) => {
     const e = all.find((e) => e.key === key)!;
@@ -417,7 +465,7 @@ function computeStitchGeometry(s: Shape, g: StitchGroup) {
     }
   const points = parts.flatMap((p, i) => (i ? p.points.slice(1) : p.points));
   if (crossing([points])) throw Error("Inset stitch path intersects itself.");
-  if (stitchClosed(s) && g.settings.inset > 0) {
+  if (stitchClosed(s) && g.settings.inset > 0 && materialSide > 0) {
     const outline = all.flatMap((e, i) => (i ? e.points.slice(1) : e.points));
     if (!pointInside(outline, points[0]) || crossing([points, outline]))
       throw Error("Inset leaves the inside of the source shape.");
@@ -502,7 +550,7 @@ export function validateStitchGroups(
     const keys = g.holes && !s.stitchParentId ? [] : orderStitchEdges(s, g.edges, g.edges[0]);
     if (
       keys.some((k, i) => k !== g.edges[i]) ||
-      (g.closed && (!stitchClosed(s) || keys.length !== stitchEdges(s).length))
+      (g.closed && (!stitchClosed(s) || keys.length !== (s.kind === "compound" ? compoundStitchSource(s,keys).shape.points.length - 1 : stitchEdges(s).length)))
     )
       throw Error("Invalid stitch topology.");
     for (const key of keys) {
@@ -575,6 +623,27 @@ export function validateRunPositions(groups: StitchGroup[], shapes: Shape[], ret
     }
   }
 }
+/** Successors wrap at each contour seam, never into another contour. */
+function stitchSuccessors(s: Shape) {
+  const keys = stitchEdges(s).map(e => e.key);
+  let chains: string[][];
+  if (s.kind === "compound") {
+    const byIndex = new Map(keys.map(key => [Number(key.split(":").at(-1)),key]));
+    let offset = 0;
+    chains = s.contours!.map(contour => {
+      const chain = contour.flatMap((_,i) => byIndex.has(offset+i) ? [byIndex.get(offset+i)!] : []);
+      offset += contour.length;
+      return chain;
+    });
+  } else chains = [keys];
+  const successors = new Map<string,string>();
+  for (const chain of chains) chain.forEach((key,i) => {
+    if (i+1 < chain.length) successors.set(key,chain[i+1]);
+    else if (stitchClosed(s)) successors.set(key,chain[0]);
+  });
+  return successors;
+}
+
 export const anchorReplacements = new WeakMap<Shape, Map<string, string[]>>();
 
 export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
@@ -592,6 +661,7 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
   })};
   const stitchGroups: StitchGroup[] = [];
   const splitIds = new Set<string>();
+  const successors = new Map<Shape,Map<string,string>>();
   for (const original of doc.stitchGroups ?? []) {
     let g = original;
     const s = doc.shapes.find((s) => s.id === g.shapeId);
@@ -609,20 +679,18 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
       const mapping=new Map(before.map(edge=>{const index=expanded.findIndex(e=>distance(e.points[0],edge.points[0])<1e-6 && distance(e.points.at(-1)!,edge.points.at(-1)!)<1e-6);return [edge.key,index<0 ? [] : [after[index].key]] as const;}));
       anchorReplacements.set(s,mapping);
     }
-    const replacements =
-      old &&
-      (old.kind !== s.kind || old.points.length !== s.points.length)
-        ? anchorReplacements.get(s)
-        : undefined;
-    if (replacements) {
+    const currentKeys = stitchEdges(s).map(e => e.key);
+    const topologyChanged = old && (old.kind !== s.kind || old.points.length !== s.points.length ||
+      (old.kind === "compound" && s.kind === "compound" &&
+        old.contours!.map(c=>c.length).join(",") !== s.contours!.map(c=>c.length).join(",")));
+    const replacements = old ? anchorReplacements.get(s) : undefined;
+    const alreadyMapped = g.edges.every(key => currentKeys.includes(key));
+    if (replacements && !alreadyMapped) {
       g = {
         ...g,
         edges: g.edges.flatMap((key) => replacements.get(key) ?? [key]),
       };
-    } else if (
-      old &&
-      (old.kind !== s.kind || old.points.length !== s.points.length)
-    ) {
+    } else if (old && topologyChanged && !alreadyMapped) {
       const before = stitchEdges(old),
         after = stitchEdges(s);
       const mapped = new Map(
@@ -673,6 +741,8 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
     }
     const all = stitchEdges(s).map((e) => e.key),
       alive = new Set(g.edges.filter((k) => all.includes(k)));
+    if (!successors.has(s)) successors.set(s,stitchSuccessors(s));
+    const follows = (a: string, b: string) => successors.get(s)!.get(a) === b;
     const runs: string[][] = [];
     let run: string[] = [];
     for (const key of g.edges) {
@@ -681,33 +751,22 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
         run = [];
         continue;
       }
-      if (run.length) {
-        const prev = all.indexOf(run.at(-1)!);
-        const next = all.indexOf(key);
-        if (
-          next !== prev + 1 &&
-          !(stitchClosed(s) && prev === all.length - 1 && next === 0)
-        ) {
-          runs.push(run);
-          run = [];
-        }
+      if (run.length && !follows(run.at(-1)!,key)) {
+        runs.push(run);
+        run = [];
       }
       run.push(key);
     }
     if (run.length) runs.push(run);
-    if (g.closed && runs.length > 1) {
-      const first = all.indexOf(runs[0][0]),
-        last = all.indexOf(runs.at(-1)!.at(-1)!);
-      if (first === (last + 1) % all.length)
-        runs[0] = [...runs.pop()!, ...runs[0]];
-    }
+    if (g.closed && runs.length > 1 && follows(runs.at(-1)!.at(-1)!,runs[0][0]))
+      runs[0] = [...runs.pop()!, ...runs[0]];
     if (runs.length > 1) splitIds.add(g.id);
     runs.forEach((edges, i) =>
       stitchGroups.push({
         ...g,
         id: i ? crypto.randomUUID() : g.id,
         edges,
-        closed: g.closed && edges.length === all.length && stitchClosed(s),
+        closed: g.closed && stitchRunClosed(s,edges),
       }),
     );
   }

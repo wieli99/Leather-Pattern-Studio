@@ -1,6 +1,9 @@
+import { contourShape } from "./compound";
+import { booleanShapes } from "./booleanShapes";
+import { contains } from "./geometry";
 import { flattenOutline } from "./flattenOutline";
 import { compactOffset } from "./compactOffset";
-import { shapeMatrix } from "./geometry";
+import { applyMatrix, shapeMatrix } from "./geometry";
 import type { Point, Shape } from "./project";
 
 export type OffsetJoin = "sharp" | "rounded";
@@ -48,6 +51,19 @@ function push(points: Point[], point: Point) {
 
 /** One-sided parallel outline in world millimetres. Positive is visually left on open paths. */
 export function offsetShape(source: Shape, distance: number, join: OffsetJoin): Shape {
+  if (source.kind === "compound") {
+    const matrix = shapeMatrix(source);
+    const parts = source.contours!.map(c => ({...contourShape(source,c),rotation:0,transform:matrix}));
+    const records = parts.map((part,i) => {
+      const probe = applyMatrix(matrix,part.points[0]);
+      const depth = parts.filter((other,j) => j !== i && contains({...other,kind:"compound",contours:[source.contours![j]]},probe)).length;
+      return {depth,shape:offsetShape(part,distance*(depth % 2 ? -1:1),join)};
+    }).sort((a,b)=>a.depth-b.depth);
+    let result: Shape | null = records[0].shape;
+    for (const record of records.slice(1)) result = result ? booleanShapes(record.depth % 2 ? "subtract" : "union",[result,record.shape]) : record.shape;
+    if (!result) throw Error("Offset collapses the outline.");
+    return {...result,id:crypto.randomUUID(),name:`${source.name.slice(0,193)} offset`,fillOpacity:0};
+  }
   if (!Number.isFinite(distance) || Math.abs(distance) < EPS) throw Error("Enter a non-zero finite offset distance.");
   if (join !== "sharp" && join !== "rounded") throw Error("Invalid corner style.");
   const scale = similarityScale(source);

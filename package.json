@@ -24,6 +24,7 @@
     "jspdf": "^4.2.1",
     "jszip": "^3.10.2",
     "markdown-it": "^15.0.3",
+    "paper": "0.12.18",
     "pdfjs-dist": "^6.5.438",
     "reka-ui": "^2.0.0",
     "svg2pdf.js": "^2.9.0",

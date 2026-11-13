@@ -65,8 +65,15 @@ async function navigate() {
   query.value = "";
   document.title = `${page.value?.title ?? "Page not found"} · Leather Pattern Studio manual`;
   await nextTick();
-  const anchor = route.value.split("/")[1];
-  if (anchor) document.getElementById(anchor)?.scrollIntoView();
+  const section = route.value.split("/")[1];
+  // Preserve bookmarks from before the outline tool was renamed to Join.
+  const anchor = page.value?.id === "transforms" && section === "merge" ? "join" : section;
+  if (anchor) {
+    const requestedRoute = route.value;
+    // Illustration loading changes section positions on direct bookmarked visits.
+    await Promise.all([...document.querySelectorAll<HTMLImageElement>("article img")].map(img => img.decode().catch(() => undefined)));
+    if (route.value === requestedRoute) document.getElementById(anchor)?.scrollIntoView();
+  }
   else document.querySelector<HTMLElement>("article")?.focus();
 }
 onMounted(() => {

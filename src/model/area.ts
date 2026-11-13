@@ -48,7 +48,7 @@ export function shapeArea(shape: Shape): number | null {
     let winding = 0;
     for (let j = 0; j + 1 < hits.length; j++) {
       winding += hits[j].winding;
-      if (winding)
+      if (shape.kind === "compound" ? Math.abs(winding) % 2 : winding)
         area += (hits[j + 1].y - hits[j].y) * (cuts[i] - cuts[i - 1]);
     }
   }
