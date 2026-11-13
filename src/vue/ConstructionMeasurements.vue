@@ -98,8 +98,10 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
     const displacement = (start: number, end: number, low: number, high: number) =>
       end - start > high - low ? (low + high - start - end) / 2
         : start < low ? low - start : end > high ? high - end : 0;
-    const dx = displacement(box.left, box.right, view.left + 16, view.right - 16);
-    const dy = displacement(box.top, box.bottom, view.top + 16, view.bottom - 16);
+    const insetX = Math.min(120, view.width / 4);
+    const insetY = Math.min(120, view.height / 4);
+    const dx = displacement(box.left, box.right, view.left + insetX, view.right - insetX);
+    const dy = displacement(box.top, box.bottom, view.top + insetY, view.bottom - insetY);
     if (dx || dy) {
       editor.pan = { x: editor.pan.x + dx, y: editor.pan.y + dy };
       pinned.value = { x: pinned.value.x + dx, y: pinned.value.y + dy };
