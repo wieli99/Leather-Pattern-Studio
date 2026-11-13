@@ -29,6 +29,7 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
     ctx.moveTo(a.x, a.y);
     for (const [, c1, c2, end] of cubicSegments(s))
       ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+    if (isClosedShape(s)) ctx.closePath();
   } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii) {
     const corners = polygonFillets(s).corners;
     ctx.moveTo(corners.at(-1)!.end.x, corners.at(-1)!.end.y);
@@ -75,10 +76,14 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
       0,
       Math.PI * 2,
     );
-  else
-    s.points.forEach((p, i) =>
+  else {
+    const closed = s.kind === "polyline" && isClosedShape(s);
+    const points = closed ? s.points.slice(0, -1) : s.points;
+    points.forEach((p, i) =>
       i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y),
     );
+    if (closed) ctx.closePath();
+  }
 }
 export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
   const ctx = canvas.getContext("2d")!;
