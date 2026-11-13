@@ -198,10 +198,10 @@ test("off-screen construction fields pan the canvas without scrolling the UI", {
       }
       return ancestors;
     });
-    expect(box.x, JSON.stringify(layout)).toBeGreaterThanOrEqual(original.x + 15);
-    expect(box.x + box.width).toBeLessThanOrEqual(original.x + original.width - 15);
-    expect(box.y).toBeGreaterThanOrEqual(original.y + 15);
-    expect(box.y + box.height).toBeLessThanOrEqual(original.y + original.height - 15);
+    expect(box.x, JSON.stringify(layout)).toBeGreaterThanOrEqual(original.x + Math.min(120, original.width / 4) - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(original.x + original.width - Math.min(120, original.width / 4) + 1);
+    expect(box.y).toBeGreaterThanOrEqual(original.y + Math.min(120, original.height / 4) - 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(original.y + original.height - Math.min(120, original.height / 4) + 1);
   }).toPass();
   expect(await canvas.boundingBox()).toEqual(original);
   expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
@@ -236,10 +236,10 @@ test("selected edge measurements cycle without moving the surrounding UI", async
     const focused = page.locator(".construction-measurements label:has(input:focus)");
     await expect(focused).toHaveCount(1);
     const box = (await focused.boundingBox())!;
-    expect(box.x).toBeGreaterThanOrEqual(view.x + 15);
-    expect(box.x + box.width).toBeLessThanOrEqual(view.x + view.width - 15);
-    expect(box.y).toBeGreaterThanOrEqual(view.y + 15);
-    expect(box.y + box.height).toBeLessThanOrEqual(view.y + view.height - 15);
+    expect(box.x).toBeGreaterThanOrEqual(view.x + Math.min(120, view.width / 4) - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(view.x + view.width - Math.min(120, view.width / 4) + 1);
+    expect(box.y).toBeGreaterThanOrEqual(view.y + Math.min(120, view.height / 4) - 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(view.y + view.height - Math.min(120, view.height / 4) + 1);
     expect(await canvas.boundingBox()).toEqual(view);
     expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
   }
