@@ -140,3 +140,5 @@ Shift-add the next side of a rounded outline to include the intervening unstitch
 Numeric fields accept arithmetic (`+`, `-`, `*`, `/`, parentheses) in the current unit. Alt+wheel evaluates a valid formula before adjusting its result. See [numeric formulas](#measurements) for entry and validation behavior.
 
 For Join and the boolean tools, use Tab / Shift+Tab to navigate controls and Enter / Space to activate a focused button. Enter on the canvas or right-click applies a valid preview; Escape cancels. Apply is unavailable while choosing a target. See [boolean tools](#transforms/subtract-intersect-and-exclude).
+
+In Copy along path, Enter on the canvas or right-click applies the preview; Escape cancels. Picker buttons retain native Enter/Space activation.

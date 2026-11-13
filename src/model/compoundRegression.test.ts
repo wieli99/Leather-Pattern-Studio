@@ -217,3 +217,15 @@ test("curved compound measurements correspond to cubics rather than flattening c
     2,
   );
 });
+
+test('compound insets must remain within every material boundary', () => {
+  const shape = booleanShapes('subtract', [rectangle('outer',0,0,30),rectangle('hole',2,8,4)])!;
+  for (const candidate of [shape, { ...shape, rotation: 37 }, transformShape(shape,{a:0,b:1,c:-1,d:0,e:70,f:30})]) {
+    const groups = contourGroups(candidate);
+    for (const group of groups) {
+      expect(() => stitchGeometry(candidate,{...group,settings:{...group.settings,inset:3}})).toThrow(/material/);
+      expect(() => stitchGeometry(candidate,{...group,settings:{...group.settings,inset:0.5}})).not.toThrow();
+      expect(() => stitchGeometry(candidate,{...group,settings:{...group.settings,inset:0}})).not.toThrow();
+    }
+  }
+});

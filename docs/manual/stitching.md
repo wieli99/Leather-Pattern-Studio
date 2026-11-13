@@ -128,3 +128,5 @@ Continue run requires a fixed-count preceding section. Its new continuation can 
 ![Preset panel beside stitching settings](images/stitch-presets.png)
 
 Shift-add an adjacent side of a rounded rectangle to include its intervening unstitched corner automatically. Duplicating a receiver retains its external stitching source; duplicating both source and receiver links the new copies together. Internal count-check links are also duplicated.
+
+Compound outline insets must stay within the material: stitch paths cannot cross into a hole or beyond an outer boundary. Reduce the inset if a nearby contour blocks the path.

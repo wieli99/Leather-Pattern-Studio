@@ -1,3 +1,5 @@
+import { pathPlacements } from "../model/pathPlacements";
+import { transformShape } from "../model/geometry";
 import { stitchRunClosed } from "../model/stitchGeometry";
 import { booleanShapes } from "../model/booleanShapes";
 import { isClosedShape } from "../model/closedShape";
@@ -576,6 +578,7 @@ export class Controller {
   private dirtyBaseline = "";
   uiSnapshot = () =>
     [
+      JSON.stringify(this.pathCopy),
       this.booleanOperation,
       this.booleanPicker,
       this.booleanCutters.join(","),
@@ -1772,6 +1775,7 @@ export class Controller {
     return true;
   }
   async commit(document: Doc) {
+    if (this.pathCopy && document !== this.preview) this.cancel();
     if (this.offsetActive) this.cancel();
     try {
       if (!this.canCommitFromView(document)) return false;
@@ -2270,6 +2274,79 @@ export class Controller {
     if (next && fingerprint(next) !== fingerprint(this.document))
       await this.commit(next);
   }
+  private duplicateAlongPath(document: Doc, initialIds: Set<string>, matrix: Parameters<typeof transformShape>[1]): Doc {
+    const data=copyStitchData(document,initialIds,true);
+    const originals=[...document.shapes.filter(s=>initialIds.has(s.id) || !!s.stitchParentId && initialIds.has(s.stitchParentId)),...data.shapes];
+    const ids=new Map(originals.map(s=>[s.id,crypto.randomUUID()]));
+    const copies=originals.map(s=>({...transformShape(s,matrix),id:ids.get(s.id)!,name:`${s.name} copy`,locked:false,stitchParentId:s.stitchParentId ? ids.get(s.stitchParentId) : undefined}));
+
+    const chosen = new Set([...initialIds,...originals.filter(s=>s.stitchParentId).map(s=>s.id)]);
+    function copyNode(n: ObjectNode): ObjectNode {
+      return n.kind === "object" ? { ...n, id: ids.get(n.id)! } :
+        { ...n, id: crypto.randomUUID(), name: `${n.name} copy`, locked: false, children: n.children.map(copyNode) };
+    }
+    function duplicateNodes(nodes: ObjectNode[]): ObjectNode[] {
+      return nodes.flatMap(n => chosen.has(n.id) ? [copyNode(n), n] :
+        [n.kind === "group" ? { ...n, children: duplicateNodes(n.children) } : n]);
+    }
+    const {groups,transfers}=data;
+    const groupIds = new Map(groups.map(g => [g.id,crypto.randomUUID()]));
+    return {
+      ...document, shapes:[...document.shapes,...copies], objectTree:[...duplicateNodes((document.objectTree ?? objectTreeFromShapes(document.shapes))),...data.shapes.map(s=>({kind:"object" as const,id:ids.get(s.id)!}))],
+      stitchLinks:[...(document.stitchLinks ?? []),...(document.stitchLinks ?? []).map((l,index)=>({...l,id:Math.max(0,...(document.stitchLinks ?? []).map(l=>l.id))+index+1,members:l.members.filter(id=>groupIds.has(id)).map(id=>groupIds.get(id)!)})).filter(l=>l.members.length>=2)],
+      stitchGroups:[...(document.stitchGroups ?? []),...groups.map(g => ({ ...g,id:groupIds.get(g.id)!,shapeId:ids.get(g.shapeId)!,continuation:g.continuation ? { ...g.continuation,previousId:groupIds.get(g.continuation.previousId)! } : undefined }))],
+      stitchTransfers:[...(document.stitchTransfers ?? []),...copyTransferPlacements(document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
+    };
+  }
+  pathCopy: { source: string; path: string; picker: 'source' | 'path' | null; mode: 'spacing' | 'count'; spacing: number; count: number; rotate: boolean; error: string } | null = null;
+  private pathCopySelection: string[] = [];
+  get canCopyAlongPath() { return this.ready && !this.printLayoutActive && !this.selectedGroups.length && this.active.length === 1 && !this.isHidden(this.active[0].id) && !this.selectionLocked && !this.busy; }
+  activatePathCopy() {
+    if (!this.canCopyAlongPath) return;
+    const source = this.active[0].id;
+    this.cancel();
+    this.pathCopySelection = [...this.selected];
+    this.tool = "select";
+    this.mode = "select";
+    this.pathCopy = { source, path: '', picker: 'path', mode: 'spacing', spacing: 10, count: 5, rotate: true, error: '' };
+    this.notify();
+  }
+  pickPathCopy(id: string) {
+    const state = this.pathCopy;
+    if (!state?.picker || this.busy) return;
+    if (this.isHidden(id) || this.isLocked(id)) { state.error = 'Choose a visible, unlocked object.'; this.notify(); return; }
+    if (state.picker === 'source') { state.source = id; state.picker = 'path'; }
+    else { state.path = id; state.picker = null; }
+    this.refreshPathCopy();
+  }
+  refreshPathCopy() {
+    this.preview = null;
+    const state = this.pathCopy;
+    if (!state) return;
+    state.error = '';
+    if (!state.path || state.picker) { this.notify(); return; }
+    try {
+      const source = this.document.shapes.find(s => s.id === state.source)!;
+      const path = this.document.shapes.find(s => s.id === state.path)!;
+      if (this.isHidden(state.source) || this.isLocked(state.source) || this.isHidden(state.path) || this.isLocked(state.path)) throw Error('Choose visible, unlocked objects.');
+      if (!source || !path || source.id === path.id) throw Error('Choose distinct source and path objects.');
+      if (isIndicator(path.kind) || path.kind === 'text' || path.kind === 'measurement' || path.kind === 'compound') throw Error('Choose a single open or closed outline.');
+      const matrices = pathPlacements(path, state.mode, state.mode === 'spacing' ? state.spacing : state.count, state.rotate, center(source));
+      let next = this.document;
+      for (const matrix of matrices) next = this.duplicateAlongPath(next, new Set([source.id]), matrix);
+      this.preview = this.normalizeTree(next);
+    } catch (error) { state.error = error instanceof Error ? error.message : String(error); }
+    this.notify();
+  }
+  async applyPathCopy() {
+    if (!this.pathCopy || this.pathCopy.picker || this.busy) return;
+    this.refreshPathCopy();
+    if (!this.preview || this.pathCopy.error) return;
+    const next = this.preview;
+    const ids = next.shapes.filter(s => !s.stitchParentId && !this.document.shapes.some(original => original.id === s.id)).map(s => s.id);
+    if (await this.commit(next)) { this.cancel(); this.selected = ids; this.notify(); }
+    else if (this.pathCopy) { this.pathCopy.error = "Could not apply copies. Review the document and try again."; this.notify(); }
+  }
   booleanOperation: BooleanOperation | null = null;
   booleanTarget = "";
   booleanCutters: string[] = [];
@@ -2467,6 +2544,8 @@ export class Controller {
     this.notify();
   }
   cancel() {
+    if (this.pathCopy) this.selected = this.pathCopySelection;
+    this.pathCopy = null;
     this.offsetDrag = null;
     this.offsetActive = false;
     this.offsetDraft = null;
@@ -2967,6 +3046,13 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
+    if (this.pathCopy && !this.space && button !== 1) {
+      if (button === 2) { void this.applyPathCopy(); return; }
+      const raw = this.world(pixel);
+      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      if (hit) this.pickPathCopy(hit.id);
+      return;
+    }
     if (this.offsetActive && button === 2) { void this.applyOffset(); return; }
     if (this.offsetActive && button === 0 && !this.space) {
       const raw = this.world(pixel), normal = this.offsetDragAt(raw);
@@ -3755,7 +3841,7 @@ export class Controller {
     if (next !== shape) await this.edit(id, shape.kind === "compound" ? {contours:next.contours} : { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
-    if (this.booleanOperation) return;
+    if (this.booleanOperation || this.pathCopy) return;
     if (this.selectionLocked) return;
     if (this.stitchMode) return;
     const source =
@@ -3825,7 +3911,7 @@ export class Controller {
   get canToggleObjectState() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
       !this.drawingDown && !this.transformTool && !this.propertySession &&
-      !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.pathCopy && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   async toggleObjectState(id: string, field: "hidden" | "locked") {
     if (!this.canToggleObjectState) return;
@@ -3845,7 +3931,7 @@ export class Controller {
   }
   get canStyle() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
-      !this.transformTool && !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.transformTool && !this.propertySession && !this.pathCopy && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   async copyStyling(id: string) {
     if (!this.canStyle) return;
@@ -3898,7 +3984,7 @@ export class Controller {
     if (this.printLayoutActive) return false;
     return this.ready && !this.busy && !!this.clipboardPixel &&
       !this.gesture && !this.pending.length && !this.transformTool &&
-      !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.propertySession && !this.pathCopy && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   copyObjects(): string | null {
     if (!this.canUseClipboard || (!this.active.length && !this.selectedGroups.length)) return null;

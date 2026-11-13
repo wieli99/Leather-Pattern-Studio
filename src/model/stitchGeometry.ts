@@ -344,7 +344,7 @@ function pointInside(points: Point[], p: Point): boolean {
   return inside;
 }
 
-type Geometry = ReturnType<typeof computeStitchGeometry>;
+type Geometry = { points: Point[]; holes: { point: Point; angle: number }[]; length: number; distances: number[]; closed: boolean };
 const geometryCache = new WeakMap<Shape, Map<string, Geometry | Error>>();
 export function resolveStitchRun(s: Shape, g: StitchGroup, groups: StitchGroup[], seen = new Set<string>()): StitchGroup {
   if (!g.continuation) return g;
@@ -388,7 +388,7 @@ export function stitchGeometry(s: Shape, g: StitchGroup, groups?: StitchGroup[])
     throw error;
   }
 }
-function computeStitchGeometry(s: Shape, g: StitchGroup, materialSide = 1) {
+function computeStitchGeometry(s: Shape, g: StitchGroup, materialSide = 1): Geometry {
   if (s.kind === "compound") {
     const part = compoundStitchSource(s,g.edges);
     // Hole contours reverse material-side inset relative to an isolated outline.
@@ -397,7 +397,18 @@ function computeStitchGeometry(s: Shape, g: StitchGroup, materialSide = 1) {
     const probe = {x:(a.x+b.x)/2-(b.y-a.y)/length*0.001,y:(a.y+b.y)/2+(b.x-a.x)/length*0.001};
     const leftMaterial = contains(s,probe);
     const partLeft = contains(part.shape,probe);
-    return computeStitchGeometry(part.shape,{...g,edges:part.keys},leftMaterial === partLeft ? 1 : -1);
+    const result = computeStitchGeometry(part.shape,{...g,edges:part.keys},leftMaterial === partLeft ? 1 : -1);
+    if (g.settings.inset > 0) {
+      const outside = result.points.some(p => !contains(s, p));
+      const crossesBoundary = s.contours!.some(contour => {
+        const outline = stitchEdges({ ...contourShape(s, contour), rotation: 0, transform: shapeMatrix(s) })
+          .flatMap((edge, i) => i ? edge.points.slice(1) : edge.points);
+        return crossing([result.points, outline]);
+      });
+      if (outside || crossesBoundary)
+        throw Error("Inset leaves the material of the source shape. Reduce the inset.");
+    }
+    return result;
   }
   validateStitchSettings(g.settings);
   const all = stitchEdges(s),
