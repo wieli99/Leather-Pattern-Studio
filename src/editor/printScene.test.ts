@@ -208,3 +208,17 @@ for (const vertical of [true, false]) {
     }
   });
 }
+
+it("joins closed polygon corners while preserving open endpoints", () => {
+  const polygon: Shape = { ...shape, kind: "polyline", radius: 0,
+    points: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 10, y: 20 }, { x: 0, y: 0 }] };
+  expect(svgShapePath(polygon)).toBe("M0 0 L20 0 L10 20 Z");
+  expect(svgShapePath({ ...polygon, points: polygon.points.slice(0, -1) })).not.toContain("Z");
+  expect(svgShapePath({ ...polygon, radius: 2 })).toMatch(/Z$/);
+});
+it("closes curves after their final curved segment", () => {
+  const curve: Shape = { ...shape, kind: "curve", radius: 0,
+    points: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 10, y: 20 }, { x: 0, y: 0 }] };
+  expect(svgShapePath(curve)).toMatch(/C[^Z]+Z$/);
+  expect(svgShapePath({ ...curve, points: curve.points.slice(0, -1) })).not.toContain("Z");
+});
