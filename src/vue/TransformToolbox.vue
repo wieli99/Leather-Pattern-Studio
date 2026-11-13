@@ -194,7 +194,8 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         @click="editor.activateOffset()"
       >
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-          <path d="M4 18V9a5 5 0 0 1 5-5h9M8 21v-8a5 5 0 0 1 5-5h8" />
+          <rect x="3" y="3" width="18" height="18" rx="5" />
+          <rect x="7" y="7" width="10" height="10" rx="1" />
         </svg>
       </button>
       <button

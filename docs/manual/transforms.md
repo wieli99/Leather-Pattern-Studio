@@ -18,6 +18,8 @@ Transforms remain previews until applied. Selection changes are restricted while
 
 ## Offset
 
+The Offset icon shows two nested rounded outlines with an even gap between them.
+
 Select one or more outlines and choose **Offset (O)** in the bottom selection toolbar. Enter a signed distance or drag the preview outline to set it. Dragging one preview updates every selected object's offset by the same distance; releasing leaves the preview for review. Choose **Sharp** or **Rounded** corners; Sharp is the default. Apply, Enter, or right-click creates separate, unfilled outline copies in one undo step. Esc or Cancel discards the preview. The original objects and their stitching remain unchanged; new offsets are selected after applying.
 
 Positive distances expand closed outlines and negative distances inset them. On an open line or path, positive places the offset to the left while travelling from its start to end; negative places it to the right. Distances use the selected units. Lines, paths, curves, rectangles, circles, ellipses, and arcs are supported. Circles, circular arcs, and simple rectangles retain their exact editable shape when the transform permits it. Ellipses, stretched arcs, and curves become editable control point curves with a compact set of Bézier segments; other curved offsets become editable polylines. If a curve offset folds, develops a cusp, or needs too many segments for 0.01 mm accuracy, the preview reports an error and Apply stays disabled.
