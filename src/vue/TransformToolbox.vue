@@ -11,6 +11,11 @@ import { focusModelCanvas } from "./canvasFocus";
 const e = useEditor();
 const outlinePanel = ref<HTMLElement | null>(null);
 const otherPicker = ref<HTMLButtonElement | null>(null);
+async function applyPathCopy() {
+  await editor.applyPathCopy();
+  if (!editor.pathCopy) focusModelCanvas();
+}
+function cancelPathCopy() { editor.cancel(); focusModelCanvas(); }
 async function applyOutline() {
   await editor.applyTrim();
   if (!editor.trimMode) focusModelCanvas();
@@ -42,9 +47,25 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
 </script>
 <template>
   <div
-    v-if="e.stitchMode || e.selectionToolsAvailable || (e.tool === 'select' && e.trimMode && !e.busy)"
+    v-if="e.pathCopy || e.stitchMode || e.selectionToolsAvailable || (e.tool === 'select' && e.trimMode && !e.busy)"
     class="transform-overlay"
   >
+    <section v-if="e.pathCopy" class="transform-options path-copy-options" aria-label="Copy along path settings" @keydown.esc.stop.prevent="cancelPathCopy()">
+      <strong>Copy along path</strong>
+      <button v-for="role in (['source', 'path'] as const)" :key="role" class="boolean-picker" :aria-pressed="e.pathCopy.picker === role" @click="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()">
+        <span class="boolean-picker-label">{{ role === 'source' ? 'Source' : 'Path' }}</span><span class="boolean-object-name">{{ e.document.shapes.find(s => s.id === e.pathCopy![role])?.name || 'Choose object' }}</span>
+      </button>
+      <small aria-live="polite">{{ e.pathCopy.picker ? `Choose ${e.pathCopy.picker} on the canvas or in Model objects.` : "Review the preview or use a picker to change objects." }}</small>
+      <label>Distribution<select v-model="e.pathCopy.mode" @change="editor.refreshPathCopy()"><option value="spacing">Spacing</option><option value="count">Count</option></select></label>
+      <div class="transform-inputs" data-hint-edit="transform">
+      <label v-if="e.pathCopy.mode === 'spacing'">Spacing ({{ e.unitSymbol }})<LengthInput :min="0.01" :value="e.pathCopy.spacing" @invalid="e.pathCopy.spacing = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.spacing = $event; editor.refreshPathCopy()" /></label>
+      <label v-else>New copies<LengthInput scalar integer :min="1" :max="1000" :step="1" :value="e.pathCopy.count" @invalid="e.pathCopy.count = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.count = $event; editor.refreshPathCopy()" /></label>
+      </div>
+      <label class="stitch-toggle">Rotate with path<input v-model="e.pathCopy.rotate" type="checkbox" @change="editor.refreshPathCopy()" /></label>
+      <small v-if="e.preview && !e.pathCopy.picker">{{ e.preview.shapes.filter(s => !e.document.shapes.some(o => o.id === s.id) && !s.stitchParentId).length }} new objects</small>
+      <p v-if="e.pathCopy.error" role="alert">{{ e.pathCopy.error }}</p>
+      <div class="actions tool-popup-footer"><button :disabled="!e.preview || !!e.pathCopy.error || !!e.pathCopy.picker || e.busy" @click="applyPathCopy()">Apply</button><button @click="cancelPathCopy()">Cancel</button></div>
+    </section>
     <StitchToolbox />
     <StitchToolbar />
     <section v-if="e.trimMode" ref="outlinePanel" class="transform-options" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
@@ -236,6 +257,14 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
             v-else
             d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M4 4l6 6M20 20l-6-6M20 4l-6 6M4 20l6-6"
           />
+        </svg>
+      </button>
+      <button :disabled="!e.canCopyAlongPath" title="Copy along path" aria-label="Copy along path" @click="editor.activatePathCopy()" :aria-pressed="!!e.pathCopy">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4.5 16c.4-2.5 1.4-4.5 3-6M12.5 7.5c1.5-1 3-1.5 4.5-1.5" />
+          <rect x="2" y="16" width="5" height="5" rx=".5" fill="currentColor" fill-opacity=".2" />
+          <rect x="7.5" y="6.5" width="5" height="5" rx=".5" />
+          <rect x="17" y="3.5" width="5" height="5" rx=".5" />
         </svg>
       </button>
       <button

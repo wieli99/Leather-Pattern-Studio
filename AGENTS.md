@@ -23,6 +23,8 @@ Use Vue Composition API with `<script setup lang="ts">`, strict TypeScript, two-
 
 Geometry uses double-precision millimetres. Screen coordinates must not change saved dimensions. Committed document state and history belong to Rust; pointer previews never mutate history. Preserve project migrations and inactive legacy stitch metadata.
 
+For every numeric input you implement or change, verify valid bounds and steps for typing, arrow keys, and Alt+scroll, including modifier keys and boundary values.
+
 ## Testing Guidelines
 
 Between commits, run focused tests for the behavior changed; use `tools/dev/run.sh fast` for a frontend TypeScript/unit pass. Regenerate Wasm/contracts and run Rust tests when Rust or document contracts change. Run `tools/dev/run.sh check` once before preparing a PR for meaningful editor changes; after further edits, repeat affected checks rather than the entire suite unless new failures or unresolved concerns justify it. CI independently runs full validation on PRs and protected-branch pushes. Test cancellation, invalid geometry, transaction boundaries, stale responses, and project round trips. For changes in `src-tauri/`, run native Rust tests with `cargo test --release --locked --manifest-path src-tauri/Cargo.toml` inside the toolchain from `tools/dev/Desktop.Containerfile` and exercise the affected desktop flow. Desktop CI builds and tests both CPU architectures for Linux, Windows, and macOS. Offline tests require the production build. No coverage percentage is mandated. Record browser-engine results separately from physical operating-system/device validation.

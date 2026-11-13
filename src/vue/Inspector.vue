@@ -200,10 +200,10 @@ function vertex(i: number, axis: "x" | "y", v: string) {
 }
 </script>
 <template>
-  <p v-if="e.transformTool || e.stitchMode || e.booleanOperation">
+  <p v-if="e.pathCopy || e.transformTool || e.stitchMode || e.booleanOperation">
     Apply or cancel to edit properties.
   </p>
-  <fieldset v-if="s" class="object-properties" :disabled="!!e.booleanOperation">
+  <fieldset v-if="s" class="object-properties" :disabled="!!e.booleanOperation || !!e.pathCopy">
     <PanelSection class="property-section" section-key="object" title="Object" :level="3" :disabled="editor.isLocked(s.id)">
     <Field :controller="editor" label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <template v-if="s.kind === 'text'">

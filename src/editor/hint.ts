@@ -14,6 +14,7 @@ export interface HintState {
   selected: readonly string[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   offsetActive?: boolean;
+  pathCopy?: { picker: 'source' | 'path' | null } | null;
   booleanOperation?: string | null;
   booleanPicker?: "target" | "cutters" | null;
   placingPivot: boolean;
@@ -53,6 +54,13 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     } else if (["property", "rename"].includes(editing))
       add("blur", "Leave field", "Apply");
     add("fields", "Tab / Shift+Tab", "Next / previous field");
+    return { action, controls };
+  }
+  if (s.pathCopy) {
+    action = s.pathCopy.picker ? `Choose ${s.pathCopy.picker} on the canvas or in Model objects.` : 'Review copies along the path.';
+    add('apply', 'Enter on canvas / Right-click', 'Apply');
+    add('cancel', 'Esc', 'Discard preview');
+    add('fields', 'Tab / Shift+Tab', 'Next / previous control');
     return { action, controls };
   }
   if (s.booleanOperation) {

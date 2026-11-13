@@ -89,3 +89,14 @@ Results remain editable: drag their contour anchors and handles, use transforms,
 Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
 
 In inch mode, guide and corner distance steps are 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. See [Measurements and snapping](#measurements) for fractional entry. Rotation steps remain in degrees.
+
+
+## Copy along path
+
+Select one object and choose **Copy along path**. Use **Source** and **Path** to pick objects on the canvas or in Model objects. The path may be an open path or a single closed outline. Its stored start and direction determine placement; position the source relative to that start before invoking the tool.
+
+Choose **Spacing** for fixed distances or **Count** for a number of new copies. Count excludes the original and accepts whole numbers from 1 to 1,000; spacing must be at least 0.01 mm. Arrow keys and Alt+scroll respect these limits. Open paths include the endpoint in Count mode; closed outlines distribute copies around the loop without duplicating the seam. **Rotate with path** rotates each copy around its own center as the path bends. Copy centers stay in the same positions with this option on or off; the source’s offset from the path start is preserved. Disable it to preserve the original orientation.
+
+Review the preview and choose **Apply**, press Enter on the canvas, or right-click. Escape or **Cancel** discards the preview. Apply creates one undo step and preserves the source and path. Up to 1,000 copies are supported. Copies preserve source styling and associated stitching.
+
+![Copy along path preview and settings](/manual/images/copy-along-path.png)

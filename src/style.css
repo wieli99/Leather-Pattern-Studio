@@ -1168,3 +1168,5 @@ select:disabled { opacity: .5; }
   height: 32px;
   padding: 0;
 }
+
+.path-copy-options > label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

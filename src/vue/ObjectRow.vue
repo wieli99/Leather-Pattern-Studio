@@ -19,8 +19,8 @@ const inheritedState = useEditorSelector(
   () =>
     `${editor.isHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}|${editor.booleanOperation}|${editor.booleanCutters.join(",")}`,
 );
-const booleanRole = useEditorSelector(editor, () => editor.booleanOperation ? editor.booleanTarget === props.shape.id ? "target" : "other" : null);
-const booleanOperand = useEditorSelector(editor, () => !!editor.booleanOperation && editor.booleanCutters.includes(props.shape.id));
+const booleanRole = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.source === props.shape.id ? "target" : "other" : editor.booleanOperation ? editor.booleanTarget === props.shape.id ? "target" : "other" : null);
+const booleanOperand = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.path === props.shape.id : !!editor.booleanOperation && editor.booleanCutters.includes(props.shape.id));
 const canToggleObjectState = useEditorSelector(
   editor,
   () => editor.canToggleObjectState,
@@ -38,6 +38,7 @@ async function rename() {
   if (
     editor.transformTool ||
     editor.booleanOperation ||
+    editor.pathCopy ||
     editor.stitchMode ||
     editor.isLocked(props.shape.id)
   )
@@ -58,6 +59,7 @@ function finish(cancel = false) {
     void editor.edit(props.shape.id, { name });
 }
 function select(event: MouseEvent) {
+  if (editor.pathCopy) { editor.pickPathCopy(props.shape.id); return; }
   if (editor.booleanOperation) { editor.pickBoolean(props.shape.id); return; }
   if (editor.transformTool || editor.stitchMode) return;
   editor.selectedGroups = [];

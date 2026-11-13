@@ -3066,3 +3066,63 @@ test("compound Offset activation creates a preview and cancellation leaves the o
   expect(e.preview!.shapes[1].kind).toBe("compound");
   e.cancel();expect(JSON.stringify(e.document)).toBe(before);
 });
+
+test('copy along path previews without history and commits one undo step', async () => {
+  const e = editor();
+  const source = { id:'source', name:'Source', kind:'rectangle' as const, points:[{x:2,y:3},{x:4,y:5}], radius:0, rotation:0 };
+  const path = { id:'path', name:'Path', kind:'polyline' as const, points:[{x:0,y:0},{x:20,y:0}], radius:0, rotation:0 };
+  await e.commit({...emptyDocument(), shapes:[source,path]});
+  e.selected = [source.id];
+  e.activatePathCopy();
+  e.pickPathCopy(path.id);
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.preview?.shapes).toHaveLength(4);
+  await e.applyPathCopy();
+  expect(e.document.shapes).toHaveLength(4);
+  expect(e.pathCopy).toBeNull();
+  await e.transact('undo');
+  expect(e.document.shapes).toHaveLength(2);
+});
+test('copy along path cancellation restores selection and drops invalid previews', async () => {
+  const e = editor();
+  const shape = {id:'piece',name:'Piece',kind:'rectangle' as const,points:[{x:0,y:0},{x:20,y:20}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape]});
+  e.selected = [shape.id];
+  e.activatePathCopy(); e.pickPathCopy(shape.id);
+  expect(e.pathCopy?.error).toMatch(/distinct/);
+  expect(e.preview).toBeNull();
+  e.cancel();
+  expect(e.selected).toEqual([shape.id]);
+  expect(e.document.shapes).toHaveLength(1);
+});
+test('copy along path preserves stitched sources and round trips fresh dependencies', async () => {
+  const e = editor(), {shape, group} = runFixture();
+  const path = {id:'path',name:'Path',kind:'polyline' as const,points:[{x:0,y:0},{x:40,y:0}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape,path],stitchGroups:[group]});
+  e.selected = [shape.id]; e.activatePathCopy();
+  e.pathCopy!.mode = 'count'; e.pathCopy!.count = 2;
+  e.pickPathCopy(path.id);
+  expect(e.pathCopy?.error).toBe('');
+  await e.applyPathCopy();
+  const result = parseProject(JSON.stringify(e.document));
+  expect(result.stitchGroups).toHaveLength(3);
+  expect(new Set(result.stitchGroups!.map(g => g.id)).size).toBe(3);
+  expect(result.shapes.find(s => s.id === shape.id)).toEqual(shape);
+});
+
+test('path rotation preserves centers of transformed source copies', async () => {
+  const { center } = await import('../model/geometry');
+  const e = editor();
+  const source = {id:'source',name:'Source',kind:'rectangle' as const,points:[{x:12,y:8},{x:24,y:18}],radius:0,rotation:27,transform:{a:1,b:0,c:0,d:1,e:90,f:-35}};
+  const path = {id:'path',name:'Path',kind:'rectangle' as const,points:[{x:40,y:60},{x:140,y:140}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[source,path]});
+  e.selected = [source.id]; e.activatePathCopy();
+  e.pathCopy!.mode = 'count'; e.pathCopy!.count = 15;
+  e.pathCopy!.rotate = false; e.pickPathCopy(path.id);
+  const fixed = e.preview!.shapes.slice(2).map(center);
+  e.pathCopy!.rotate = true; e.refreshPathCopy();
+  e.preview!.shapes.slice(2).map(center).forEach((p,i) => {
+    expect(p.x).toBeCloseTo(fixed[i].x,10);
+    expect(p.y).toBeCloseTo(fixed[i].y,10);
+  });
+});

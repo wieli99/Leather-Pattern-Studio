@@ -1,3 +1,4 @@
+import { flattenOutline } from "../model/flattenOutline";
 import { textFont, measureText } from "../model/text";
 import { constructionGuides } from "./construction";
 import { drawAnnotation } from "./annotationRenderer";
@@ -219,9 +220,9 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       const path = new Path2D(),
         m = shapeMatrix(s);
       path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
-      const selected = editor.booleanOperation ? s.id === editor.booleanTarget : editor.selected.includes(s.id);
+      const selected = editor.pathCopy ? s.id === editor.pathCopy.source : editor.booleanOperation ? s.id === editor.booleanTarget : editor.selected.includes(s.id);
       ctx.lineWidth = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? Math.max(s.strokeWidth ?? 0.35, 2/editor.zoom) : s.strokeWidth ?? 0.35;
-      ctx.strokeStyle = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : preview
+      ctx.strokeStyle = editor.pathCopy?.path === s.id ? "#e34646" : editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : preview
         ? color("preview")
         : selected
           ? color("accent")
@@ -293,6 +294,18 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.filter(s => !editor.isHidden(s.id)).forEach((s) => shape(s));
+    if (editor.pathCopy?.path) {
+      const target = editor.document.shapes.find(s => s.id === editor.pathCopy!.path);
+      if (target) try {
+        const { points } = flattenOutline(target);
+        if (points.length > 1) {
+          const [a,b] = points, angle = Math.atan2(b.y-a.y,b.x-a.x), r = 6/editor.zoom;
+          ctx.save(); ctx.strokeStyle = "#e34646"; ctx.lineWidth = 2/editor.zoom;
+          ctx.beginPath(); ctx.arc(a.x,a.y,3/editor.zoom,0,Math.PI*2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(a.x+Math.cos(angle)*r*3,a.y+Math.sin(angle)*r*3); ctx.stroke(); ctx.restore();
+        }
+      } catch { /* Invalid operands are explained in the settings panel. */ }
+    }
     if (editor.booleanOperation && editor.preview) {
       ctx.save(); ctx.globalAlpha = 0.65;
       editor.document.shapes.filter(s => editor.booleanCutters.includes(s.id)).forEach(s => shape(s, true));
@@ -416,7 +429,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.arc(p.x, p.y, 3 / z, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (editor.active.length && !editor.booleanOperation) {
+    if (editor.active.length && !editor.booleanOperation && !editor.pathCopy) {
       const b = bounds(editor.active, editor.units);
       ctx.strokeStyle = color("accent");
       ctx.lineWidth = 1 / z;
