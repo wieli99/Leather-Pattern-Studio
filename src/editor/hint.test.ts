@@ -104,3 +104,13 @@ test.each([0, 1, 2])("measurement help explains equal sections at placement stag
     action:"Add / remove equal sections",
   });
 });
+
+test("boolean hints distinguish target picking, operands and keyboard button activation",()=>{
+  const target=editorHint({...base,booleanOperation:"union",booleanPicker:"target"});
+  expect(target.action).toContain("original objects");
+  expect(target.controls.some(c=>c.id==="apply")).toBe(false);
+  const operands=editorHint({...base,booleanOperation:"subtract",booleanPicker:"cutters"});
+  expect(operands.action).toContain("add or remove");
+  expect(operands.controls).toContainEqual({id:"buttons",gesture:"Enter / Space on a button",action:"Activate button"});
+  expect(operands.controls.some(c=>c.id==="apply")).toBe(true);
+});

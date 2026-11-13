@@ -23,6 +23,11 @@ vi.mock("./core", () => ({
         this.document = this.past.pop()!;
         this.revision++;
       }
+      if (op === "redo" && this.future.length) {
+        this.past.push(this.document);
+        this.document = this.future.pop()!;
+        this.revision++;
+      }
       return {
         document: this.document,
         revision: this.revision,
@@ -2187,7 +2192,7 @@ test("initialization rejects a stale worker document version", async () => {
   vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
   await e.initialize();
   expect(e.ready).toBe(false);
-  expect(e.message).toContain("expects document version 21, but geometry worker returned 15");
+  expect(e.message).toContain("expects document version 22, but geometry worker returned 15");
 });
 
 test("unit preferences leave document, grid and history unchanged", () => {
@@ -2918,4 +2923,146 @@ test("measurement and drawing groups remember and cycle independently", () => {
   expect(e.mode).toBe("crosshair");
   e.cycle("drawing");
   expect(e.mode).toBe("arrow");
+});
+
+test("subtract single target picks cutters, cancels, commits holes, and undoes atomically",async()=>{
+ const e=editor();
+ const rect=(id:string,x:number,size:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:x},{x:x+size,y:x+size}],radius:0,rotation:0});
+ await e.commit({...e.document,shapes:[rect("base",0,30),rect("cut",10,5),rect("other",50,10)]});
+ e.selected=["base"];const revision=e.revision;
+ e.activateBoolean("subtract");
+ expect(e.booleanPicker).toBe("cutters");expect(e.trimDraft).toBeNull();
+ e.pointerDown(e.screen({x:12,y:12}),0,false,false);expect(e.preview!.shapes[0].contours).toHaveLength(2);
+ expect(e.revision).toBe(revision);
+ e.cancel();expect(e.selected).toEqual(["base"]);expect(e.document.shapes).toHaveLength(3);
+ e.activateBoolean("subtract");e.pickBoolean("cut");await e.applyTrim();
+ expect(e.document.shapes).toHaveLength(2);expect(e.selected).toEqual(["base"]);
+ expect(e.revision).toBe(revision+1);await e.transact("undo");
+ expect(e.document.shapes).toHaveLength(3);await e.transact("redo");
+ expect(e.document.shapes[0].contours).toHaveLength(2);
+});
+
+test("empty intersection consumes inputs and target picking retains the new target",async()=>{
+ const e=editor();
+ const rect=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+10,y:10}],radius:0,rotation:0});
+ await e.commit({...e.document,shapes:[rect("a",0),rect("b",20)]});
+ e.selected=["b","a"];e.activateBoolean("intersect");
+ expect(e.booleanTarget).toBe("a");expect(e.booleanEmpty).toBe(true);
+ await e.applyTrim();expect(e.document.shapes).toHaveLength(0);expect(e.selected).toEqual([]);
+ await e.transact("undo");e.selected=["a","b"];e.activateBoolean("subtract");
+ e.booleanPicker="target";e.pickBoolean("b");expect(e.booleanCutters).toEqual(["a"]);
+ await e.applyTrim();expect(e.selected).toEqual(["b"]);expect(e.document.shapes[0].id).toBe("b");
+});
+
+test('compound anchors edit within one preview and preserve other contours',async()=>{
+ const {booleanShapes}=await import('../model/booleanShapes');
+ const rect=(id:string,x:number,size:number)=>({id,name:id,kind:'rectangle' as const,points:[{x,y:x},{x:x+size,y:x+size}],radius:0,rotation:0});
+ const shape=booleanShapes('subtract',[rect('base',0,30),rect('cut',10,5)])!;
+ const e=editor();await e.commit({...e.document,shapes:[shape]});e.selected=[shape.id];e.zoom=20;
+ const handle=e.handles().find(h=>h.kind==='vertex' && h.vertex===shape.contours![0].length && !h.handleSide)!;
+ const original=JSON.stringify(e.document);
+ e.pointerDown(e.screen(handle.point),0,false,false);
+ e.pointerMove(e.screen({x:handle.point.x+1,y:handle.point.y+1}),true);
+ expect(JSON.stringify(e.document)).toBe(original);
+ expect(e.preview!.shapes[0].contours![0]).toEqual(shape.contours![0]);
+ expect(e.preview!.shapes[0].contours![1]).not.toEqual(shape.contours![1]);
+ e.cancel();expect(JSON.stringify(e.document)).toBe(original);
+});
+
+test("Join starts from one open path and previews additions without committing", async () => {
+  const e = editor();
+  const line = (id: string, x: number) => ({id,name:id,kind:"line" as const,points:[{x,y:0},{x:x+10,y:0}],rotation:0,radius:0});
+  await e.commit({...e.document,shapes:[line("a",0),line("b",10),line("c",50)]});
+  e.selected=["a"];
+  expect(e.canJoin).toBe(true);
+  expect(e.canBoolean).toBe(false);
+  const revision=e.revision;
+  e.activateMerge();
+  expect(e.booleanLabel).toBe("Join");
+  expect(e.booleanPicker).toBe("cutters");
+  expect(e.booleanError).toBe("");
+  e.pickBoolean("c");
+  expect(e.booleanError).toContain("connected chain");
+  expect(e.trimDraft).toBeNull();
+  e.removeBooleanOperand("c");
+  e.pickBoolean("b");
+  expect(e.preview!.shapes[0].kind).toBe("polyline");
+  expect(e.revision).toBe(revision);
+  e.cancel();
+  expect(e.selected).toEqual(["a"]);
+  expect(e.document.shapes).toHaveLength(3);
+});
+
+test("target picker suspends preview, cannot apply, and toggles back to the cached preview",async()=>{
+  const e=editor();
+  const rectangle=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+20,y:20}],radius:0,rotation:0});
+  await e.commit({...e.document,shapes:[rectangle("a",0),rectangle("b",10)]});
+  e.selected=["a","b"];e.activateMerge();
+  const before=e.revision, preview=JSON.stringify(e.preview);
+  e.setBooleanPicker("target");
+  expect(e.booleanPicker).toBe("target");expect(e.preview).toBeNull();
+  await e.applyTrim();expect(e.revision).toBe(before);
+  e.pointerDown(e.screen({x:5,y:5}),2,false,false);
+  expect(e.revision).toBe(before);expect(e.booleanOperation).toBe("union");
+  e.setBooleanPicker("target");expect(e.booleanPicker).toBeNull();
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  e.setBooleanPicker("target");e.pickBoolean("b");
+  expect(e.booleanTarget).toBe("b");expect(e.booleanCutters).toEqual(["a"]);
+  expect(e.active.map(s=>s.id)).toEqual(["b"]);
+  expect(e.booleanPicker).toBe("cutters");expect(e.preview).not.toBeNull();
+  e.setBooleanPicker("cutters");expect(e.booleanPicker).toBeNull();
+  await e.applyTrim();expect(e.selected).toEqual(["b"]);
+  await e.transact("undo");expect(e.document.shapes).toHaveLength(2);
+});
+
+test("real compound commits preserve stitched contours, links, transfers, hole counts and history after insertion",async()=>{
+  const {booleanShapes}=await import("../model/booleanShapes");
+  const {stitchEdges,stitchGeometry}=await import("../model/stitchGeometry");
+  const {defaultStitchSettings}=await import("../model/stitch");
+  const {insertAnchor}=await import("../model/insertAnchor");
+  const {cubicAt}=await import("../model/curves");
+  const {worldCubics}=await import("../model/geometry");
+  const {makeTransfer}=await import("../model/stitchLayers");
+  const rect=(id:string,x:number,y:number,w:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y},{x:x+w,y:y+w}],radius:0,rotation:0});
+  const shape=booleanShapes("subtract",[rect("base",0,0,30),rect("cut",10,10,10)])!;
+  const receiver=rect("receiver",50,0,30);
+  let offset=0;
+  const groups=shape.contours!.map((contour,i)=>{
+    const edges=stitchEdges(shape).slice(offset,offset+contour.length).map(e=>e.key);offset+=contour.length;
+    return {id:"group"+i,shapeId:shape.id,edges:[...edges.slice(2),...edges.slice(0,2)],side:1 as const,closed:true,
+      settings:{...defaultStitchSettings,inset:1,spacing:3.38},holeOverrides:{"1":{...defaultStitchSettings,inset:1,spacing:3.38,style:"round" as const,roundDiameter:0.8}}};
+  });
+  const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:groups,stitchLinks:[{id:1,members:groups.map(g=>g.id)}]};
+  doc.stitchTransfers=[makeTransfer(doc,groups[0].id,receiver,{x:65,y:15},0,"placement")];
+  const e=editor();expect(await e.commit(doc)).toBe(true);
+  const original=JSON.stringify(e.document), before=e.revision;
+  const counts=e.document.stitchGroups!.map(g=>stitchGeometry(e.document.shapes.find(s=>s.id===shape.id)!,g).holes.length);
+  const next=insertAnchor(e.document.shapes.find(s=>s.id===shape.id)!,cubicAt(worldCubics(shape)[0],0.5),0.001)!;
+  expect(await e.commit({...e.document,shapes:e.document.shapes.map(s=>s.id===next.id?next:s)})).toBe(true);
+  expect(e.revision).toBe(before+1);
+  expect(e.document.stitchGroups).toHaveLength(2);
+  expect(e.document.stitchLinks).toEqual(doc.stitchLinks);
+  expect(e.document.stitchTransfers).toHaveLength(1);
+  expect(e.document.stitchTransfers![0].masterId).toBe(groups[0].id);
+  e.document.stitchGroups!.forEach((g,i)=>{
+    expect(g.closed).toBe(true);
+    expect(g.holeOverrides).toEqual(groups[i].holeOverrides);
+    expect(stitchGeometry(e.document.shapes.find(s=>s.id===shape.id)!,g).holes).toHaveLength(counts[i]);
+  });
+  const after=JSON.stringify(e.document);
+  await e.transact("undo");expect(JSON.stringify(e.document)).toBe(original);
+  await e.transact("redo");expect(JSON.stringify(e.document)).toBe(after);
+  expect(parseProject(after).stitchGroups).toEqual(e.document.stitchGroups);
+});
+
+test("compound Offset activation creates a preview and cancellation leaves the original untouched",async()=>{
+  const {booleanShapes}=await import("../model/booleanShapes");
+  const rect=(id:string,x:number,y:number,w:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y},{x:x+w,y:y+w}],radius:0,rotation:0});
+  const shape=booleanShapes("subtract",[rect("base",0,0,30),rect("cut",10,10,10)])!;
+  const e=editor();await e.commit({...e.document,shapes:[shape]});e.selected=[shape.id];
+  const before=JSON.stringify(e.document);
+  expect(e.canOffset).toBe(true);e.activateOffset();
+  expect(e.offsetError).toBe("");expect(e.preview!.shapes).toHaveLength(2);
+  expect(e.preview!.shapes[1].kind).toBe("compound");
+  e.cancel();expect(JSON.stringify(e.document)).toBe(before);
 });

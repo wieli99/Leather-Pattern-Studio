@@ -39,7 +39,7 @@ test("receiving holes inherit master positions, clipping and overrides without r
  expect(holes.map(h=>h.point.x)).toEqual([240,250]);
  expect(result.group.holeOverrides!["2"].roundDiameter).toBe(2);
  const loaded=parseProject(JSON.stringify(doc));
- expect(loaded.version).toBe(21);
+ expect(loaded.version).toBe(22);
  expect(loaded.stitchTransfers![0].pose).toBeDefined();
  const migrated=receivingStitches(loaded,loaded.stitchTransfers![0]);
  expect(stitchGeometry(receiver,migrated.group).holes).toEqual(holes);

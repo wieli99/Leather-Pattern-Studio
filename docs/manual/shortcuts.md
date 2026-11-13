@@ -60,7 +60,7 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | G / E / S / M / B | Move / Rotate / Resize / Mirror / Corner radius |
 | O | Offset selected outlines |
 | I | Stitch mode (also without a selection) |
-| K / J | Trim / Merge |
+| K / J | Trim / Join |
 | Tab / Shift+Tab | Enter or cycle transform fields |
 | X / Y | Constrain Move or Resize axis |
 | V during transform | Place pivot |
@@ -138,3 +138,5 @@ Wheel adjustments stop at minimum and maximum values even when a larger step ove
 Shift-add the next side of a rounded outline to include the intervening unstitched corner. Transfer accepts lines from multiple objects and keeps their current spacing and relative angles under a shared move and rotation.
 
 Numeric fields accept arithmetic (`+`, `-`, `*`, `/`, parentheses) in the current unit. Alt+wheel evaluates a valid formula before adjusting its result. See [numeric formulas](#measurements) for entry and validation behavior.
+
+For Join and the boolean tools, use Tab / Shift+Tab to navigate controls and Enter / Space to activate a focused button. Enter on the canvas or right-click applies a valid preview; Escape cancels. Apply is unavailable while choosing a target. See [boolean tools](#transforms/subtract-intersect-and-exclude).

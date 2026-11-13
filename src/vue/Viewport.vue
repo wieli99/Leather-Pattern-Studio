@@ -141,7 +141,7 @@ function doubleClick(event: MouseEvent) {
     editor.active.length === 1
   ) {
     const shape = editor.active[0];
-    if (["rectangle", "polyline", "control-curve"].includes(shape.kind)) {
+    if (["rectangle", "polyline", "control-curve", "compound"].includes(shape.kind)) {
       const handle = editor.handleAt(editor.world(pixel(event)));
       if (
         handle?.kind === "vertex" &&

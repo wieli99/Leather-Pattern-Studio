@@ -2,12 +2,36 @@
 import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
-import { computed } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { cornerRadii } from "../model/geometry";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { transformShortcuts } from "./tools";
+import { focusModelCanvas } from "./canvasFocus";
 const e = useEditor();
+const outlinePanel = ref<HTMLElement | null>(null);
+const otherPicker = ref<HTMLButtonElement | null>(null);
+async function applyOutline() {
+  await editor.applyTrim();
+  if (!editor.trimMode) focusModelCanvas();
+}
+function cancelOutline() {
+  editor.cancel();
+  focusModelCanvas();
+}
+async function removeOperand(id: string) {
+  const index = editor.booleanCutters.indexOf(id);
+  if (index < 0) return;
+  editor.removeBooleanOperand(id);
+  await nextTick();
+  const buttons = outlinePanel.value?.querySelectorAll<HTMLButtonElement>("[data-remove-operand]");
+  (buttons?.[Math.min(index, buttons.length - 1)] ?? otherPicker.value)?.focus();
+}
+const pickerInstruction = computed(() => {
+  if (e.value.booleanPicker === "target") return "Choose a target on the canvas or in Model objects. Original objects are shown while picking.";
+  if (e.value.booleanPicker === "cutters") return "Click objects on the canvas or in Model objects to add or remove them.";
+  return "Review the preview. Use the pickers above to change the selection.";
+});
 const cornerShape = computed(() =>
   e.value.active.find((s) => s.id === e.value.selectedCorner?.shapeId),
 );
@@ -23,14 +47,43 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
   >
     <StitchToolbox />
     <StitchToolbar />
-    <section v-if="e.trimMode" class="transform-options" :aria-label="e.mergeMode ? 'Merge settings' : 'Trim settings'"
-      @keydown.enter.prevent="editor.applyTrim()" @keydown.esc.stop.prevent="editor.cancel()">
-      <strong>{{ e.mergeMode ? "Merge" : "Trim" }}</strong>
-      <small>{{ e.mergeMode ? "Apply to merge the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
+    <section v-if="e.trimMode" ref="outlinePanel" class="transform-options" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
+      @keydown.esc.stop.prevent="cancelOutline()">
+      <strong>{{ e.booleanOperation ? e.booleanLabel : e.mergeMode ? "Join" : "Trim" }}</strong>
+      <template v-if="e.booleanOperation">
+        <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'target'"
+          :title="e.booleanPicker === 'target' ? 'Stop choosing a target' : 'Choose a target object'"
+          @click="editor.setBooleanPicker('target')">
+          <span class="boolean-picker-label">Target</span>
+          <span class="boolean-object-name" :title="e.document.shapes.find(s => s.id === e.booleanTarget)?.name">{{ e.document.shapes.find(s => s.id === e.booleanTarget)?.name }}</span>
+        </button>
+        <button type="button" ref="otherPicker" class="boolean-picker" :aria-pressed="e.booleanPicker === 'cutters'"
+          :title="e.booleanPicker === 'cutters' ? 'Stop choosing other objects' : 'Choose other objects'"
+          @click="editor.setBooleanPicker('cutters')">
+          <span>{{ e.booleanOperation === 'subtract' ? 'Subtract objects' : 'Other objects' }}</span>
+          <span>({{ e.booleanCutters.length }})</span>
+        </button>
+        <small class="boolean-instruction" aria-live="polite">{{ pickerInstruction }}</small>
+        <div v-for="id in e.booleanCutters" :key="id" class="boolean-operand">
+          <span class="boolean-object-name" :title="e.document.shapes.find(s => s.id === id)?.name">{{ e.document.shapes.find(s => s.id === id)?.name }}</span>
+          <button type="button" class="boolean-remove" data-remove-operand
+            :aria-label="'Remove ' + e.document.shapes.find(s => s.id === id)?.name"
+            :title="'Remove ' + e.document.shapes.find(s => s.id === id)?.name"
+            @click="removeOperand(id)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+              stroke-width="1.7" stroke-linecap="round" aria-hidden="true" focusable="false">
+              <path d="m4 4 8 8m0-8-8 8"/>
+            </svg>
+          </button>
+        </div>
+        <p v-if="e.booleanError" role="alert">{{ e.booleanError }}</p>
+        <p v-if="e.booleanEmpty" role="status">Result is empty. Apply removes the input objects.</p>
+      </template>
+      <small v-else>{{ e.mergeMode ? "Apply to join the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
-        <button :disabled="!e.trimDraft || !!e.transformError || e.busy" @click="editor.applyTrim()">Apply</button>
-        <button @click="editor.cancel()">Cancel</button>
+        <button :disabled="!e.trimDraft || !!e.transformError || !!e.booleanError || e.busy" @click="applyOutline()">Apply</button>
+        <button @click="cancelOutline()">Cancel</button>
       </div>
     </section>
     <section v-if="e.offsetActive" class="transform-options" aria-label="Offset settings"
@@ -199,15 +252,35 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         </svg>
       </button>
       <button
-        aria-label="Merge"
+        aria-label="Join"
         aria-keyshortcuts="j"
-        :title="e.mergeResult ? 'Merge (J)' : 'Merge (J) requires connected straight outlines or endpoint-connected paths of the same family, without stitches'"
-        :disabled="e.selectionLocked || !e.mergeResult || e.busy"
-        :aria-pressed="e.mergeMode"
+        :title="e.canJoin ? 'Join (J): combine closed outlines or join compatible open paths' : 'Join (J) requires an unlocked closed outline or joinable path without stitches'"
+        :disabled="!e.canJoin || e.busy"
+        :aria-pressed="e.mergeMode && (!e.booleanOperation || e.booleanOperation === 'union')"
         @click="editor.activateMerge()"
       >
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
           <path d="M3 3h11v6h7v12H9v-7H3Z" />
+        </svg>
+      </button>
+      <button v-for="operation in (['subtract','intersect','exclude'] as const)" :key="operation"
+        :aria-label="operation === 'subtract' ? 'Subtract' : operation === 'intersect' ? 'Intersect' : 'Exclude'"
+        :title="e.canBoolean ? { subtract: 'Subtract: remove other objects from the target', intersect: 'Intersect: keep the area shared by all objects', exclude: 'Exclude (XOR): keep areas covered an odd number of times' }[operation] : 'Requires closed, unlocked outlines without active stitching'"
+        :disabled="!e.canBoolean || e.busy" :aria-pressed="e.booleanOperation === operation"
+        @click="editor.activateBoolean(operation)">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <template v-if="operation === 'subtract'">
+            <path d="M3 3h12v6H9v6H3Z" fill="currentColor" fill-opacity=".2"/>
+            <rect x="9" y="9" width="12" height="12" stroke-dasharray="2 2" stroke-dashoffset="1"/>
+          </template>
+          <template v-else-if="operation === 'exclude'">
+            <path d="M3 3h12v6H9v6H3ZM15 9h6v12H9v-6h6Z" fill="currentColor" fill-opacity=".2"/>
+            <path d="M9 9h6v6H9Z" stroke-dasharray="2 2"/>
+          </template>
+          <template v-else>
+            <rect x="3" y="3" width="12" height="12"/><rect x="9" y="9" width="12" height="12"/>
+            <path d="M9 9h6v6H9Z" fill="currentColor"/>
+          </template>
         </svg>
       </button>
       <button :disabled="!e.canTrim" aria-label="Trim" title="Trim (K)" aria-keyshortcuts="k" :aria-pressed="e.trimMode && !e.mergeMode" @click="editor.activateTrim()">

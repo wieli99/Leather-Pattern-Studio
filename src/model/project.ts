@@ -15,20 +15,20 @@ export type Doc = {
   printLayouts?: import("./printLayout").PrintLayout[];
   stitchPresets?: import("../generated/StitchPreset").StitchPreset[];
   stitchTransfers?: import("../generated/StitchTransfer").StitchTransfer[];
-  version: 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
+  version: 22 | 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const DOCUMENT_VERSION = 21;
+export const DOCUMENT_VERSION = 22;
 export const emptyDocument = (): Doc => ({ version: DOCUMENT_VERSION, shapes: [] });
 export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -80,6 +80,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
         "polyline",
         "curve",
         "control-curve",
+        "compound",
         "rectangle",
         "circle",
         "ellipse",
@@ -137,7 +138,24 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       });
     } else if (s.handles !== undefined)
       throw Error("Handles require a control point curve");
-    const geometry: Point[] = [...s.points];
+    if (s.kind === "compound") {
+      if (!Array.isArray(s.contours) || !s.contours.length ||
+          s.contours.reduce((n: number, c: any) => n + (Array.isArray(c) ? c.length : 10001), 0) > 10000)
+        throw Error("Invalid compound contours");
+      for (const contour of s.contours) {
+        if (!Array.isArray(contour) || !contour.length) throw Error("Empty compound contour");
+        for (let i = 0; i < contour.length; i++) {
+          const cubic = contour[i], previous = contour[(i + contour.length - 1) % contour.length];
+          if (!Array.isArray(cubic) || cubic.length !== 4 || cubic.some((p: any) =>
+            !p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || Math.abs(p.x) > 1e7 || Math.abs(p.y) > 1e7))
+            throw Error("Invalid compound coordinate");
+          if (!Array.isArray(previous) || previous.length !== 4 ||
+            Math.hypot(cubic[0].x - previous[3].x, cubic[0].y - previous[3].y) > 1e-7)
+            throw Error("Compound contour must be closed and continuous");
+        }
+      }
+    } else if (s.contours !== undefined) throw Error("Contours require a compound path");
+    const geometry: Point[] = [...s.points, ...(s.contours?.flat(2) ?? [])];
     s.handles?.forEach((h: any, i: number) => {
       for (const v of [h.incoming, h.outgoing])
         geometry.push({ x: s.points[i].x + v.x, y: s.points[i].y + v.y });
@@ -263,6 +281,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       ...(s.strokeWidth !== undefined ? {strokeWidth:s.strokeWidth} : {}),
       ...(s.headSize !== undefined ? { headSize: s.headSize } : {}),
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
+      ...(s.contours ? { contours: structuredClone(s.contours) } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize, fontFamily: s.fontFamily, bold: s.bold, italic: s.italic, underline: s.underline, strikethrough: s.strikethrough, textAlign: s.textAlign, lineSpacing: s.lineSpacing } : {}),
       ...(s.kind === "measurement" ? { measurementOffset: s.measurementOffset, ...(s.measurementSections !== undefined ? {measurementSections:s.measurementSections} : {}) } : {}),

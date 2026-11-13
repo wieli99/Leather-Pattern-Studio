@@ -138,3 +138,12 @@ test("first-pattern manual walkthrough produces a saved stitched pattern and pri
   await dialog.getByRole("button", { name: "Export", exact: true }).click();
   expect((await exported).suggestedFilename()).toMatch(/\.pdf$/);
 });
+
+test("old Merge bookmarks resolve to the renamed Join manual section",async({page})=>{
+  await page.goto("/manual/index.html#transforms/merge");
+  const heading=page.getByRole("heading",{name:"Join",exact:true});
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeInViewport();
+  await page.getByRole("navigation",{name:"On this page"}).getByRole("link",{name:"Join",exact:true}).click();
+  await expect(page).toHaveURL(/#transforms\/join$/);
+});

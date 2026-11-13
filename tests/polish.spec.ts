@@ -443,7 +443,7 @@ test("object visibility and locks persist and protect edits", { tag: "@manual" }
   await page.getByRole("button", { name: "Show Rectangle 1", exact: true }).click();
   await page.getByRole("button", { name: "Lock Rectangle 1", exact: true }).click();
   await row.click();
-  for (const name of ["Move", "Rotate", "Resize", "Mirror", "Corner radius", "Merge", "Trim"]) {
+  for (const name of ["Move", "Rotate", "Resize", "Mirror", "Corner radius", "Join", "Trim"]) {
     await expect(page.getByRole("toolbar", { name: "Transform selection" }).getByRole("button", { name, exact: true })).toBeDisabled();
   }
   await expect(page.getByRole("button", { name: "Stitch line", exact: true })).toBeDisabled();

@@ -1,3 +1,7 @@
+import { stitchRunClosed } from "../model/stitchGeometry";
+import { booleanShapes } from "../model/booleanShapes";
+import { isClosedShape } from "../model/closedShape";
+import type { BooleanOperation } from "../model/boolean";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { stitchTools, type StitchTool } from "./stitchTools";
 import { copyTransferPlacements, shareReceivingGeometry, hitStitchHole, detachTransfer, makeTransfer, pieceFrame, stitchPiece, materialContains, copyStitchData, resolvedStitchGroups, receivingStitches, holeAppearance, holeMark, holeTouchesEdge } from "../model/stitchLayers";
@@ -14,7 +18,7 @@ import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeIn
 import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
 import { offsetShape, type OffsetJoin } from "../model/offset";
-import { flattenOutline } from "../model/flattenOutline";
+import { flattenContours } from "../model/flattenOutline";
 import { trimAt } from "../model/trim";
 import {
   defaultStitchSettings,
@@ -219,28 +223,30 @@ export class Controller {
     });
     const source = originals[index];
     if (!source) return null;
-    const { points, closed } = flattenOutline(source, 0.05);
-    const area = closed ? points.reduce((sum, a, i) => {
-      const b = points[(i + 1) % points.length];
-      return sum + a.x * b.y - a.y * b.x;
-    }, 0) : 0;
     let best = Infinity, normal: Point | null = null;
-    for (let i = 0; i < points.length - (closed ? 0 : 1); i++) {
-      const a = points[i], b = points[(i + 1) % points.length];
-      const d = distanceToSegment(raw, a, b);
-      if (d >= best) continue;
-      const dx = b.x - a.x, dy = b.y - a.y, size = Math.hypot(dx, dy);
-      if (size < 1e-9) continue;
-      best = d;
-      const side = closed ? Math.sign(area) : 1;
-      normal = { x: side * dy / size, y: -side * dx / size };
+    for (const {points,closed} of flattenContours(source, 0.05)) {
+      const area = closed ? points.reduce((sum, a, i) => {
+        const b = points[(i + 1) % points.length];
+        return sum + a.x * b.y - a.y * b.x;
+      }, 0) : 0;
+      for (let i = 0; i < points.length - (closed ? 0 : 1); i++) {
+        const a = points[i], b = points[(i + 1) % points.length];
+        const d = distanceToSegment(raw, a, b);
+        if (d >= best) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, size = Math.hypot(dx, dy);
+        if (size < 1e-9) continue;
+        best = d;
+        const probe = {x:(a.x+b.x)/2-dy/size*0.001,y:(a.y+b.y)/2+dx/size*0.001};
+        const side = source.kind === "compound" ? (contains(source,probe) ? 1 : -1) : closed ? Math.sign(area) : 1;
+        normal = { x: side * dy / size, y: -side * dx / size };
+      }
     }
     return normal;
   }
   get canOffset() {
     return this.ready && !this.busy && !this.printLayoutActive && this.selectionToolsAvailable &&
       !this.selectionLocked && this.active.length > 0 && this.active.every(s =>
-        ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc"].includes(s.kind) &&
+        ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc", "compound"].includes(s.kind) &&
         !s.stitchOnly && !this.isHidden(s.id));
   }
   activateOffset() {
@@ -570,6 +576,11 @@ export class Controller {
   private dirtyBaseline = "";
   uiSnapshot = () =>
     [
+      this.booleanOperation,
+      this.booleanPicker,
+      this.booleanCutters.join(","),
+      this.booleanError,
+      this.booleanEmpty,
       this.trimMode,
       JSON.stringify(this.trimDraft),
       this.trimMode ? this.transformError : "",
@@ -755,7 +766,7 @@ export class Controller {
     if ((operation === "commit" || operation === "preview") && document && !this.canCommitFromView(document)) {
       throw Error("Edit source geometry on Model");
     }
-    if (this.transformTool || this.stitchMode) this.cancel();
+    if (this.transformTool || this.stitchMode || this.booleanOperation) this.cancel();
     const run = async () => {
       if (!this.ready) return;
       this.busy = true;
@@ -1353,7 +1364,7 @@ export class Controller {
         next = {
           ...master,
           edges,
-          closed: stitchClosed(source) && edges.length === all.length,
+          closed: stitchRunClosed(source,edges),
         };
         this.stitchGeometry(source, next);
         absorbed = neighbors.map((g) => g.id);
@@ -1646,7 +1657,7 @@ export class Controller {
       const merged = {
         ...master,
         edges,
-        closed: stitchClosed(s) && edges.length === stitchEdges(s).length,
+        closed: stitchRunClosed(s,edges),
       };
       this.remapHoleOverrides(s, sources, [merged]);
       this.stitchGeometry(s, merged);
@@ -2169,7 +2180,7 @@ export class Controller {
   }
   beginProperty() {
     if (this.selectionLocked) return;
-    if (this.transformTool || this.stitchMode) return;
+    if (this.transformTool || this.stitchMode || this.booleanOperation) return;
     if (!this.propertySession)
       this.propertySession = {
         original: this.pendingDocument ?? this.document,
@@ -2259,42 +2270,167 @@ export class Controller {
     if (next && fingerprint(next) !== fingerprint(this.document))
       await this.commit(next);
   }
-  private mergeCache: {
-    key: string;
-    result: ReturnType<typeof mergeShapes>;
-  } | null = null;
-  get mergeResult() {
-    if (this.selectionLocked) return null;
-    if (this.stitchGroups.some((g) => this.selected.includes(g.shapeId))) return null;
-    const key = JSON.stringify([this.revision, this.selected]);
-    if (this.mergeCache?.key !== key) {
-      this.mergeCache = {
-        key,
-        result: mergeShapes(
-          this.document.shapes.filter((s) => this.selected.includes(s.id)),
-        ),
-      };
-    }
-    return this.mergeCache.result;
+  booleanOperation: BooleanOperation | null = null;
+  booleanTarget = "";
+  booleanCutters: string[] = [];
+  booleanPicker: "target" | "cutters" | null = null;
+  booleanError = "";
+  booleanEmpty = false;
+  private booleanSelection: string[] = [];
+  private booleanCache: { key: string; result: Shape | null } | null = null;
+  get booleanLabel() {
+    return (
+      {
+        union: "Join",
+        subtract: "Subtract",
+        intersect: "Intersect",
+        exclude: "Exclude",
+      } as const
+    )[this.booleanOperation ?? "union"];
   }
-  activateMerge() {
-    if (this.selectionLocked) return;
-    const result = this.mergeResult;
-    if (!result || this.busy) return;
+  booleanEligible(id: string, allowOpen = false) {
+    const shape = this.document.shapes.find((s) => s.id === id);
+    return (
+      !!shape &&
+      (isClosedShape(shape) ||
+        (allowOpen &&
+          (isCurve(shape) ||
+            (["line", "polyline"].includes(shape.kind) &&
+              !shape.radius &&
+              !shape.cornerRadii?.some(Boolean))))) &&
+      !shape.stitchOnly &&
+      !shape.stitchParentId &&
+      !this.isLocked(id) &&
+      !this.isHidden(id) &&
+      !this.stitchGroups.some((g) => g.shapeId === id) &&
+      !(this.document.stitchTransfers ?? []).some(
+        (t) => t.masterId === id || t.targetId === id,
+      )
+    );
+  }
+  get canBoolean() {
+    return (
+      this.selected.length > 0 &&
+      this.selected.every((id) => this.booleanEligible(id))
+    );
+  }
+  get canJoin() {
+    return (
+      this.selected.length > 0 &&
+      this.selected.every((id) => this.booleanEligible(id, true))
+    );
+  }
+  setBooleanPicker(picker: "target" | "cutters") {
+    if (!this.booleanOperation || this.busy) return;
+    this.booleanPicker = this.booleanPicker === picker ? null : picker;
+    this.refreshBoolean();
+  }
+  removeBooleanOperand(id: string) {
+    if (!this.booleanOperation || this.busy) return;
+    this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
+    this.refreshBoolean();
+  }
+  activateBoolean(operation: BooleanOperation) {
+    if (!(operation === "union" ? this.canJoin : this.canBoolean) || this.busy)
+      return;
+    const ids = this.document.shapes
+      .filter((s) => this.selected.includes(s.id))
+      .map((s) => s.id);
     this.cancel();
+    this.booleanSelection = [...this.selected];
+    this.booleanOperation = operation;
+    this.booleanTarget = ids[0];
+    this.booleanCutters = ids.slice(1);
+    this.booleanPicker = ids.length === 1 ? "cutters" : null;
     this.tool = "select";
     this.mode = "select";
     this.trimMode = true;
     this.mergeMode = true;
-    const ids = new Set(this.selected);
-    this.trimDraft = {
-      ...this.document,
-      shapes: this.document.shapes.flatMap((s) =>
-        s.id === result.id ? [result] : ids.has(s.id) ? [] : [s],
-      ),
-    };
-    this.preview = this.trimDraft;
+    this.transformError = "";
+    this.refreshBoolean();
+  }
+  pickBoolean(id: string) {
+    if (!this.booleanOperation || !this.booleanPicker) return;
+    if (!this.booleanEligible(id, this.booleanOperation === "union")) {
+      this.booleanError =
+        this.booleanOperation === "union"
+          ? "Choose a visible, unlocked closed outline or joinable path without active stitching."
+          : "Choose a visible, unlocked closed outline without active stitching.";
+      this.notify();
+      return;
+    }
+    if (this.booleanPicker === "target") {
+      if (id !== this.booleanTarget)
+        this.booleanCutters.push(this.booleanTarget);
+      this.booleanTarget = id;
+      this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
+      this.booleanPicker = "cutters";
+    } else if (id !== this.booleanTarget) {
+      this.booleanCutters = this.booleanCutters.includes(id)
+        ? this.booleanCutters.filter((x) => x !== id)
+        : [...this.booleanCutters, id];
+    }
+    this.refreshBoolean();
+  }
+  refreshBoolean() {
+    this.trimDraft = null;
+    this.preview = null;
+    this.booleanError = "";
+    this.booleanEmpty = false;
+    const ids = [this.booleanTarget, ...this.booleanCutters];
+    if (this.booleanPicker === "target" || !this.booleanCutters.length) {
+      this.notify();
+      return;
+    }
+    try {
+      if (
+        !ids.every((id) =>
+          this.booleanEligible(id, this.booleanOperation === "union"),
+        )
+      )
+        throw Error(
+          "Choose unlocked closed outlines without active stitching.",
+        );
+      const shapes = ids.map(
+        (id) => this.document.shapes.find((s) => s.id === id)!,
+      );
+      const key = JSON.stringify([this.revision, this.booleanOperation, ids]);
+      if (this.booleanCache?.key !== key) {
+        const openJoin =
+          this.booleanOperation === "union" && !shapes.every(isClosedShape);
+        const result = openJoin
+          ? mergeShapes(shapes)
+          : booleanShapes(this.booleanOperation!, shapes);
+        if (openJoin && !result)
+          throw Error(
+            "Open paths must form one connected chain of straight paths or curves. Do not mix open and closed outlines.",
+          );
+        this.booleanCache = { key, result };
+      }
+      const result = this.booleanCache.result;
+      this.booleanEmpty = !result;
+      this.trimDraft = this.normalizeTree({
+        ...this.document,
+        shapes: this.document.shapes.flatMap((s) =>
+          s.id === this.booleanTarget
+            ? result
+              ? [result]
+              : []
+            : ids.includes(s.id)
+              ? []
+              : [s],
+        ),
+      });
+      parseProject(JSON.stringify(this.trimDraft));
+      this.preview = this.trimDraft;
+    } catch (error) {
+      this.booleanError =
+        error instanceof Error ? error.message : String(error);
+    }
     this.notify();
+  }
+  activateMerge() {
+    this.activateBoolean("union");
   }
   mergeMode = false;
   trimHighlight: Point[] | null = null;
@@ -2302,13 +2438,15 @@ export class Controller {
   trimDraft: Doc | null = null;
   async applyTrim() {
     if (this.selectionLocked) return;
-    if (!this.trimDraft || this.transformError || this.busy) return;
+    if (!this.trimDraft || this.transformError || this.booleanError || (this.booleanOperation && this.booleanPicker === "target") || this.busy) return;
     const next = this.trimDraft;
     const mergedId = this.mergeMode
-      ? next.shapes.find((s) => this.selected.includes(s.id))?.id
+      ? next.shapes.find((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id))?.id
       : undefined;
+    const boolean = !!this.booleanOperation;
     this.cancel();
     if (await this.commit(next)) {
+      if (boolean) this.selected = mergedId ? [mergedId] : [];
       if (mergedId) this.selected = [mergedId];
       this.notify();
     }
@@ -2337,6 +2475,9 @@ export class Controller {
     this.mirrorAxis = null;
     this.mirrorLine = null;
     this.mirrorHover = null;
+    if (this.booleanOperation) this.selected = this.booleanSelection;
+    this.booleanOperation = null; this.booleanPicker = null; this.booleanCutters = [];
+    this.booleanError = ""; this.booleanEmpty = false;
     this.mergeMode = false;
     this.trimMode = false;
     this.trimDraft = null;
@@ -2603,7 +2744,7 @@ export class Controller {
       this.preview ??
       this.pendingDocument ??
       this.document
-    ).shapes.filter((s) => this.selected.includes(s.id));
+    ).shapes.filter((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id));
   }
   get selectionBounds() {
     return bounds(this.active, this.units);
@@ -2619,6 +2760,16 @@ export class Controller {
     if (!this.active.length || this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id)) || this.transformTool === "mirror") return [];
     if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
+    if (this.active.length === 1 && this.active[0].kind === "compound" && (!this.transformTool || this.transformTool === "move")) {
+      const shape = this.active[0], matrix = shapeMatrix(shape);
+      let vertex = 0;
+      for (const contour of shape.contours!) for (let i=0;i<contour.length;i++,vertex++) {
+        const c = contour[i], previous = contour[(i+contour.length-1)%contour.length];
+        curveHandles.push({kind:"vertex",vertex,point:applyMatrix(matrix,c[0])});
+        for (const [side,p] of [["incoming",previous[2]],["outgoing",c[1]]] as const)
+          if (distance(p,c[0])>1e-9) curveHandles.push({kind:"vertex",vertex,handleSide:side,point:applyMatrix(matrix,p)});
+      }
+    }
     if (
       this.active.length === 1 &&
       isCurve(this.active[0]) &&
@@ -2830,6 +2981,11 @@ export class Controller {
     this.pointerInside = true;
     const raw = this.world(pixel);
     this.anchorPointer = raw;
+    if (this.booleanOperation && button === 0 && !this.space) {
+      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      if (hit) this.pickBoolean(hit.id);
+      return;
+    }
     if (this.mergeMode && button === 0 && !this.space) return;
     if (this.trimMode && button === 2) { void this.applyTrim(); return; }
     if (this.trimMode && !this.mergeMode && button === 0 && !this.space) {
@@ -3289,7 +3445,32 @@ export class Controller {
           ),
         };
       }
-      if (g.kind === "vertex") {
+      if (g.kind === "vertex" && g.original.shapes.find(s => selected(s))?.kind === "compound") {
+        const original = g.original.shapes.find(s => selected(s))!;
+        const matrix = shapeMatrix(original), local = applyMatrix(inverse(matrix),g.end);
+        const contours = structuredClone(original.contours!);
+        let index = g.vertex!;
+        for (const contour of contours) {
+          if (index >= contour.length) { index -= contour.length; continue; }
+          const current = contour[index], previous = contour[(index+contour.length-1)%contour.length], anchor = current[0];
+          if (g.handleSide) {
+            if (g.handleSide === "incoming") previous[2] = local; else current[1] = local;
+            if (!alt) {
+              const mirrored = {x:2*anchor.x-local.x,y:2*anchor.y-local.y};
+              if (g.handleSide === "incoming") current[1] = mirrored; else previous[2] = mirrored;
+            }
+          } else {
+            const dx=local.x-anchor.x,dy=local.y-anchor.y;
+            current[1]={x:current[1].x+dx,y:current[1].y+dy};
+            previous[2]={x:previous[2].x+dx,y:previous[2].y+dy};
+            current[0]=local;previous[3]=local;
+          }
+          break;
+        }
+        const box = bounds([{...original,contours,rotation:0,transform:undefined}]);
+        const points = [{x:box.x,y:box.y},{x:box.x+box.width,y:box.y+box.height}];
+        document={...g.original,shapes:g.original.shapes.map(s=>s.id===original.id?{...original,points,contours,rotation:0,transform:matrix}:s)};
+      } else if (g.kind === "vertex") {
         const original = rectanglePath(g.original.shapes.find((s) => selected(s))!);
         if (shift && !g.handleSide) {
           const origin = applyMatrix(shapeMatrix(original), original.points[g.vertex!]);
@@ -3571,9 +3752,10 @@ export class Controller {
     const shape = this.document.shapes.find((s) => s.id === id);
     if (!shape) return;
     const next = sharpAnchor(shape, index);
-    if (next !== shape) await this.edit(id, { handles: next.handles });
+    if (next !== shape) await this.edit(id, shape.kind === "compound" ? {contours:next.contours} : { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
+    if (this.booleanOperation) return;
     if (this.selectionLocked) return;
     if (this.stitchMode) return;
     const source =
@@ -3925,7 +4107,7 @@ export class Controller {
     if (this.fileBusy) return;
     this.fileBusy = true;
     try {
-      if (this.transformTool || this.stitchMode) this.cancel();
+      if (this.transformTool || this.stitchMode || this.booleanOperation) this.cancel();
       await this.finishProperty();
       await this.transactionQueue;
       const doc = this.document,

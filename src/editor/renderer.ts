@@ -25,7 +25,14 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
     b = s.points[s.points.length - 1];
   if ("beginPath" in ctx) ctx.beginPath();
   if (isIndicator(s.kind)) return;
-  if (isCurve(s)) {
+  if (s.kind === "compound") {
+    for (const contour of s.contours ?? []) {
+      ctx.moveTo(contour[0][0].x, contour[0][0].y);
+      for (const [, c1, c2, end] of contour)
+        ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+      ctx.closePath();
+    }
+  } else if (isCurve(s)) {
     ctx.moveTo(a.x, a.y);
     for (const [, c1, c2, end] of cubicSegments(s))
       ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
@@ -212,28 +219,28 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       const path = new Path2D(),
         m = shapeMatrix(s);
       path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
-      const selected = editor.selected.includes(s.id);
-      ctx.lineWidth = s.strokeWidth ?? 0.35;
-      ctx.strokeStyle = preview
+      const selected = editor.booleanOperation ? s.id === editor.booleanTarget : editor.selected.includes(s.id);
+      ctx.lineWidth = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? Math.max(s.strokeWidth ?? 0.35, 2/editor.zoom) : s.strokeWidth ?? 0.35;
+      ctx.strokeStyle = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : preview
         ? color("preview")
         : selected
           ? color("accent")
           : editor.hover === s.id
             ? color("text")
             : color("shape");
-      if (!selected && !preview && editor.hover !== s.id) {
+      if (!selected && !preview && editor.hover !== s.id && !(editor.booleanOperation && editor.booleanCutters.includes(s.id))) {
         ctx.strokeStyle = s.strokeColor ?? color("shape");
         ctx.globalAlpha = s.strokeOpacity ?? 1;
       }
       if (isClosedShape(s) && (!s.stitchOnly || selected || preview)) {
         ctx.save();
         ctx.globalAlpha = s.fillOpacity ?? (selected ? 0.12 : 0.05);
-        ctx.fillStyle = s.fillColor ?? (selected ? color("accent") : color("shape"));
-        ctx.fill(path);
+        ctx.fillStyle = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : s.fillColor ?? (selected ? color("accent") : color("shape"));
+        ctx.fill(path, s.kind === "compound" ? "evenodd" : "nonzero");
         ctx.restore();
         if (s.fillMode === "skiving" || s.fillMode === "glueing" || s.fillMode === "cutout") {
           ctx.save();
-          ctx.clip(path);
+          ctx.clip(path, s.kind === "compound" ? "evenodd" : "nonzero");
           ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
           ctx.strokeStyle = s.strokeColor ?? color("shape");
           ctx.globalAlpha = s.strokeOpacity ?? 1;
@@ -286,6 +293,11 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.filter(s => !editor.isHidden(s.id)).forEach((s) => shape(s));
+    if (editor.booleanOperation && editor.preview) {
+      ctx.save(); ctx.globalAlpha = 0.65;
+      editor.document.shapes.filter(s => editor.booleanCutters.includes(s.id)).forEach(s => shape(s, true));
+      ctx.restore();
+    }
     drawStitches(ctx,editor,color);
     if (editor.trimMode && editor.pointerInside && editor.trimHighlight) {
       const [a] = editor.trimHighlight;
@@ -404,7 +416,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.arc(p.x, p.y, 3 / z, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (editor.active.length) {
+    if (editor.active.length && !editor.booleanOperation) {
       const b = bounds(editor.active, editor.units);
       ctx.strokeStyle = color("accent");
       ctx.lineWidth = 1 / z;
@@ -436,7 +448,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.lineWidth = 2 / z;
         if (handle.handleSide && editor.active.length === 1) {
           const s = editor.active[0];
-          const a = applyMatrix(shapeMatrix(s), s.points[handle.vertex!]);
+          const a = applyMatrix(shapeMatrix(s), s.kind === "compound" ? s.contours!.flat()[handle.vertex!][0] : s.points[handle.vertex!]);
           ctx.lineWidth = 1 / z;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);

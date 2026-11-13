@@ -1,3 +1,4 @@
+import { focusModelCanvas } from "./canvasFocus";
 import { editor } from "../editor/instance";
 import { tools, groupKeys, transformShortcuts } from "./tools";
 export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
@@ -17,6 +18,19 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     document.querySelector("[role=dialog]")
   )
     return;
+  if (editor.booleanOperation && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      editor.cancel();
+      focusModelCanvas();
+      return;
+    }
+    if (e.key === "Enter" && target.tagName === "CANVAS") {
+      e.preventDefault();
+      void editor.applyTrim();
+      return;
+    }
+  }
   const canvas = target.tagName === "CANVAS";
   const objectDelete =
     target.closest(".objects button") !== null &&

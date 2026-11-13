@@ -1125,3 +1125,46 @@ select:disabled { opacity: .5; }
   :root { color-scheme: light dark; }
   select { appearance: auto; -webkit-appearance: auto; background-image: none; color: CanvasText; background-color: Canvas; }
 }
+
+.boolean-operand, .objects .object-select.boolean-operand { color: #e34646; }
+
+.boolean-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  min-height: 36px;
+}
+.boolean-picker-label { flex-shrink: 0; }
+.boolean-picker[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.boolean-picker:focus-visible, .boolean-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.boolean-object-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.boolean-picker .boolean-object-name { text-align: right; }
+.boolean-instruction { min-height: 3em; }
+.transform-options .boolean-operand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.boolean-operand .boolean-object-name { flex: 1; }
+.boolean-remove {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
