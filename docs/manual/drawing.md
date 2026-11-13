@@ -42,6 +42,6 @@ Two-point shapes can be dragged in one gesture. Use [numeric measurements](#meas
 
 Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
 
-Every closed object has a subtle interior fill, including closed polylines and curves and full-circle arcs. Separate objects that together enclose a region are not filled as a single shape.
+Closed polylines and curves join their closing corner without visible line ends. Every closed object has a subtle interior fill, including closed polylines and curves and full-circle arcs. Separate objects that together enclose a region are not filled as a single shape.
 
 Choose the **Measurements (D)** and **Drawing tools (A)** menus below Text for [arrows, crosshairs and size guides](#indicators).
