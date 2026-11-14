@@ -100,7 +100,7 @@ Ctrl-drag exposed paper to move one page and its contents. A page containing a s
 
 New print tabs fit and center all sheets. Returning to a tab restores its view. Tool settings open at the top-left beside the tools. Grid snap also aligns artwork centers with page centers and displays alignment guides; Alt bypasses snapping. Alt+right-click flips the clicked placement left/right along its local axes; add Ctrl to flip top/bottom.
 
-The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. The **Fit** icon (a rectangle inside four framing corners) below Redo shows all sheets. With no artwork, Fit or F restores the default page-centered view. Undo and Redo use the same arrow buttons as Model, below a separator. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Model uses different units. Arbitrary text is unchanged.
+The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. The **Fit** icon (a rectangle inside four framing corners) below Redo shows all sheets. With no artwork, Fit or Ctrl/⌘+Shift+F restores the default page-centered view. Undo and Redo use the same arrow buttons as Model, below a separator. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Model uses different units. Arbitrary text is unchanged.
 
 ## Preview and export
 
@@ -122,3 +122,5 @@ Export and PDF preview work offline after caching completes. See [Files, recover
 DXF downloads one continuous drawing of visible pattern outlines at actual size in millimetres. Complete outlines cross paper boundaries without clipping; paper margins, screen gutters and assembly marks are omitted. Placement, rotation, mirroring and repeated copies are preserved. Stitch holes, stitch-only objects, images, text, measurements, indicators and fills are omitted. The preview shows the exported outlines in black on a white background.
 
 Curves are approximated with polylines within 0.01 mm. Closed outlines, including closed curves and full-circle arcs, stay closed; open paths stay open. Excessively complex outlines or layouts report an export error rather than reducing accuracy. Import using millimetres if your cutting software does not detect units. Check a known dimension after import. Arrange pieces and configure kerf, cutting order and machine settings in your cutting software. DXF export does not nest pieces or remove overlapping copies.
+
+While **Confirm Selection** is active for a multi-object tool, right-click the canvas to confirm valid targets. This keeps the tool open; right-click again to apply. Empty or invalid selections must be corrected first.

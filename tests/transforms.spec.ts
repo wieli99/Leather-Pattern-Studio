@@ -1,6 +1,10 @@
 import { manualScreenshot } from "./manual-capture";
 import { DOCUMENT_VERSION } from "../src/model/project";
 import { test, expect } from "@playwright/test";
+// These scenarios exercise tools pinned by the user; default-bar behavior has dedicated tests.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("tool-favorites-v1", JSON.stringify(["move", "rotate", "scale", "mirror", "corner", "trim", "offset"])));
+});
 import { readFile } from "node:fs/promises";
 const rectangle = {
   id: "r",

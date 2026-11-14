@@ -18,6 +18,12 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     document.querySelector("[role=dialog]")
   )
     return;
+  if (!editor.stitchMode && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
+    e.preventDefault(); window.dispatchEvent(new Event("tool-search")); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+    e.preventDefault(); editor.fit(); return;
+  }
   if (editor.pathCopy && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (e.key === 'Escape') { e.preventDefault(); editor.cancel(); focusModelCanvas(); return; }
     if (e.key === 'Enter' && target.tagName === 'CANVAS') { e.preventDefault(); void editor.applyPathCopy(); return; }

@@ -27,7 +27,8 @@ Copy/paste works between Model and print tabs and across browser tabs. Pasted ob
 | Space+drag / middle-drag | Pan |
 | Scroll | Pan |
 | Ctrl/⌘+scroll | Zoom at pointer |
-| F / Fit button | Fit Model objects or print pages |
+| F | Search Model transform and outline tools |
+| Ctrl/⌘+Shift+F / Fit button | Fit Model objects or print pages |
 | Shift+F | Fit Model selection |
 
 ## Drawing and exact dimensions

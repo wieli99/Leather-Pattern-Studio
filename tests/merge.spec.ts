@@ -1,5 +1,9 @@
 import { manualScreenshot } from "./manual-capture";
 import { test, expect, type Page } from "@playwright/test";
+// These scenarios exercise tools pinned by the user; default-bar behavior has dedicated tests.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("tool-favorites-v1", JSON.stringify(["move", "rotate", "scale", "mirror", "corner", "trim", "join", "subtract", "intersect", "exclude"])));
+});
 async function load(page: Page, shapes: unknown[]) {
   await page.evaluate(() => {
     delete (window as any).showOpenFilePicker;

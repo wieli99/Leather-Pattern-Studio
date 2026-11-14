@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reconcilePrintTargets } from "../model/printLayout";
 import ToolObjectPicker from "./ToolObjectPicker.vue";
 import { objectSelection } from "../model/objectSelection";
 import PivotSelector from "./PivotSelector.vue";
@@ -407,20 +408,18 @@ function updateToolSelection(ids: string[]) {
   const original = layout.value;
   if (!original) return;
   const previous = preview.value;
-  const old = new Set(printDescendants(original,selected.value));
+  const oldIds = [...selected.value];
   selected.value = ids;
-  const next = new Set(printDescendants(original,ids));
   if (previous) {
-    const added=[...next].filter(id=>!old.has(id));
     const x=parseLength(moveX.value,original.units) ?? 0, y=parseLength(moveY.value,original.units) ?? 0;
-    let candidate=transformPrintNodes(original,added,x*Math.cos(numericOrientation)-y*Math.sin(numericOrientation),x*Math.sin(numericOrientation)+y*Math.cos(numericOrientation),Number(turn.value)||0,numericPivot);
+    let candidate=transformPrintNodes(original,ids,x*Math.cos(numericOrientation)-y*Math.sin(numericOrientation),x*Math.sin(numericOrientation)+y*Math.cos(numericOrientation),Number(turn.value)||0,numericPivot);
     if (tool.value === "mirror" && activeMirror) {
       const angle=gizmoAngle()+(activeMirror.offset ?? 0);
       const pivot=selectionPivot();
       const line=activeMirror.offset === undefined ? activeMirror.line : [pivot,{x:pivot.x+Math.cos(angle),y:pivot.y+Math.sin(angle)}];
-      candidate=mirrorPrintNodes(original,added,line[0],Math.atan2(line[1].y-line[0].y,line[1].x-line[0].x)*180/Math.PI);
+      candidate=mirrorPrintNodes(original,ids,line[0],Math.atan2(line[1].y-line[0].y,line[1].x-line[0].x)*180/Math.PI);
     }
-    preview.value={...previous,instances:original.instances.map(instance => !next.has(instance.id) ? instance : old.has(instance.id) ? previous.instances.find(p=>p.id===instance.id) ?? instance : candidate.instances.find(p=>p.id===instance.id) ?? instance)};
+    preview.value = reconcilePrintTargets(original, previous, candidate, oldIds, ids);
   }
   if (tool.value !== "mirror") {
     numericBase=preview.value ?? layout.value;
@@ -635,7 +634,7 @@ async function switchTab(id: string) {
   pan.value = view?.pan ?? { x: 50, y: 50 };
   selected.value = view?.selection ?? [];
   selectedPages.value = [];
-  editor.printLayoutActive = !!id;
+  editor.setPrintLayoutActive(!!id);
   emit("active", !!id);
   await nextTick();
   if (id && !view) fit();
@@ -647,6 +646,7 @@ watch(
     importGeneration++;
     cancel();
     active.value = "";
+    editor.setPrintLayoutActive(false);
     selected.value = [];
     selectedSources.value = [];
     selectedPages.value = [];
@@ -660,7 +660,7 @@ watch(
 watch(layout, async (value) => {
   if (!value && active.value) {
     active.value = "";
-    editor.printLayoutActive = false;
+    editor.setPrintLayoutActive(false);
     emit("active", false);
   }
   if (value)
@@ -2202,6 +2202,11 @@ function applyMirror(line: [Point, Point]) {
   refreshPrintMirror();
 }
 function contextMenu(event: MouseEvent) {
+  if (choosingObjects.value) {
+    if (!event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey &&
+        !editor.space && !busy.value && !editor.busy) toggleObjects();
+    return;
+  }
   if (!event.altKey) {
     if (tool.value === "select") cancel();
     else applyTransform();
@@ -2932,7 +2937,7 @@ function keyboard(event: KeyboardEvent) {
     } else deleteSelection();
     return;
   }
-  if (key === "f") {
+  if (mod && event.shiftKey && key === "f") {
     event.preventDefault();
     fit();
     return;
@@ -3010,7 +3015,7 @@ onUnmounted(() => {
   window.removeEventListener("paste", printClipboard);
   window.removeEventListener("blur", clearControl);
   window.removeEventListener("keyup", controlUp);
-  editor.printLayoutActive = false;
+  editor.setPrintLayoutActive(false);
 });
 defineExpose({
   openExport: () => {
@@ -3254,7 +3259,7 @@ defineExpose({
       >
         ↷
       </RailButton>
-      <RailButton title="Fit (F)" aria-label="Fit" @click="fit">
+      <RailButton title="Fit (Ctrl/⌘+Shift+F)" aria-label="Fit" @click="fit">
         <span class="tool-icon"><FitIcon /></span>
       </RailButton>
     </ToolRail>
