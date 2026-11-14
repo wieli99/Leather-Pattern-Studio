@@ -335,7 +335,7 @@ onMounted(() => {
           ↷
         </RailButton>
         <RailButton
-          title="Fit (F)"
+          title="Fit (Ctrl/⌘+Shift+F)"
           aria-label="Fit"
           :disabled="!e.ready"
           @click="editor.fit()"

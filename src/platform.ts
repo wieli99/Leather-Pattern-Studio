@@ -6,9 +6,9 @@ export async function saveArtifact(blob: Blob, filename: string): Promise<void> 
   link.href = url; link.download = filename; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export async function openHelp() {
-  if (isTauri()) await invoke("open_help");
-  else window.open("/manual/index.html", "_blank", "noopener");
+export async function openHelp(destination = "") {
+  if (isTauri()) await invoke("open_help", { destination });
+  else window.open("/manual/index.html" + (destination ? "#" + destination : ""), "_blank", "noopener");
 }
 export async function openExternal(url: string) {
   if (isTauri()) { const { openUrl } = await import("@tauri-apps/plugin-opener"); await openUrl(url); }

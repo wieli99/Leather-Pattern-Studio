@@ -1,4 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
+// These scenarios exercise tools pinned by the user; default-bar behavior has dedicated tests.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("tool-favorites-v1", JSON.stringify(["move", "rotate", "scale", "mirror", "corner", "trim", "offset"])));
+});
 import { readFile } from "node:fs/promises";
 import { manualScreenshot } from "./manual-capture";
 

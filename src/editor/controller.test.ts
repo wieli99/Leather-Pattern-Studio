@@ -3333,3 +3333,28 @@ test("consecutive Move gestures retain the correct automatic gizmo and numeric b
   expect(JSON.stringify(e.preview)).toBe(preview);
   expect(e.preview!.shapes[0].points[0].x).toBeCloseTo(20);
 });
+
+test("canvas right-click confirms targets before applying and rejects invalid selection", async()=>{
+  const e=editor();
+  const shape={id:"a",name:"A",kind:"rectangle" as const,points:[{x:0,y:0},{x:20,y:20}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape]});
+  e.selected=["a"];
+  await e.activateTransform("move");
+  e.setTransformValues({x:5});
+  e.toggleObjectPicker();
+  const revision=e.revision;
+  e.pointerDown({x:200,y:200},2,false,false);
+  expect(e.objectPicker).toBe(false);
+  expect(e.transformTool).toBe("move");
+  expect(e.revision).toBe(revision);
+  expect(e.document.shapes[0].points[0].x).toBe(0);
+  e.toggleObjectPicker();
+  e.setToolSelection([]);
+  e.pointerDown({x:200,y:200},2,false,false);
+  expect(e.objectPicker).toBe(true);
+  expect(e.revision).toBe(revision);
+  e.setToolSelection(["a"]);
+  e.busy=true;
+  e.pointerDown({x:200,y:200},2,false,false);
+  expect(e.objectPicker).toBe(true);
+});

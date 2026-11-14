@@ -192,6 +192,11 @@ export class Controller {
   core: Pick<Core, "request">;
   files = new ProjectFiles();
   printLayoutActive = false;
+  setPrintLayoutActive(active: boolean) {
+    if (this.printLayoutActive === active) return;
+    this.printLayoutActive = active;
+    this.notify();
+  }
   projectEpoch = 0;
   document = emptyDocument();
   preview: Doc | null = null;
@@ -3201,6 +3206,10 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
+    if (this.objectPicker && button === 2) {
+      if (!shift && !alt && !ctrl && !this.space) this.toggleObjectPicker();
+      return;
+    }
     if (this.objectPicker && button === 0 && !this.space) {
       const raw = this.world(pixel);
       const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || ctrl && contains(s,raw)));
