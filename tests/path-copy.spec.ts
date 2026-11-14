@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+// These scenarios exercise tools pinned by the user; default-bar behavior has dedicated tests.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("tool-favorites-v1", JSON.stringify(["move", "rotate", "scale", "mirror", "corner", "trim", "path-copy"])));
+});
 import { manualScreenshot } from './manual-capture';
 
 test('copy along path uses object pickers, distribution controls, and undo @manual', async ({ page }) => {

@@ -34,7 +34,7 @@ Use the edge tabs to hide or show tools, inspector, and status bar. Their visibi
 
 ## Navigate the canvas
 
-Space+drag or middle-drag pans, preserving the selected objects and their selection tools. Scrolling pans; Ctrl/⌘+scroll zooms around the pointer. With canvas focus, **F** fits all objects and **Shift+F** fits the selection on Model. The Fit button below Redo also fits the view. On a print tab, F fits the pages.
+Space+drag or middle-drag pans, preserving the selected objects and their selection tools. Scrolling pans; Ctrl/⌘+scroll zooms around the pointer. With canvas focus, **Ctrl/⌘+Shift+F** fits all objects and **Shift+F** fits the selection on Model. The Fit button below Redo also fits the view. On a print tab, Ctrl/⌘+Shift+F fits the pages.
 
 The footer shows the application version. Include it when [reporting a problem](#troubleshooting/report-a-bug). Save before accepting an application update; see [offline use](#files).
 

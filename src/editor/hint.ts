@@ -283,6 +283,6 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
   add("pan", "Space+drag / Middle-drag", "Pan");
   add("scroll", "Scroll", "Pan");
   add("zoom", "Ctrl/⌘+scroll", "Zoom");
-  add("fit", "F / Shift+F", "Fit all / selection");
+  add("fit", "Ctrl/⌘+Shift+F / Shift+F", "Fit all / selection");
   return { action, controls };
 }

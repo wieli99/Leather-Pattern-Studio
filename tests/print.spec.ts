@@ -1855,11 +1855,26 @@ test("Print reselection keeps panel ranges and restores only removed targets",as
   await tree.getByRole("button",{name:"Other",exact:true}).click();
   await expect(objects).toHaveText(/(Select Objects|Confirm Selection).*[(]1[)]/);
   await expect(page.getByLabel("Print move X")).toHaveValue("12.00");
-  await objects.click();
-  await popup.getByRole("button",{name:"Apply",exact:true}).click();
+  await page.getByLabel("Print layout canvas").click({button:"right",position:{x:550,y:500}});
+  await expect(objects).toHaveAttribute("aria-pressed","false");
+  await expect(popup).toBeVisible();
+  await expect(page.getByLabel("Print move X")).toHaveValue("12.00");
+  await page.getByLabel("Print layout canvas").click({button:"right",position:{x:550,y:500}});
   const result=await save(page);
   for (const before of original.printLayouts[0].instances) {
     const after=result.printLayouts[0].instances.find((item:any)=>item.id===before.id);
     expect(after.x).toBeCloseTo(before.x+(before.sourceId==="other" ? 12 : 0));
   }
+});
+test("favorites return immediately when switching back to Model", async ({page})=>{
+ await load(page);
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeVisible();
+ await create(page);
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeHidden();
+ await page.getByRole("tab",{name:"Model",exact:true}).click();
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeVisible();
+ await page.locator(".object-select").first().click();
+ await page.getByRole("tab",{name:"A4",exact:true}).click();
+ await page.getByRole("tab",{name:"Model",exact:true}).click();
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeVisible();
 });

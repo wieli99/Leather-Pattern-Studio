@@ -159,14 +159,26 @@ async fn release_list() -> Result<serde_json::Value, String> {
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-async fn open_help(app: tauri::AppHandle) -> Result<(), String> {
+async fn open_help(app: tauri::AppHandle, destination: Option<String>) -> Result<(), String> {
+    let destination = destination.unwrap_or_default();
+    if !destination
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '/')
+    {
+        return Err("Invalid manual destination".into());
+    }
     if let Some(window) = app.get_webview_window("manual") {
+        if !destination.is_empty() {
+            window
+                .eval(&format!("location.hash = '#{}'", destination))
+                .map_err(|e| e.to_string())?;
+        }
         window.set_focus().map_err(|e| e.to_string())?;
     } else {
         tauri::WebviewWindowBuilder::new(
             &app,
             "manual",
-            tauri::WebviewUrl::App("manual/index.html".into()),
+            tauri::WebviewUrl::App(format!("manual/index.html#{}", destination).into()),
         )
         .title("Leather Pattern Studio — Help")
         .build()

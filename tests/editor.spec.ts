@@ -353,3 +353,19 @@ test("inline rename controls download filename", { tag: "@manual" }, async ({ pa
   await expect(filename).toHaveValue("Wallet");
   expect((await pending).suggestedFilename()).toBe("Wallet.leather");
 });
+
+test("right-click confirms Model targets before applying", async ({page})=>{
+  await ready(page);
+  await rect(page);
+  await page.getByRole("button",{name:"Move",exact:true}).click();
+  const popup=page.locator(".transform-options");
+  const picker=popup.locator(".objects-confirm");
+  await picker.click();
+  await expect(picker).toHaveAttribute("aria-pressed","true");
+  const canvas=page.getByLabel("Pattern drawing canvas");
+  await canvas.click({button:"right",position:{x:550,y:500}});
+  await expect(picker).toHaveAttribute("aria-pressed","false");
+  await expect(popup).toBeVisible();
+  await canvas.click({button:"right",position:{x:550,y:500}});
+  await expect(popup).toBeHidden();
+});

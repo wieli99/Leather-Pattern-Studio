@@ -29,7 +29,7 @@ test("1000-shape navigation benchmark", async ({ page, browserName }, info) => {
     buffer: Buffer.from(JSON.stringify({ version: 3, shapes })),
   });
   await expect(page.locator(".objects .object-select")).toHaveCount(1000);
-  await page.locator("canvas").press("f");
+  await page.locator("canvas").press("Control+Shift+f");
   const timing = await page.evaluate(async () => {
     const canvas = document.querySelector("canvas")!,
       times: number[] = [];
@@ -95,7 +95,7 @@ test("1000-shape drawing and snapping benchmark", async ({
     buffer: Buffer.from(JSON.stringify({ version: 4, shapes })),
   });
   await expect(page.locator(".objects .object-select")).toHaveCount(1000);
-  await page.locator("canvas").press("f");
+  await page.locator("canvas").press("Control+Shift+f");
   await page.getByRole("button", { name: "Polyline (P)", exact: true }).click();
   await page.locator("canvas").click({ position: { x: 150, y: 200 } });
   const result = await page.evaluate(async () => {

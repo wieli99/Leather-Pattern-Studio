@@ -20,7 +20,7 @@ Transforms remain previews until applied. Tools open with their initial targets 
 
 The Offset icon shows two nested rounded outlines with an even gap between them.
 
-Select one or more outlines and choose **Offset (O)** in the bottom selection toolbar. Enter a signed distance or drag the preview outline to set it. Dragging one preview updates every selected object's offset by the same distance; releasing leaves the preview for review. Choose **Sharp** or **Rounded** corners; Sharp is the default. Apply, Enter, or right-click creates separate, unfilled outline copies in one undo step. Esc or Cancel discards the preview. The original objects and their stitching remain unchanged; new offsets are selected after applying.
+Select one or more outlines and press **O** or find **Offset** through Search (**F**). Enter a signed distance or drag the preview outline to set it. Dragging one preview updates every selected object's offset by the same distance; releasing leaves the preview for review. Choose **Sharp** or **Rounded** corners; Sharp is the default. Apply, Enter, or right-click creates separate, unfilled outline copies in one undo step. Esc or Cancel discards the preview. The original objects and their stitching remain unchanged; new offsets are selected after applying.
 
 Positive distances expand closed outlines and negative distances inset them. On an open line or path, positive places the offset to the left while travelling from its start to end; negative places it to the right. Distances use the selected units. Lines, paths, curves, rectangles, circles, ellipses, and arcs are supported. Circles, circular arcs, and simple rectangles retain their exact editable shape when the transform permits it. Ellipses, stretched arcs, and curves become editable control point curves with a compact set of Bézier segments; other curved offsets become editable polylines. If a curve offset folds, develops a cusp, or needs too many segments for 0.01 mm accuracy, the preview reports an error and Apply stays disabled.
 
@@ -48,7 +48,7 @@ Tool settings appear beside the sidebar. Scroll within long panels to reach addi
 
 ## Trim
 
-The editing toolbar remains visible during drawing and is hidden during stitching. Selection-dependent operations require an initial selection. The Select Objects button appears before tool settings, shows the target count, and highlights while choosing targets. It changes to **Confirm Selection** while choosing; click it to finish. If all targets are removed, it shows Choose object and confirmation stays disabled until valid targets are selected. Boolean and path-copy role pickers retain their existing behavior.
+The editing toolbar remains visible during drawing and is hidden during stitching. Selection-dependent operations require an initial selection. The Select Objects button appears before tool settings, shows the target count, and highlights while choosing targets. It changes to **Confirm Selection** while choosing; click it or right-click the canvas to finish. If all targets are removed, it shows Choose object and confirmation stays disabled until valid targets are selected. Boolean and path-copy role pickers retain their existing behavior.
 
 Trim changes only selected objects; visible unselected outlines still provide crossing boundaries. Choose the scissors icon to activate Trim, or press **K** with the canvas focused. Choose targets using Select Objects if needed. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over an outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to preview removing that portion between corners or crossings. Make multiple cuts, then Apply, Enter, or right-click to save them as one undo step. Cancel or Escape discards all cuts and exits Trim. Curves, circles, ellipses, arcs, and rounded corners can also be trimmed. Cuts stop at crossings, open endpoints, or sharp corners; Curve and Control Curve anchors also stop cuts, including smooth anchors. For other outlines, smooth joins and closed seams do not stop a cut. Clicking an isolated circle or ellipse removes it entirely. Trim switches to Select; Apply and Cancel leave Select active. Retained curves remain editable; interpolated curves become control curves after trimming.
 
@@ -102,3 +102,11 @@ Choose **Spacing** for fixed distances or **Count** for a number of new copies. 
 Review the preview and choose **Apply**, press Enter on the canvas, or right-click. Escape or **Cancel** discards the preview. Apply creates one undo step and preserves the source and path. Up to 1,000 copies are supported. Copies preserve source styling and associated stitching.
 
 ![Copy along path preview and settings](/manual/images/copy-along-path.png)
+
+## Search and favorites
+
+![Tool search and favorites menu](images/tool-search.png)
+
+Press **F** or click Search at the left of the bottom toolbar to find any transform or outline tool. Type a name or related word, such as “snip” for Trim. The … menu or a right-click on a search result opens tool documentation and adds or removes a favorite. Up to ten favorites are saved across projects and sessions. Drag favorites to reorder them; right-click one to remove it. Search stays fixed. Drawing and stitching toolbars are unchanged.
+
+While **Confirm Selection** is active for a multi-object tool, right-click the canvas to confirm valid targets. This keeps the tool open; right-click again to apply. Empty or invalid selections must be corrected first.

@@ -10,6 +10,7 @@ defineEmits<{ toggle: [] }>();
       <span>{{ choosing ? "Confirm Selection" : "Select Objects" }}</span><span>{{ count ? `(${count})` : "Choose object" }}</span>
     </button>
     <SelectionHint :active="choosing" :multiple="multiple" />
+    <small v-if="choosing && multiple">Right-click canvas to confirm.</small>
     <small v-if="error" aria-live="polite">{{ error }}</small>
   </div>
 </template>
