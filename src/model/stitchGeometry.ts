@@ -96,6 +96,7 @@ export function stitchEdges(s: Shape): StitchEdge[] {
         applyMatrix(m, corners[(i + corners.length - 1) % corners.length].end),
         applyMatrix(m, c.start),
       ]);
+      if (c.chamfer > 0) add(`corner:${i}`, [applyMatrix(m, c.start), applyMatrix(m, c.end)]);
       if (c.radius > 0)
         add(
           `corner:${i}`,
@@ -140,6 +141,7 @@ export function extractStitchEdge(source: Shape, key: string): Shape {
   }
   if (key.includes(":corner:")) {
     const corner = polygonFillets(source).corners[index];
+    if (corner.chamfer > 0) return { ...base, kind: "line", points: [edge.points[0], edge.points.at(-1)!] };
     return { ...base, kind: "arc", points: [corner.center,corner.start], sweep: corner.span * 180 / Math.PI, transform: shapeMatrix(source) };
   }
   return { ...base, kind: "line", points: [edge.points[0],edge.points.at(-1)!] };

@@ -38,11 +38,12 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
     for (const [, c1, c2, end] of cubicSegments(s))
       ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
     if (isClosedShape(s)) ctx.closePath();
-  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii) {
+  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii || s.cornerChamfers) {
     const corners = polygonFillets(s).corners;
     ctx.moveTo(corners.at(-1)!.end.x, corners.at(-1)!.end.y);
     for (const c of corners) {
       ctx.lineTo(c.start.x, c.start.y);
+      if (!c.radius) ctx.lineTo(c.end.x, c.end.y);
       if (c.radius)
         ctx.arc(
           c.center.x,

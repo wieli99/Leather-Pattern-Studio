@@ -193,6 +193,58 @@ export function setCornerRadius(
   base[index] = Math.max(0, Math.min(value, max));
   return { ...s, cornerRadii: base };
 }
+/** Ratio between a round corner's radius and its edge setback. */
+export function cornerTrimFactor(s: Shape, index: number): number {
+  const pts = cornerPoints(s), p = pts[index];
+  if (!p || pts.length < 3) return 0;
+  const a = pts[(index + pts.length - 1) % pts.length];
+  const b = pts[(index + 1) % pts.length];
+  const left = distance(a, p), right = distance(b, p);
+  if (left < 1e-9 || right < 1e-9) return 0;
+  const denominator = left * right;
+  const angle = Math.acos(Math.max(-1, Math.min(1,
+    ((a.x - p.x) * (b.x - p.x) + (a.y - p.y) * (b.y - p.y)) / denominator,
+  )));
+  return angle > 1e-9 && Math.PI - angle > 1e-9 ? 1 / Math.tan(angle / 2) : 0;
+}
+
+/** Convert a corner's measurement while keeping its cut endpoints fixed. */
+export function cornerTreatmentValue(s: Shape, index: number, chamfer: boolean): number {
+  const corner = polygonFillets(s).corners[index];
+  if (!corner) return 0;
+  const factor = cornerTrimFactor(s, index);
+  return chamfer
+    ? corner.chamfer || corner.radius * factor
+    : corner.chamfer > 0 ? (factor ? corner.chamfer / factor : 0) : corner.radius;
+}
+
+/** Set a corner treatment, measuring chamfers along both adjoining edges. */
+export function setCornerTreatment(s: Shape, index: number, value: number, chamfer: boolean, all = false): Shape {
+  if (!Number.isFinite(value) || value < 0) return s;
+  value = Math.min(value, 1e7);
+  if (!chamfer && !s.cornerChamfers?.some(v => v > 0)) return setCornerRadius(s, index, value, all);
+  const pts = cornerPoints(s);
+  if (!pts.length || !Number.isInteger(index) || index < 0 || index >= pts.length) return s;
+  const current = polygonFillets(s).corners;
+  const radii = current.map(c => c.radius);
+  const chamfers = current.map(c => c.chamfer);
+  const factor = (i: number) => cornerTrimFactor(s, i);
+  if (!all) {
+    const maxTrim = Math.min(...[-1,1].map(d => {
+      const j = (index+d+pts.length)%pts.length;
+      return distance(pts[index],pts[j]) - (chamfers[j] || radii[j]*factor(j));
+    }));
+    value = Math.max(0, Math.min(value, chamfer ? maxTrim : factor(index) ? maxTrim/factor(index) : 0));
+  }
+  for (let i = 0; i < pts.length; i++) {
+    if (!all && i !== index) continue;
+    radii[i] = chamfer ? 0 : value;
+    chamfers[i] = chamfer ? value : 0;
+  }
+  const next = { ...s, radius: 0, cornerRadii: radii, cornerChamfers: chamfers };
+  const corners = polygonFillets(next).corners;
+  return { ...next, cornerRadii: corners.map(c => c.radius), cornerChamfers: corners.map(c => c.chamfer) };
+}
 export function polygonFillets(s: Shape) {
   const pts = cornerPoints(s);
   const corners = pts.map((p, i) => {
@@ -215,20 +267,20 @@ export function polygonFillets(s: Shape) {
     if (k > 0) max = Math.min(max, c.n / k);
   });
   const uniformRadius = Math.min(s.radius, Number.isFinite(max) ? max : 0);
+  const requestedTrim = (i: number) => !corners[i].k ? 0 : (s.cornerChamfers?.[i] ?? 0) > 0 ? s.cornerChamfers![i] : (s.cornerRadii?.[i] ?? uniformRadius) * corners[i].k;
   let scale = 1;
   corners.forEach((q, j) => {
     const used =
-      (s.cornerRadii?.[j] ?? uniformRadius) * q.k +
-      (s.cornerRadii?.[(j + 1) % corners.length] ?? uniformRadius) *
-        corners[(j + 1) % corners.length].k;
+      requestedTrim(j) + requestedTrim((j + 1) % corners.length);
     if (used > q.n) scale = Math.min(scale, q.n / used);
   });
   return {
     max: Number.isFinite(max) ? max : 0,
     corners: corners.map((c, i) => {
       const requested = s.cornerRadii?.[i] ?? uniformRadius;
-      const radius = requested * scale;
-      const d = radius * c.k;
+      const chamfer = c.k ? (s.cornerChamfers?.[i] ?? 0) * scale : 0;
+      const radius = chamfer > 0 ? 0 : requested * scale;
+      const d = chamfer > 0 ? chamfer : radius * c.k;
       const start = { x: c.p.x + c.u.x * d, y: c.p.y + c.u.y * d };
       const end = { x: c.p.x + c.v.x * d, y: c.p.y + c.v.y * d };
       const cross = c.u.x * c.v.y - c.u.y * c.v.x;
@@ -239,7 +291,7 @@ export function polygonFillets(s: Shape) {
       const angle = Math.atan2(start.y - center.y, start.x - center.x);
       let span = Math.atan2(end.y - center.y, end.x - center.x) - angle;
       span = ((span + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      return { start, end, center, angle, span, radius: c.k ? radius : 0 };
+      return { start, end, center, angle, span, chamfer, radius: c.k ? radius : 0 };
     }),
   };
 }
@@ -282,7 +334,7 @@ export function hitTest(s: Shape, point: Point, tolerance: number, units: UnitMo
     s.kind === "arc" ||
     isCurve(s) || s.kind === "compound" ||
     (isPolygon(s) && s.radius > 0) ||
-    !!s.cornerRadii
+    (!!s.cornerRadii || !!s.cornerChamfers)
   )
     return (
       distance(nearestOutline(s, point, tolerance / 32), point) <= tolerance
@@ -395,6 +447,7 @@ export function scaleShape(s: Shape, factor: number, pivot: Point): Shape {
         }
       : {}),
     radius: s.radius * factor,
+    ...(s.cornerChamfers ? { cornerChamfers: s.cornerChamfers.map(v => v * factor) } : {}),
     ...(s.cornerRadii
       ? { cornerRadii: s.cornerRadii.map((r) => r * factor) }
       : {}),
@@ -408,7 +461,7 @@ export function anchors(s: Shape): Point[] {
     );
   if (s.kind === "arc")
     return [localCenter(s), arcPoint(s, 0), arcPoint(s, 0.5), arcPoint(s, 1)];
-  if ((isPolygon(s) && s.radius > 0) || s.cornerRadii)
+  if ((isPolygon(s) && s.radius > 0) || s.cornerRadii || s.cornerChamfers)
     return [
       center(s),
       ...polygonFillets(s)
@@ -529,7 +582,7 @@ export function contains(s: Shape, p: Point): boolean {
         ((q.y - c.y) / (Math.abs(b.y - a.y) / 2)) ** 2 <=
       1
     );
-  if ((s.kind === "rectangle" || s.kind === "image") && !s.cornerRadii) {
+  if ((s.kind === "rectangle" || s.kind === "image") && !s.cornerRadii && !s.cornerChamfers) {
     const r = s.radius,
       x = Math.abs(q.x - c.x) - Math.abs(b.x - a.x) / 2 + r,
       y = Math.abs(q.y - c.y) - Math.abs(b.y - a.y) / 2 + r;
@@ -540,11 +593,11 @@ export function contains(s: Shape, p: Point): boolean {
     );
   }
   if (
-    (s.kind === "rectangle" && !!s.cornerRadii) ||
+    (s.kind === "rectangle" && (!!s.cornerRadii || !!s.cornerChamfers)) ||
     (s.kind === "polyline" && distance(a, s.points[s.points.length - 1]) < 1e-9)
   ) {
     const polygon =
-      s.radius > 0 || s.cornerRadii
+      s.radius > 0 || s.cornerRadii || s.cornerChamfers
         ? polygonFillets(s).corners.flatMap((c) =>
             c.radius
               ? Array.from({ length: 65 }, (_, i) => ({
@@ -555,7 +608,7 @@ export function contains(s: Shape, p: Point): boolean {
                     c.center.y +
                     c.radius * Math.sin(c.angle + (c.span * i) / 64),
                 }))
-              : [c.start],
+              : [c.start, c.end],
           )
         : s.points;
     let inside = false;
@@ -632,7 +685,7 @@ export function boundary(s: Shape, units: UnitMode = "mm"): {
     );
   } else if (s.kind === "ellipse")
     curve(c, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, Math.PI * 2);
-  else if ((s.kind === "rectangle" || s.kind === "image") && !s.cornerRadii) {
+  else if ((s.kind === "rectangle" || s.kind === "image") && !s.cornerRadii && !s.cornerChamfers) {
     const l = Math.min(a.x, b.x),
       t = Math.min(a.y, b.y),
       right = Math.max(a.x, b.x),
@@ -654,7 +707,7 @@ export function boundary(s: Shape, units: UnitMode = "mm"): {
         world({ x: next.x + r * Math.cos(end), y: next.y + r * Math.sin(end) }),
       ]);
     }
-  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii) {
+  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii || s.cornerChamfers) {
     const corners = polygonFillets(s).corners;
     corners.forEach((q, i) => {
       lines.push([
@@ -662,6 +715,7 @@ export function boundary(s: Shape, units: UnitMode = "mm"): {
         world(q.start),
       ]);
       if (q.radius > 0) curve(q.center, q.radius, q.radius, q.angle, q.span);
+      else if (q.chamfer > 0) lines.push([world(q.start), world(q.end)]);
     });
   } else
     worldPoints(s)

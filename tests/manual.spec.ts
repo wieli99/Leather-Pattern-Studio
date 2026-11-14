@@ -101,7 +101,7 @@ test("first-pattern manual walkthrough produces a saved stitched pattern and pri
   await page.locator(".objects .object-select").first().click();
   await expect(page.getByLabel("Width", { exact: true })).toHaveValue("60");
   await expect(page.getByLabel("Height", { exact: true })).toHaveValue("40");
-  await page.getByRole("button", { name: "Corner radius", exact: true }).click();
+  await page.getByRole("button", { name: "Corners", exact: true }).click();
   await canvas.click({ position: { x: 160, y: 190 } });
   await page.getByLabel("All corners (mm)", { exact: true }).fill("4");
   await page.getByRole("button", { name: "Apply", exact: true }).click();

@@ -1166,3 +1166,9 @@ select:disabled { opacity: .5; }
   border-top: 1px solid var(--border);
   margin: 4px 0;
 }
+
+.corner-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.corner-inputs select { width: 100%; }

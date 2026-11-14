@@ -19,5 +19,5 @@ export const transformShortcuts = [
   ["move", "Move", "G"],
   ["scale", "Resize", "S"],
   ["mirror", "Mirror", "M"],
-  ["corner", "Corner radius", "B"],
+  ["corner", "Corners", "B"],
 ] as const;

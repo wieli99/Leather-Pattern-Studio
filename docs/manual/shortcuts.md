@@ -58,7 +58,7 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 
 | Control | Action |
 | --- | --- |
-| G / E / S / M / B | Move / Rotate / Resize / Mirror / Corner radius |
+| G / E / S / M / B | Move / Rotate / Resize / Mirror / Corners |
 | O | Offset selected outlines |
 | I | Stitch mode (also without a selection) |
 | K / J | Trim / Join |
@@ -74,7 +74,7 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | Double-click anchor | Toggle sharp/smooth where supported |
 | Alt+drag curve handle | Move handle independently |
 
-Rotation steps: 1° normally, Shift 5°, Ctrl 10°, Alt free. Guide and corner-radius steps: 1 mm normally, Shift 5 mm, Ctrl 10 mm; in inches, 1/16 inch normally, Shift 1/4 inch, Ctrl 1 inch. In Corner radius, Alt affects all corners of the targeted shape instead of bypassing snapping.
+Rotation steps: 1° normally, Shift 5°, Ctrl 10°, Alt free. Guide and corner measurement steps: 1 mm normally, Shift 5 mm, Ctrl 10 mm; in inches, 1/16 inch normally, Shift 1/4 inch, Ctrl 1 inch. In Corners, Alt affects all corners of the targeted shape instead of bypassing snapping.
 
 ## Object list organization
 
