@@ -152,7 +152,7 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("snap", "Alt", "Bypass snapping");
   } else if (s.mode === "select") {
     if (s.selected.length) action = "Choose Move, Rotate or Resize.";
-    add("toggle", "Shift+click", "Toggle selection");
+    add("toggle", "Shift+click", "Add or remove objects from selection");
     add("add", "Shift+drag", "Add to selection");
     add("interior", "Ctrl+click", "Select interiors");
     add("crossing", "Ctrl+drag", "Select crossing outlines");

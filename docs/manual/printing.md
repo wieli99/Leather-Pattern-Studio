@@ -46,8 +46,8 @@ Hover an object or folder in either Model objects panel to preview its source ar
 Select a row in **Print objects**, or click artwork on paper. Shift-click rows for a range; Ctrl/⌘-click toggles individual rows. Drag a selection box on empty paper to select several placements; Shift adds to the selection.
 
 - Drag selected artwork to move it; drag its rotation ring to rotate. Release to apply.
-- Choose **Move (G)** or **Rotate (E)** for numeric values, axis handles and pivot controls. Press Tab to enter fields. Move values are relative distances in the layout units; rotation is in degrees.
-- Use **V** or Set pivot, then click to place the pivot. Alt bypasses positional snapping. Select a folder to transform its contents together.
+- Select objects before choosing **Move (G)** or **Rotate (E)** for numeric values, axis handles and pivot controls. Targets are confirmed when the tool opens. Click **Select Objects** to reselect and click **Confirm Selection**. While choosing, canvas clicks replace selection and Shift-click toggles; panel Shift-click still selects a range. Gizmos and Apply wait for confirmation. Pending edits on retained targets are preserved. Press Tab to enter fields. Move values are relative distances in the layout units; rotation is in degrees.
+- Use the shared **Pivot** icon row (hover over an icon to see its name): **Bounding box** centers the combined bounds, **Median** averages object centers with equal weight, and **Custom** starts placement. Click Custom again or press **V** to repeat custom placement; click to place it. Escape restores the previous pivot mode without discarding the preview. Alt bypasses positional snapping. New tool sessions start with Bounding box. Select a folder to transform its contents together.
 - For dedicated tool previews, Apply, Enter or right-click commits; Esc or Cancel discards. Finish the preview before editing something else.
 - Rotation steps are 1° normally, Shift 5°, Ctrl 10°, or Alt for free rotation.
 

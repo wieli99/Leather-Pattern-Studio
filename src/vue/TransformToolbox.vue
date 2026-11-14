@@ -1,16 +1,17 @@
 <script setup lang="ts">
+import SelectionHint from "./SelectionHint.vue";
+import PivotSelector from "./PivotSelector.vue";
+import ToolObjectPicker from "./ToolObjectPicker.vue";
 import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
-import { computed, nextTick, ref } from "vue";
+import { computed } from "vue";
 import { cornerRadii } from "../model/geometry";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { transformShortcuts } from "./tools";
 import { focusModelCanvas } from "./canvasFocus";
 const e = useEditor();
-const outlinePanel = ref<HTMLElement | null>(null);
-const otherPicker = ref<HTMLButtonElement | null>(null);
 async function applyPathCopy() {
   await editor.applyPathCopy();
   if (!editor.pathCopy) focusModelCanvas();
@@ -24,19 +25,6 @@ function cancelOutline() {
   editor.cancel();
   focusModelCanvas();
 }
-async function removeOperand(id: string) {
-  const index = editor.booleanCutters.indexOf(id);
-  if (index < 0) return;
-  editor.removeBooleanOperand(id);
-  await nextTick();
-  const buttons = outlinePanel.value?.querySelectorAll<HTMLButtonElement>("[data-remove-operand]");
-  (buttons?.[Math.min(index, buttons.length - 1)] ?? otherPicker.value)?.focus();
-}
-const pickerInstruction = computed(() => {
-  if (e.value.booleanPicker === "target") return "Choose a target on the canvas or in Model objects. Original objects are shown while picking.";
-  if (e.value.booleanPicker === "cutters") return "Click objects on the canvas or in Model objects to add or remove them.";
-  return "Review the preview. Use the pickers above to change the selection.";
-});
 const cornerShape = computed(() =>
   e.value.active.find((s) => s.id === e.value.selectedCorner?.shapeId),
 );
@@ -47,15 +35,15 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
 </script>
 <template>
   <div
-    v-if="e.pathCopy || e.stitchMode || e.selectionToolsAvailable || (e.tool === 'select' && e.trimMode && !e.busy)"
+    v-if="!e.printLayoutActive"
     class="transform-overlay"
   >
     <section v-if="e.pathCopy" class="transform-options path-copy-options" aria-label="Copy along path settings" @keydown.esc.stop.prevent="cancelPathCopy()">
       <strong>Copy along path</strong>
       <button v-for="role in (['source', 'path'] as const)" :key="role" class="boolean-picker" :aria-pressed="e.pathCopy.picker === role" @click="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()">
-        <span class="boolean-picker-label">{{ role === 'source' ? 'Source' : 'Path' }}</span><span class="boolean-object-name">{{ e.document.shapes.find(s => s.id === e.pathCopy![role])?.name || 'Choose object' }}</span>
+        <span class="boolean-picker-label">{{ role === 'source' ? 'Select Source' : 'Select Path' }}</span><span class="boolean-object-name">{{ e.pathCopy![role] ? '(1)' : 'Choose object' }}</span>
       </button>
-      <small aria-live="polite">{{ e.pathCopy.picker ? `Choose ${e.pathCopy.picker} on the canvas or in Model objects.` : "Review the preview or use a picker to change objects." }}</small>
+      <hr>
       <label>Distribution<select v-model="e.pathCopy.mode" @change="editor.refreshPathCopy()"><option value="spacing">Spacing</option><option value="count">Count</option></select></label>
       <div class="transform-inputs" data-hint-edit="transform">
       <label v-if="e.pathCopy.mode === 'spacing'">Spacing ({{ e.unitSymbol }})<LengthInput :min="0.01" :value="e.pathCopy.spacing" @invalid="e.pathCopy.spacing = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.spacing = $event; editor.refreshPathCopy()" /></label>
@@ -64,52 +52,42 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <label class="stitch-toggle">Rotate with path<input v-model="e.pathCopy.rotate" type="checkbox" @change="editor.refreshPathCopy()" /></label>
       <small v-if="e.preview && !e.pathCopy.picker">{{ e.preview.shapes.filter(s => !e.document.shapes.some(o => o.id === s.id) && !s.stitchParentId).length }} new objects</small>
       <p v-if="e.pathCopy.error" role="alert">{{ e.pathCopy.error }}</p>
-      <div class="actions tool-popup-footer"><button :disabled="!e.preview || !!e.pathCopy.error || !!e.pathCopy.picker || e.busy" @click="applyPathCopy()">Apply</button><button @click="cancelPathCopy()">Cancel</button></div>
+      <div class="actions tool-popup-footer"><button :disabled="!e.preview || !!e.pathCopy.error || e.busy" @click="applyPathCopy()">Apply</button><button @click="cancelPathCopy()">Cancel</button></div>
     </section>
     <StitchToolbox />
     <StitchToolbar />
-    <section v-if="e.trimMode" ref="outlinePanel" class="transform-options" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
+    <section v-if="e.trimMode" class="transform-options" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
       @keydown.esc.stop.prevent="cancelOutline()">
       <strong>{{ e.booleanOperation ? e.booleanLabel : e.mergeMode ? "Join" : "Trim" }}</strong>
+      <template v-if="!e.booleanOperation"><ToolObjectPicker /></template>
       <template v-if="e.booleanOperation">
         <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'target'"
           :title="e.booleanPicker === 'target' ? 'Stop choosing a target' : 'Choose a target object'"
           @click="editor.setBooleanPicker('target')">
-          <span class="boolean-picker-label">Target</span>
-          <span class="boolean-object-name" :title="e.document.shapes.find(s => s.id === e.booleanTarget)?.name">{{ e.document.shapes.find(s => s.id === e.booleanTarget)?.name }}</span>
+          <span class="boolean-picker-label">Select Target</span>
+          <span>{{ e.booleanTarget ? '(1)' : 'Choose object' }}</span>
         </button>
-        <button type="button" ref="otherPicker" class="boolean-picker" :aria-pressed="e.booleanPicker === 'cutters'"
+        <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'cutters'"
           :title="e.booleanPicker === 'cutters' ? 'Stop choosing other objects' : 'Choose other objects'"
           @click="editor.setBooleanPicker('cutters')">
-          <span>{{ e.booleanOperation === 'subtract' ? 'Subtract objects' : 'Other objects' }}</span>
+          <span>{{ e.booleanOperation === 'subtract' ? 'Select subtract objects' : 'Select other objects' }}</span>
           <span>({{ e.booleanCutters.length }})</span>
         </button>
-        <small class="boolean-instruction" aria-live="polite">{{ pickerInstruction }}</small>
-        <div v-for="id in e.booleanCutters" :key="id" class="boolean-operand">
-          <span class="boolean-object-name" :title="e.document.shapes.find(s => s.id === id)?.name">{{ e.document.shapes.find(s => s.id === id)?.name }}</span>
-          <button type="button" class="boolean-remove" data-remove-operand
-            :aria-label="'Remove ' + e.document.shapes.find(s => s.id === id)?.name"
-            :title="'Remove ' + e.document.shapes.find(s => s.id === id)?.name"
-            @click="removeOperand(id)">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
-              stroke-width="1.7" stroke-linecap="round" aria-hidden="true" focusable="false">
-              <path d="m4 4 8 8m0-8-8 8"/>
-            </svg>
-          </button>
-        </div>
+        <SelectionHint :active="e.booleanPicker === 'cutters'" />
         <p v-if="e.booleanError" role="alert">{{ e.booleanError }}</p>
         <p v-if="e.booleanEmpty" role="status">Result is empty. Apply removes the input objects.</p>
       </template>
       <small v-else>{{ e.mergeMode ? "Apply to join the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
-        <button :disabled="!e.trimDraft || !!e.transformError || !!e.booleanError || e.busy" @click="applyOutline()">Apply</button>
+        <button :disabled="e.objectPicker || (!e.booleanOperation && !!e.toolSelectionError) || !e.trimDraft || !!e.transformError || !!e.booleanError || e.busy" @click="applyOutline()">Apply</button>
         <button @click="cancelOutline()">Cancel</button>
       </div>
     </section>
     <section v-if="e.offsetActive" class="transform-options" aria-label="Offset settings"
       @keydown.enter.prevent="!$event.isComposing && editor.applyOffset()" @keydown.esc.stop.prevent="editor.cancel()">
       <strong>Offset</strong>
+      <ToolObjectPicker /><hr>
       <small>Positive expands closed outlines; negative insets. On open paths, positive goes left from start to end.</small>
       <div class="transform-inputs" data-hint-edit="transform">
         <label>Distance ({{ e.unitSymbol }})<LengthInput fixed non-zero aria-label="Offset distance" :value="e.offsetDistance"
@@ -122,7 +100,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       </label>
       <p v-if="e.offsetError" role="alert">{{ e.offsetError }}</p>
       <div class="actions tool-popup-footer">
-        <button :disabled="!e.offsetDraft || !!e.offsetError || e.busy" @click="editor.applyOffset()">Apply</button>
+        <button :disabled="e.objectPicker || !!e.toolSelectionError || !e.offsetDraft || !!e.offsetError || e.busy" @click="editor.applyOffset()">Apply</button>
         <button @click="editor.cancel()">Cancel</button>
       </div>
     </section>
@@ -130,7 +108,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       v-if="e.transformTool && !e.stitchMode"
       class="transform-options"
       @keydown.enter.prevent="!$event.isComposing && editor.applyTransform()"
-      @keydown.esc.stop="editor.cancel()"
+      @keydown.esc.stop="editor.cancelPivotPlacement() || editor.cancel()"
     >
       <strong>{{
         e.transformTool === "scale"
@@ -142,6 +120,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
               ? "Move"
               : "Rotate"
       }}</strong>
+      <ToolObjectPicker /><hr>
       <small>{{ {
         move: "Drag the gizmo or enter X/Y distances to move the selection.",
         rotate: "Drag the rotation ring or enter an angle to rotate the selection.",
@@ -191,17 +170,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
           <option value="local">Local</option>
         </select></label
       >
-      <div v-if="e.transformTool !== 'corner'" class="actions">
-        <button
-          :aria-pressed="e.placingPivot"
-          @click="
-            editor.placingPivot = true;
-            editor.notify();
-          "
-        >
-          Set pivot (V)</button
-        ><button @click="editor.resetPivot()">Reset pivot</button>
-      </div>
+      <PivotSelector v-if="e.transformTool !== 'corner'" :disabled="e.objectPicker" :mode="e.pivotMode" :placing="e.placingPivot" @change="editor.setPivotMode($event)" @cancel="editor.cancelPivotPlacement()" />
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
         <button
@@ -213,7 +182,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       </div>
     </div>
     <div
-      v-if="!e.stitchMode && e.selectionToolsAvailable"
+      v-if="!e.stitchMode"
       class="transform-toolbox"
       role="toolbar"
       aria-label="Transform selection"
@@ -221,7 +190,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <button
         v-for="item in transformShortcuts"
         :key="item[0]"
-        :disabled="e.selectionLocked || (item[0] === 'corner' && !e.canEditCorners)"
+        :disabled="!e.canStartTransform(item[0])"
         :aria-label="item[1]"
         :title="`${item[1]} (${item[2]})`"
         :aria-pressed="e.transformTool === item[0]"

@@ -8,7 +8,7 @@ Use **Model** to draw and edit your pattern. Optional print tabs arrange copies 
 
 The left toolbar selects drawing tools. Right-click or hold a grouped tool to open its variants. You can also focus its button and press Down. The button remembers the last variant. Repeat its shortcut letter to cycle forward; Shift+letter cycles backward.
 
-Select an object to show its Properties and the selection tools below the canvas. Tool help in the right panel describes the current operation. If a shortcut does nothing, click the canvas first and finish or cancel any active edit.
+Select an object to show its Properties. The editing toolbar below the canvas stays visible while drawing and is hidden during stitching. Select eligible objects before opening an editing operation. Its Select Objects button lists the target count; click it to reselect and **Confirm Selection** to finish before continuing. Tool help in the right panel describes the current operation. If a shortcut does nothing, click the canvas first and finish or cancel any active edit.
 
 Switching windows preserves unfinished drawings, stitching operations, and transform previews. Active mouse drags stop when the window loses focus; return to continue or confirm the pending tool. Held modifier keys are cleared.
 

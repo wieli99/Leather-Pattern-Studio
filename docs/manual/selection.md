@@ -1,6 +1,6 @@
 # Selection and curve editing
 
-Click an edge or drag an empty area to select fully enclosed outlines. Shift+click toggles selection; Shift+drag adds. Ctrl+click includes interiors; Ctrl+drag includes crossing outlines. Ctrl/⌘+A selects all.
+Click an edge to select only that object, including when it is already part of a multi-selection, or drag an empty area to select fully enclosed outlines. Shift+click toggles selection; Shift+drag adds. Ctrl+click includes interiors; Ctrl+drag includes crossing outlines. Ctrl/⌘+A selects all.
 
 ## Edit anchors and curves
 

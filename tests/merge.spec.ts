@@ -155,7 +155,7 @@ test("Subtract picks a cutter from the objects panel, previews a hole, and round
  await load(page,[rectangle("Base",20),{...rectangle("Cutter",35),points:[{x:35,y:35},{x:55,y:55}]}]);
  await page.locator(".objects .object-select").filter({hasText:"Base"}).click();
  await page.getByRole("button",{name:"Subtract",exact:true}).click();
- await expect(page.getByRole("button",{name:"Subtract objects (0)",exact:true})).toBeVisible();
+ await expect(page.getByRole("button",{name:"Select subtract objects (0)",exact:true})).toBeVisible();
  await page.locator(".objects .object-select").filter({hasText:"Cutter"}).click();
  await expect(page.locator(".objects .object-select.boolean-operand")).toHaveCount(1);
  await manualScreenshot(page,"boolean-subtract.png");
@@ -196,7 +196,7 @@ test("Join starts with one object; native button keys toggle pickers and remove 
   const canvas=page.getByLabel("Pattern drawing canvas");
   await canvas.focus();await canvas.press("j");
   const panel=page.getByRole("region",{name:"Join settings"});
-  const other=panel.getByRole("button",{name:"Other objects (0)",exact:true});
+  const other=panel.getByRole("button",{name:"Select other objects (0)",exact:true});
   await expect(other).toHaveAttribute("aria-pressed","true");
   await expect(panel.getByRole("button",{name:"Apply",exact:true})).toBeDisabled();
   await other.focus();await other.press("Enter");
@@ -204,30 +204,26 @@ test("Join starts with one object; native button keys toggle pickers and remove 
   await other.press("Space");
   await expect(other).toHaveAttribute("aria-pressed","true");
   await page.locator(".objects .object-select").filter({hasText:"Second"}).click();
-  const remove=panel.getByRole("button",{name:"Remove Second",exact:true});
-  await expect(remove).toHaveAttribute("title","Remove Second");
-  const chosen=panel.getByRole("button",{name:"Other objects (1)",exact:true});
-  await chosen.focus();await page.keyboard.press("Tab");
-  await expect(remove).toBeFocused();
-  await page.keyboard.press("Shift+Tab");await expect(chosen).toBeFocused();
-  await page.keyboard.press("Tab");await page.keyboard.press("Enter");
-  await expect(panel.getByRole("button",{name:"Other objects (0)",exact:true})).toBeFocused();
+  await expect(panel.locator(".boolean-operand")).toHaveCount(0);
+  const second=page.locator(".objects .object-select").filter({hasText:"Second"});
+  await second.focus(); await page.keyboard.press("Enter");
+  await expect(panel.getByRole("button",{name:"Select other objects (0)",exact:true})).toBeVisible();
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
   await expect(panel.getByRole("button",{name:"Apply",exact:true})).toBeDisabled();
   await page.locator(".objects .object-select").filter({hasText:"Second"}).click();
-  const target=panel.getByRole("button",{name:"Target Base",exact:true});
+  const target=panel.getByRole("button",{name:"Select Target (1)",exact:true});
   await target.focus();await target.press("Enter");
   await expect(target).toHaveAttribute("aria-pressed","true");
-  await expect(panel.getByRole("button",{name:"Apply",exact:true})).toBeDisabled();
-  await expect(panel.getByText(/Original objects are shown/)).toBeVisible();
+  await expect(panel.getByRole("button",{name:"Apply",exact:true})).toBeEnabled();
+  await expect(panel.locator(".boolean-instruction")).toHaveCount(0);
   await target.press("Enter");
   await expect(target).toHaveAttribute("aria-pressed","false");
   await expect(panel.getByRole("button",{name:"Apply",exact:true})).toBeEnabled();
   await target.press("Space");
   await page.locator(".objects .object-select").filter({hasText:"Second"}).click();
-  await expect(panel.getByRole("button",{name:"Target Second",exact:true})).toBeVisible();
-  await expect(panel.getByRole("button",{name:"Other objects (1)",exact:true})).toHaveAttribute("aria-pressed","true");
-  await expect(panel.getByRole("button",{name:"Remove Base",exact:true})).toBeVisible();
+  await expect(panel.getByRole("button",{name:"Select Target (1)",exact:true})).toBeVisible();
+  await expect(panel.getByRole("button",{name:"Select other objects (1)",exact:true})).toHaveAttribute("aria-pressed","true");
+  await expect(panel.locator(".boolean-operand")).toHaveCount(0);
   await panel.getByRole("button",{name:"Apply",exact:true}).focus();
   await page.keyboard.press("Enter");
   await expect(page.locator(".objects .object-select")).toHaveCount(1);
@@ -250,7 +246,7 @@ test("Join accepts additional open curves and Cancel returns keyboard focus to t
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
 
-test("operand remove controls preserve focus within a long list and picker states differ in both themes",async({page},info)=>{
+test("count-only Boolean pickers support panel removal and differ in both themes",async({page},info)=>{
   await page.goto("/");await expect(page.getByRole("button",{name:"Open",exact:true})).toBeEnabled();
   const longName="A very long pattern object name that should truncate rather than overflow the panel";
   await load(page,[rectangle("Base",20),rectangle("Second",45),rectangle(longName,65)]);
@@ -259,24 +255,25 @@ test("operand remove controls preserve focus within a long list and picker state
   await page.locator(".objects .object-select").filter({hasText:"Second"}).click();
   await page.locator(".objects .object-select").filter({hasText:longName}).click();
   const panel=page.getByRole("region",{name:"Join settings"});
-  const target=panel.getByRole("button",{name:"Target Base",exact:true});
-  const name=panel.locator(".boolean-operand .boolean-object-name").filter({hasText:longName});
-  expect(await name.evaluate(el=>({ellipsis:getComputedStyle(el).textOverflow,clipped:el.scrollWidth>el.clientWidth}))).toEqual({ellipsis:"ellipsis",clipped:true});
+  const target=panel.getByRole("button",{name:"Select Target (1)",exact:true});
+  await expect(panel.locator(".boolean-operand")).toHaveCount(0);
   const inactive=await target.evaluate(el=>getComputedStyle(el).backgroundColor);
   await target.click();
   await expect.poll(()=>target.evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe(inactive);
   await target.click();
-  await panel.getByRole("button",{name:"Remove Second",exact:true}).click();
-  await expect(panel.getByRole("button",{name:"Remove "+longName,exact:true})).toBeFocused();
-  await page.keyboard.press("Space");
-  await expect(panel.getByRole("button",{name:"Other objects (0)",exact:true})).toBeFocused();
+  await panel.getByRole("button",{name:"Select other objects (2)",exact:true}).click();
+  const second=page.locator(".objects .object-select").filter({hasText:"Second"});
+  await second.focus();await page.keyboard.press("Enter");
+  const longRow=page.locator(".objects .object-select").filter({hasText:longName});
+  await longRow.focus();await page.keyboard.press("Space");
+  await expect(panel.getByRole("button",{name:"Select other objects (0)",exact:true})).toBeVisible();
   await panel.getByRole("button",{name:"Cancel",exact:true}).click();
   await expect(page.getByLabel("Pattern drawing canvas")).toBeFocused();
   await page.getByRole("button",{name:"Settings",exact:true}).click();
   await page.getByLabel("Theme",{exact:true}).selectOption("light");
   await page.getByText("Settings",{exact:true}).click();
   await page.getByRole("button",{name:"Join",exact:true}).click();
-  const lightTarget=page.getByRole("region",{name:"Join settings"}).getByRole("button",{name:"Target Base",exact:true});
+  const lightTarget=page.getByRole("region",{name:"Join settings"}).getByRole("button",{name:"Select Target (1)",exact:true});
   const lightInactive=await lightTarget.evaluate(el=>getComputedStyle(el).backgroundColor);
   await lightTarget.click();
   await expect.poll(()=>lightTarget.evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe(lightInactive);
@@ -286,3 +283,30 @@ test("operand remove controls preserve focus within a long list and picker state
   expect(box.x+box.width).toBeLessThanOrEqual(canvasBox.x+canvasBox.width+1);
   await page.screenshot({path:info.outputPath("boolean-picker-light-narrow.png")});
 });
+
+for (const operation of ["Join","Subtract","Intersect","Exclude"]) {
+  test(operation+" shows the selection hint only for its multi-object picker",async({page})=>{
+    await page.goto("/");
+    await expect(page.getByRole("button",{name:"Open",exact:true})).toBeEnabled();
+    await load(page,[rectangle("Base",20),rectangle("Second",45)]);
+    await page.locator(".objects .object-select").filter({hasText:"Base"}).click();
+    await page.getByRole("button",{name:operation,exact:true}).click();
+    const panel=page.getByRole("region",{name:operation+" settings",exact:true});
+    const hint=panel.getByText("Shift-click on the canvas to add or remove objects.",{exact:true});
+    const other=panel.getByRole("button",{name:operation==="Subtract" ? "Select subtract objects (0)" : "Select other objects (0)",exact:true});
+    await expect(hint).toBeVisible();
+    const second=page.locator(".objects .object-select").filter({hasText:"Second"});
+    await second.click({modifiers:["Shift"]});
+    await expect(panel.getByRole("button",{name:operation==="Subtract" ? "Select subtract objects (1)" : "Select other objects (1)",exact:true})).toBeVisible();
+    await second.click({modifiers:["Shift"]});
+    await expect(other).toBeVisible();
+    await other.click();
+    await expect(hint).toHaveCount(0);
+    await panel.getByRole("button",{name:"Select Target (1)",exact:true}).click();
+    await expect(hint).toHaveCount(0);
+    await page.locator(".objects .object-select").filter({hasText:"Second"}).click({modifiers:["Shift"]});
+    await expect(hint).toBeVisible();
+    await panel.getByRole("button",{name:operation==="Subtract" ? "Select subtract objects (1)" : "Select other objects (1)",exact:true}).click();
+    await expect(hint).toHaveCount(0);
+  });
+}

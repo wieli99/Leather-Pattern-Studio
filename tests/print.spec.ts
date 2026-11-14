@@ -941,9 +941,11 @@ test("print tools select first, apply by right click, and mirror linked artwork"
   // Import centers the placement in the viewport; click the object using its saved position.
   const initial = await save(page);
   const placement = initial.printLayouts[0].instances[0];
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
   await page.getByRole("button", { name: "Move (G)", exact: true }).click();
+  await expect(page.getByRole("button",{name:"Move (G)",exact:true})).toHaveAttribute("aria-pressed","true");
   await page.mouse.click(
-    box.x + 50 + (10 + placement.x) * 2,
+    box.x + 50 + (10 + placement.x) * 2 + 70,
     box.y + 50 + (10 + placement.y) * 2,
   );
   await expect(
@@ -1750,6 +1752,8 @@ test("print rail matches Model button presentation without extra drawing tools",
   expect(printSize?.width).toBe(size?.width);
   expect(printSize?.height).toBe(size?.height);
   expect(await printSelect.locator("svg").innerHTML()).toBe(icon);
+  await page.getByRole("button",{name:"Import Piece",exact:true}).click();
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
   for (const [label, key] of [["Select", "V"], ["Move", "G"], ["Rotate", "E"], ["Mirror", "M"]]) {
     const button = rail.getByRole("button", { name: `${label} (${key})`, exact: true });
     await expect(button.locator("small")).toHaveText(key);
@@ -1757,4 +1761,105 @@ test("print rail matches Model button presentation without extra drawing tools",
     await expect(button).toHaveAttribute("aria-pressed", "true");
   }
   await expect(rail.getByRole("button", { name: /Polyline|Rectangle|Circle|Shapes|Stitch line|Resize/ })).toHaveCount(0);
+});
+
+test("shared Print pivot selector preserves previews and V supports cancellable custom placement", async ({page})=>{
+  await load(page);
+  await create(page);
+  await page.getByRole("button",{name:"Import Piece",exact:true}).click();
+  const original=await save(page);
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
+  await page.getByRole("button",{name:"Move (G)",exact:true}).click();
+  const pivot=page.getByRole("group",{name:"Pivot",exact:true});
+  await expect(pivot.getByRole("button",{name:"Bounding box",exact:true})).toHaveAttribute("aria-pressed","true");
+  await page.getByLabel("Print move X").fill("12");
+  await pivot.getByRole("button",{name:"Median",exact:true}).click();
+  await pivot.getByRole("button",{name:"Custom",exact:true}).click();
+  await expect(page.getByText("Click to place the custom pivot. Escape cancels placement.")).toBeVisible();
+  const canvas=page.getByLabel("Print layout canvas");
+  await canvas.focus();
+  await page.keyboard.press("Escape");
+  await expect(pivot.getByRole("button",{name:"Median",exact:true})).toHaveAttribute("aria-pressed","true");
+  await page.keyboard.press("v");
+  await expect(pivot.getByRole("button",{name:"Custom",exact:true})).toHaveAttribute("aria-pressed","true");
+  await canvas.click({position:{x:300,y:250}});
+  await expect(page.getByText("Click Custom or press V to reposition the pivot.")).toBeVisible();
+  const custom=pivot.getByRole("button",{name:"Custom",exact:true});
+  await expect(custom).toHaveAttribute("title","Custom");
+  await custom.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Click to place the custom pivot. Escape cancels placement.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(custom).toHaveAttribute("aria-pressed","true");
+  await expect(pivot.locator('button[aria-pressed="true"]')).toHaveCount(1);
+  await custom.click();
+  await expect(page.getByText("Click to place the custom pivot. Escape cancels placement.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  const bounding=pivot.getByRole("button",{name:"Bounding box",exact:true});
+  await bounding.focus();
+  await page.keyboard.press("Space");
+  await expect(bounding).toHaveAttribute("aria-pressed","true");
+
+  await expect(page.getByRole("button",{name:"Set pivot (V)",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Apply",exact:true}).click();
+  const result=await save(page);
+  expect(result.printLayouts[0].instances[0].x).toBeCloseTo(original.printLayouts[0].instances[0].x+12);
+});
+
+test("Print tools share the Objects confirmation phase and preserve pending edits",async({page})=>{
+  await load(page); await create(page);
+  const move=page.getByRole("button",{name:"Move (G)",exact:true});
+  await expect(move).toBeDisabled();
+  await page.getByRole("button",{name:"Import Piece",exact:true}).click();
+  const original=await save(page);
+  const placement=original.printLayouts[0].instances[0];
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
+  await move.click();
+  const popup=page.locator(".print-transform");
+  const objects=popup.locator(".objects-confirm");
+  await expect(objects).toHaveAttribute("aria-pressed","false");
+  await expect(popup.getByText("Shift-click on the canvas to add or remove objects.",{exact:true})).toHaveCount(0);
+  await page.getByLabel("Print move X").fill("12");
+  await objects.click();
+  await expect(popup.getByText("Shift-click on the canvas to add or remove objects.",{exact:true})).toBeVisible();
+  await expect(popup.getByRole("button",{name:"Apply",exact:true})).toBeDisabled();
+  const canvas=page.getByLabel("Print layout canvas");
+  const point={x:50+(10+placement.x)*2+60,y:50+(10+placement.y)*2};
+  await canvas.click({position:point,modifiers:["Shift"]});
+  await expect(objects).toBeDisabled();
+  await canvas.click({position:point});
+  await expect(objects).toHaveText(/(Select Objects|Confirm Selection).*[(]1[)]/);
+  await objects.focus(); await page.keyboard.press("Enter");
+  await expect(objects).toHaveAttribute("aria-pressed","false");
+  await expect(popup.getByText("Shift-click on the canvas to add or remove objects.",{exact:true})).toHaveCount(0);
+  await page.getByLabel("Print move X").fill("12");
+  await popup.getByRole("button",{name:"Apply",exact:true}).click();
+  const result=await save(page);
+  expect(result.printLayouts[0].instances[0].x).toBeCloseTo(placement.x+12);
+});
+
+test("Print reselection keeps panel ranges and restores only removed targets",async({page})=>{
+  await load(page,[{...rectangle,id:"other",name:"Other",points:[{x:120,y:0},{x:140,y:20}]}]);
+  await create(page);
+  await page.getByRole("button",{name:"Import Pattern",exact:true}).click();
+  const original=await save(page);
+  const tree=page.getByLabel("Print object tree");
+  await tree.getByRole("button",{name:"Piece",exact:true}).click();
+  await tree.getByRole("button",{name:"Other",exact:true}).click({modifiers:["Shift"]});
+  await page.getByRole("button",{name:"Move (G)",exact:true}).click();
+  await page.getByLabel("Print move X").fill("12");
+  const popup=page.locator(".print-transform");
+  const objects=popup.locator(".objects-confirm");
+  await expect(objects).toHaveText(/(Select Objects|Confirm Selection).*[(]2[)]/);
+  await objects.click();
+  await tree.getByRole("button",{name:"Other",exact:true}).click();
+  await expect(objects).toHaveText(/(Select Objects|Confirm Selection).*[(]1[)]/);
+  await expect(page.getByLabel("Print move X")).toHaveValue("12.00");
+  await objects.click();
+  await popup.getByRole("button",{name:"Apply",exact:true}).click();
+  const result=await save(page);
+  for (const before of original.printLayouts[0].instances) {
+    const after=result.printLayouts[0].instances.find((item:any)=>item.id===before.id);
+    expect(after.x).toBeCloseTo(before.x+(before.sourceId==="other" ? 12 : 0));
+  }
 });

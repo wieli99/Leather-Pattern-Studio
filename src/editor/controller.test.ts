@@ -1671,6 +1671,8 @@ test("path conversion cancels or commits as one transaction", async () => {
 
 test("trim activation and cancellation update the toolbar subscription", () => {
   const e = editor();
+  e.document={...emptyDocument(),shapes:[{id:"a",name:"A",kind:"line",points:[{x:0,y:0},{x:10,y:0}],radius:0,rotation:0}]};
+  e.selected=["a"];
   const initial = e.uiSnapshot();
   e.activateTrim();
   expect(e.trimMode).toBe(true);
@@ -1868,6 +1870,7 @@ test("curved trim previews cancel, accumulate and commit as one undo step", asyn
     ],
   });
   const original = JSON.stringify(e.document);
+  e.selected = [circle.id];
   e.activateTrim();
   e.pointerMove(e.screen({ x: 60, y: 40 }), false);
   expect(e.trimHighlight!.length).toBeGreaterThan(2);
@@ -2071,7 +2074,7 @@ test("hidden group outlines are excluded from mirror references", async () => {
   expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).not.toBe("edge");
 });
 
-test("outline tools reject text without cancelling and allow mixed selections", () => {
+test("outline tools reject text without cancelling; Trim requires compatible targets while stitching accepts mixed selections", () => {
   const e = editor();
   e.document.shapes = [{ ...shape, id: "text", kind: "text", text: "Label" }, shape];
   e.selected = ["text"];
@@ -2085,7 +2088,7 @@ test("outline tools reject text without cancelling and allow mixed selections", 
   expect(e.stitchMode).toBe(false);
   expect(e.canUndo).toBe(false);
   e.selected = ["text", shape.id];
-  expect(e.canTrim).toBe(true);
+  expect(e.canTrim).toBe(false);
   expect(e.canStitch).toBe(true);
   e.document = {
     ...e.document,
@@ -2993,24 +2996,20 @@ test("Join starts from one open path and previews additions without committing",
   expect(e.document.shapes).toHaveLength(3);
 });
 
-test("target picker suspends preview, cannot apply, and toggles back to the cached preview",async()=>{
+test("target picker keeps its live preview and permits applying",async()=>{
   const e=editor();
   const rectangle=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+20,y:20}],radius:0,rotation:0});
   await e.commit({...e.document,shapes:[rectangle("a",0),rectangle("b",10)]});
   e.selected=["a","b"];e.activateMerge();
   const before=e.revision, preview=JSON.stringify(e.preview);
   e.setBooleanPicker("target");
-  expect(e.booleanPicker).toBe("target");expect(e.preview).toBeNull();
-  await e.applyTrim();expect(e.revision).toBe(before);
-  e.pointerDown(e.screen({x:5,y:5}),2,false,false);
-  expect(e.revision).toBe(before);expect(e.booleanOperation).toBe("union");
-  e.setBooleanPicker("target");expect(e.booleanPicker).toBeNull();
+  expect(e.booleanPicker).toBe("target");
   expect(JSON.stringify(e.preview)).toBe(preview);
-  e.setBooleanPicker("target");e.pickBoolean("b");
+  expect(e.revision).toBe(before);
+  e.pickBoolean("b");
   expect(e.booleanTarget).toBe("b");expect(e.booleanCutters).toEqual(["a"]);
   expect(e.active.map(s=>s.id)).toEqual(["b"]);
   expect(e.booleanPicker).toBe("cutters");expect(e.preview).not.toBeNull();
-  e.setBooleanPicker("cutters");expect(e.booleanPicker).toBeNull();
   await e.applyTrim();expect(e.selected).toEqual(["b"]);
   await e.transact("undo");expect(e.document.shapes).toHaveLength(2);
 });
@@ -3125,4 +3124,212 @@ test('path rotation preserves centers of transformed source copies', async () =>
     expect(p.x).toBeCloseTo(fixed[i].x,10);
     expect(p.y).toBeCloseTo(fixed[i].y,10);
   });
+});
+
+test("selection phases preserve retained edits, require confirmation and restore selection on cancel",async()=>{
+  const e=editor();
+  const shape=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+20,y:20}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[shape("a",0),shape("b",40)]});
+  e.selected=["a","b"];
+  await e.activateTransform("move");
+  expect(e.objectPicker).toBe(false);
+  e.setTransformValues({x:5});
+  e.toggleObjectPicker();
+  e.pickToolObject("a",true);
+  expect(e.preview!.shapes.map(s=>s.points[0].x)).toEqual([0,45]);
+  expect(e.transformValid).toBe(false);
+  const before=e.revision;
+  await e.applyTransform();
+  expect(e.revision).toBe(before);
+  e.toggleObjectPicker();
+  await e.applyTransform();
+  expect(e.document.shapes.map(s=>s.points[0].x)).toEqual([0,45]);
+  await e.transact("undo");
+  e.selected=["a"];
+  e.activateOffset();
+  e.toggleObjectPicker();
+  e.setToolSelection([]);
+  e.toggleObjectPicker();
+  expect(e.objectPicker).toBe(true);
+  e.pickToolObject("b");
+  e.cancel();
+  expect(e.selected).toEqual(["a"]);
+});
+
+test("Trim only highlights selected outlines and keeps unselected crossings", async () => {
+  const e = editor();
+  const a = {id:"a",name:"A",kind:"line" as const,points:[{x:0,y:0},{x:100,y:0}],radius:0,rotation:0};
+  const b = {...a,id:"b",name:"B",points:[{x:50,y:-30},{x:50,y:30}]};
+  await e.commit({...emptyDocument(),shapes:[a,b]});
+  e.selected=["a"];
+  e.activateTrim();
+  e.pointerMove(e.screen({x:50,y:20}),false);
+  expect(e.trimHighlight).toBeNull();
+  e.pointerDown(e.screen({x:25,y:0}),0,false,false);
+  expect(e.trimDraft!.shapes.find(s=>s.id==="b")).toEqual(b);
+  expect(e.trimDraft!.shapes.find(s=>s.id==="a")!.points[0].x).toBeCloseTo(50);
+  e.cancel();
+  expect(e.selected).toEqual(["a"]);
+});
+
+test("selection-dependent tools require an initial selection",async()=>{
+  const e=editor();
+  expect(e.canBoolean).toBe(false);
+  expect(e.canJoin).toBe(false);
+  expect(e.canTrim).toBe(false);
+  expect(e.canOffset).toBe(false);
+  expect(e.canCopyAlongPath).toBe(false);
+  e.activateBoolean("subtract"); e.activatePathCopy(); e.activateTrim(); e.activateOffset();
+  await e.activateTransform("move");
+  expect(e.booleanOperation).toBeNull();
+  expect(e.pathCopy).toBeNull();
+  expect(e.trimMode).toBe(false);
+  expect(e.offsetActive).toBe(false);
+  expect(e.transformTool).toBeNull();
+});
+
+test("canvas selection uses plain replacement and Shift toggling while operation actions wait",async()=>{
+  const e=editor();
+  const line=(id:string,y:number)=>({id,name:id,kind:"line" as const,points:[{x:0,y},{x:100,y}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[line("a",0),line("b",30)]});
+  e.selected=["a","b"];
+  e.activateTrim();
+  e.pointerDown(e.screen({x:50,y:0}),0,false,false);
+  expect(e.trimDraft!.shapes.map(s=>s.id)).toEqual(["b"]);
+  e.toggleObjectPicker();
+  e.pickToolObject("a",true);
+  expect(e.trimDraft!.shapes.map(s=>s.id)).toEqual(["a","b"]);
+  e.pickToolObject("b");
+  expect(e.selected).toEqual(["b"]);
+  e.pickToolObject("a",true);
+  expect(e.selected).toEqual(["b","a"]);
+  e.pickToolObject("b",true);
+  expect(e.selected).toEqual(["a"]);
+  e.toggleObjectPicker();
+  expect(e.objectPicker).toBe(false);
+});
+
+test("pivot modes preserve pending geometry and custom placement can be cancelled",async()=>{
+  const e=editor();
+  const rect=(id:string,x:number,width:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+width,y:20}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[rect("a",0,100),rect("b",200,20)]});
+  e.selected=["a","b"];
+  await e.activateTransform("rotate");
+  expect(e.pivotMode).toBe("bounding-box");
+  e.setPivotMode("median");
+  expect(e.transformPivot).toEqual({x:130,y:10});
+  e.setTransformValues({angle:30});
+  const preview=JSON.stringify(e.preview);
+  const pivot={...e.transformPivot};
+  e.beginPivotPlacement();
+  expect(e.pivotMode).toBe("custom");
+  expect(e.cancelPivotPlacement()).toBe(true);
+  expect(e.pivotMode).toBe("median");
+  expect(e.transformPivot).toEqual(pivot);
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  e.setPivotMode("custom");
+  e.setPivot({x:300,y:400});
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  e.toggleObjectPicker();
+  e.pickToolObject("b",true);
+  expect(e.transformPivot).toEqual({x:300,y:400});
+  e.cancel();
+  await e.activateTransform("rotate");
+  expect(e.pivotMode).toBe("bounding-box");
+});
+
+test("Select replaces an existing multi-selection and Shift-click toggles only the hit object",async()=>{
+  const e=editor();
+  const line=(id:string,y:number)=>({id,name:id,kind:"line" as const,points:[{x:0,y},{x:100,y}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[line("a",0),line("b",30)]});
+  e.setMode("select");
+  e.selected=["a","b"];
+  e.pointerDown(e.screen({x:20,y:0}),0,false,false);
+  expect(e.selected).toEqual(["a"]);
+  e.pointerDown(e.screen({x:20,y:30}),0,true,false);
+  expect(e.selected).toEqual(["a","b"]);
+  e.pointerDown(e.screen({x:20,y:0}),0,true,false);
+  expect(e.selected).toEqual(["b"]);
+});
+
+test("reopening Objects cancels custom pivot placement and keeps pivot actions suspended until confirmed",async()=>{
+  const e=editor();
+  await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"rectangle",points:[{x:100,y:100},{x:120,y:120}],radius:0,rotation:0}]});
+  e.selected=["a"];
+  await e.activateTransform("rotate");
+  e.beginPivotPlacement();
+  expect(e.pivotMode).toBe("custom");
+  e.toggleObjectPicker();
+  expect(e.pivotMode).toBe("bounding-box");
+  expect(e.placingPivot).toBe(false);
+  e.beginPivotPlacement();
+  expect(e.placingPivot).toBe(false);
+  e.toggleObjectPicker();
+  e.beginPivotPlacement();
+  expect(e.placingPivot).toBe(true);
+});
+
+test("absolute numeric rotation of an asymmetric outline does not drift with input history",async()=>{
+  const make=async()=>{
+    const e=editor();
+    await e.commit({...emptyDocument(),shapes:[{id:"triangle",name:"Triangle",kind:"polyline",points:[{x:0,y:0},{x:100,y:0},{x:0,y:40},{x:0,y:0}],radius:0,rotation:0}]});
+    e.selected=["triangle"]; await e.activateTransform("rotate"); return e;
+  };
+  const direct=await make(), incremental=await make();
+  direct.setTransformValues({angle:30});
+  const expected=JSON.stringify(direct.preview);
+  direct.setTransformValues({angle:30});
+  expect(JSON.stringify(direct.preview)).toBe(expected);
+  incremental.setTransformValues({angle:15});incremental.setTransformValues({angle:30});
+  expect(JSON.stringify(incremental.preview)).toBe(expected);
+});
+
+for (const mode of ["bounding-box","median","custom"] as const) for (const finish of ["release","pause"] as const) {
+  test(mode+" Move pivot is displaced once on "+finish,async()=>{
+    const e=editor();
+    await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"rectangle",points:[{x:0,y:0},{x:100,y:40}],radius:0,rotation:0}]});
+    e.selected=["a"];await e.activateTransform("move");
+    if(mode==="custom") e.setPivot({x:50,y:20}); else e.setPivotMode(mode);
+    const before=e.revision;
+    e.pointerDown(e.screen({x:50,y:20}),0,false,false);
+    e.pointerMove(e.screen({x:60,y:20}),true);
+    if(finish==="pause") e.pauseGesture(); else e.pointerUp(e.screen({x:60,y:20}),true);
+    expect(e.transformPivot.x).toBeCloseTo(60);
+    const preview=JSON.stringify(e.preview);
+    e.setTransformValues({...e.transformValues});
+    expect(JSON.stringify(e.preview)).toBe(preview);
+    expect(e.revision).toBe(before);
+    await e.applyTransform();
+    expect(e.revision).toBe(before+1);
+    await e.transact("undo");
+    expect(e.document.shapes[0].points[0].x).toBe(0);
+  });
+}
+
+test("absolute numeric scaling remains stable after automatic pivot recentering",async()=>{
+  const e=editor();
+  await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"polyline",points:[{x:0,y:0},{x:100,y:0},{x:0,y:40},{x:0,y:0}],radius:0,rotation:0}]});
+  e.selected=["a"];await e.activateTransform("scale");
+  e.setTransformValues({sx:2,sy:0.5});
+  const preview=JSON.stringify(e.preview);
+  e.setTransformValues({sx:2,sy:0.5});
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  e.cancel();
+  expect(e.document.shapes[0].points[1]).toEqual({x:100,y:0});
+});
+
+test("consecutive Move gestures retain the correct automatic gizmo and numeric basis",async()=>{
+  const e=editor();
+  await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"rectangle",points:[{x:0,y:0},{x:100,y:40}],radius:0,rotation:0}]});
+  e.selected=["a"];await e.activateTransform("move");
+  for(const x of [50,60]) {
+    e.pointerDown(e.screen({x,y:20}),0,false,false);
+    e.pointerMove(e.screen({x:x+10,y:20}),true);
+    e.pointerUp(e.screen({x:x+10,y:20}),true);
+    expect(e.transformPivot.x).toBeCloseTo(x+10);
+  }
+  const preview=JSON.stringify(e.preview);
+  e.setTransformValues({...e.transformValues});
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  expect(e.preview!.shapes[0].points[0].x).toBeCloseTo(20);
 });

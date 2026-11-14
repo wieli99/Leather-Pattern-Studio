@@ -1,12 +1,12 @@
 # Move, rotate and resize
 
-1. Select objects.
+1. Select one or more eligible objects on the canvas or in Model objects. Editing operations stay disabled until an initial selection exists.
 2. Choose Move (G), Rotate (E), or Resize (S).
 3. Drag the gizmo or press Tab to enter numeric values.
 4. Apply with Enter, right-click, or Apply. Esc cancels the preview.
 
 ## Axes and pivot
-Move and Resize support X/Y axis constraints. For a single object, choose Local or World axes. V starts pivot placement; click to place it. Reset pivot restores the selection center. Alt bypasses pivot snapping.
+Move and Resize support X/Y axis constraints. For a single object, choose Local or World axes. The **Pivot** icon row offers **Bounding box** (the combined bounds center), **Median** (the average of object centers, equally weighted), and **Custom**. Automatic pivots follow the current preview selection. Numeric values use a stable calculation pivot, so entering the same angle or scale again leaves the preview unchanged. Click Custom or press V, then click to place a custom pivot; clicking Custom again or pressing V repositions it. Hover over the icons to see their names. Escape cancels placement and restores the previous pivot mode. Custom pivots stay fixed across selection changes. Choose Bounding box or Median to return to automatic positioning. Changing the pivot preserves pending geometry. New tool sessions start with Bounding box. Alt bypasses pivot snapping.
 
 ## Rotation
 Dragging rotates in 1° steps. Ctrl uses 10°, Shift uses 5°, and Alt allows free rotation. Numeric angles allow exact entry.
@@ -14,7 +14,7 @@ Dragging rotates in 1° steps. Ctrl uses 10°, Shift uses 5°, and Alt allows fr
 ## Resize
 Drag for proportional sizing, use an axis handle to resize one direction, or enter independent X/Y factors. A factor of 1 preserves that dimension. This also stretches imported SVG artwork: use X with Y set to 1 to change only width, or Y with X set to 1 to change only height. The Properties aspect-ratio checkbox controls Width/Height fields separately.
 
-Transforms remain previews until applied. Selection changes are restricted while a transform is active. Apply or cancel before editing Properties.
+Transforms remain previews until applied. Tools open with their initial targets confirmed. Click the **Select Objects** button to reselect targets, then click **Confirm Selection**. While choosing, gizmos, pivot placement and Apply are disabled; the preview remains visible. On the canvas, plain click selects only that object and Shift-click adds or removes it. A reminder appears below Confirm Selection while choosing multiple targets. Object panels retain Shift-click ranges and Ctrl/⌘-click toggling. Removing a target discards its unapplied edits while retaining pending edits on the remaining targets. Newly selected objects use the current transform settings; Corner radius and Trim start without edits on newly selected objects. Cancel restores the selection from before the tool opened. Apply or cancel before editing Properties.
 
 ## Offset
 
@@ -48,13 +48,15 @@ Tool settings appear beside the sidebar. Scroll within long panels to reach addi
 
 ## Trim
 
-Choose the scissors icon to activate Trim, or press **K** with a selection in Select mode and the canvas focused. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over an outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to preview removing that portion between corners or crossings. Make multiple cuts, then Apply, Enter, or right-click to save them as one undo step. Cancel or Escape discards all cuts and exits Trim. Curves, circles, ellipses, arcs, and rounded corners can also be trimmed. Cuts stop at crossings, open endpoints, or sharp corners; Curve and Control Curve anchors also stop cuts, including smooth anchors. For other outlines, smooth joins and closed seams do not stop a cut. Clicking an isolated circle or ellipse removes it entirely. Trim switches to Select; Apply and Cancel leave Select active. Retained curves remain editable; interpolated curves become control curves after trimming.
+The editing toolbar remains visible during drawing and is hidden during stitching. Selection-dependent operations require an initial selection. The Select Objects button appears before tool settings, shows the target count, and highlights while choosing targets. It changes to **Confirm Selection** while choosing; click it to finish. If all targets are removed, it shows Choose object and confirmation stays disabled until valid targets are selected. Boolean and path-copy role pickers retain their existing behavior.
+
+Trim changes only selected objects; visible unselected outlines still provide crossing boundaries. Choose the scissors icon to activate Trim, or press **K** with the canvas focused. Choose targets using Select Objects if needed. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over an outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to preview removing that portion between corners or crossings. Make multiple cuts, then Apply, Enter, or right-click to save them as one undo step. Cancel or Escape discards all cuts and exits Trim. Curves, circles, ellipses, arcs, and rounded corners can also be trimmed. Cuts stop at crossings, open endpoints, or sharp corners; Curve and Control Curve anchors also stop cuts, including smooth anchors. For other outlines, smooth joins and closed seams do not stop a cut. Clicking an isolated circle or ellipse removes it entirely. Trim switches to Select; Apply and Cancel leave Select active. Retained curves remain editable; interpolated curves become control curves after trimming.
 
 ![Curved portion highlighted for trimming between crossings](/manual/images/trim.png)
 
 ## Mirror
 
-Select objects and choose Mirror (M), next to Resize. Click an X, Y, +45° or −45° axis line on the canvas to reflect across it through the pivot. Hover highlights selectable axes and straight edges. Activation leaves geometry unchanged until you click a target. The popup retains the Local/World axes dropdown. X reflects across the X axis, reversing Y. Use World/Local axes and Set pivot as with other transforms.
+Select objects and choose Mirror (M), next to Resize. Click an X, Y, +45° or −45° axis line on the canvas to reflect across it through the pivot. Hover highlights selectable axes and straight edges. Activation leaves geometry unchanged until you click a target. The popup retains the Local/World axes dropdown. X reflects across the X axis, reversing Y. Use World/Local axes and the Pivot selector as with other transforms.
 
 Click a straight outline segment to use its infinite supporting line. Selected objects can supply the reference edge. Curves cannot supply an axis. Apply, Enter or right-click replaces the selection in one undo step; Cancel or Escape discards the preview.
 
@@ -76,24 +78,24 @@ These tools appear beside Join and operate on closed outlines. They support curv
 - **Intersect** keeps the area shared by every operand.
 - **Exclude** keeps areas covered by an odd number of operands (exclusive-or).
 
-With a single selected object, choose Subtract, then use **Subtract objects** to pick cutters by clicking their outlines or interiors in the canvas, or their names in the objects panel. Cutters appear in red and are listed in the options. Click a picked cutter again or use its × button to exclude it. The × button tooltip names the object being removed. **Target** lets you choose a different base; the previous base becomes another operand. The active picker uses an accent background and border. Click it again to stop picking. While choosing a target, the preview is hidden so all original visible objects can be picked; Apply is disabled. Choosing a valid target restores the preview and activates the other-object picker. Picking other objects keeps the live preview visible. The same pickers are available for Join (including open paths), Intersect and Exclude.
+With a single selected object, choose Subtract, then use **Select subtract objects** to pick cutters by clicking their outlines or interiors in the canvas, or their names in the objects panel. Cutters appear in red in Model objects. Selection buttons show counts; use the canvas or right-hand object panel to change the selected objects. Click a picked cutter again while its picker is active to exclude it. **Select Target** lets you choose a different base; the previous base becomes another operand. The active picker uses an accent background and border. Join, Subtract, Intersect and Exclude show the Shift-click reminder while their multi-object picker is active; it is hidden while choosing the single Target. Ordinary clicks also toggle Boolean operands. Click it again to stop picking. The preview remains visible and Apply stays available whenever the current operands are valid. Choosing a target activates the other-object picker. Picking other objects keeps the live preview visible. The same pickers are available for Join (including open paths), Intersect and Exclude.
 
 Review the preview before using Apply, Enter or right-click. A valid empty result is labelled explicitly: applying it removes all input objects. Errors disable Apply. Cancel or Escape restores the original objects and selection. Applying consumes the operands and creates one undo step; Undo and Redo restore the complete operation.
 
-Tab and Shift+Tab move between controls. Enter or Space activates the focused button, including pickers and × buttons; Enter on the canvas or right-click applies a valid preview. Escape cancels from the canvas, options or objects panel. After removing an object, focus moves to the next × button, the previous one, or the other-object picker. Apply and Cancel return focus to the canvas. No new global shortcuts are added; Join keeps J.
+Tab and Shift+Tab move between controls. Enter or Space activates the focused button, including selection buttons; Enter on the canvas or right-click applies a valid preview. Escape cancels from the canvas, options or objects panel. Apply and Cancel return focus to the canvas. No new global shortcuts are added; Join keeps J.
 
 Results remain editable: drag their contour anchors and handles, use transforms, trim, offset, or attach stitching to an individual contour. Separate contours never form a continuous stitching run. Saved projects and print exports preserve holes. Analytic arcs are converted to cubic segments within 0.001 mm; existing Bézier curves remain curves.
 
 ![Subtract preview with a red cutter and operand controls](/manual/images/boolean-subtract.png)
 
-Trim and Stitch line are disabled when only text is selected, including their keyboard shortcuts. With a mixed selection, these tools remain available for compatible outlines. Locked selections keep these tools disabled.
+Trim requires every target to be a compatible outline; text, indicators and measurements cannot be targets. Stitch line is disabled when only text is selected and remains available for compatible outlines in a mixed selection. Locked selections keep these tools disabled.
 
 In inch mode, guide and corner distance steps are 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. See [Measurements and snapping](#measurements) for fractional entry. Rotation steps remain in degrees.
 
 
 ## Copy along path
 
-Select one object and choose **Copy along path**. Use **Source** and **Path** to pick objects on the canvas or in Model objects. The path may be an open path or a single closed outline. Its stored start and direction determine placement; position the source relative to that start before invoking the tool.
+Select one object and choose **Copy along path**. Use **Select Source** and **Select Path** to pick objects on the canvas or in Model objects. The path may be an open path or a single closed outline. Its stored start and direction determine placement; position the source relative to that start before invoking the tool.
 
 Choose **Spacing** for fixed distances or **Count** for a number of new copies. Count excludes the original and accepts whole numbers from 1 to 1,000; spacing must be at least 0.01 mm. Arrow keys and Alt+scroll respect these limits. Open paths include the endpoint in Count mode; closed outlines distribute copies around the loop without duplicating the seam. **Rotate with path** rotates each copy around its own center as the path bends. Copy centers stay in the same positions with this option on or off; the source’s offset from the path start is preserved. Disable it to preserve the original orientation.
 

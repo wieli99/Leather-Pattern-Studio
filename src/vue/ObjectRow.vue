@@ -36,7 +36,7 @@ const renaming = ref(false),
 let settled = false;
 async function rename() {
   if (
-    editor.transformTool ||
+    editor.transformTool || editor.offsetActive || editor.trimMode ||
     editor.booleanOperation ||
     editor.pathCopy ||
     editor.stitchMode ||
@@ -59,9 +59,10 @@ function finish(cancel = false) {
     void editor.edit(props.shape.id, { name });
 }
 function select(event: MouseEvent) {
+  if (editor.objectPicker) { editor.pickToolObject(props.shape.id, event.shiftKey); return; }
   if (editor.pathCopy) { editor.pickPathCopy(props.shape.id); return; }
   if (editor.booleanOperation) { editor.pickBoolean(props.shape.id); return; }
-  if (editor.transformTool || editor.stitchMode) return;
+  if (editor.transformTool || editor.offsetActive || editor.trimMode || editor.stitchMode) return;
   editor.selectedGroups = [];
   editor.panelRevision++;
   (event.currentTarget as HTMLButtonElement).focus();
@@ -106,6 +107,7 @@ function openMenu() {
       <ContextMenuTrigger as-child @contextmenu="openMenu">
         <button
           class="object-select"
+          :aria-pressed="booleanRole ? booleanRole === 'target' || booleanOperand : selected"
           :class="{ selected: booleanRole ? booleanRole === 'target' : selected, 'boolean-operand': booleanOperand }"
           @click="select"
           :title="booleanRole ? 'Use the active picker to choose this object' : 'Rename (F2 or double-click)'"

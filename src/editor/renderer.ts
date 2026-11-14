@@ -327,7 +327,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.stroke();
       ctx.restore();
     }
-    if (editor.transformTool === "mirror") {
+    if (editor.transformTool === "mirror" && editor.active.length && !editor.objectPicker) {
       const line = editor.mirrorLine;
       const p = line ? line[0] : editor.transformPivot;
       const angle = line ? Math.atan2(line[1].y-p.y, line[1].x-p.x)
@@ -440,7 +440,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       const hovered = editor.pointerInside
         ? editor.handleAt(editor.cursor)
         : undefined;
-      if (editor.transformTool === "rotate") {
+      if (editor.transformTool === "rotate" && !editor.objectPicker) {
         drawRotationGizmo(ctx, pivot, z, editor.transformValues.angle, hovered?.kind === "rotate", color("accent"), color("text"));
       }
       for (const handle of editor.handles()) {

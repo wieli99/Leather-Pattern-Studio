@@ -63,7 +63,7 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | K / J | Trim / Join |
 | Tab / Shift+Tab | Enter or cycle transform fields |
 | X / Y | Constrain Move or Resize axis |
-| V during transform | Place pivot |
+| V during transform | Place or reposition a Custom pivot |
 | Enter / right-click | Apply active transform or tool session |
 | Esc | Cancel active preview |
 | Shift+click / Shift+drag | Toggle selection / add enclosed objects |
@@ -139,6 +139,8 @@ Shift-add the next side of a rounded outline to include the intervening unstitch
 
 Numeric fields accept arithmetic (`+`, `-`, `*`, `/`, parentheses) in the current unit. Alt+wheel evaluates a valid formula before adjusting its result. See [numeric formulas](#measurements) for entry and validation behavior.
 
-For Join and the boolean tools, use Tab / Shift+Tab to navigate controls and Enter / Space to activate a focused button. Enter on the canvas or right-click applies a valid preview; Escape cancels. Apply is unavailable while choosing a target. See [boolean tools](#transforms/subtract-intersect-and-exclude).
+For Join and the boolean tools, use Tab / Shift+Tab to navigate controls and Enter / Space to activate a focused button. Enter on the canvas or right-click applies a valid preview; Escape cancels. Apply stays available whenever the current Boolean operands form a valid preview. See [boolean tools](#transforms/subtract-intersect-and-exclude).
 
 In Copy along path, Enter on the canvas or right-click applies the preview; Escape cancels. Picker buttons retain native Enter/Space activation.
+
+Selection-dependent editing tools require an initial selection. Click Select Objects to reselect, then click **Confirm Selection**; gizmos and Apply wait while selection is active. Canvas clicks replace selection and Shift-click toggles objects. Object panels keep Shift-click ranges. Trim only changes confirmed targets.
