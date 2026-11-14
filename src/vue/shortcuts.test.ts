@@ -7,10 +7,18 @@ const editor = vi.hoisted(() => ({
   drawingDown: false,
   busy: false,
   selectionToolsAvailable: true,
+  objectPicker: false,
+  offsetActive: false,
+  trimMode: false,
+  isHidden: vi.fn(()=>false),
+  isLocked: vi.fn(()=>false),
+  setToolSelection: vi.fn(),
   tool: "select",
   selected: ["a"],
   transformTool: null as string | null,
   placingPivot: false,
+  beginPivotPlacement: vi.fn(),
+  cancelPivotPlacement: vi.fn(),
   transformAxis: undefined as string | undefined,
   notify: vi.fn(),
   mode: "select",
@@ -49,6 +57,9 @@ beforeEach(() => {
   editor.tool = "select";
   editor.selected = ["a"];
   editor.selectionToolsAvailable = true;
+  editor.objectPicker = false;
+  editor.offsetActive = false;
+  editor.trimMode = false;
   editor.transformTool = null;
   editor.placingPivot = false;
   editor.transformAxis = undefined;
@@ -155,7 +166,9 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
   editor.selected = [];
   for (const key of ["i", "k", "j"]) press(key);
   expect(editor.activateStitch).toHaveBeenCalledOnce();
-  editor.activateStitch.mockClear();
+  expect(editor.activateTrim).toHaveBeenCalledOnce();
+  expect(editor.activateMerge).toHaveBeenCalledOnce();
+  vi.clearAllMocks();
   editor.pending = [{}];
   editor.selected = ["a"];
   editor.selectionToolsAvailable = false;
@@ -195,13 +208,13 @@ test("pivot and axis shortcuts remain active while a transform gesture blocks to
   editor.transformTool = "move";
   editor.selectionToolsAvailable = false;
   press("v");
-  expect(editor.placingPivot).toBe(true);
+  expect(editor.beginPivotPlacement).toHaveBeenCalledOnce();
   expect(editor.setTool).not.toHaveBeenCalled();
   press("x");
   expect(editor.transformAxis).toBe("x");
   press("y");
   expect(editor.transformAxis).toBe("y");
-  expect(editor.notify).toHaveBeenCalledTimes(3);
+  expect(editor.notify).toHaveBeenCalledTimes(2);
   editor.transformTool = null;
   editor.selectionToolsAvailable = true;
 });
@@ -231,4 +244,14 @@ test("Enter on the canvas applies a boolean preview", () => {
   editor.booleanOperation = "union";
   press("Enter");
   expect(editor.applyTrim).toHaveBeenCalledOnce();
+});
+
+test("Select all respects the Objects selection phase",()=>{
+  editor.transformTool="move";
+  press("a",{ctrlKey:true});
+  expect(editor.setToolSelection).not.toHaveBeenCalled();
+  editor.objectPicker=true;
+  press("a",{ctrlKey:true});
+  expect(editor.setToolSelection).toHaveBeenCalledWith(["a"]);
+  expect(editor.cancel).not.toHaveBeenCalled();
 });

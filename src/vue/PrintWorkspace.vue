@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import ToolObjectPicker from "./ToolObjectPicker.vue";
+import { objectSelection } from "../model/objectSelection";
+import PivotSelector from "./PivotSelector.vue";
+import { automaticPivot, type PivotMode } from "../model/pivot";
 import ToolRail from "./ToolRail.vue";
 import RailButton from "./RailButton.vue";
 const appVersion = __APP_VERSION__;
@@ -309,17 +313,38 @@ const axisLock = ref<"x" | "y">();
 const axes = ref<"world" | "local">("local"),
   placingPivot = ref(false),
   customPivot = ref<Point>();
+const pivotMode = ref<PivotMode>("bounding-box");
+let pivotPlacement: { mode: PivotMode; point: Point | undefined } | undefined;
+function beginPivotPlacement() {
+  if (choosingObjects.value) return;
+  if (!placingPivot.value) pivotPlacement = {mode:pivotMode.value,point:customPivot.value ? {...customPivot.value} : undefined};
+  customPivot.value = {...selectionPivot()};
+  pivotMode.value = "custom";
+  placingPivot.value = true;
+  draw();
+}
+function cancelPivotPlacement() {
+  if (!placingPivot.value) return false;
+  if (pivotPlacement) { pivotMode.value=pivotPlacement.mode; customPivot.value=pivotPlacement.point; }
+  placingPivot.value=false; pivotPlacement=undefined; draw(); return true;
+}
+function setPivotMode(mode: PivotMode) {
+  if (mode === "custom") { beginPivotPlacement(); return; }
+  pivotMode.value=mode; placingPivot.value=false; pivotPlacement=undefined;
+  if (tool.value !== "mirror") rebaseNumeric();
+  draw();
+}
 function selectionPivot() {
   if (drag?.rotate) return drag.pivot;
-  if (customPivot.value) return customPivot.value;
+  if (pivotMode.value === "custom" && customPivot.value) return customPivot.value;
   const l = preview.value ?? layout.value;
   if (!l) return { x: 0, y: 0 };
   const ids = new Set(printDescendants(l, selected.value));
   const shapes = resolvedPrintItems(editor.document, l)
     .filter((i) => ids.has(i.instance.id))
-    .map((i) => i.shape);
-  const b = bounds(shapes, l.units);
-  return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    .filter(i => !i.shape.stitchParentId || !l.instances.some(instance => ids.has(instance.id) && instance.sourceId === i.shape.stitchParentId))
+    .map(i => ({...i.shape,id:i.instance.id,stitchParentId:undefined}));
+  return automaticPivot(shapes, pivotMode.value === "median" ? "median" : "bounding-box", l.units) ?? {x:0,y:0};
 }
 function worldPixel(p: Point) {
   const l = layout.value!;
@@ -348,6 +373,7 @@ function gizmoAngle() {
     : 0;
 }
 function gizmoAt(p: Point) {
+  if (choosingObjects.value) return;
   if (!selected.value.length || !movableSelection().length) return;
   const pivot = worldPixel(selectionPivot()),
     dx = p.x - pivot.x,
@@ -368,11 +394,56 @@ function gizmoAt(p: Point) {
       return "y";
   }
 }
+const choosingObjects = ref(false);
+let initialToolSelection: string[] | undefined;
+const toolObjectCount=computed(()=>layout.value ? printDescendants(layout.value,selected.value).length : 0);
+const printSelectionError = computed(() => {
+  if (!layout.value) return "Choose at least one object.";
+  const ids = new Set(printDescendants(layout.value,selected.value));
+  const items = resolvedPrintItems(editor.document,layout.value).filter(i=>ids.has(i.instance.id));
+  return !items.length ? "Choose at least one object." : items.some(i=>i.hidden || i.locked) ? "Choose visible, unlocked objects." : "";
+});
+function updateToolSelection(ids: string[]) {
+  const original = layout.value;
+  if (!original) return;
+  const previous = preview.value;
+  const old = new Set(printDescendants(original,selected.value));
+  selected.value = ids;
+  const next = new Set(printDescendants(original,ids));
+  if (previous) {
+    const added=[...next].filter(id=>!old.has(id));
+    const x=parseLength(moveX.value,original.units) ?? 0, y=parseLength(moveY.value,original.units) ?? 0;
+    let candidate=transformPrintNodes(original,added,x*Math.cos(numericOrientation)-y*Math.sin(numericOrientation),x*Math.sin(numericOrientation)+y*Math.cos(numericOrientation),Number(turn.value)||0,numericPivot);
+    if (tool.value === "mirror" && activeMirror) {
+      const angle=gizmoAngle()+(activeMirror.offset ?? 0);
+      const pivot=selectionPivot();
+      const line=activeMirror.offset === undefined ? activeMirror.line : [pivot,{x:pivot.x+Math.cos(angle),y:pivot.y+Math.sin(angle)}];
+      candidate=mirrorPrintNodes(original,added,line[0],Math.atan2(line[1].y-line[0].y,line[1].x-line[0].x)*180/Math.PI);
+    }
+    preview.value={...previous,instances:original.instances.map(instance => !next.has(instance.id) ? instance : old.has(instance.id) ? previous.instances.find(p=>p.id===instance.id) ?? instance : candidate.instances.find(p=>p.id===instance.id) ?? instance)};
+  }
+  if (tool.value !== "mirror") {
+    numericBase=preview.value ?? layout.value;
+    numericPivot=selectionPivot();
+    numericOrientation=gizmoAngle();
+    numericBaseValues={x:parseLength(moveX.value,original.units) ?? 0,y:parseLength(moveY.value,original.units) ?? 0,angle:Number(turn.value)||0};
+  }
+  draw();
+}
+function toggleObjects() {
+  if (choosingObjects.value && printSelectionError.value) return;
+  cancelPivotPlacement();
+  choosingObjects.value = !choosingObjects.value;
+  placingPivot.value=false;
+  drag=undefined;
+  draw();
+}
 function chooseTool(value: "select" | "move" | "rotate" | "mirror") {
-  if (busy.value || editor.busy) return;
+  if (busy.value || editor.busy || value !== "select" && !!printSelectionError.value) return;
   cancel();
   drawing.setMode("select");
   tool.value = value;
+  if (value !== "select") initialToolSelection=[...selected.value];
   axisLock.value = undefined;
   moveX.value = moveY.value = turn.value = "0";
   customPivot.value = undefined;
@@ -390,7 +461,8 @@ const moveX = ref("0"),
 let numericBase: PrintLayout | undefined,
   numericPivot: Point = { x: 0, y: 0 },
   numericOrientation = 0,
-  updatingNumeric = false;
+  updatingNumeric = false,
+  numericBaseValues={x:0,y:0,angle:0};
 watch(
   [moveX, moveY, turn],
   () => {
@@ -406,9 +478,9 @@ watch(
     preview.value = transformPrintNodes(
       numericBase,
       movableSelection(),
-      x * Math.cos(numericOrientation) - y * Math.sin(numericOrientation),
-      x * Math.sin(numericOrientation) + y * Math.cos(numericOrientation),
-      angle,
+      (x-numericBaseValues.x) * Math.cos(numericOrientation) - (y-numericBaseValues.y) * Math.sin(numericOrientation),
+      (x-numericBaseValues.x) * Math.sin(numericOrientation) + (y-numericBaseValues.y) * Math.cos(numericOrientation),
+      angle-numericBaseValues.angle,
       numericPivot,
     );
     draw();
@@ -416,6 +488,7 @@ watch(
   { flush: "sync" },
 );
 function rebaseNumeric() {
+  numericBaseValues={x:0,y:0,angle:0};
   if (tool.value === "mirror") {
     numericOrientation = gizmoAngle();
     refreshPrintMirror();
@@ -509,6 +582,7 @@ function clearControl() {
 }
 let marqueePixel: Point | undefined;
 function cancel() {
+  if (initialToolSelection) { selected.value=initialToolSelection; initialToolSelection=undefined; }
   void drawing.finishProperty(true);
   drawing.cancel();
   drawing.setMode("select");
@@ -520,11 +594,15 @@ function cancel() {
   snapOverlay.value = { guides: [] };
   error.value = "";
   numericBase = undefined;
+  numericBaseValues={x:0,y:0,angle:0};
   updatingNumeric = true;
   moveX.value = moveY.value = turn.value = "0";
   updatingNumeric = false;
   tool.value = "select";
+  choosingObjects.value=false;
   customPivot.value = undefined;
+  pivotMode.value = "bounding-box";
+  pivotPlacement = undefined;
   mirrorHover.value = undefined;
   activeMirror = undefined;
   hoverHandle.value = undefined;
@@ -861,7 +939,10 @@ function toggleCollapse(id: string) {
   collapsed.value = next;
 }
 function select(id: string, event?: MouseEvent, canvasClick = false) {
-  if (tool.value !== "select") return;
+  if (tool.value !== "select") {
+    if (choosingObjects.value) updateToolSelection(canvasClick ? objectSelection(selected.value,id,!!event?.shiftKey) : panelSelection.select(visibleRows.value.map(r=>r.node.id),selected.value,id,event));
+    return;
+  }
   drawing.cancel();
   customPivot.value = undefined;
   selected.value = canvasClick
@@ -1232,6 +1313,7 @@ function newGroup() {
   }
 }
 function applyTransform() {
+  if (choosingObjects.value || printSelectionError.value) return;
   flushMove();
   const next = preview.value;
   if (!next) {
@@ -1239,6 +1321,7 @@ function applyTransform() {
     return;
   }
   if (error.value) return;
+  initialToolSelection=undefined;
   void save(next).then(() => {
     if (error.value) return;
     preview.value = undefined;
@@ -1879,7 +1962,7 @@ async function paintFrame() {
       }
       ctx.restore();
     }
-    if (activeMirror && tool.value === "mirror") {
+    if (activeMirror && tool.value === "mirror" && !choosingObjects.value) {
       const [a, b] =
         activeMirror.offset === undefined
           ? activeMirror.line.map(worldPixel)
@@ -1898,6 +1981,7 @@ async function paintFrame() {
       mirrorHover.value &&
       tool.value === "mirror" &&
       !placingPivot.value &&
+      !choosingObjects.value &&
       !editor.space
     ) {
       const projected =
@@ -1933,6 +2017,7 @@ async function paintFrame() {
     if (
       selected.value.length &&
       movableSelection().length &&
+      !choosingObjects.value &&
       tool.value !== "mirror"
     ) {
       const p = worldPixel(selectionPivot());
@@ -2213,6 +2298,12 @@ function down(event: PointerEvent) {
   const p = pixel(event),
     world = worldFromPixel(p),
     l = preview.value ?? layout.value!;
+  if (choosingObjects.value && event.button === 0 && !editor.space) {
+    const hit = [...resolvedPrintItems(editor.document,layout.value!)].reverse().find(item => !item.hidden && !item.locked && (hitTest(item.shape,world,5/zoom.value,layout.value!.units) || contains(item.shape.kind === "text" ? {...item.shape,kind:"rectangle",radius:0} : item.shape,world)));
+    updateToolSelection(objectSelection(selected.value,hit?.instance.id,event.shiftKey));
+    if (!hit) drag={pixel:p,world,original:layout.value!,ids:[],pan:{...pan.value},rotate:false,marquee:true,pivot:selectionPivot(),numericStart:{x:0,y:0,angle:0}};
+    return;
+  }
   if (drawing.mode !== "select" && event.button === 0 && !editor.space) {
     if (!isPrintablePixel(p, l)) return;
     syncDrawingView();
@@ -2257,8 +2348,10 @@ function down(event: PointerEvent) {
             : world);
     }
     customPivot.value = pivot;
+    pivotMode.value = "custom";
+    pivotPlacement = undefined;
     mirrorHover.value = undefined;
-    rebaseNumeric();
+    if (tool.value !== "mirror") rebaseNumeric();
     placingPivot.value = false;
     draw();
     return;
@@ -2356,13 +2449,11 @@ function down(event: PointerEvent) {
   }
   if (
     tool.value !== "select" &&
-    hit &&
-    !printDescendants(l, selected.value).includes(hit.instance.id)
+    (!hit || !printDescendants(l, selected.value).includes(hit.instance.id))
   )
     return;
   if (event.button === 0 && !editor.space && hit) {
-    if (!printDescendants(l, selected.value).includes(hit.instance.id))
-      select(hit.instance.id, event, true);
+    if (tool.value === "select") select(hit.instance.id, event, true);
   } else if (event.button === 0 && !editor.space && !event.shiftKey)
     selected.value = [];
   const ids =
@@ -2631,7 +2722,8 @@ async function up(event?: PointerEvent) {
         );
       })
       .map((i) => i.instance.id);
-    selected.value = [...new Set([...selected.value, ...ids])];
+    if (choosingObjects.value) updateToolSelection([...new Set([...selected.value,...ids])]);
+    else selected.value = [...new Set([...selected.value, ...ids])];
   }
 
   const next = preview.value,
@@ -2798,12 +2890,17 @@ function keyboard(event: KeyboardEvent) {
     return;
   }
   if (key === "escape") {
+    if (cancelPivotPlacement()) return;
     cancel();
     tool.value = "select";
     return;
   }
   if (mod && key === "a") {
     event.preventDefault();
+    if (tool.value !== "select") {
+      if (choosingObjects.value) updateToolSelection(rows.value.filter(r=>!r.hidden && !r.locked).map(r=>r.node.id));
+      return;
+    }
     selected.value = rows.value
       .filter((r) => !r.hidden && !r.locked)
       .map((r) => r.node.id);
@@ -2844,7 +2941,7 @@ function keyboard(event: KeyboardEvent) {
   if (!mod && !event.shiftKey && key === "e") chooseTool("rotate");
   if (!mod && !event.shiftKey && key === "m") chooseTool("mirror");
   if (!mod && !event.shiftKey && key === "v") {
-    if (tool.value !== "select") placingPivot.value = true;
+    if (tool.value !== "select") beginPivotPlacement();
     else chooseTool("select");
   }
   if (["arrowleft", "arrowright", "arrowup", "arrowdown"].includes(key)) {
@@ -3114,6 +3211,7 @@ defineExpose({
                 ? 'Rotate (E)'
                 : 'Mirror (M)'
         "
+        :disabled="value !== 'select' && !!printSelectionError"
         @click="chooseTool(value)"
       >
         <span class="tool-icon">
@@ -3251,14 +3349,15 @@ defineExpose({
         </button>
       </template>
       <div
-        v-if="selected.length && tool !== 'select'"
+        v-if="tool !== 'select'"
         class="print-transform transform-options"
         @keydown.enter.prevent="applyTransform"
-        @keydown.esc.stop.prevent="cancel"
+        @keydown.esc.stop.prevent="cancelPivotPlacement() || cancel()"
       >
         <strong>{{
           tool === "move" ? "Move" : tool === "rotate" ? "Rotate" : "Mirror"
         }}</strong>
+        <ToolObjectPicker :count="toolObjectCount" :choosing="choosingObjects" :error="choosingObjects ? printSelectionError : undefined" @toggle="toggleObjects" /><hr>
         <p v-if="error" role="alert">{{ error }}</p>
         <small>{{
           tool === "move"
@@ -3296,22 +3395,10 @@ defineExpose({
             <option value="world">World</option>
           </select></label
         >
-        <div class="actions">
-          <button :aria-pressed="placingPivot" @click="placingPivot = true">
-            Set pivot (V)</button
-          ><button
-            @click="
-              customPivot = undefined;
-              rebaseNumeric();
-              draw();
-            "
-          >
-            Reset pivot
-          </button>
-        </div>
+        <PivotSelector :disabled="choosingObjects" :mode="pivotMode" :placing="placingPivot" @change="setPivotMode" @cancel="cancelPivotPlacement" />
         <div class="actions tool-popup-footer">
           <button
-            :disabled="busy || !!error || !preview"
+            :disabled="choosingObjects || !selected.length || busy || !!error || !preview"
             @click="applyTransform"
           >
             Apply</button

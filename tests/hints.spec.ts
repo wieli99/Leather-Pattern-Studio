@@ -52,6 +52,6 @@ test("select guidance includes anchor insertion and modifiers", async ({
   const hint = page.locator("aside .inspector-hint");
   await expect(hint).toContainText("Alt+click edge");
   await expect(hint).toContainText("Add anchor");
-  await expect(hint).toContainText("Toggle selection");
+  await expect(hint).toContainText("Add or remove objects from selection");
   await expect(hint).toContainText("Select crossing outlines");
 });

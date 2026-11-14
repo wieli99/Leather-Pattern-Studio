@@ -311,7 +311,7 @@ function capture(event: MouseEvent) {
   const target = event.target as HTMLElement;
   const button = target.closest<HTMLElement>(".object-select,.group-select");
   const id = button?.closest<HTMLElement>("[data-tree-id]")?.dataset.treeId;
-  if (!id || !editor.canToggleObjectState) return;
+  if (!id || !(editor.canToggleObjectState || editor.objectPicker)) return;
   event.stopPropagation();
   button?.focus();
   const current = rows.value
@@ -336,6 +336,10 @@ function capture(event: MouseEvent) {
     id,
     event,
   );
+  if (editor.objectPicker) {
+    editor.setToolSelection([...new Set(picked.flatMap(id => { const node = findObjectNode(editor.tree,id); return node?.kind === "group" ? flattenObjectTree(node.children) : [id]; }))], picked.filter(id => rows.value.some(r => r.node.id === id && r.node.kind === "group")));
+    return;
+  }
   editor.cancel();
   editor.selectedGroups = picked.filter((id) =>
     rows.value.some((r) => r.node.id === id && r.node.kind === "group"),

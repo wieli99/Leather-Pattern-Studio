@@ -1,3 +1,5 @@
+import { objectSelection } from "../model/objectSelection";
+import { automaticPivot, type PivotMode } from "../model/pivot";
 import { pathPlacements } from "../model/pathPlacements";
 import { transformShape } from "../model/geometry";
 import { stitchRunClosed } from "../model/stitchGeometry";
@@ -246,8 +248,7 @@ export class Controller {
     return normal;
   }
   get canOffset() {
-    return this.ready && !this.busy && !this.printLayoutActive && this.selectionToolsAvailable &&
-      !this.selectionLocked && this.active.length > 0 && this.active.every(s =>
+    return this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
         ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc", "compound"].includes(s.kind) &&
         !s.stitchOnly && !this.isHidden(s.id));
   }
@@ -256,6 +257,7 @@ export class Controller {
     this.cancel();
     this.tool = "select";
     this.mode = "select";
+    this.beginToolSelection();
     this.offsetActive = true;
     this.refreshOffset();
   }
@@ -272,6 +274,7 @@ export class Controller {
     this.offsetDraft = null;
     this.offsetIds = [];
     this.preview = null;
+    if (!this.selected.length) { this.notify(); return; }
     try {
       if (!Number.isFinite(this.offsetDistance) || Math.abs(this.offsetDistance) < 1e-8)
         throw Error("Enter a non-zero finite offset distance.");
@@ -298,8 +301,9 @@ export class Controller {
     this.notify();
   }
   async applyOffset() {
-    if (!this.offsetActive || !this.offsetDraft || this.offsetError || this.busy) return;
+    if (this.objectPicker || this.toolSelectionError || !this.offsetActive || !this.offsetDraft || this.offsetError || this.busy) return;
     const next = this.offsetDraft, ids = this.offsetIds;
+    this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
       this.selectedGroups = [];
@@ -333,12 +337,13 @@ export class Controller {
       this.preview = null;
       this.selected = gesture.selection;
     }
-    if (gesture?.kind === "move" && this.transformTool) {
+    if (gesture?.kind === "move" && this.transformTool && this.pivotMode === "custom") {
       this.transformPivot = {
         x: this.transformPivot.x + (gesture.displacement?.x ?? 0),
         y: this.transformPivot.y + (gesture.displacement?.y ?? 0),
       };
     }
+    if (gesture && ["move", "rotate", "scale"].includes(gesture.kind)) this.captureNumericBasis();
     this.gesture = null;
     this.drawingDown = null;
     this.guideDrag = null;
@@ -356,6 +361,7 @@ export class Controller {
   }
 
   get transformValid() {
+    if (this.objectPicker || this.toolSelectionError) return false;
     if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
     if (!this.preview) return !this.transformError;
     try {
@@ -365,32 +371,73 @@ export class Controller {
       return false;
     }
   }
+  private captureNumericBasis() {
+    if (!this.transformTool || ["mirror", "corner"].includes(this.transformTool) || this.transformError) return;
+    // Numeric inputs are absolute within this basis; the displayed automatic
+    // pivot can follow preview bounds without changing the calculation pivot.
+    const document = this.transformDraft ?? this.preview ?? this.transformOriginal;
+    if (document) this.numericTransformBasis = {
+      document,
+      values: {...this.transformValues},
+      pivot: {...this.transformPivot},
+      angle: this.transformAngle,
+    };
+  }
   rebaseTransform() {
+    this.numericTransformBasis = null;
     if (this.transformTool && this.preview && !this.transformError)
       this.transformOriginal = this.preview;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
+    this.captureNumericBasis();
   }
   setPivot(point: Point) {
     if (this.transformTool !== "mirror") this.rebaseTransform();
+    this.pivotMode = "custom";
+    this.pivotPlacement = null;
     this.transformPivot = point;
     this.placingPivot = false;
-    if (this.transformTool === "mirror") this.refreshMirror();
+    this.captureNumericBasis();
     this.notify();
   }
   setOrientation(value: "world" | "local") {
     if (this.transformTool !== "mirror") this.rebaseTransform();
     this.transformOrientation = value;
+    this.captureNumericBasis();
     if (this.transformTool === "mirror") this.refreshMirror();
     this.preferences();
     this.notify();
   }
-  resetPivot() {
-    if (this.transformTool !== "mirror") this.rebaseTransform();
-    const b = this.selectionBounds;
-    this.transformPivot = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
-    if (this.transformTool === "mirror") this.refreshMirror();
+  private pivotPlacement: { mode: PivotMode; point: Point } | null = null;
+  beginPivotPlacement() {
+    if (this.objectPicker) return;
+    if (!this.placingPivot) this.pivotPlacement = { mode: this.pivotMode, point: {...this.transformPivot} };
+    this.pivotMode = "custom";
+    this.placingPivot = true;
     this.notify();
   }
+  cancelPivotPlacement() {
+    if (!this.placingPivot) return false;
+    if (this.pivotPlacement) {
+      this.pivotMode = this.pivotPlacement.mode;
+      this.transformPivot = this.pivotPlacement.point;
+    }
+    this.placingPivot = false;
+    this.pivotPlacement = null;
+    this.centerAutomaticPivot();
+    this.notify();
+    return true;
+  }
+  setPivotMode(mode: PivotMode) {
+    if (mode === "custom") { this.beginPivotPlacement(); return; }
+    this.placingPivot = false;
+    this.pivotPlacement = null;
+    if (this.transformTool !== "mirror") this.rebaseTransform();
+    this.pivotMode = mode;
+    this.centerAutomaticPivot();
+    this.captureNumericBasis();
+    this.notify();
+  }
+  resetPivot() { this.setPivotMode("bounding-box"); }
   setCornerValue(value: number, all = false) {
     const target = this.selectedCorner;
     if (!target) return;
@@ -442,6 +489,20 @@ export class Controller {
         y: this.transformPivot.y + dx * Math.sin(t) + dy * Math.cos(t),
       };
     }
+    const basis = this.numericTransformBasis;
+    if (basis && this.transformTool !== "corner") {
+      const old = basis.values;
+      this.updateTransformPreview({
+        ...basis.document,
+        shapes: basis.document.shapes.map(shape => !this.selected.includes(shape.id) ? shape
+          : this.transformTool === "move" ? moveShape(shape,
+            (v.x-old.x)*Math.cos(basis.angle*Math.PI/180)-(v.y-old.y)*Math.sin(basis.angle*Math.PI/180),
+            (v.x-old.x)*Math.sin(basis.angle*Math.PI/180)+(v.y-old.y)*Math.cos(basis.angle*Math.PI/180))
+          : this.transformTool === "rotate" ? rotateShape(shape,v.angle-old.angle,basis.pivot)
+          : stretchShape(shape,v.sx/old.sx,v.sy/old.sy,basis.pivot,basis.angle)),
+      });
+      return;
+    }
     const next = {
       ...this.transformOriginal,
       shapes: this.transformOriginal.shapes.map((s) =>
@@ -470,6 +531,7 @@ export class Controller {
       parseProject(JSON.stringify(this.normalizeTree(next)));
       this.transformError = "";
       this.preview = next;
+      this.centerAutomaticPivot();
       void this.validatePreview(next);
     } catch (e) {
       this.transformError = String(e);
@@ -579,6 +641,9 @@ export class Controller {
   uiSnapshot = () =>
     [
       JSON.stringify(this.pathCopy),
+      this.pivotMode,
+      this.placingPivot,
+      this.objectPicker,
       this.booleanOperation,
       this.booleanPicker,
       this.booleanCutters.join(","),
@@ -1185,6 +1250,81 @@ export class Controller {
     } catch (error) {
       this.stitchError = String(error);
     }
+    this.notify();
+  }
+  private trimOwners = new Map<string, string>();
+  private numericTransformBasis: { document: Doc; values: { x: number; y: number; angle: number; sx: number; sy: number }; pivot: Point; angle: number } | null = null;
+  pivotMode: PivotMode = "bounding-box";
+  objectPicker = false;
+  toggleObjectPicker() {
+    if (this.busy || this.objectPicker && this.toolSelectionError) return;
+    this.cancelPivotPlacement();
+    this.objectPicker = !this.objectPicker;
+    this.placingPivot = false;
+    this.gesture = null;
+    this.notify();
+  }
+  private centerAutomaticPivot() {
+    if (this.pivotMode === "custom" || !this.active.length) return;
+    const point = automaticPivot(this.active, this.pivotMode, this.units);
+    if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) this.transformPivot = point;
+  }
+  private toolSelection: { ids: string[]; groups: string[] } | null = null;
+  private beginToolSelection() {
+    this.toolSelection = { ids: [...this.selected], groups: [...this.selectedGroups] };
+  }
+  get toolSelectionError() {
+    if (!this.selected.length) return "Choose at least one object.";
+    if (this.selected.some(id => this.isHidden(id) || this.isLocked(id))) return "Choose visible, unlocked objects.";
+    if (this.transformTool === "corner" && this.active.some(s => !cornerPoints(s).length)) return "Choose objects with editable corners.";
+    if (this.trimMode && !this.booleanOperation && this.active.some(s => isIndicator(s.kind) || s.kind === "text" || s.kind === "measurement")) return "Choose trimmable outlines.";
+    return "";
+  }
+  pickToolObject(id: string, shift = false) {
+    this.setToolSelection(objectSelection(this.selected,id,shift));
+  }
+  setToolSelection(ids: string[], groups: string[] = []) {
+    if (!this.objectPicker || this.busy) return;
+    const previous = this.transformDraft ?? this.trimDraft ?? this.preview;
+    this.numericTransformBasis = null;
+    const oldIds = new Set(this.selected);
+    this.selectedGroups = groups;
+    this.selected = [...new Set(ids)];
+    this.transformGeneration++;
+    this.queuedPreview = null;
+    this.previewId++;
+    this.preview = null;
+    this.transformDraft = null;
+    this.trimDraft = null;
+    this.trimHighlight = null;
+    this.transformError = "";
+    this.selectedCorner = null;
+    if (this.offsetActive) this.refreshOffset();
+    else if (this.transformTool && this.transformTool !== "corner") {
+      if (!oldIds.size) this.centerAutomaticPivot();
+      const values = { ...this.transformValues };
+      const pivot = { ...this.transformPivot };
+      this.transformOriginal = this.document;
+      this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
+      this.setTransformValues(values);
+      this.transformPivot = pivot;
+      const refreshed = this.preview as Doc | null;
+      if (previous && refreshed) this.updateTransformPreview({
+        ...refreshed,
+        shapes: refreshed.shapes.map(shape => oldIds.has(shape.id) && this.selected.includes(shape.id)
+          ? previous.shapes.find(old => old.id === shape.id) ?? shape : shape),
+      });
+    } else if (previous) {
+      const ids = new Set(this.selected);
+      const next = reconcileStitches({...this.document, shapes: this.document.shapes.flatMap(shape =>
+        ids.has(shape.id) && oldIds.has(shape.id) ? previous.shapes.filter(part => part.id === shape.id || this.trimOwners.get(part.id) === shape.id) : [shape])}, this.document);
+      if (this.trimMode) this.trimDraft = next;
+      else this.transformDraft = next;
+      this.preview = next;
+    }
+    this.centerAutomaticPivot();
+    if (this.preview && this.transformTool && !["mirror","corner"].includes(this.transformTool))
+      this.numericTransformBasis = { document: this.preview, values: {...this.transformValues}, pivot: {...this.transformPivot}, angle: this.transformAngle };
     this.notify();
   }
   get selectionToolsAvailable() {
@@ -2251,14 +2391,18 @@ export class Controller {
         ? stretchShape(s, 1, -1, pivot, angle) : s),
     });
   }
+  canStartTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+    return this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length &&
+      !this.selectionLocked && this.selected.every(id=>!this.isHidden(id)) &&
+      (tool !== "corner" || this.active.every(shape=>cornerPoints(shape).length > 0));
+  }
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
-    if (this.selectionLocked) return;
-    if (!this.ready || this.busy || !this.selected.length) return;
-    if (tool === "corner" && !this.canEditCorners) return;
+    if (!this.canStartTransform(tool)) return;
     if (this.propertySession) await this.finishProperty();
     this.cancel();
     this.tool = "select";
     this.mode = "select";
+    this.beginToolSelection();
     this.transformTool = tool;
     this.transformOriginal = this.document;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
@@ -2270,6 +2414,7 @@ export class Controller {
   async applyTransform() {
     if (!this.transformValid || !this.transformTool || this.busy) return;
     const next = this.transformDraft ?? this.preview;
+    this.toolSelection = null;
     this.cancel();
     if (next && fingerprint(next) !== fingerprint(this.document))
       await this.commit(next);
@@ -2300,15 +2445,15 @@ export class Controller {
   }
   pathCopy: { source: string; path: string; picker: 'source' | 'path' | null; mode: 'spacing' | 'count'; spacing: number; count: number; rotate: boolean; error: string } | null = null;
   private pathCopySelection: string[] = [];
-  get canCopyAlongPath() { return this.ready && !this.printLayoutActive && !this.selectedGroups.length && this.active.length === 1 && !this.isHidden(this.active[0].id) && !this.selectionLocked && !this.busy; }
+  get canCopyAlongPath() { return this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && !this.busy; }
   activatePathCopy() {
     if (!this.canCopyAlongPath) return;
-    const source = this.active[0].id;
+    const source = this.active[0]?.id ?? "";
     this.cancel();
     this.pathCopySelection = [...this.selected];
     this.tool = "select";
     this.mode = "select";
-    this.pathCopy = { source, path: '', picker: 'path', mode: 'spacing', spacing: 10, count: 5, rotate: true, error: '' };
+    this.pathCopy = { source, path: '', picker: source ? 'path' : 'source', mode: 'spacing', spacing: 10, count: 5, rotate: true, error: '' };
     this.notify();
   }
   pickPathCopy(id: string) {
@@ -2324,7 +2469,7 @@ export class Controller {
     const state = this.pathCopy;
     if (!state) return;
     state.error = '';
-    if (!state.path || state.picker) { this.notify(); return; }
+    if (!state.source || !state.path) { this.notify(); return; }
     try {
       const source = this.document.shapes.find(s => s.id === state.source)!;
       const path = this.document.shapes.find(s => s.id === state.path)!;
@@ -2339,7 +2484,7 @@ export class Controller {
     this.notify();
   }
   async applyPathCopy() {
-    if (!this.pathCopy || this.pathCopy.picker || this.busy) return;
+    if (!this.pathCopy || this.busy) return;
     this.refreshPathCopy();
     if (!this.preview || this.pathCopy.error) return;
     const next = this.preview;
@@ -2387,14 +2532,12 @@ export class Controller {
   }
   get canBoolean() {
     return (
-      this.selected.length > 0 &&
-      this.selected.every((id) => this.booleanEligible(id))
+      this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
     );
   }
   get canJoin() {
     return (
-      this.selected.length > 0 &&
-      this.selected.every((id) => this.booleanEligible(id, true))
+      this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
     );
   }
   setBooleanPicker(picker: "target" | "cutters") {
@@ -2416,9 +2559,9 @@ export class Controller {
     this.cancel();
     this.booleanSelection = [...this.selected];
     this.booleanOperation = operation;
-    this.booleanTarget = ids[0];
+    this.booleanTarget = ids[0] ?? "";
     this.booleanCutters = ids.slice(1);
-    this.booleanPicker = ids.length === 1 ? "cutters" : null;
+    this.booleanPicker = !ids.length ? "target" : ids.length === 1 ? "cutters" : null;
     this.tool = "select";
     this.mode = "select";
     this.trimMode = true;
@@ -2437,7 +2580,7 @@ export class Controller {
       return;
     }
     if (this.booleanPicker === "target") {
-      if (id !== this.booleanTarget)
+      if (this.booleanTarget && id !== this.booleanTarget)
         this.booleanCutters.push(this.booleanTarget);
       this.booleanTarget = id;
       this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
@@ -2455,7 +2598,7 @@ export class Controller {
     this.booleanError = "";
     this.booleanEmpty = false;
     const ids = [this.booleanTarget, ...this.booleanCutters];
-    if (this.booleanPicker === "target" || !this.booleanCutters.length) {
+    if (!this.booleanTarget || !this.booleanCutters.length) {
       this.notify();
       return;
     }
@@ -2515,12 +2658,13 @@ export class Controller {
   trimDraft: Doc | null = null;
   async applyTrim() {
     if (this.selectionLocked) return;
-    if (!this.trimDraft || this.transformError || this.booleanError || (this.booleanOperation && this.booleanPicker === "target") || this.busy) return;
+    if (this.objectPicker || (!this.booleanOperation && this.toolSelectionError) || !this.trimDraft || this.transformError || this.booleanError || this.busy) return;
     const next = this.trimDraft;
     const mergedId = this.mergeMode
       ? next.shapes.find((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id))?.id
       : undefined;
     const boolean = !!this.booleanOperation;
+    this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
       if (boolean) this.selected = mergedId ? [mergedId] : [];
@@ -2530,9 +2674,9 @@ export class Controller {
   }
   get canTrim() {
     return (
-      !this.selectionLocked &&
-      (!this.selected.length ||
-        this.active.some((shape) => !isIndicator(shape.kind) && shape.kind !== "text" && shape.kind !== "measurement"))
+      this.ready && !this.busy && !this.printLayoutActive && !this.selectionLocked &&
+      (!!this.selected.length &&
+        this.active.every((shape) => !isIndicator(shape.kind) && shape.kind !== "text" && shape.kind !== "measurement"))
     );
   }
   activateTrim() {
@@ -2540,10 +2684,21 @@ export class Controller {
     this.cancel();
     this.tool = "select";
     this.mode = "select";
+    this.beginToolSelection();
     this.trimMode = true;
     this.notify();
   }
   cancel() {
+    if (this.toolSelection) {
+      this.selected = this.toolSelection.ids.filter(id => this.document.shapes.some(s => s.id === id));
+      this.selectedGroups = this.toolSelection.groups;
+      this.toolSelection = null;
+    }
+    this.objectPicker = false;
+    this.pivotMode = "bounding-box";
+    this.pivotPlacement = null;
+    this.numericTransformBasis = null;
+    this.trimOwners.clear();
     if (this.pathCopy) this.selected = this.pathCopySelection;
     this.pathCopy = null;
     this.offsetDrag = null;
@@ -2823,7 +2978,7 @@ export class Controller {
       this.preview ??
       this.pendingDocument ??
       this.document
-    ).shapes.filter((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id));
+    ).shapes.filter((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id) || this.trimMode && this.selected.includes(this.trimOwners.get(s.id) ?? ""));
   }
   get selectionBounds() {
     return bounds(this.active, this.units);
@@ -2836,7 +2991,7 @@ export class Controller {
     handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
-    if (!this.active.length || this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id)) || this.transformTool === "mirror") return [];
+    if (this.objectPicker || !this.active.length || this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id)) || this.transformTool === "mirror") return [];
     if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
     if (this.active.length === 1 && this.active[0].kind === "compound" && (!this.transformTool || this.transformTool === "move")) {
@@ -3046,6 +3201,13 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
+    if (this.objectPicker && button === 0 && !this.space) {
+      const raw = this.world(pixel);
+      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || ctrl && contains(s,raw)));
+      this.setToolSelection(objectSelection(this.selected,hit?.id,shift));
+      if (!hit) this.gesture = {kind:"marquee",start:raw,end:raw,original:this.document,selection:[...this.selected],pivot:raw,crossing:ctrl};
+      return;
+    }
     if (this.pathCopy && !this.space && button !== 1) {
       if (button === 2) { void this.applyPathCopy(); return; }
       const raw = this.world(pixel);
@@ -3077,13 +3239,16 @@ export class Controller {
     if (this.trimMode && !this.mergeMode && button === 0 && !this.space) {
       const baseline = this.trimDraft ?? this.document;
       const visible = baseline.shapes.filter(s => !this.isHidden(s.id));
-      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => !this.isLocked(s.id));
+      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
       const shapes = trimmed ? [...trimmed, ...baseline.shapes.filter(s => this.isHidden(s.id))] : null;
       this.trimHighlight = null;
       if (shapes) {
         try {
           const next = reconcileStitches({ ...baseline, shapes }, baseline);
           parseProject(JSON.stringify(this.normalizeTree(next)));
+          const changed = baseline.shapes.find(shape => !next.shapes.some(part => part.id === shape.id && JSON.stringify(part) === JSON.stringify(shape)));
+          if (changed) for (const part of next.shapes.filter(part => !baseline.shapes.some(old => old.id === part.id)))
+            this.trimOwners.set(part.id, this.trimOwners.get(changed.id) ?? changed.id);
           this.trimDraft = next;
           this.preview = next;
           this.transformError = "";
@@ -3255,7 +3420,7 @@ export class Controller {
         this.selected = this.selected.includes(hit.id)
           ? this.selected.filter((id) => id !== hit.id)
           : [...this.selected, hit.id];
-      } else if (!this.selected.includes(hit.id)) this.selected = [hit.id];
+      } else this.selected = [hit.id];
       if (this.transformTool === "move" && this.selected.includes(hit.id))
         this.gesture = {
           kind: "move",
@@ -3284,6 +3449,7 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    if (this.objectPicker && !this.space && !this.gesture) return;
     if (this.offsetDrag) {
       const drag = this.offsetDrag, raw = this.snap(this.world(pixel), alt, this.selected);
       this.setOffsetDistance(drag.distance + (raw.x - drag.start.x) * drag.normal.x + (raw.y - drag.start.y) * drag.normal.y);
@@ -3304,7 +3470,7 @@ export class Controller {
       this.anchorPointer = this.world(pixel);
       this.trimHighlight = null;
       trimAt((this.trimDraft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
-        span => { this.trimHighlight = span; }, s => !this.isLocked(s.id));
+        span => { this.trimHighlight = span; }, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
       this.notify();
       return;
     }
@@ -3738,12 +3904,13 @@ export class Controller {
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
-    if (g.kind === "move" && this.transformTool) {
+    if (g.kind === "move" && this.transformTool && this.pivotMode === "custom") {
       this.transformPivot = {
         x: this.transformPivot.x + (g.displacement?.x ?? 0),
         y: this.transformPivot.y + (g.displacement?.y ?? 0),
       };
     }
+    if (["move", "rotate", "scale"].includes(g.kind)) this.captureNumericBasis();
     if (g.kind === "marquee") {
       const x = Math.min(g.start.x, g.end.x),
         y = Math.min(g.start.y, g.end.y),
@@ -3776,6 +3943,11 @@ export class Controller {
             .map((s) => s.id),
         ]),
       ];
+      if (this.objectPicker) {
+        const picked=[...this.selected];
+        this.selected=[...g.selection];
+        this.setToolSelection(picked);
+      }
       this.notify();
       return;
     }
@@ -3911,7 +4083,7 @@ export class Controller {
   get canToggleObjectState() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
       !this.drawingDown && !this.transformTool && !this.propertySession &&
-      !this.pathCopy && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.pathCopy && !this.offsetActive && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   async toggleObjectState(id: string, field: "hidden" | "locked") {
     if (!this.canToggleObjectState) return;

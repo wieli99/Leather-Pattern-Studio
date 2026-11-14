@@ -35,6 +35,9 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       return;
     }
   }
+  if (e.key === "Escape" && editor.placingPivot && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault(); editor.cancelPivotPlacement(); return;
+  }
   const canvas = target.tagName === "CANVAS";
   const objectDelete =
     target.closest(".objects button") !== null &&
@@ -72,7 +75,12 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     return;
   }
   if (mod && !e.shiftKey && e.key.toLowerCase() === "a") {
-    if (editor.transformTool) {
+    if (editor.objectPicker) {
+      e.preventDefault();
+      editor.setToolSelection(editor.document.shapes.filter(s=>!editor.isHidden(s.id) && !editor.isLocked(s.id)).map(s=>s.id));
+      return;
+    }
+    if (editor.transformTool || editor.offsetActive || editor.trimMode && !editor.booleanOperation) {
       e.preventDefault();
       return;
     }
@@ -113,7 +121,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if (!e.shiftKey && e.key.toLowerCase() === "i" && !editor.pending.length && !editor.drawingDown && !editor.busy) {
     e.preventDefault(); editor.activateStitch(); return;
   }
-  if (!e.shiftKey && editor.selectionToolsAvailable) {
+  if (!e.shiftKey && !editor.stitchMode && !editor.pending.length && !editor.drawingDown && !editor.busy) {
     const k = e.key.toLowerCase();
     if (k === "i" || k === "k" || k === "j") {
       e.preventDefault();
@@ -151,8 +159,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   ) {
     const k = e.key.toLowerCase();
     if (k === "v") {
-      editor.placingPivot = true;
-      editor.notify();
+      editor.beginPivotPlacement();
       return;
     }
     if (k === "x" || k === "y") {

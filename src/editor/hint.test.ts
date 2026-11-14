@@ -114,3 +114,7 @@ test("boolean hints distinguish target picking, operands and keyboard button act
   expect(operands.controls).toContainEqual({id:"buttons",gesture:"Enter / Space on a button",action:"Activate button"});
   expect(operands.controls.some(c=>c.id==="apply")).toBe(true);
 });
+
+test("Select help explains Shift-click addition and removal explicitly",()=>{
+  expect(editorHint(base).controls.find(row=>row.gesture==="Shift+click")?.action).toBe("Add or remove objects from selection");
+});

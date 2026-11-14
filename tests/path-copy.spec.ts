@@ -16,8 +16,9 @@ test('copy along path uses object pickers, distribution controls, and undo @manu
   await expect(objects).toHaveCount(2);
   await objects.filter({hasText:'Source'}).click();
   await page.getByRole('button',{name:'Copy along path',exact:true}).click();
-  await objects.filter({hasText:'Path'}).click();
   const panel = page.getByRole('region',{name:'Copy along path settings'});
+  await expect(panel.getByText('Shift-click on the canvas to add or remove objects.',{exact:true})).toHaveCount(0);
+  await objects.filter({hasText:'Path'}).click();
   await expect(panel.getByRole('button',{name:'Apply',exact:true})).toBeEnabled();
   await panel.getByLabel('Distribution').selectOption('count');
   const count = panel.getByLabel('New copies');
