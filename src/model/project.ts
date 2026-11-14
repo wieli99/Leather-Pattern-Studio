@@ -15,20 +15,20 @@ export type Doc = {
   printLayouts?: import("./printLayout").PrintLayout[];
   stitchPresets?: import("../generated/StitchPreset").StitchPreset[];
   stitchTransfers?: import("../generated/StitchTransfer").StitchTransfer[];
-  version: 22 | 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
+  version: 23 | 22 | 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const DOCUMENT_VERSION = 22;
+export const DOCUMENT_VERSION = 23;
 export const emptyDocument = (): Doc => ({ version: DOCUMENT_VERSION, shapes: [] });
 export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -212,7 +212,8 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       )
         throw Error("Transformed coordinate exceeds limit");
     }
-    if (s.cornerRadii !== undefined) {
+    for (const values of [s.cornerRadii, s.cornerChamfers]) {
+      if (values === undefined) continue;
       const count =
         s.kind === "rectangle"
           ? 4
@@ -223,15 +224,17 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
             ? s.points.length - 1
             : 0;
       if (
-        !Array.isArray(s.cornerRadii) ||
+        !Array.isArray(values) ||
         !count ||
-        s.cornerRadii.length !== count ||
-        s.cornerRadii.some(
+        values.length !== count ||
+        values.some(
           (r: number) => !Number.isFinite(r) || r < 0 || r > 1e7,
         )
       )
         throw Error("Invalid corner radii");
     }
+    if (s.cornerChamfers?.some((v: number, i: number) => v > 0 && (s.cornerRadii?.[i] ?? s.radius) > 0))
+      throw Error("Corner cannot be both rounded and chamfered");
     if (
       (s.fillMode !== undefined && !["solid", "skiving", "glueing", "cutout"].includes(s.fillMode)) ||
       (s.strokeColor !== undefined && (typeof s.strokeColor !== "string" || !/^#[0-9a-f]{6}$/i.test(s.strokeColor))) ||
@@ -286,6 +289,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize, fontFamily: s.fontFamily, bold: s.bold, italic: s.italic, underline: s.underline, strikethrough: s.strikethrough, textAlign: s.textAlign, lineSpacing: s.lineSpacing } : {}),
       ...(s.kind === "measurement" ? { measurementOffset: s.measurementOffset, ...(s.measurementSections !== undefined ? {measurementSections:s.measurementSections} : {}) } : {}),
       radius: s.radius,
+      ...(s.cornerChamfers ? { cornerChamfers: [...s.cornerChamfers] } : {}),
       ...(s.cornerRadii ? { cornerRadii: [...s.cornerRadii] } : {}),
       ...(s.handles
         ? {

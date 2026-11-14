@@ -201,7 +201,7 @@ test("layouts are optional, import folders repeatedly, arrange copies, persist, 
   await page.getByLabel("Print rotation", { exact: true }).press("ArrowDown");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await save(page);
-  expect(doc.version).toBe(22);
+  expect(doc.version).toBe(23);
   expect(doc.printLayouts).toHaveLength(1);
   expect(doc.printLayouts[0].instances).toHaveLength(2);
   expect(doc.shapes[0]).toMatchObject(rectangle);

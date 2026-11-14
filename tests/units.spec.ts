@@ -89,9 +89,9 @@ test('fractional corner drafts survive clamping and invalid stitches block Apply
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Units', { exact: true }).selectOption('in-fractional');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Corner radius', exact: true }).click();
+  await page.getByRole('button', { name: 'Corners', exact: true }).click();
   await canvas.click({ position: { x: 155, y: 185 } });
-  const corner = page.getByLabel('Corner radius (in)', { exact: true });
+  const corner = page.getByLabel('Radius (in)', { exact: true });
   await corner.fill('');
   await corner.pressSequentially('1/8', { delay: 100 });
   await expect(corner).toHaveValue('1/8');

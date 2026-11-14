@@ -8,7 +8,7 @@ export const toolCatalog: [
   ["rotate", "Rotate", "E", "turn spin"],
   ["scale", "Resize", "S", "scale size"],
   ["mirror", "Mirror", "M", "flip reflect"],
-  ["corner", "Corner Radius", "B", "round fillet"],
+  ["corner", "Corners", "B", "round fillet chamfer bevel"],
   ["trim", "Trim", "K", "cut snip"],
   ["offset", "Offset", "O", "inset outset"],
   ["path-copy", "Copy along path", "", "repeat array"],

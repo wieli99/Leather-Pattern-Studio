@@ -65,7 +65,7 @@ test("all selection tool popups align with the right canvas edge", async ({
     "Move",
     "Rotate",
     "Resize",
-    "Corner radius",
+    "Corners",
     "Stitch line",
   ]) {
     await page.getByRole("button", { name, exact: true }).click();

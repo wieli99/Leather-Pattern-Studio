@@ -70,7 +70,9 @@ import {
 import {
   cornerPoints,
   cornerRadii,
-  setCornerRadius,
+  polygonFillets,
+  setCornerTreatment,
+  cornerTreatmentValue,
   anchors,
   stretchShape,
   boundary,
@@ -443,11 +445,11 @@ export class Controller {
     this.notify();
   }
   resetPivot() { this.setPivotMode("bounding-box"); }
-  setCornerValue(value: number, all = false) {
+  setCornerValue(value: number, all = false, chamfer?: boolean) {
     const target = this.selectedCorner;
     if (!target) return;
     if (!Number.isFinite(value) || value < 0) {
-      this.transformError = "Enter a finite non-negative radius.";
+      this.transformError = "Enter a finite non-negative corner measurement.";
       this.notify();
       return;
     }
@@ -457,10 +459,48 @@ export class Controller {
     this.updateTransformPreview({
       ...doc,
       shapes: doc.shapes.map((s) =>
-        s.id === shape.id ? setCornerRadius(s, target.index, value, all) : s,
+        s.id === shape.id ? setCornerTreatment(s, target.index, value, chamfer ?? this.cornerStyleOverride ?? (shape.cornerChamfers?.[target.index] ?? 0) > 0, all) : s,
       ),
     });
   }
+  bulkCornerStyleOverride: boolean | null = null;
+  get bulkCornerStyle(): boolean | null {
+    const styles = this.active.flatMap(s => polygonFillets(s).corners.map(c => c.chamfer > 0 ? true : c.radius > 0 ? false : this.bulkCornerStyleOverride ?? false));
+    return styles.length && styles.every(v => v === styles[0]) ? styles[0] : null;
+  }
+  setAllCornerValue(value: number) {
+    if (this.objectPicker || this.bulkCornerStyle === null) return;
+    if (!Number.isFinite(value) || value < 0) {
+      this.transformError = "Enter a finite non-negative corner measurement.";
+      this.notify();
+      return;
+    }
+    const chamfer = this.bulkCornerStyle;
+    this.cornerStyleOverride = chamfer;
+    const doc = this.preview ?? this.document;
+    this.updateTransformPreview({...doc, shapes: doc.shapes.map(s => this.selected.includes(s.id)
+      ? setCornerTreatment(s, 0, value, chamfer, true) : s)});
+  }
+  setAllCornerStyle(chamfer: boolean) {
+    if (this.objectPicker) return;
+    this.bulkCornerStyleOverride = chamfer;
+    this.cornerStyleOverride = chamfer;
+    const doc = this.preview ?? this.document;
+    this.updateTransformPreview({...doc, shapes: doc.shapes.map(s => {
+      if (!this.selected.includes(s.id)) return s;
+      return polygonFillets(s).corners.reduce((next, _, i) =>
+        setCornerTreatment(next, i, cornerTreatmentValue(s, i, chamfer), chamfer), s);
+    })});
+  }
+  cornerStyleOverride: boolean | null = null;
+  setCornerStyle(chamfer: boolean) {
+    this.cornerStyleOverride = chamfer;
+    const target = this.selectedCorner;
+    const shape = (this.preview ?? this.document).shapes.find(s => s.id === target?.shapeId);
+    if (!target || !shape) return;
+    this.setCornerValue(cornerTreatmentValue(shape, target.index, chamfer), false, chamfer);
+  }
+
   setTransformValues(values: Partial<typeof this.transformValues>) {
     if (!this.transformOriginal) return;
     const previous = { ...this.transformValues };
@@ -1304,6 +1344,8 @@ export class Controller {
     this.trimHighlight = null;
     this.transformError = "";
     this.selectedCorner = null;
+    this.cornerStyleOverride = null;
+    this.bulkCornerStyleOverride = null;
     if (this.offsetActive) this.refreshOffset();
     else if (this.transformTool && this.transformTool !== "corner") {
       if (!oldIds.size) this.centerAutomaticPivot();
@@ -2412,7 +2454,7 @@ export class Controller {
     this.transformOriginal = this.document;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
     if (tool !== "corner") this.resetPivot();
-    else this.selectedCorner = null;
+    else { this.selectedCorner = null; this.cornerStyleOverride = null; this.bulkCornerStyleOverride = null; }
     if (tool === "mirror") { this.mirrorAxis = null; this.mirrorLine = null; this.mirrorHover = null; }
     this.notify();
   }
@@ -2524,7 +2566,7 @@ export class Controller {
           (isCurve(shape) ||
             (["line", "polyline"].includes(shape.kind) &&
               !shape.radius &&
-              !shape.cornerRadii?.some(Boolean))))) &&
+              !shape.cornerRadii?.some(Boolean) && !shape.cornerChamfers?.some(Boolean))))) &&
       !shape.stitchOnly &&
       !shape.stitchParentId &&
       !this.isLocked(id) &&
@@ -3391,6 +3433,7 @@ export class Controller {
     }
     if (handle) {
       if (handle.kind === "corner") {
+        this.cornerStyleOverride = null;
         this.selectedCorner = {
           shapeId: handle.shapeId!,
           index: handle.vertex!,
@@ -3690,15 +3733,20 @@ export class Controller {
           (1 - Math.sin(angle / 2) || 1);
         const step = this.units === "mm" ? (ctrl ? 10 : shift ? 5 : 1) : 25.4 * (ctrl ? 1 : shift ? 1/4 : 1/16);
         const initialRadius = cornerRadii(original)[index];
+        const initialChamfer = polygonFillets(original).corners[index].chamfer;
+        const sensitivity = Math.sin(angle / 2) / (1 - Math.sin(angle / 2) || 1);
+        const travel = initialChamfer > 0 ? -initialChamfer / (Math.cos(angle / 2) || 1) : initialRadius / (sensitivity || 1);
+        const signedTravel = travel + delta / (sensitivity || 1);
+        const chamfer = signedTravel < 0;
         const value =
           distance(g.start, raw) * this.zoom < 2
-            ? initialRadius
-            : Math.max(0, Math.round((initialRadius + delta) / step) * step);
+            ? initialChamfer || initialRadius
+            : Math.max(0, Math.round((chamfer ? -signedTravel * Math.cos(angle / 2) : signedTravel * sensitivity) / step) * step);
         const next =
           distance(g.start, raw) * this.zoom < 2 && !alt
             ? original
-            : setCornerRadius(original, index, value, alt);
-        this.message = `Corner radius ${this.formatLength(cornerRadii(next)[index])} ${this.unitSymbol}${alt ? " (all corners)" : ""}`;
+            : setCornerTreatment(original, index, value, chamfer, alt);
+        this.message = `Corner ${chamfer ? "setback" : "radius"} ${this.formatLength(chamfer ? next.cornerChamfers?.[index] ?? 0 : cornerRadii(next)[index])} ${this.unitSymbol}${alt ? " (all corners)" : ""}`;
         document = {
           ...g.original,
           shapes: g.original.shapes.map((s) =>

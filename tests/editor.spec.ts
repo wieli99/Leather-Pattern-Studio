@@ -18,7 +18,7 @@ async function rect(page: any) {
   await expect(page.getByLabel("Width", { exact: true })).toBeVisible();
 }
 async function cornerRadius(page: any) {
-  await page.getByRole("button", { name: "Corner radius", exact: true }).click();
+  await page.getByRole("button", { name: "Corners", exact: true }).click();
   await page.getByLabel("Pattern drawing canvas").click({
     position: { x: 160, y: 190 },
   });
@@ -305,7 +305,7 @@ test("corner tool previews, edits numerically and applies once", { tag: "@manual
   await ready(page);
   await rect(page);
   await page
-    .getByRole("button", { name: "Corner radius", exact: true })
+    .getByRole("button", { name: "Corners", exact: true })
     .click();
   const canvas = page.getByLabel("Pattern drawing canvas"),
     box = (await canvas.boundingBox())!;
@@ -317,7 +317,7 @@ test("corner tool previews, edits numerically and applies once", { tag: "@manual
   await page.mouse.move(x + 25, y + 25, { steps: 5 });
   await page.mouse.up();
   await page.keyboard.up("Control");
-  const corner = page.getByLabel("Corner radius (mm)", { exact: true });
+  const corner = page.getByLabel("Radius (mm)", { exact: true });
   await expect(corner).toBeVisible();
   await corner.fill("999");
   await canvas.focus();
@@ -368,4 +368,65 @@ test("right-click confirms Model targets before applying", async ({page})=>{
   await expect(popup).toBeVisible();
   await canvas.click({button:"right",position:{x:550,y:500}});
   await expect(popup).toBeHidden();
+});
+
+test("Corners switches styles through zero and edits chamfer setback", {tag:"@manual"}, async ({page}) => {
+  await ready(page);
+  await rect(page);
+  await cornerRadius(page);
+  await page.getByLabel("Radius (mm)", {exact:true}).fill("5");
+  await page.getByRole("combobox", {name:"Style", exact:true}).selectOption("chamfer");
+  const setback = page.getByLabel("Setback (mm)", {exact:true});
+  await expect(setback).toHaveValue("5");
+  await setback.fill("0");
+  await setback.press("ArrowDown");
+  await expect(setback).toHaveValue("0");
+  await setback.press("ArrowUp");
+  await expect(setback).toHaveValue("0.01");
+  await setback.press("Control+ArrowUp");
+  await expect(setback).toHaveValue("0.01");
+  await setback.dispatchEvent("wheel", {deltaY:-1,altKey:true,shiftKey:true});
+  await expect(setback).toHaveValue("5.01");
+  await setback.dispatchEvent("wheel", {deltaY:1,altKey:true,ctrlKey:true,shiftKey:true});
+  await expect(setback).toHaveValue("0");
+  await setback.fill("999");
+  await page.getByLabel("Pattern drawing canvas").focus();
+  await expect(setback).toHaveValue("70");
+  await setback.fill("4");
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.focus();
+  await expect(setback).toHaveValue("4");
+  await manualScreenshot(page, "corner-chamfer.png");
+  await page.getByRole("button",{name:"Apply",exact:true}).click();
+  await cornerRadius(page);
+  await expect(setback).toHaveValue("4");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x+160,box.y+190);
+  await page.mouse.down();
+  await page.mouse.move(box.x+190,box.y+220,{steps:10});
+  await page.mouse.up();
+  await expect(page.getByLabel("Radius (mm)",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Cancel",exact:true}).click();
+});
+
+test("bulk corner input is available without clicking a marker", async ({page}) => {
+  await ready(page);
+  await rect(page);
+  await page.getByRole("button",{name:"Corners",exact:true}).click();
+  const all = page.getByLabel("All corners (mm)",{exact:true});
+  await expect(all).toBeVisible();
+  await expect(page.getByLabel("Radius (mm)",{exact:true})).toHaveCount(0);
+  await all.fill("5");
+  await page.getByRole("combobox",{name:"All corners style",exact:true}).selectOption("chamfer");
+  await all.fill("0");
+  await all.press("ArrowUp");
+  await expect(all).toHaveValue("0.01");
+  await all.dispatchEvent("wheel",{deltaY:-1,altKey:true,ctrlKey:true});
+  await expect(all).toHaveValue("10.01");
+  await all.fill("4");
+  await page.getByRole("button",{name:"Apply",exact:true}).click();
+  await page.getByRole("button",{name:"Corners",exact:true}).click();
+  await expect(all).toHaveValue("4");
+  await expect(page.getByRole("combobox",{name:"All corners style",exact:true})).toHaveValue("chamfer");
+  await page.getByRole("button",{name:"Cancel",exact:true}).click();
 });

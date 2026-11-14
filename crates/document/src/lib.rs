@@ -184,6 +184,13 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub corner_radii: Option<Vec<f64>>,
+    #[serde(
+        default,
+        rename = "cornerChamfers",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub corner_chamfers: Option<Vec<f64>>,
     pub radius: f64,
     pub rotation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -706,7 +713,16 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
             }
         }
         let uniform = shape.radius.min(if max.is_finite() { max } else { 0.0 });
-        let requested = shape.corner_radii.clone().unwrap_or(vec![uniform; n]);
+        let requested: Vec<f64> = (0..n)
+            .map(|i| {
+                let chamfer = shape.corner_chamfers.as_ref().map_or(0.0, |v| v[i]);
+                if chamfer > 0.0 && factors[i] > 0.0 {
+                    chamfer / factors[i]
+                } else {
+                    shape.corner_radii.as_ref().map_or(uniform, |v| v[i])
+                }
+            })
+            .collect();
         let mut scale: f64 = 1.0;
         for i in 0..n {
             let used = requested[i] * factors[i] + requested[(i + 1) % n] * factors[(i + 1) % n];
@@ -835,10 +851,10 @@ impl Document {
         }
         if !matches!(
             self.version,
-            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22
+            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23). Reload the application.",
                 self.version
             ));
         }
@@ -881,7 +897,7 @@ impl Document {
             }
         }
         for s in &self.shapes {
-            if let Some(radii) = &s.corner_radii {
+            for radii in [&s.corner_radii, &s.corner_chamfers].into_iter().flatten() {
                 let count = if s.kind == Kind::Rectangle {
                     4
                 } else if s.kind == Kind::Polyline
@@ -897,6 +913,17 @@ impl Document {
                     || radii.iter().any(|r| !r.is_finite() || *r < 0.0 || *r > 1e7)
                 {
                     return Err("Invalid corner radii".into());
+                }
+            }
+        }
+        for shape in &self.shapes {
+            if let Some(chamfers) = &shape.corner_chamfers {
+                for (i, value) in chamfers.iter().enumerate() {
+                    if *value > 0.0
+                        && shape.corner_radii.as_ref().map_or(shape.radius, |r| r[i]) > 0.0
+                    {
+                        return Err("Corner cannot be both rounded and chamfered".into());
+                    }
                 }
             }
         }
@@ -1404,7 +1431,7 @@ impl Default for Editor {
                 stitch_presets: None,
                 stitch_transfers: None,
                 print_layouts: vec![],
-                version: 22,
+                version: 23,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -1424,7 +1451,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]})
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]})
             .to_string()
     }
     pub fn snapshot(&self) -> String {
@@ -1537,7 +1564,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 22;
+                next.version = 23;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -1688,7 +1715,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 22;
+        doc.version = 23;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1732,6 +1759,28 @@ mod tests {
         bad.shapes.clear();
         assert!(bad.validate().is_err());
     }
+    #[test]
+    fn chamfers_roundtrip_and_validate() {
+        let json = r#"{"version":23,"shapes":[{"id":"r","name":"Rectangle","kind":"rectangle","points":[{"x":0,"y":0},{"x":40,"y":20}],"radius":0,"cornerChamfers":[5,0,0,0],"rotation":0}]}"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        assert!(doc.validate().is_ok());
+        assert_eq!(
+            serde_json::from_str::<Document>(&serde_json::to_string(&doc).unwrap())
+                .unwrap()
+                .shapes[0]
+                .corner_chamfers,
+            Some(vec![5.0, 0.0, 0.0, 0.0])
+        );
+        let mut invalid = doc.clone();
+        invalid.shapes[0].corner_chamfers = Some(vec![-1.0; 4]);
+        assert!(invalid.validate().is_err());
+        invalid.shapes[0].corner_chamfers = Some(vec![1.0; 3]);
+        assert!(invalid.validate().is_err());
+        invalid.shapes[0].corner_chamfers = Some(vec![1.0; 4]);
+        invalid.shapes[0].radius = 2.0;
+        assert!(invalid.validate().is_err());
+    }
+
     #[test]
     fn corner_radii_roundtrip_and_validation() {
         let json = r#"{"version":7,"shapes":[{"id":"r","name":"Rectangle","kind":"rectangle","points":[{"x":0,"y":0},{"x":40,"y":20}],"radius":0,"cornerRadii":[15,0,0,5],"rotation":0}]}"#;
@@ -1778,7 +1827,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1810,7 +1859,7 @@ mod tests {
     #[test]
     fn compound_contours_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 22;
+        doc.version = 23;
         let shape = &mut doc.shapes[0];
         shape.kind = Kind::Compound;
         let p = |x, y| Point { x, y };
@@ -1857,7 +1906,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 22;
+        d.version = 23;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -2016,7 +2065,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 22;
+        doc.version = 23;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -2143,7 +2192,7 @@ mod print_tests {
         editor
             .execute("load", r#"{"version":5,"shapes":[]}"#, 0)
             .unwrap();
-        assert_eq!(editor.document.version, 22);
+        assert_eq!(editor.document.version, 23);
         assert!(editor.document.print_layouts.is_empty());
         editor.execute("load", &project().to_string(), 1).unwrap();
         let original = editor.document.clone();

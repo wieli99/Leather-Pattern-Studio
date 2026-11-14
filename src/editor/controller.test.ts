@@ -2195,7 +2195,7 @@ test("initialization rejects a stale worker document version", async () => {
   vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
   await e.initialize();
   expect(e.ready).toBe(false);
-  expect(e.message).toContain("expects document version 22, but geometry worker returned 15");
+  expect(e.message).toContain("expects document version 23, but geometry worker returned 15");
 });
 
 test("unit preferences leave document, grid and history unchanged", () => {
@@ -3357,4 +3357,83 @@ test("canvas right-click confirms targets before applying and rejects invalid se
   e.busy=true;
   e.pointerDown({x:200,y:200},2,false,false);
   expect(e.objectPicker).toBe(true);
+});
+
+test("outward corner dragging crosses rounding through zero into chamfer and cancels", () => {
+  const e = editor();
+  e.document = {version:23, shapes:[{id:"r",name:"Rectangle",kind:"rectangle",points:[{x:0,y:0},{x:40,y:20}],radius:3,rotation:0}]};
+  e.selected = ["r"];
+  e.transformTool = "corner";
+  const h = e.cornerHandles()[0];
+  e.pointerDown(e.screen(h.point),0,false,false,false);
+  e.pointerMove(e.screen({x:h.point.x-8,y:h.point.y-8}),false,false,false);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBeGreaterThan(0);
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBe(0);
+  e.pointerMove(e.screen({x:h.point.x+3,y:h.point.y+3}),false,false,false);
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBeGreaterThan(3);
+  expect(e.document.shapes[0].cornerChamfers).toBeUndefined();
+  e.cancel();
+  expect(e.preview).toBeNull();
+  expect(e.document.shapes[0].radius).toBe(3);
+});
+
+test("chamfer exact edits preserve zero style and apply in one undoable transaction", async () => {
+  const e = editor();
+  await e.transact("load", {version:23,shapes:[{id:"r",name:"Rectangle",kind:"rectangle",points:[{x:0,y:0},{x:40,y:20}],radius:3,rotation:0}]});
+  e.selected = ["r"];
+  await e.activateTransform("corner");
+  e.selectedCorner = {shapeId:"r",index:0};
+  e.setCornerStyle(true);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBeCloseTo(3);
+  e.setCornerValue(0);
+  e.setCornerValue(4);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBe(4);
+  e.setCornerValue(-1);
+  expect(e.transformError).toContain("non-negative");
+  e.setCornerValue(4);
+  await e.applyTransform();
+  expect(e.document.shapes[0].cornerChamfers?.[0]).toBe(4);
+  await e.transact("undo");
+  expect(e.document.shapes[0].cornerChamfers).toBeUndefined();
+  await e.transact("redo");
+  expect(e.document.shapes[0].cornerChamfers?.[0]).toBe(4);
+});
+
+test("bulk corner controls work before selecting a marker across multiple objects", async () => {
+  const e = editor();
+  const shape = {id:"a",name:"Rectangle",kind:"rectangle" as const,points:[{x:0,y:0},{x:40,y:20}],radius:0,rotation:0};
+  await e.transact("load", {version:23,shapes:[shape,{...shape,id:"b",radius:3}]});
+  e.selected = ["a","b"];
+  await e.activateTransform("corner");
+  expect(e.selectedCorner).toBeNull();
+  e.setAllCornerValue(4);
+  expect(e.preview?.shapes.map(s => s.radius)).toEqual([4,4]);
+  e.setAllCornerStyle(true);
+  e.setAllCornerValue(0);
+  expect(e.bulkCornerStyle).toBe(true);
+  e.setAllCornerValue(5);
+  expect(e.preview?.shapes.every(s => s.cornerChamfers?.every(v => v === 5))).toBe(true);
+  e.setAllCornerValue(-1);
+  expect(e.transformError).toContain("non-negative");
+  e.setAllCornerValue(5);
+  await e.applyTransform();
+  await e.transact("undo");
+  expect(e.document.shapes.map(s => s.radius)).toEqual([0,3]);
+});
+
+test("mixed bulk styles require an explicit choice and preserve cut endpoints", async () => {
+  const e = editor();
+  const shape = {id:"a",name:"Rectangle",kind:"rectangle" as const,points:[{x:0,y:0},{x:40,y:20}],radius:0,rotation:0};
+  await e.transact("load",{version:23,shapes:[{...shape,cornerRadii:[3,0,0,0]},{...shape,id:"b",cornerChamfers:[5,0,0,0]}]});
+  e.selected = ["a","b"];
+  await e.activateTransform("corner");
+  expect(e.bulkCornerStyle).toBeNull();
+  e.setAllCornerValue(4);
+  expect(e.preview).toBeNull();
+  e.setAllCornerStyle(true);
+  expect(e.bulkCornerStyle).toBe(true);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBeCloseTo(3);
+  expect(e.preview?.shapes[1].cornerChamfers?.[0]).toBeCloseTo(5);
+  e.cancel();
+  expect(e.document.shapes[0].cornerRadii?.[0]).toBe(3);
 });
