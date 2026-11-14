@@ -35,7 +35,9 @@ Use concise imperative commit subjects. Keep changes focused and avoid unrelated
 
 ## User manual maintenance
 
-Keep `docs/manual/` updated with every user-visible behavior change in the same change. Update affected procedures, shortcut references, and screenshots. Verify internal links and instructions against the implementation before reporting completion. The bundled manual is opened through the ? link and must remain available offline.
+Batch updates to `docs/manual/` and screenshot refreshes during PR preparation, after the behavior and UI have settled. Complete affected procedures, shortcut references, and screenshots in the same PR as the user-visible changes, before opening it. Intermediate tasks and commits may leave documentation pending; report that explicitly rather than claiming PR readiness.
+
+When committing user-visible changes with deferred documentation, include a short `Pending documentation` checklist in the commit body naming the changed behavior, affected manual pages, and screenshots to review or refresh. During PR preparation, review the feature branch's commit messages and resolve the accumulated checklist. Continue focused tests and necessary UI inspection during implementation; deferring documentation does not defer behavior validation. Verify manual links and instructions against the final implementation and run the required screenshot checks before reporting PR readiness. The bundled manual is opened through the ? link and must remain available offline.
 
 ## Development and releases
 

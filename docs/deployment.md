@@ -16,8 +16,8 @@ These settings apply to the upstream repository. Contributors do not need Cloudf
 ## Development workflow
 
 1. Start from an updated upstream `dev` and create a feature or fix branch. External contributors work in a fork and target upstream `dev` with their PR.
-2. Implement the change, update the bundled manual for user-visible behavior changes, and run relevant tests using Podman.
-3. Open a PR into `dev`. Merge after required checks pass; do not push directly to protected branches.
+2. Implement the change and run focused tests and necessary UI inspection using Podman. Defer bundled manual edits and screenshot refreshes until PR preparation. For user-visible changes with deferred documentation, add a short `Pending documentation` checklist to the commit body naming the changed behavior, affected manual pages, and screenshots to review or refresh; report pending work explicitly.
+3. Before opening a PR, review the feature branch's commit messages, resolve the accumulated documentation checklist, and update affected procedures, shortcuts, and screenshots together. Verify manual links and instructions against the final implementation and complete the validation below. Include documentation and screenshot updates in the same PR as the behavior changes. Open the PR into `dev` and merge after required checks pass; do not push directly to protected branches.
 4. Review Dependabot PRs in the same way. They update `dev` and reach production in a subsequent release; prioritize releases for urgent security fixes.
 
 The Podman runner keeps Vite's optimizer cache in container-local temporary storage, separate from the shared dependency volume. This prevents dependency installs in validation containers from deleting a running dev server's optimized modules. After changing dependencies, restart your development server and reload open editor/manual tabs. If an older running container reports `504 Outdated Optimize Dep` or a module MIME-type error, stop it and rerun `tools/dev/run.sh dev` to pick up the isolated-cache setting.
