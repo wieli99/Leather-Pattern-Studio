@@ -12,6 +12,21 @@ import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { focusModelCanvas } from "./canvasFocus";
 const e = useEditor();
+function handleArrayEnter(event: KeyboardEvent) {
+  if (
+    event.defaultPrevented ||
+    event.isComposing ||
+    !(event.target instanceof HTMLInputElement) ||
+    event.target.type !== "text"
+  )
+    return;
+  event.preventDefault();
+  void applyArray();
+}
+async function applyArray() {
+  await editor.applyArray();
+  if (!editor.array) focusModelCanvas();
+}
 async function applyPathCopy() {
   await editor.applyPathCopy();
   if (!editor.pathCopy) focusModelCanvas();
@@ -43,6 +58,159 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     v-if="!e.printLayoutActive"
     class="transform-overlay"
   >
+    <section
+      v-if="e.array"
+      class="transform-options array-options"
+      :aria-label="
+        e.array.kind === 'rectangular'
+          ? 'Rectangular Array settings'
+          : 'Radial Array settings'
+      "
+      @keydown.enter="handleArrayEnter"
+      @keydown.esc.stop.prevent="editor.cancelArrayPoint() || cancelPathCopy()"
+    >
+      <strong>{{
+        e.array.kind === "rectangular" ? "Rectangular Array" : "Radial Array"
+      }}</strong>
+      <ToolObjectPicker />
+      <hr />
+      <small>{{
+        e.arrayStage === "review"
+          ? "Review the array. Enter or right click applies."
+          : e.arrayStage === "center"
+            ? "Select center point."
+            : "Select " +
+              (e.arrayStage === "endpoint1" ? "endpoint 1" : "endpoint 2") +
+              ". X/Y constrains direction."
+      }}</small>
+      <template v-if="e.array.kind === 'rectangular'">
+        <button
+          :disabled="e.objectPicker || e.arrayStage !== 'review'"
+          @click="
+            editor.pickArrayPoint('endpoint1');
+            focusModelCanvas();
+          "
+        >
+          Select endpoint 1
+        </button>
+        <button
+          :disabled="e.objectPicker || e.arrayStage !== 'review'"
+          @click="
+            editor.pickArrayPoint('endpoint2');
+            focusModelCanvas();
+          "
+        >
+          Select endpoint 2
+        </button>
+        <label
+          >Mode<select
+            aria-label="Mode"
+            :value="e.array.extent ? 'extent' : 'spacing'"
+            @change="editor.setArrayExtent(($event.target as HTMLSelectElement).value === 'extent')"
+          >
+            <option value="extent">Extent</option>
+            <option value="spacing">Spacing</option>
+          </select></label
+        >
+        <div class="transform-inputs">
+          <label
+            v-for="(field,i) in (['vector1','vector2'] as const)"
+            :key="field"
+            >Distance {{ i + 1 }} ({{ e.unitSymbol }})
+            <LengthInput
+              :step="1"
+              :min="0.01"
+              :value="Math.hypot(e.array[field]?.x ?? 0, e.array[field]?.y ?? 0)"
+              @invalid="editor.setArrayDistance(field, NaN)"
+              @commit="editor.setArrayDistance(field, $event)"
+            />
+          </label>
+        </div>
+        <div class="transform-inputs">
+          <label v-for="field in (['columns','rows'] as const)" :key="field"
+            >{{ field === "columns" ? "Number" : "Repeat" }}
+            <LengthInput
+              scalar
+              integer
+              :min="field === 'columns' ? 2 : 1"
+              :max="
+                Math.floor(
+                  1001 / (field === 'columns' ? e.array.rows : e.array.columns),
+                )
+              "
+              :step="1"
+              :value="e.array[field]"
+              @invalid="editor.setArrayValue(field, NaN)"
+              @commit="editor.setArrayValue(field, $event)"
+            />
+          </label>
+        </div>
+      </template>
+      <template v-else>
+        <button
+          :disabled="e.objectPicker || e.arrayStage !== 'review'"
+          @click="
+            editor.pickArrayPoint('center');
+            focusModelCanvas();
+          "
+        >
+          Select center point
+        </button>
+        <label
+          >Mode<select
+            aria-label="Mode"
+            :value="e.array.step ? 'spacing' : 'total'"
+            @change="editor.setArrayDistribution(($event.target as HTMLSelectElement).value === 'spacing')"
+          >
+            <option value="total">Total</option>
+            <option value="spacing">Spacing</option>
+          </select></label
+        >
+        <div class="transform-inputs">
+          <label
+            >Degrees<LengthInput
+              scalar
+              :step="1"
+              :value="e.array.angle"
+              @invalid="editor.setArrayValue('angle', NaN)"
+              @commit="editor.setArrayValue('angle', $event)"
+          /></label>
+          <label
+            >Number<LengthInput
+              scalar
+              integer
+              :min="2"
+              :max="1001"
+              :step="1"
+              :value="e.array.count"
+              @invalid="editor.setArrayValue('count', NaN)"
+              @commit="editor.setArrayValue('count', $event)"
+          /></label>
+        </div>
+        <label class="stitch-toggle"
+          >Rotate copies<input
+            type="checkbox"
+            v-model="e.array.rotate"
+            @change="editor.refreshArray()"
+        /></label>
+      </template>
+      <small>Shift+wheel changes count. Counts include the original.</small>
+      <p v-if="e.array.error" role="alert">{{ e.array.error }}</p>
+      <div class="actions tool-popup-footer">
+        <button
+          :disabled="
+            !e.preview ||
+            !!e.array.error ||
+            e.busy ||
+            e.objectPicker ||
+            e.arrayStage !== 'review'
+          "
+          @click="applyArray()"
+        >
+          Apply</button
+        ><button @click="cancelPathCopy()">Cancel</button>
+      </div>
+    </section>
     <section v-if="e.pathCopy" class="transform-options path-copy-options" aria-label="Copy along path settings" @keydown.esc.stop.prevent="cancelPathCopy()">
       <strong>Copy along path</strong>
       <button v-for="role in (['source', 'path'] as const)" :key="role" class="boolean-picker" :aria-pressed="e.pathCopy.picker === role" @click="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()">

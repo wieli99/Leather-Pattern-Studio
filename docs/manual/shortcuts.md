@@ -64,9 +64,9 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | K / J | Trim / Join |
 | Tab / Shift+Tab | Enter or cycle transform fields |
 | X / Y | Constrain Move or Resize axis |
-| V during transform | Place or reposition a Custom pivot |
+| V during transform or Radial Array | Place or reposition a Custom pivot |
 | Enter / right-click | Apply active transform or tool session |
-| Esc | Cancel active preview |
+| Esc | Cancel center placement first, otherwise cancel active preview |
 | Shift+click / Shift+drag | Toggle selection / add enclosed objects |
 | Ctrl+click / Ctrl+drag | Select by interior / include crossing outlines |
 | Shift while dragging an anchor | Constrain movement to 45° from its original position |
@@ -145,3 +145,15 @@ For Join and the boolean tools, use Tab / Shift+Tab to navigate controls and Ent
 In Copy along path, Enter on the canvas or right-click applies the preview; Escape cancels. Picker buttons retain native Enter/Space activation.
 
 Selection-dependent editing tools require an initial selection. Click Select Objects to reselect, then click **Confirm Selection**; gizmos and Apply wait while selection is active. Canvas clicks replace selection and Shift-click toggles objects. Object panels keep Shift-click ranges. Trim only changes confirmed targets.
+
+## Arrays
+
+Open Rectangular Array or Radial Array through **F** tool search. Choose endpoints or a center on the canvas,
+then review the stable preview. Shift+wheel changes the active count. See [arrays](#transforms/rectangular-array).
+
+During point placement: **Shift** constrains direction to 45°, **X/Y** constrains an axis (repeat to release),
+and **Alt** bypasses object/grid snapping. **V** repositions a radial center. Center previews follow the
+pointer until confirmation; the confirmed array remains stable.
+
+Enter/right-click confirms a pending point; a separate confirmation in review applies copies.
+Focused buttons retain native Enter/Space activation, including Cancel and point-selection actions.

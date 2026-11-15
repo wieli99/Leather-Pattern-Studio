@@ -24,6 +24,41 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
     e.preventDefault(); editor.fit(); return;
   }
+  if (editor.array && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (
+      editor.arrayStage !== "review" &&
+      ["x", "y"].includes(e.key.toLowerCase())
+    ) {
+      editor.transformAxis =
+        editor.transformAxis === e.key.toLowerCase()
+          ? undefined
+          : (e.key.toLowerCase() as "x" | "y");
+      editor.refreshArrayConstraint();
+      editor.notify();
+      return;
+    }
+    if (
+      !e.shiftKey &&
+      e.key.toLowerCase() === "v" &&
+      editor.array.kind === "radial"
+    ) {
+      e.preventDefault();
+      editor.pickArrayPoint("center");
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (!editor.cancelArrayPoint()) editor.cancel();
+      focusModelCanvas();
+      return;
+    }
+    if (e.key === "Enter" && target.tagName === "CANVAS") {
+      e.preventDefault();
+      if (editor.objectPicker) editor.toggleObjectPicker();
+      else void editor.applyArray();
+      return;
+    }
+  }
   if (editor.pathCopy && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (e.key === 'Escape') { e.preventDefault(); editor.cancel(); focusModelCanvas(); return; }
     if (e.key === 'Enter' && target.tagName === 'CANVAS') { e.preventDefault(); void editor.applyPathCopy(); return; }
@@ -86,7 +121,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       editor.setToolSelection(editor.document.shapes.filter(s=>!editor.isHidden(s.id) && !editor.isLocked(s.id)).map(s=>s.id));
       return;
     }
-    if (editor.transformTool || editor.offsetActive || editor.trimMode && !editor.booleanOperation) {
+    if (editor.array || editor.transformTool || editor.offsetActive || editor.trimMode && !editor.booleanOperation) {
       e.preventDefault();
       return;
     }

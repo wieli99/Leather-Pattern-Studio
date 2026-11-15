@@ -9,7 +9,7 @@ test("default favorites have the requested order", () => {
     "corner",
     "trim",
   ]);
-  expect(new Set(toolCatalog.map((t) => t[0])).size).toBe(12);
+  expect(new Set(toolCatalog.map((t) => t[0])).size).toBe(14);
 });
 test("favorites preserve empty lists, sanitize IDs, and cap length", () => {
   expect(parseFavorites("[]")).toEqual([]);
@@ -24,4 +24,9 @@ test("favorites preserve empty lists, sanitize IDs, and cap length", () => {
 test("invalid or absent preferences restore defaults", () => {
   for (const raw of [null, "{", "false", "{}"])
     expect(parseFavorites(raw)).toEqual(defaultFavorites);
+});
+test("array favorites migrate old names", () => {
+  expect(
+    parseFavorites('["grid-array","circular-array","rectangular-array"]'),
+  ).toEqual(["rectangular-array", "radial-array"]);
 });

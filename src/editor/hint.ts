@@ -14,6 +14,9 @@ export interface HintState {
   selected: readonly string[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   offsetActive?: boolean;
+  objectPicker?: boolean;
+  array?: {kind: string} | null;
+  arrayStage?: 'endpoint1'|'endpoint2'|'center'|'review';
   pathCopy?: { picker: 'source' | 'path' | null } | null;
   booleanOperation?: string | null;
   booleanPicker?: "target" | "cutters" | null;
@@ -54,6 +57,48 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
     } else if (["property", "rename"].includes(editing))
       add("blur", "Leave field", "Apply");
     add("fields", "Tab / Shift+Tab", "Next / previous field");
+    return { action, controls };
+  }
+  if (s.array) {
+    action =
+      s.arrayStage === "center"
+        ? "Select center point."
+        : s.arrayStage === "endpoint1"
+          ? "Select endpoint 1; X/Y constrains direction."
+          : s.arrayStage === "endpoint2"
+            ? "Select endpoint 2."
+            : "Review the array; Shift+wheel changes count.";
+    if (s.objectPicker) {
+      action = "Choose visible, unlocked source objects.";
+      add("selection", "Shift+click", "Add or remove source objects");
+    }
+    if (!s.objectPicker && s.arrayStage !== "review") {
+      add("angles", "Shift", "Snap direction to 45°");
+      add("axes", "X / Y", "Constrain axis; repeat to release");
+      add("snap", "Alt", "Bypass object/grid snapping");
+    }
+    add("count", "Shift+wheel", "Change active count");
+    if (s.array.kind === "radial" && !s.objectPicker)
+      add("center", "V", "Reposition center");
+    add("fields", "Tab / Shift+Tab", "Navigate controls");
+    add("pan", "Space+drag / Middle-drag", "Pan");
+    add("zoom", "Ctrl/⌘+wheel", "Zoom");
+    add(
+      "confirm",
+      "Enter / Right click",
+      s.objectPicker
+        ? "Confirm selection"
+        : s.arrayStage === "review"
+          ? "Apply copies"
+          : "Confirm point",
+    );
+    add(
+      "cancel",
+      "Esc",
+      s.arrayStage === "review"
+        ? "Cancel array"
+        : "Cancel point placement / array",
+    );
     return { action, controls };
   }
   if (s.pathCopy) {

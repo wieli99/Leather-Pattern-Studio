@@ -295,6 +295,60 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.filter(s => !editor.isHidden(s.id)).forEach((s) => shape(s));
+    if (editor.array && editor.active.length && !editor.objectPicker) {
+      const state = editor.array,
+        box = bounds(editor.active),
+        origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      ctx.save();
+      ctx.strokeStyle = color("accent");
+      ctx.lineWidth = 1 / z;
+      ctx.setLineDash([4 / z, 4 / z]);
+      ctx.beginPath();
+      if (state.kind === "rectangular") {
+        const vectors = [state.vector1, state.vector2];
+        for (let i = 0; i < vectors.length; i++) {
+          if (i === 1 && state.rows === 1 && editor.arrayStage !== "endpoint2")
+            continue;
+          const v = vectors[i];
+          if (!v) continue;
+          const scale = state.extent
+            ? 1
+            : Math.max(1, (i === 0 ? state.columns : state.rows) - 1);
+          const end = { x: origin.x + v.x * scale, y: origin.y + v.y * scale };
+          ctx.moveTo(origin.x, origin.y);
+          ctx.lineTo(end.x, end.y);
+          ctx.stroke();
+          drawPivotPoint(ctx, end, z, color("accent"));
+          ctx.font = `${12 / z}px sans-serif`;
+          ctx.fillStyle = color("text");
+          ctx.fillText(
+            editor.formatLength(Math.hypot(v.x, v.y)) + " " + editor.unitSymbol,
+            end.x + 6 / z,
+            end.y - 6 / z,
+          );
+          ctx.beginPath();
+        }
+      } else {
+        const p = editor.arrayPreviewCenter ?? editor.cursor;
+        const r = Math.max(25 / z, Math.hypot(origin.x - p.x, origin.y - p.y));
+        const start =
+          Math.hypot(origin.x - p.x, origin.y - p.y) > 1e-9
+            ? Math.atan2(origin.y - p.y, origin.x - p.x)
+            : 0;
+        const end = start + (state.angle * Math.PI) / 180;
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + r * Math.cos(start), p.y + r * Math.sin(start));
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + r * Math.cos(end), p.y + r * Math.sin(end));
+        ctx.moveTo(p.x + r * Math.cos(start), p.y + r * Math.sin(start));
+        ctx.arc(p.x, p.y, r, start, end, state.angle < 0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        drawPivotPoint(ctx, p, z, color("accent"));
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     if (editor.pathCopy?.path) {
       const target = editor.document.shapes.find(s => s.id === editor.pathCopy!.path);
       if (target) try {

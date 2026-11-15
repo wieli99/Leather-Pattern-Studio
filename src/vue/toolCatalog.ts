@@ -11,6 +11,13 @@ export const toolCatalog: [
   ["corner", "Corners", "B", "round fillet chamfer bevel"],
   ["trim", "Trim", "K", "cut snip"],
   ["offset", "Offset", "O", "inset outset"],
+  [
+    "rectangular-array",
+    "Rectangular Array",
+    "",
+    "repeat grid rectangular rows columns",
+  ],
+  ["radial-array", "Radial Array", "", "repeat circular radial polar"],
   ["path-copy", "Copy along path", "", "repeat array"],
   ["join", "Join", "J", "merge union combine"],
   ["subtract", "Subtract", "", "difference cut out"],
@@ -27,11 +34,19 @@ export function parseFavorites(raw: string | null): string[] {
     if (!Array.isArray(value)) return [...defaultFavorites];
     return [
       ...new Set(
-        value.filter(
-          (id): id is string =>
-            typeof id === "string" &&
-            toolCatalog.some((tool) => tool[0] === id),
-        ),
+        value
+          .map((id) =>
+            id === "grid-array"
+              ? "rectangular-array"
+              : id === "circular-array"
+                ? "radial-array"
+                : id,
+          )
+          .filter(
+            (id): id is string =>
+              typeof id === "string" &&
+              toolCatalog.some((tool) => tool[0] === id),
+          ),
       ),
     ].slice(0, 10);
   } catch {

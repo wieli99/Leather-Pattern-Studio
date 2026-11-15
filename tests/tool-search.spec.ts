@@ -14,7 +14,7 @@ test("tool search filters aliases and persists favorites", async ({ page }) => {
     exact: true,
   });
   await expect(input).toBeFocused();
-  await expect(page.locator(".search-row")).toHaveCount(12);
+  await expect(page.locator(".search-row")).toHaveCount(14);
   await input.fill("snip");
   await expect(page.locator(".search-row")).toHaveCount(1);
   await expect(page.locator(".search-row")).toContainText("Trim");

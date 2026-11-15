@@ -176,6 +176,7 @@ const cursor = computed(() => {
   if (e.value.offsetDrag) return "grabbing";
   hover.value;
   if (editor.tool === "text") return "none";
+  if (editor.array && !editor.objectPicker) return editor.arrayFollowing || editor.arrayCenterPicking ? "crosshair" : "default";
   if (editor.placingPivot) return "crosshair";
   if (editor.hoverHandle === "move") return "move";
   return editor.tool !== "select"
@@ -212,6 +213,9 @@ function down(event: PointerEvent) {
 }
 function wheel(event: WheelEvent) {
   event.preventDefault();
+  if (editor.array && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (event.deltaY) editor.adjustArrayCount(event.deltaY<0 ? 1 : -1);return;
+  }
   if ((editor.mode.startsWith("polygon") || editor.mode === "measurement") && event.shiftKey) {
     if (event.deltaY) editor.adjustConstructionCount(event.deltaY < 0 ? 1 : -1);
     return;
@@ -225,6 +229,14 @@ function wheel(event: WheelEvent) {
   );
 }
 function updateModifiers(event: KeyboardEvent) {
+  if (
+    ["Shift", "Alt", "Control", "Meta"].includes(event.key) &&
+    !(
+      event.target instanceof HTMLElement &&
+      event.target.closest("input,textarea,select,[contenteditable=true]")
+    )
+  )
+    editor.updateArrayModifiers(event.altKey, event.ctrlKey, event.shiftKey);
   editor.updateGuideModifiers(event.altKey, event.ctrlKey, event.shiftKey);
   editor.setAnchorModifier(event.altKey);
   editor.setDrawingModifier(event.shiftKey);
@@ -233,6 +245,7 @@ function updateModifiers(event: KeyboardEvent) {
   editor.updateVertexModifiers(event.altKey, event.ctrlKey, event.shiftKey);
 }
 function clearModifiers() {
+  editor.updateArrayModifiers(false,false,false);
   editor.setAnchorModifier(false);
   editor.setDrawingModifier(false);
   editor.setMeasurementModifier(false);

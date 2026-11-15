@@ -118,3 +118,15 @@ test("boolean hints distinguish target picking, operands and keyboard button act
 test("Select help explains Shift-click addition and removal explicitly",()=>{
   expect(editorHint(base).controls.find(row=>row.gesture==="Shift+click")?.action).toBe("Add or remove objects from selection");
 });
+test('array help lists constraints and navigation only in the appropriate stages',()=>{
+  const picking=editorHint({...base,array:{kind:'radial'},arrayStage:'center'});
+  expect(picking.controls.map(c=>c.id)).toEqual(expect.arrayContaining(['angles','axes','snap','count','center','fields','pan','zoom','confirm','cancel']));
+  expect(picking.controls.find(c=>c.id==='confirm')!.action).toBe('Confirm point');
+  const review=editorHint({...base,array:{kind:'radial'},arrayStage:'review'});
+  expect(review.controls.some(c=>c.id==='angles')).toBe(false);
+  expect(review.controls.find(c=>c.id==='confirm')!.action).toBe('Apply copies');
+  const sources=editorHint({...base,array:{kind:'rectangular'},arrayStage:'endpoint1',objectPicker:true});
+  expect(sources.controls.some(c=>c.id==='angles')).toBe(false);
+  expect(sources.controls.find(c=>c.id==='confirm')!.action).toBe('Confirm selection');
+  expect(editorHint({...base,array:{kind:'radial'},arrayStage:'center',objectPicker:true}).controls.some(c=>c.id==='center')).toBe(false);
+});

@@ -3437,3 +3437,258 @@ test("mixed bulk styles require an explicit choice and preserve cut endpoints", 
   e.cancel();
   expect(e.document.shapes[0].cornerRadii?.[0]).toBe(3);
 });
+
+async function arrayEditor() {
+  const e = editor();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [
+      {
+        id: "source",
+        name: "Source",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+      {
+        id: "other",
+        name: "Other",
+        kind: "rectangle",
+        points: [
+          { x: 40, y: 0 },
+          { x: 50, y: 10 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  });
+  e.selected = ["source"];
+  e.grid = false;
+  e.objects = false;
+  return e;
+}
+test("rectangular endpoint confirmation is separate from applying and undo", async () => {
+  const e = await arrayEditor(),
+    before = e.uiSnapshot();
+  await e.activateArray("rectangular");
+  expect(e.uiSnapshot()).not.toBe(before);
+  expect(e.arrayStage).toBe("endpoint1");
+  e.pointerMove(e.screen({ x: 75, y: 40 }), true);
+  expect(e.array?.vector1).toEqual({ x: 70, y: 35 });
+  e.pointerDown(e.screen({ x: 75, y: 40 }), 0, false, true);
+  e.pointerUp();
+  expect(e.arrayStage).toBe("review");
+  expect(e.document.shapes).toHaveLength(2);
+  const positions = JSON.stringify(e.preview);
+  e.pointerMove(e.screen({ x: 100, y: 100 }), true);
+  expect(JSON.stringify(e.preview)).toBe(positions);
+  expect(e.cursor).toEqual({ x: 100, y: 100 });
+  expect(e.smartGuides).toEqual([]);
+  await e.applyArray();
+  expect(e.document.shapes).toHaveLength(9);
+  await e.transact("undo");
+  expect(e.document.shapes).toHaveLength(2);
+  await e.transact("redo");
+  expect(e.document.shapes).toHaveLength(9);
+});
+test("extent and spacing modes preserve arrangement and define count changes", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.pointerDown(e.screen({ x: 75, y: 5 }), 0, false, true);
+  const points = () => e.preview!.shapes.map((s) => s.points);
+  const before = points();
+  e.setArrayExtent(false);
+  expect(points()).toEqual(before);
+  expect(e.array?.vector1).toEqual({ x: 10, y: 0 });
+  e.setArrayValue("columns", 3);
+  expect(e.preview!.shapes).toHaveLength(4);
+  e.setArrayExtent(true);
+  expect(e.array?.vector1).toEqual({ x: 20, y: 0 });
+});
+test("optional second direction can be cancelled or confirmed independently", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.pointerDown(e.screen({ x: 75, y: 5 }), 0, false, true);
+  e.pickArrayPoint("endpoint2");
+  expect(e.array?.rows).toBe(2);
+  e.pointerMove(e.screen({ x: 15, y: 35 }), true);
+  expect(e.array?.vector2).toEqual({ x: 10, y: 30 });
+  expect(e.cancelArrayPoint()).toBe(true);
+  expect(e.array?.rows).toBe(1);
+  e.pickArrayPoint("endpoint2");
+  e.pointerDown(e.screen({ x: 15, y: 35 }), 0, false, true);
+  expect(e.arrayStage).toBe("review");
+  expect(e.preview?.shapes).toHaveLength(17);
+});
+test("radial center is chosen first and subsequent cursor movement leaves it stable", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  expect(e.preview).toBeNull();
+  expect(e.arrayStage).toBe("center");
+  e.pointerDown(e.screen({ x: -10, y: 5 }), 2, false, true);
+  expect(e.arrayStage).toBe("review");
+  expect(e.array?.cx).toBe(-10);
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.preview?.shapes).toHaveLength(9);
+  e.pointerMove(e.screen({ x: -25, y: 5 }), true);
+  expect(e.array?.angle).toBe(360);
+  e.setArrayValue("count", 4);
+  e.setArrayDistribution(true);
+  expect(e.array?.angle).toBe(90);
+  e.setArrayDistribution(false);
+  expect(e.array?.angle).toBe(360);
+  e.pickArrayPoint("center");
+  e.pointerMove(e.screen({ x: -100, y: 5 }), true);
+  e.cancelArrayPoint();
+  expect(e.array?.cx).toBe(-10);
+  expect(e.arrayStage).toBe("review");
+});
+test("source picking, invalid counts, failed commits and outside changes are safe", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  e.toggleObjectPicker();
+  e.setToolSelection(["other"]);
+  e.toggleObjectPicker();
+  expect(e.selected).toEqual(["other"]);
+  e.setArrayValue("columns", NaN);
+  expect(e.preview).toBeNull();
+  e.setArrayValue("columns", 3);
+  const commit = vi.spyOn(e, "commit").mockResolvedValueOnce(false);
+  await e.applyArray();
+  expect(e.array?.error).toMatch(/Could not apply/);
+  commit.mockRestore();
+  e.cancel();
+  expect(e.selected).toEqual(["source"]);
+});
+test("arrays preserve nested groups and stitches through a project round trip", async () => {
+  const e = editor(),
+    { shape, group } = runFixture();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [shape],
+    stitchGroups: [group],
+    objectTree: [
+      {
+        kind: "group",
+        id: "root",
+        name: "Root",
+        children: [
+          {
+            kind: "group",
+            id: "nested",
+            name: "Nested",
+            children: [{ kind: "object", id: shape.id }],
+          },
+        ],
+      },
+    ],
+  });
+  e.selected = [shape.id];
+  e.selectedGroups = ["root"];
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  expect(e.array?.error).toBe("");
+  await e.applyArray();
+  const result = parseProject(JSON.stringify(e.document));
+  expect(result.stitchGroups).toHaveLength(8);
+  expect(result.objectTree?.filter((n) => n.kind === "group")).toHaveLength(8);
+});
+test("panning and wheel counts do not commit array previews", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  const revision = e.revision;
+  e.pointerDown(e.screen({ x: 10, y: 10 }), 1, false, false);
+  e.pointerMove(e.screen({ x: 20, y: 20 }), true);
+  e.pointerUp();
+  expect(e.revision).toBe(revision);
+  e.adjustArrayCount(1);
+  expect(e.array?.columns).toBe(9);
+});
+test("array wheel limits and invalid distance drafts preserve confirmed direction", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  const direction = { ...e.array!.vector2 };
+  e.setArrayDistance("vector2", NaN);
+  expect(e.preview).toBeNull();
+  e.setArrayDistance("vector2", Math.hypot(direction.x, direction.y));
+  expect(e.array!.vector2).toEqual(direction);
+  expect(e.array!.error).toBe("");
+  e.setArrayValue("rows", 2);
+  e.setArrayValue("columns", 500);
+  e.adjustArrayCount(1);
+  expect(e.array!.columns).toBe(500);
+  await e.commit({
+    ...e.document,
+    shapes: e.document.shapes.map((s) => ({ ...s, name: s.name + " edited" })),
+  });
+  expect(e.array).toBeNull();
+  expect(e.preview).toBeNull();
+});
+test("radial hover previews candidate centers without changing confirmed settings or history", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  const revision = e.revision,
+    center = { x: e.array!.cx, y: e.array!.cy };
+  e.pointerMove(e.screen({ x: -15, y: 5 }), true);
+  expect(e.preview?.shapes).toHaveLength(9);
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+  expect({ x: e.array!.cx, y: e.array!.cy }).toEqual(center);
+  expect(e.revision).toBe(revision);
+  e.confirmArrayPoint();
+  expect(e.array!.cx).toBe(-15);
+  e.pickArrayPoint("center");
+  e.pointerMove(e.screen({ x: -25, y: 10 }), true);
+  expect(e.array!.cx).toBe(-15);
+  e.cancelArrayPoint();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+});
+test("array constraints update without pointer movement and Alt retains Shift snapping", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.pointerMove(e.screen({ x: 25, y: 15 }), true);
+  expect(e.array!.vector1).toEqual({ x: 20, y: 10 });
+  e.updateArrayModifiers(true, false, true);
+  expect(e.array!.vector1.x).toBeCloseTo(e.array!.vector1.y);
+  e.updateArrayModifiers(true, false, false);
+  expect(e.array!.vector1).toEqual({ x: 20, y: 10 });
+  e.transformAxis = "y";
+  e.refreshArrayConstraint();
+  expect(e.array!.vector1.x).toBe(0);
+  e.transformAxis = undefined;
+  e.refreshArrayConstraint();
+  expect(e.array!.vector1).toEqual({ x: 20, y: 10 });
+});
+test("source picking preserves the radial hover center", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  e.pointerMove(e.screen({ x: -15, y: 5 }), true);
+  const points = e.preview!.shapes.map((s) => s.points);
+  e.toggleObjectPicker();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+  e.refreshArray();
+  expect(e.preview!.shapes.map((s) => s.points)).toEqual(points);
+  e.toggleObjectPicker();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+});
+test("cancelling radial center repositioning clears the discarded snap target", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  e.pointerDown(e.screen({ x: -15, y: 5 }), 0, false, true);
+  e.pickArrayPoint("center");
+  e.objects = true;
+  e.pointerMove(e.screen({ x: 40.1, y: 0.1 }), false);
+  expect(e.snapTarget).not.toBeNull();
+  e.cancelArrayPoint();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+  expect(e.snapTarget).toBeNull();
+  expect(e.snapKind).toBeNull();
+  expect(e.smartGuides).toEqual([]);
+});

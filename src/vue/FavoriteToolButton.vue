@@ -8,6 +8,50 @@ const e = useEditor();
 </script>
 <template>
   <button
+    v-if="id === 'rectangular-array' || id === 'radial-array'"
+    :disabled="!e.canStartTransform('move')"
+    :aria-pressed="
+      e.array?.kind === (id === 'rectangular-array' ? 'rectangular' : 'radial')
+    "
+    :title="id === 'rectangular-array' ? 'Rectangular Array' : 'Radial Array'"
+    :aria-label="
+      id === 'rectangular-array' ? 'Rectangular Array' : 'Radial Array'
+    "
+    @click="
+      emit('activated');
+      editor.activateArray(
+        id === 'rectangular-array' ? 'rectangular' : 'radial',
+      );
+    "
+  >
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.7"
+      aria-hidden="true"
+    >
+      <path
+        v-if="id === 'rectangular-array'"
+        d="M3 3h6v6H3ZM15 3h6v6h-6ZM3 15h6v6H3ZM15 15h6v6h-6Z"
+      />
+      <template v-else>
+        <circle
+          cx="12"
+          cy="12"
+          r="7.5"
+          stroke-dasharray="2 3"
+          stroke-width="1"
+        />
+        <circle cx="12" cy="12" r="1" fill="currentColor" />
+        <path d="M10 2h4v4h-4Z" fill="currentColor" />
+        <path d="M18 10h4v4h-4ZM10 18h4v4h-4ZM2 10h4v4H2Z" />
+      </template></svg
+    ><span v-if="label">{{ label }}</span>
+  </button>
+  <button
     v-for="item in transformShortcuts.filter((t) => t[0] === id)"
     :key="item[0]"
     :disabled="!e.canStartTransform(item[0])"

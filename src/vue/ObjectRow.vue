@@ -38,7 +38,7 @@ async function rename() {
   if (
     editor.transformTool || editor.offsetActive || editor.trimMode ||
     editor.booleanOperation ||
-    editor.pathCopy ||
+    editor.pathCopy || editor.array ||
     editor.stitchMode ||
     editor.isLocked(props.shape.id)
   )
@@ -62,7 +62,7 @@ function select(event: MouseEvent) {
   if (editor.objectPicker) { editor.pickToolObject(props.shape.id, event.shiftKey); return; }
   if (editor.pathCopy) { editor.pickPathCopy(props.shape.id); return; }
   if (editor.booleanOperation) { editor.pickBoolean(props.shape.id); return; }
-  if (editor.transformTool || editor.offsetActive || editor.trimMode || editor.stitchMode) return;
+  if (editor.array || editor.transformTool || editor.offsetActive || editor.trimMode || editor.stitchMode) return;
   editor.selectedGroups = [];
   editor.panelRevision++;
   (event.currentTarget as HTMLButtonElement).focus();

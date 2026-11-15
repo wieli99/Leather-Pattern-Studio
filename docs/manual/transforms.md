@@ -112,3 +112,47 @@ Review the preview and choose **Apply**, press Enter on the canvas, or right-cli
 Press **F** or click Search at the left of the bottom toolbar to find any transform or outline tool. Type a name or related word, such as “snip” for Trim. The … menu or a right-click on a search result opens tool documentation and adds or removes a favorite. Up to ten favorites are saved across projects and sessions. Drag favorites to reorder them; right-click one to remove it. Search stays fixed. Drawing and stitching toolbars are unchanged.
 
 While **Confirm Selection** is active for a multi-object tool, right-click the canvas to confirm valid targets. This keeps the tool open; right-click again to apply. Empty or invalid selections must be corrected first.
+
+## Rectangular array
+
+Choose **Rectangular Array** in toolbar search (**F**). Move the pointer to preview the first direction,
+then click to confirm **endpoint 1**. X/Y constrain that direction. The array starts with eight items
+and one repetition. Counts include the original.
+
+**Extent** measures from the original to the last item; **Spacing** measures between corresponding
+points of adjacent items. Changing Number preserves the chosen extent or spacing; changing modes
+preserves the arrangement. Use **Select endpoint 1** to reposition it.
+
+For a second direction, choose **Select endpoint 2**, move the pointer, and click. This enables a
+second repetition. The default direction is perpendicular; choosing another endpoint allows angled grids.
+Edit **Distance 2** and **Repeat** for exact values. Escape while repositioning restores the confirmed array.
+
+![Rectangular array controls and preview](/manual/images/rectangular-array.png)
+
+## Radial array
+
+Choose **Radial Array**, then hover to preview copies around a snapped candidate **center point**.
+Click to confirm the center. The initial pattern contains eight items over 360°. Moving the pointer
+afterward leaves the array stable. **Select center point** or **V** reopens placement; Escape restores
+the previous center.
+
+**Total** divides Degrees by Number, including partial sweeps. For example, 180° with four items places
+them at 0°, 45°, 90°, and 135°. **Spacing** sets the angle between items. Switching modes preserves the
+arrangement. Positive angles run clockwise on the canvas; negative angles reverse direction.
+**Rotate copies** controls whether their orientation rotates with their position. Only one ring is created.
+
+![Radial array controls and preview](/manual/images/radial-array.png)
+
+In both tools, **Shift+wheel over the canvas** changes Number, or Repeat while choosing endpoint 2.
+Alt+scroll over numeric inputs retains the usual numeric adjustment. Space/middle-drag pans and
+Ctrl/⌘+scroll zooms. Enter/right-click confirms an active point picker; a separate Enter/right-click
+in review, or **Apply**, creates independent copies in one undo step. **Cancel** discards the session.
+The object picker changes sources. At most 1,000 new placements are allowed.
+
+During either array's point placement, **Shift** snaps direction from the selection center to 45° increments.
+**X/Y** constrains an axis (press the same key again to release); **Alt** bypasses object/grid snapping
+while retaining those direction constraints. Modifier changes update the preview without moving the mouse.
+Tool help lists the shortcuts for the active stage.
+
+Enter on a focused button activates that button, including **Cancel** and the point-selection controls.
+Enter in a numeric field confirms a pending point or applies the reviewed array.
