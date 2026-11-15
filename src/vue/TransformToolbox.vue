@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { handleToolEnter } from "./toolKeyboard";
 import ToolSearch from "./ToolSearch.vue";
 import SelectionHint from "./SelectionHint.vue";
 import PivotSelector from "./PivotSelector.vue";
@@ -12,17 +13,6 @@ import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { focusModelCanvas } from "./canvasFocus";
 const e = useEditor();
-function handleArrayEnter(event: KeyboardEvent) {
-  if (
-    event.defaultPrevented ||
-    event.isComposing ||
-    !(event.target instanceof HTMLInputElement) ||
-    event.target.type !== "text"
-  )
-    return;
-  event.preventDefault();
-  void applyArray();
-}
 async function applyArray() {
   await editor.applyArray();
   if (!editor.array) focusModelCanvas();
@@ -66,7 +56,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
           ? 'Rectangular Array settings'
           : 'Radial Array settings'
       "
-      @keydown.enter="handleArrayEnter"
+      @keydown.enter="handleToolEnter($event, applyArray)"
       @keydown.esc.stop.prevent="editor.cancelArrayPoint() || cancelPathCopy()"
     >
       <strong>{{
@@ -112,7 +102,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
             <option value="spacing">Spacing</option>
           </select></label
         >
-        <div class="transform-inputs">
+        <div class="transform-inputs" data-hint-edit="array">
           <label
             v-for="(field,i) in (['vector1','vector2'] as const)"
             :key="field"
@@ -126,7 +116,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
             />
           </label>
         </div>
-        <div class="transform-inputs">
+        <div class="transform-inputs" data-hint-edit="array">
           <label v-for="field in (['columns','rows'] as const)" :key="field"
             >{{ field === "columns" ? "Number" : "Repeat" }}
             <LengthInput
@@ -166,7 +156,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
             <option value="spacing">Spacing</option>
           </select></label
         >
-        <div class="transform-inputs">
+        <div class="transform-inputs" data-hint-edit="array">
           <label
             >Degrees<LengthInput
               scalar
@@ -218,7 +208,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       </button>
       <hr>
       <label>Distribution<select v-model="e.pathCopy.mode" @change="editor.refreshPathCopy()"><option value="spacing">Spacing</option><option value="count">Count</option></select></label>
-      <div class="transform-inputs" data-hint-edit="transform">
+      <div class="transform-inputs" data-hint-edit="path-copy">
       <label v-if="e.pathCopy.mode === 'spacing'">Spacing ({{ e.unitSymbol }})<LengthInput :min="0.01" :value="e.pathCopy.spacing" @invalid="e.pathCopy.spacing = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.spacing = $event; editor.refreshPathCopy()" /></label>
       <label v-else>New copies<LengthInput scalar integer :min="1" :max="1000" :step="1" :value="e.pathCopy.count" @invalid="e.pathCopy.count = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.count = $event; editor.refreshPathCopy()" /></label>
       </div>
@@ -258,7 +248,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       </div>
     </section>
     <section v-if="e.offsetActive" class="transform-options" aria-label="Offset settings"
-      @keydown.enter.prevent="!$event.isComposing && editor.applyOffset()" @keydown.esc.stop.prevent="editor.cancel()">
+      @keydown.enter="handleToolEnter($event, () => editor.applyOffset())" @keydown.esc.stop.prevent="editor.cancel()">
       <strong>Offset</strong>
       <ToolObjectPicker /><hr>
       <small>Positive expands closed outlines; negative insets. On open paths, positive goes left from start to end.</small>
@@ -280,7 +270,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     <div
       v-if="e.transformTool && !e.stitchMode"
       class="transform-options"
-      @keydown.enter.prevent="!$event.isComposing && editor.applyTransform()"
+      @keydown.enter="handleToolEnter($event, () => editor.applyTransform())"
       @keydown.esc.stop="editor.cancelPivotPlacement() || editor.cancel()"
     >
       <strong>{{

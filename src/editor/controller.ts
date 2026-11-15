@@ -2611,6 +2611,7 @@ export class Controller {
   }
   arrayStage: "endpoint1" | "endpoint2" | "center" | "review" = "review";
   private arrayConfirmed: ArraySettings | null = null;
+  get arrayHasConfirmedPlacement() { return this.arrayConfirmed !== null; }
   private arrayInvalidDistances = new Set<"vector1" | "vector2">();
   pickArrayPoint(stage: "endpoint1" | "endpoint2" | "center") {
     if (!this.array || this.objectPicker) return;

@@ -88,7 +88,7 @@ function exportFile() {
       <button type="button" :disabled="e.busy || !selected || !!action" @click="action='rename'; name=chosen; error=''">Rename</button>
       <button type="button" :disabled="e.busy || !selected || !!action" @click="remove">Delete</button>
     </div>
-    <form v-if="action" @submit.prevent="save()">
+    <form data-hint-edit="preset" v-if="action" @submit.prevent="save()">
       <label>{{ action === 'rename' ? 'New name' : 'Preset name' }}<input ref="nameInput" v-model="name" aria-label="Stitch preset name" maxlength="200" autofocus /></label>
       <div class="actions"><button type="submit" :disabled="e.busy || !name.trim()">{{ action === 'rename' ? 'Rename preset' : 'Save preset' }}</button><button type="button" @click="action=null; error=''">Cancel</button></div>
     </form>

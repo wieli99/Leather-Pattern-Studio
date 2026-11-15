@@ -157,3 +157,11 @@ pointer until confirmation; the confirmed array remains stable.
 
 Enter/right-click confirms a pending point; a separate confirmation in review applies copies.
 Focused buttons retain native Enter/Space activation, including Cancel and point-selection actions.
+
+## Contextual Tool help
+
+Tool help shows the current canvas action, relevant tool shortcuts, and shared navigation controls.
+Fit selection appears only with a selection. Settings panels also explain button activation and control
+navigation. While an editable field is focused, help switches to its actual confirmation/cancellation
+behavior and numeric adjustments where supported; selects and buttons retain the tool context.
+During stitch transfer placement, scrolling rotates the preview instead of panning.

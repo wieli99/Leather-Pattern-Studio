@@ -92,12 +92,47 @@ function applyRename(event: KeyboardEvent) {
   void editor.save();
 }
 const editing = ref("");
-const hint = computed(() => editorHint(e.value, editing.value));
+const numericEditing = ref(false);
+const hint = computed(() =>
+  editorHint(e.value, editing.value, numericEditing.value),
+);
 function hintFocus(event: FocusEvent) {
   const target = event.target as HTMLElement;
-  editing.value =
-    target.closest<HTMLElement>("[data-hint-edit]")?.dataset.hintEdit ?? "";
+  const editable =
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable ||
+    (target instanceof HTMLInputElement &&
+      ["text", "number"].includes(target.type) &&
+      !target.readOnly);
+  editing.value = editable
+    ? (target.closest<HTMLElement>("[data-hint-edit]")?.dataset.hintEdit ?? "")
+    : "";
+  numericEditing.value =
+    editable &&
+    !!target.dataset.wheelMode &&
+    target.dataset.wheelMode !== "false";
 }
+watch(
+  [
+    () => e.value.array?.kind,
+    () => e.value.transformTool,
+    () => e.value.offsetActive,
+    () => e.value.stitchTool,
+    () => e.value.mode,
+    () => e.value.revision,
+    () => e.value.name,
+  ],
+  () => {
+    if (
+      !(document.activeElement instanceof HTMLElement) ||
+      !document.activeElement.closest("[data-hint-edit]")
+    ) {
+      editing.value = "";
+      numericEditing.value = false;
+    }
+  },
+  { flush: "post" },
+);
 const panel = ref(localStorage.getItem("panel-right") !== "false"),
   left = ref(localStorage.getItem("panel-left") !== "false"),
   bottom = ref(localStorage.getItem("panel-bottom") !== "false"),

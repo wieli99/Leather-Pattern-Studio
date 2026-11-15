@@ -6,7 +6,7 @@ export interface HintState {
   units?: string;
   stitchMode?: boolean;
   stitchTool?: string | null;
-  stitchTransferPlacement?: {phase?:"hover"|"placed"} | null;
+  stitchTransferPlacement?: { phase?: "hover" | "placed" } | null;
   editingStitchHoles?: boolean;
   addingStitchRun?: boolean;
 
@@ -14,10 +14,12 @@ export interface HintState {
   selected: readonly string[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   offsetActive?: boolean;
+  trimMode?: boolean;
   objectPicker?: boolean;
-  array?: {kind: string} | null;
-  arrayStage?: 'endpoint1'|'endpoint2'|'center'|'review';
-  pathCopy?: { picker: 'source' | 'path' | null } | null;
+  array?: { kind: string } | null;
+  arrayHasConfirmedPlacement?: boolean;
+  arrayStage?: "endpoint1" | "endpoint2" | "center" | "review";
+  pathCopy?: { picker: "source" | "path" | null } | null;
   booleanOperation?: string | null;
   booleanPicker?: "target" | "cutters" | null;
   placingPivot: boolean;
@@ -38,25 +40,139 @@ export interface EditorHint {
   action: string;
   controls: HintControl[];
 }
-export function editorHint(s: HintState, editing = ""): EditorHint {
+function canvasHelp(s: HintState, hint: EditorHint): EditorHint {
+  const navigation = new Set([
+    "pan",
+    "scroll",
+    "zoom",
+    "fit",
+    "fit-selection",
+  ]);
+  const controls = hint.controls.filter((row) => !navigation.has(row.id));
+  if (
+    s.array ||
+    s.pathCopy ||
+    s.booleanOperation ||
+    s.transformTool ||
+    s.offsetActive ||
+    s.stitchMode ||
+    s.objectPicker ||
+    s.trimMode
+  ) {
+    if (!controls.some((row) => row.id === "buttons"))
+      controls.push({
+        id: "buttons",
+        gesture: "Enter / Space on a button",
+        action: "Activate button",
+      });
+    for (let i = controls.length - 1; i >= 0; i--)
+      if (["values", "fields", "continue-fields"].includes(controls[i].id))
+        controls.splice(i, 1);
+    controls.push({
+      id: "fields",
+      gesture: "Tab / Shift+Tab",
+      action: "Next / previous control",
+    });
+  }
+  controls.push(
+    { id: "pan", gesture: "Space+drag / Middle-drag", action: "Pan" },
+    ...(!s.stitchTransferPlacement
+      ? [{ id: "scroll", gesture: "Scroll", action: "Pan" }]
+      : []),
+    { id: "zoom", gesture: "Ctrl/⌘+scroll", action: "Zoom" },
+    { id: "fit", gesture: "Ctrl/⌘+Shift+F", action: "Fit all" },
+  );
+  if (s.selected.length)
+    controls.push({
+      id: "fit-selection",
+      gesture: "Shift+F",
+      action: "Fit selection",
+    });
+  return { action: hint.action, controls };
+}
+export function editorHint(
+  s: HintState,
+  editing = "",
+  numeric = false,
+): EditorHint {
+  const hint = buildHint(s, editing, numeric);
+  if (editing) return hint;
+  return canvasHelp(s, {
+    ...hint,
+    controls: hint.controls.map((row) => ({
+      ...row,
+      gesture: row.gesture
+        .replace(/Wheel/g, "Scroll")
+        .replace(/wheel/g, "scroll")
+        .replace(/Right click/g, "Right-click"),
+      action:
+        row.id === "snap" && row.action.startsWith("Bypass")
+          ? "Bypass object/grid snapping"
+          : row.id === "fields"
+            ? "Next / previous control"
+            : row.action,
+    })),
+  });
+}
+function buildHint(
+  s: HintState,
+  editing: string,
+  numeric: boolean,
+): EditorHint {
   const controls: HintControl[] = [];
   const add = (id: string, gesture: string, action: string) =>
     controls.push({ id, gesture, action });
   let action = "Click an edge or drag to select.";
   if (editing) {
     action = editing === "text" ? "Edit the text." : "Enter a value.";
-    add("confirm", editing === "text" ? "Ctrl/⌘+Enter" : "Enter", "Apply");
+    const arrayCancel =
+      s.arrayStage !== "review" && s.arrayHasConfirmedPlacement
+        ? "Restore previous point"
+        : "Discard array preview";
+    add(
+      "confirm",
+      editing === "text" ? "Ctrl/⌘+Enter" : "Enter",
+      s.objectPicker && ["array", "transform"].includes(editing)
+        ? "Confirm value"
+        : editing === "array"
+          ? s.arrayStage === "review"
+            ? "Apply copies"
+            : "Confirm point"
+          : editing === "path-copy" || editing === "measurement"
+            ? "Confirm value"
+            : "Apply",
+    );
     add(
       "cancel",
       "Esc",
-      editing === "transform" ? "Cancel transform" : "Cancel edit",
+      editing === "array"
+        ? arrayCancel
+        : editing === "transform" && s.placingPivot
+          ? "Restore previous pivot"
+          : editing === "path-copy"
+            ? "Discard preview"
+            : ["transform", "stitch"].includes(editing)
+              ? "Discard preview"
+              : "Cancel edit",
     );
     if (editing === "text") {
       add("newline", "Enter", "New line");
       add("outside", "Click outside", "Apply");
     } else if (["property", "rename"].includes(editing))
       add("blur", "Leave field", "Apply");
-    add("fields", "Tab / Shift+Tab", "Next / previous field");
+    if (numeric) {
+      add("field-step", "Up / Down", "Adjust by the field step");
+      add("field-wheel", "Alt+scroll", "Adjust value");
+      add("field-modifiers", "Shift / Ctrl with Alt+scroll", "Steps of 5 / 10");
+    }
+    add("fields", "Tab / Shift+Tab", "Next / previous control");
+    return { action, controls };
+  }
+  if (s.objectPicker && !s.array) {
+    action = "Choose visible, unlocked source objects.";
+    add("selection", "Shift+click", "Add or remove source objects");
+    add("confirm", "Right-click on canvas", "Confirm selection");
+    add("cancel", "Esc", "Discard preview");
     return { action, controls };
   }
   if (s.array) {
@@ -64,10 +180,10 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       s.arrayStage === "center"
         ? "Select center point."
         : s.arrayStage === "endpoint1"
-          ? "Select endpoint 1; X/Y constrains direction."
+          ? "Select endpoint 1."
           : s.arrayStage === "endpoint2"
             ? "Select endpoint 2."
-            : "Review the array; Shift+wheel changes count.";
+            : "Review the array.";
     if (s.objectPicker) {
       action = "Choose visible, unlocked source objects.";
       add("selection", "Shift+click", "Add or remove source objects");
@@ -77,15 +193,19 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("axes", "X / Y", "Constrain axis; repeat to release");
       add("snap", "Alt", "Bypass object/grid snapping");
     }
-    add("count", "Shift+wheel", "Change active count");
+    add(
+      "count",
+      "Shift+scroll",
+      s.array.kind === "rectangular" && s.arrayStage === "endpoint2"
+        ? "Change Repeat"
+        : "Change Number",
+    );
     if (s.array.kind === "radial" && !s.objectPicker)
       add("center", "V", "Reposition center");
-    add("fields", "Tab / Shift+Tab", "Navigate controls");
-    add("pan", "Space+drag / Middle-drag", "Pan");
-    add("zoom", "Ctrl/⌘+wheel", "Zoom");
+    add("fields", "Tab / Shift+Tab", "Next / previous control");
     add(
       "confirm",
-      "Enter / Right click",
+      "Enter on canvas / Right-click",
       s.objectPicker
         ? "Confirm selection"
         : s.arrayStage === "review"
@@ -96,45 +216,154 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       "cancel",
       "Esc",
       s.arrayStage === "review"
-        ? "Cancel array"
-        : "Cancel point placement / array",
+        ? "Discard array preview"
+        : s.arrayHasConfirmedPlacement
+          ? "Restore previous point"
+          : "Discard array preview",
     );
     return { action, controls };
   }
   if (s.pathCopy) {
-    action = s.pathCopy.picker ? `Choose ${s.pathCopy.picker} on the canvas or in Model objects.` : 'Review copies along the path.';
-    add('apply', 'Enter on canvas / Right-click', 'Apply');
-    add('cancel', 'Esc', 'Discard preview');
-    add('fields', 'Tab / Shift+Tab', 'Next / previous control');
+    action = s.pathCopy.picker
+      ? `Choose ${s.pathCopy.picker} on the canvas or in Model objects.`
+      : "Review copies along the path.";
+    add("apply", "Enter on canvas / Right-click", "Apply");
+    add("cancel", "Esc", "Discard preview");
+    add("fields", "Tab / Shift+Tab", "Next / previous control");
     return { action, controls };
   }
   if (s.booleanOperation) {
-    action = s.booleanPicker === "target"
-      ? "Choose a target from the original objects on the canvas or in Model objects."
-      : s.booleanPicker === "cutters"
-      ? "Click objects on the canvas or in Model objects to add or remove them."
-      : "Review the result, or activate a picker to change the objects.";
-    if (s.booleanPicker !== "target") add("apply", "Enter on canvas / Right-click", "Apply");
+    action =
+      s.booleanPicker === "target"
+        ? "Choose a target from the original objects."
+        : s.booleanPicker === "cutters"
+          ? "Choose objects to add or remove from the operation."
+          : "Review the result, or activate a picker to change the objects.";
+    if (s.booleanPicker !== "target")
+      add("apply", "Enter on canvas / Right-click", "Apply");
     add("buttons", "Enter / Space on a button", "Activate button");
     add("fields", "Tab / Shift+Tab", "Next / previous control");
     add("cancel", "Esc", "Discard preview");
-    return {action, controls};
+    return { action, controls };
   }
   if (s.stitchMode) {
-    if(s.stitchTool===null)return {action:"Select a stitching tool below, or click a line to edit it.",controls:[{id:"stitch-exit",gesture:"Esc",action:"Return to Select"},{id:"stitch-select",gesture:"Shift+click",action:"Toggle stitch line selection"},{id:"stitch-all",gesture:"Alt+click / Alt+Shift+click",action:"Select all stitching of a piece / add it"},{id:"stitch-holes",gesture:"Ctrl+click / Ctrl+Shift+click",action:"Select hole / toggle holes"},{id:"stitch-delete",gesture:"Delete",action:"Delete selected stitching (Undo available)"}]};
-    if(s.stitchTool && ["link","unlink","merge","split","delete"].includes(s.stitchTool))return {action:"Click lines to select the operation’s targets; review the preview before applying.",controls:[{id:"stitch-select",gesture:"Shift+click",action:"Add or remove lines"},{id:"stitch-apply",gesture:"Enter / Right-click",action:"Apply operation"},{id:"stitch-cancel",gesture:"Esc",action:"Discard preview"}]};
-    if(s.stitchTool==="continue")return {action:"Continue the selected section; adjust count, gap and end clearance.",controls:[{id:"continue-apply",gesture:"Enter / Right-click",action:"Apply continuation"},{id:"continue-cancel",gesture:"Esc",action:"Discard continuation"},{id:"continue-fields",gesture:"Tab / Shift+Tab",action:"Next / previous field"}]};
-    if(s.stitchTransferPlacement) return {action:"Place the master preview over receiving pieces; left-click to place, then Apply or right-click to confirm.",controls:[{id:"transfer-apply",gesture:"Enter / Right-click",action:"Confirm placed transfer"},{id:"transfer-rotate",gesture:"Wheel / Shift / Alt",action:"Rotate 1° / 5° / free"},{id:"transfer-zoom",gesture:"Ctrl/⌘+wheel",action:"Zoom"},{id:"transfer-cancel",gesture:"Esc",action:"Cancel transfer"},{id:"transfer-viewport",gesture:"Space",action:"Navigate viewport"}]};
+    if (s.stitchTool === null)
+      return {
+        action: "Select a stitching tool below, or click a line to edit it.",
+        controls: [
+          { id: "stitch-exit", gesture: "Esc", action: "Return to Select" },
+          {
+            id: "stitch-select",
+            gesture: "Shift+click",
+            action: "Toggle stitch line selection",
+          },
+          {
+            id: "stitch-all",
+            gesture: "Alt+click / Alt+Shift+click",
+            action: "Select all stitching of a piece / add it",
+          },
+          {
+            id: "stitch-holes",
+            gesture: "Ctrl+click / Ctrl+Shift+click",
+            action: "Select hole / toggle holes",
+          },
+          {
+            id: "stitch-delete",
+            gesture: "Delete",
+            action: "Delete selected stitching (Undo available)",
+          },
+        ],
+      };
+    if (
+      s.stitchTool &&
+      ["link", "unlink", "merge", "split", "delete"].includes(s.stitchTool)
+    )
+      return {
+        action:
+          "Select lines for the operation, then review the preview.",
+        controls: [
+          {
+            id: "stitch-select",
+            gesture: "Shift+click",
+            action: "Add or remove lines",
+          },
+          {
+            id: "stitch-apply",
+            gesture: "Enter / Right-click",
+            action: "Apply operation",
+          },
+          { id: "stitch-cancel", gesture: "Esc", action: "Discard preview" },
+        ],
+      };
+    if (s.stitchTool === "continue")
+      return {
+        action:
+          "Continue the selected section; review its spacing.",
+        controls: [
+          {
+            id: "continue-apply",
+            gesture: "Enter / Right-click",
+            action: "Apply continuation",
+          },
+          {
+            id: "continue-cancel",
+            gesture: "Esc",
+            action: "Discard continuation",
+          },
+          {
+            id: "continue-fields",
+            gesture: "Tab / Shift+Tab",
+            action: "Next / previous field",
+          },
+        ],
+      };
+    if (s.stitchTransferPlacement)
+      return {
+        action:
+          "Click to place the transfer preview, then confirm it.",
+        controls: [
+          {
+            id: "transfer-apply",
+            gesture: "Enter / Right-click",
+            action: "Confirm placed transfer",
+          },
+          {
+            id: "transfer-rotate",
+            gesture: "Wheel / Shift / Alt",
+            action: "Rotate 1° / 5° / free",
+          },
+
+          { id: "transfer-cancel", gesture: "Esc", action: "Cancel transfer" },
+        ],
+      };
     return {
-      action: (s.editingStitchHoles ? "Ctrl-click a hole; Ctrl+Shift-click to add or remove holes." : s.addingStitchRun ? "Click the edge where the new run starts." : "Hover an edge to preview stitching; click to place or select."),
+      action: s.editingStitchHoles
+        ? "Ctrl-click a hole; Ctrl+Shift-click to add or remove holes."
+        : s.addingStitchRun
+          ? "Click the edge where the new run starts."
+          : "Hover an edge to preview stitching; click to place or select.",
       controls: [
-        {id:"stitch-all",gesture:"Alt+click / Alt+Shift+click",action:"Select all stitching of a piece / add it"},
-        {id:"stitch-holes",gesture:"Ctrl+click / Ctrl+Shift+click",action:"Select hole / toggle holes"},
-        {id:"stitch-place",gesture:"Shift+click new adjacent edge",action:"Place and merge compatible neighboring stitching"},
+        {
+          id: "stitch-all",
+          gesture: "Alt+click / Alt+Shift+click",
+          action: "Select all stitching of a piece / add it",
+        },
+        {
+          id: "stitch-holes",
+          gesture: "Ctrl+click / Ctrl+Shift+click",
+          action: "Select hole / toggle holes",
+        },
+        {
+          id: "stitch-place",
+          gesture: "Shift+click new adjacent edge",
+          action: "Place and merge compatible neighboring stitching",
+        },
         {
           id: "stitch-merge",
           gesture: s.editingStitchHoles ? "Ctrl+Shift+click" : "Shift+click",
-          action: s.editingStitchHoles ? "Add or remove holes from the selection" : "Toggle lines; Shift-click a free part of the same edge to continue",
+          action: s.editingStitchHoles
+            ? "Add or remove holes from the selection"
+            : "Toggle lines; Shift-click a free part of the same edge to continue",
         },
         {
           id: "stitch-apply",
@@ -157,9 +386,21 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
   const n = s.pending.length;
   if (s.guideDrag) {
     action = "Drag to position the guideline.";
-    add("guide-step", "Drag", s.units && s.units !== "mm" ? "1/16 in steps" : "1 mm steps");
-    add("guide-coarse", "Ctrl", s.units && s.units !== "mm" ? "1 in steps" : "10 mm steps");
-    add("guide-medium", "Shift", s.units && s.units !== "mm" ? "1/4 in steps" : "5 mm steps");
+    add(
+      "guide-step",
+      "Drag",
+      s.units && s.units !== "mm" ? "1/16 in steps" : "1 mm steps",
+    );
+    add(
+      "guide-coarse",
+      "Ctrl",
+      s.units && s.units !== "mm" ? "1 in steps" : "10 mm steps",
+    );
+    add(
+      "guide-medium",
+      "Shift",
+      s.units && s.units !== "mm" ? "1/4 in steps" : "5 mm steps",
+    );
     add("snap", "Alt", "Free placement");
     add("guide-remove", "Drop on ruler", "Remove guideline");
     add("cancel", "Esc", "Cancel guideline drag");
@@ -171,6 +412,7 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
   } else if (s.placingPivot) {
     action = "Click to place the pivot.";
     add("snap", "Alt", "Bypass snapping");
+    add("cancel", "Esc", "Restore previous pivot");
   } else if (s.offsetActive) {
     action = "Enter a signed distance and choose Sharp or Rounded corners.";
     add("apply", "Enter / Right-click", "Create offset outlines");
@@ -181,15 +423,25 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       s.transformTool === "mirror"
         ? "Click an axis or straight edge to mirror the selection."
         : s.transformTool === "corner"
-        ? "Drag a corner to change its radius."
-        : `Drag to ${s.transformTool === "scale" ? "resize" : s.transformTool} the selection.`;
+          ? "Drag a corner to round or chamfer it."
+          : `Drag to ${s.transformTool === "scale" ? "resize" : s.transformTool} the selection.`;
     add("apply", "Enter / Right-click", "Apply");
     if (s.transformTool !== "mirror") add("values", "Tab", "Edit values");
     if (s.transformTool !== "corner") add("pivot", "V", "Place pivot");
-    if (s.transformTool !== "mirror" && s.transformTool !== "rotate" && s.transformTool !== "corner")
+    if (
+      s.transformTool !== "mirror" &&
+      s.transformTool !== "rotate" &&
+      s.transformTool !== "corner"
+    )
       add("axis", "X / Y", "Constrain axis");
     if (s.transformTool === "corner")
-      add("corner-steps", "Ctrl / Shift / Alt", s.units && s.units !== "mm" ? "1 in / 1/4 in / all corners" : "10 mm / 5 mm / all corners");
+      add(
+        "corner-steps",
+        "Ctrl / Shift / Alt",
+        s.units && s.units !== "mm"
+          ? "1 in / 1/4 in / all corners"
+          : "10 mm / 5 mm / all corners",
+      );
     if (s.transformTool === "rotate") {
       add("rotation", "Drag", "Rotate in 1° steps");
       add("rotation-step", "Ctrl / Shift / Alt", "10° / 5° / free rotation");
@@ -221,17 +473,26 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       }
     }
   } else if (isIndicator(s.mode)) {
-    action = n === 0
-      ? s.mode === "crosshair" ? "Click or drag from the center." : "Click the first point or drag."
-      : s.mode === "crosshair" ? "Click to set arm radius and direction." : "Click the second point to finish the indicator.";
+    action =
+      n === 0
+        ? s.mode === "crosshair"
+          ? "Click or drag from the center."
+          : "Click the first point or drag."
+        : s.mode === "crosshair"
+          ? "Click to set arm radius and direction."
+          : "Click the second point to finish the indicator.";
     add("snap", "Alt", "Bypass snapping");
     if (s.mode !== "size-square") add("angle", "Shift", "Constrain to 45°");
   } else if (s.mode === "measurement") {
     add("sections", "Up / Down / Shift+wheel", "Add / remove equal sections");
     if (!n) add("draw-drag", "Drag", "Set measurement endpoints");
     if (n === 1) add("angle", "Shift", "Constrain to 45°");
-    action = n === 0 ? "Click point A." : n === 1 ? "Click point B."
-      : "Click to place the dimension line; Tab edits its offset.";
+    action =
+      n === 0
+        ? "Click point A."
+        : n === 1
+          ? "Click point B."
+          : "Click to place the dimension line; Tab edits its offset.";
   } else if (s.mode === "text") action = "Click to place text.";
   else {
     const path = ["polyline", "curve", "control-curve"].includes(s.mode);
@@ -323,11 +584,11 @@ export function editorHint(s: HintState, editing = ""): EditorHint {
       add("menu", "Right-click / hold tool", "Open variants");
     }
   }
-  if (!s.guideDrag && (s.mode !== "select" || s.transformTool))
+  if (
+    !s.guideDrag &&
+    !controls.some((row) => row.id === "cancel") &&
+    (s.mode !== "select" || s.transformTool)
+  )
     add("cancel", "Esc", "Cancel");
-  add("pan", "Space+drag / Middle-drag", "Pan");
-  add("scroll", "Scroll", "Pan");
-  add("zoom", "Ctrl/⌘+scroll", "Zoom");
-  add("fit", "Ctrl/⌘+Shift+F / Shift+F", "Fit all / selection");
   return { action, controls };
 }
