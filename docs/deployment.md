@@ -113,6 +113,12 @@ Windows packages are unsigned and may show publisher warnings or be blocked by S
 
 The desktop application queries published GitHub Releases automatically once per launch. Background failures remain silent; Settings → Check for updates retries manually and reports failures. Stable installations exclude prereleases. An available update links to its release page; installation is manual. No private download server is required. Validate native dialogs, file associations, clipboard, offline help, exports and upgrade behavior on each target before publishing. Build success and browser-engine tests alone do not establish native OS compatibility.
 
+Desktop validation runs on PRs targeting dev/main, main pushes, and version tags. It does not run on dev pushes: an open release PR already validates the proposed merge with main. Web CI still independently validates every PR and protected-branch push. Final main source is validated again, and tags build release packages.
+
+Rust caches separate operating systems, target architectures, compiler versions, lockfiles, and configuration. Source-specific cache entries restore compatible earlier builds, but every build and test still runs. Linux mounts registry/git caches into the toolchain container and restores host ownership afterward. PR cache isolation means unrelated PRs may still start cold; subsequent pushes and reruns benefit most. Cache misses remain valid cold builds.
+
+Inspect annotations/logs before retrying infrastructure failures. Retry a failed job at most once when the cause is transient; repeated acquisition cancellations are external blockers. Investigate test failures before retrying. Limit active monitoring to ten minutes per task and report pending job links rather than polling indefinitely.
+
 Require **Desktop build and test** alongside **Build and test** in branch protection. This additional gate fails when any desktop package job fails or is skipped; it does not certify physical-device validation.
 
 The Linux bundle disables WebKit DMA-BUF rendering because the native Wayland launch failed with a protocol error on the reference Bluefin host; the same installed app stayed running with this workaround. Reassess it when updating WebKit/runtime versions. This can affect rendering performance and does not establish compatibility with every GPU.

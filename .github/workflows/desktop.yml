@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [dev, main]
   push:
-    branches: [dev, main]
+    branches: [main]
     tags: ['v*']
 permissions:
   contents: read
@@ -47,6 +47,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Identify Rust compiler
+        id: rust
+        shell: bash
+        run: echo "compiler=$(rustc -V | tr ' /' '--')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: desktop-${{ runner.os }}-${{ matrix.target }}-${{ steps.rust.outputs.compiler }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/tauri*.json') }}-${{ github.sha }}
+          restore-keys: |
+            desktop-${{ runner.os }}-${{ matrix.target }}-${{ steps.rust.outputs.compiler }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/tauri*.json') }}-
       - run: npm ci
       - uses: actions/download-artifact@v8
         with:
@@ -85,10 +98,23 @@ jobs:
           path: .
       - name: Build the Debian desktop toolchain
         run: sudo podman build -t localhost/leather-desktop -f tools/dev/Desktop.Containerfile .
+      - name: Identify container Rust compiler
+        id: rust
+        run: echo "compiler=$(sudo podman run --rm localhost/leather-desktop rustc -V | tr ' /' '--')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cache/desktop-cargo
+            src-tauri/target
+          key: desktop-linux-${{ matrix.target }}-${{ steps.rust.outputs.compiler }}-${{ hashFiles('tools/dev/Desktop.Containerfile', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/tauri*.json') }}-${{ github.sha }}
+          restore-keys: |
+            desktop-linux-${{ matrix.target }}-${{ steps.rust.outputs.compiler }}-${{ hashFiles('tools/dev/Desktop.Containerfile', 'src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/tauri*.json') }}-
+      - name: Prepare container cache directories
+        run: mkdir -p .cache/desktop-cargo/registry .cache/desktop-cargo/git
       - name: Build, test and package Linux
         # Flatpak's nested build sandbox needs mount/user namespaces inside this disposable runner container.
         run: |
-          sudo podman run --rm --privileged -v "$PWD:/workspace" -w /workspace localhost/leather-desktop sh -ec '
+          sudo podman run --rm --privileged -v "$PWD:/workspace" -v "$PWD/.cache/desktop-cargo/registry:/usr/local/cargo/registry" -v "$PWD/.cache/desktop-cargo/git:/usr/local/cargo/git" -w /workspace localhost/leather-desktop sh -ec '
             npm ci
             npm run check:fast
             npx tauri build --config src-tauri/tauri.ci.conf.json --no-bundle --target ${{ matrix.target }}
@@ -98,6 +124,12 @@ jobs:
             flatpak-builder --user --disable-rofiles-fuse --install-deps-from=flathub --repo=flatpak-repo flatpak-build packaging/studio.leather.pattern-designer.yml
             flatpak build-bundle flatpak-repo Leather-Pattern-Studio-${{ matrix.arch }}.flatpak studio.leather.pattern-designer --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
           '
+      - name: Restore cache ownership
+        if: always()
+        run: |
+          for directory in .cache/desktop-cargo src-tauri/target; do
+            if [ -d "$directory" ]; then sudo chown -R "$(id -u):$(id -g)" "$directory"; fi
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-${{ matrix.target }}
@@ -121,7 +153,7 @@ jobs:
         run: |
           test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
           git merge-base --is-ancestor HEAD origin/main
-          gh api repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs --jq '.check_runs[] | select(.name == "Build and test") | .conclusion' | grep -qx success
+          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" --jq '.check_runs[] | select(.name == "Build and test") | .conclusion' | grep -qx success
       - uses: actions/download-artifact@v8
         with:
           pattern: desktop-*-*
@@ -133,7 +165,7 @@ jobs:
           mkdir release
           find packages -type f \( -name '*.flatpak' -o -name '*-setup.exe' -o -name '*.dmg' \) -exec cp {} release/ \;
           cd release
-          sha256sum * > SHA256SUMS
+          sha256sum ./* > SHA256SUMS
           flags=()
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes "${flags[@]}" ./*
