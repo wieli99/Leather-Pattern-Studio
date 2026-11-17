@@ -342,6 +342,8 @@ test("drag out remains reachable when all objects are grouped and the list scrol
   await page.mouse.move(drop.x + 40, drop.y + drop.height / 2, { steps: 12 });
   await expect(root).toHaveClass(/drop-inside/);
   await page.mouse.up();
+  // The drag preview also changes row depth; check the committed tree after it closes.
+  await expect(page.locator(".reorder-floating")).toHaveCount(0);
   await expect(page.locator('[data-tree-id="s0"]')).toHaveCSS(
     "padding-left",
     "0px",
@@ -361,6 +363,8 @@ test("drag out remains reachable when all objects are grouped and the list scrol
     page.getByRole("group", { name: "Move to top level", exact: true }),
   ).toHaveClass(/drop-inside/);
   await page.mouse.up();
+  // The drag preview also changes row depth; check the committed tree after it closes.
+  await expect(page.locator(".reorder-floating")).toHaveCount(0);
   await expect(page.locator('[data-tree-id="s0"]')).toHaveCSS(
     "padding-left",
     "0px",
