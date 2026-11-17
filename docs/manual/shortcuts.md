@@ -122,29 +122,13 @@ Everyday save, history, copy/paste, duplication, grouping and deletion shortcuts
 
 Delete removes selected pages only when every sheet touched by their artwork is selected. See [pages and assembly](#printing/pages-and-assembly).
 
-In Stitch mode, select operations from the bottom-center toolbar. Apply and Cancel stay in the contextual options box. Switching tools discards the unapplied preview. Escape leaves hole editing, then cancels the operation, then returns to Select when idle. During transfer placement the wheel rotates (Ctrl/⌘+wheel: zoom, Shift: 5° rotation, Alt: free rotation and no placement snapping); Space keeps viewport navigation available. Clicking or Enter applies eligible transfers. Form buttons and text entry retain normal keyboard behavior.
-
-In Stitch line, click a free part of a partially stitched edge for an independent section; Shift-click it to continue the selected section. Alt-click selects all stitching of a piece, and Alt+Shift-click adds it.
-
-Continue run is available in the stitching toolbar as an alternative to Shift-click continuation. Stitching shortcut instructions are shown in Tool help. Simultaneous X/Y alignment follows the same snapping policy in Model, transfer placement and print layouts.
-
-For Transfer stitching, left-click places the hovering preview without committing. Further left-clicks reposition it. Apply, right-click or Enter confirms only after placement; Escape cancels. Rotation after placement keeps its center fixed. Continue run requires a fixed-count preceding section with space remaining.
-
-In the attached stitching Presets panel, Escape cancels an open naming or import form first. Otherwise it closes the panel and returns focus to Presets, leaving the stitching preview active.
+## Numeric adjustments
 
 Hover over an editable numeric field and use **Alt+wheel** to increase (up) or decrease (down) its value by 1. Add **Shift** for steps of 5 or **Ctrl** for steps of 10 (Ctrl takes precedence). Length fields use the displayed unit, including inches. The field receives focus and respects its limits. Empty, mixed, invalid, disabled and read-only fields are skipped. Existing Apply, Cancel and property-edit undo behavior still applies.
 
 Wheel adjustments stop at minimum and maximum values even when a larger step overshoots. Stitch hole counts stop at the count that fits the current path, spacing and clearances.
 
-Shift-add the next side of a rounded outline to include the intervening unstitched corner. Transfer accepts lines from multiple objects and keeps their current spacing and relative angles under a shared move and rotation.
-
-Numeric fields accept arithmetic (`+`, `-`, `*`, `/`, parentheses) in the current unit. Alt+wheel evaluates a valid formula before adjusting its result. See [numeric formulas](#measurements) for entry and validation behavior.
-
-For Join and the boolean tools, use Tab / Shift+Tab to navigate controls and Enter / Space to activate a focused button. Enter on the canvas or right-click applies a valid preview; Escape cancels. Apply stays available whenever the current Boolean operands form a valid preview. See [boolean tools](#transforms/subtract-intersect-and-exclude).
-
-In Copy along path, Enter on the canvas or right-click applies the preview; Escape cancels. Picker buttons retain native Enter/Space activation.
-
-Selection-dependent editing tools require an initial selection. Click Select Objects to reselect, then click **Confirm Selection**; gizmos and Apply wait while selection is active. Canvas clicks replace selection and Shift-click toggles objects. Object panels keep Shift-click ranges. Trim only changes confirmed targets.
+See [numeric formulas](#measurements/calculate-values-in-numeric-fields), [stitch sessions](#stitching), and [tool selection and previews](#transforms) for operation-specific behavior.
 
 ## Arrays
 
@@ -160,8 +144,4 @@ Focused buttons retain native Enter/Space activation, including Cancel and point
 
 ## Contextual Tool help
 
-Tool help shows the current canvas action, relevant tool shortcuts, and shared navigation controls.
-Fit selection appears only with a selection. Settings panels also explain button activation and control
-navigation. While an editable field is focused, help switches to its actual confirmation/cancellation
-behavior and numeric adjustments where supported; selects and buttons retain the tool context.
-During stitch transfer placement, scrolling rotates the preview instead of panning.
+Tool help lists controls for the active operation and stage. Focus a numeric field to see its confirmation, cancellation, and adjustment controls. Enter or Space activates a focused button; Enter on the canvas confirms the current operation. During point or object selection, confirmation finishes that stage before applying the tool.

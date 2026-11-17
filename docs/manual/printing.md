@@ -115,12 +115,10 @@ PDF contains all sheets as vector pages, with images embedded. SVG and PNG produ
 
 Print PDF at **Actual size / 100%** and disable “Fit to page.” Check a printed size guide with a ruler before cutting material. Browser preview zoom does not change exported dimensions. Very large paper may exceed raster memory limits; choose PDF or SVG if PNG generation reports this.
 
-Export and PDF preview work offline after caching completes. See [Files, recovery and offline use](#files). Software browser checks do not replace verification on your physical printer.
+Export and PDF preview work offline after caching completes. See [Files, recovery and offline use](#files).
 
 ### DXF for cutting software
 
 DXF downloads one continuous drawing of visible pattern outlines at actual size in millimetres. Complete outlines cross paper boundaries without clipping; paper margins, screen gutters and assembly marks are omitted. Placement, rotation, mirroring and repeated copies are preserved. Stitch holes, stitch-only objects, images, text, measurements, indicators and fills are omitted. The preview shows the exported outlines in black on a white background.
 
-Curves are approximated with polylines within 0.01 mm. Closed outlines, including closed curves and full-circle arcs, stay closed; open paths stay open. Excessively complex outlines or layouts report an export error rather than reducing accuracy. Import using millimetres if your cutting software does not detect units. Check a known dimension after import. Arrange pieces and configure kerf, cutting order and machine settings in your cutting software. DXF export does not nest pieces or remove overlapping copies.
-
-While **Confirm Selection** is active for a multi-object tool, right-click the canvas to confirm valid targets. This keeps the tool open; right-click again to apply. Empty or invalid selections must be corrected first.
+Curves export as closely spaced straight segments. Closed outlines, including closed curves and full-circle arcs, stay closed; open paths stay open. Excessively complex outlines or layouts report an export error rather than reducing accuracy. Import using millimetres if your cutting software does not detect units. Check a known dimension after import. Arrange pieces and configure kerf, cutting order and machine settings in your cutting software. DXF export does not nest pieces or remove overlapping copies.

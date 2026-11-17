@@ -1,4 +1,4 @@
-# Move, rotate and resize
+# Transforms and outline tools
 
 1. Select one or more eligible objects on the canvas or in Model objects. Editing operations stay disabled until an initial selection exists.
 2. Choose Move (G), Rotate (E), or Resize (S).
@@ -6,7 +6,7 @@
 4. Apply with Enter, right-click, or Apply. Esc cancels the preview.
 
 ## Axes and pivot
-Move and Resize support X/Y axis constraints. For a single object, choose Local or World axes. The **Pivot** icon row offers **Bounding box** (the combined bounds center), **Median** (the average of object centers, equally weighted), and **Custom**. Automatic pivots follow the current preview selection. Numeric values use a stable calculation pivot, so entering the same angle or scale again leaves the preview unchanged. Click Custom or press V, then click to place a custom pivot; clicking Custom again or pressing V repositions it. Hover over the icons to see their names. Escape cancels placement and restores the previous pivot mode. Custom pivots stay fixed across selection changes. Choose Bounding box or Median to return to automatic positioning. Changing the pivot preserves pending geometry. New tool sessions start with Bounding box. Alt bypasses pivot snapping.
+Move and Resize support X/Y axis constraints. For a single object, choose Local or World axes. The **Pivot** icon row offers **Bounding box** (the combined bounds center), **Median** (the average of object centers, equally weighted), and **Custom**. Automatic pivots follow the current preview selection. Click Custom or press V, then click to place a custom pivot; clicking Custom again or pressing V repositions it. Hover over the icons to see their names. Escape cancels placement and restores the previous pivot mode. Custom pivots stay fixed across selection changes. Choose Bounding box or Median to return to automatic positioning. Changing the pivot preserves pending geometry. New tool sessions start with Bounding box. Alt bypasses pivot snapping.
 
 ## Rotation
 Dragging rotates in 1° steps. Ctrl uses 10°, Shift uses 5°, and Alt allows free rotation. Numeric angles allow exact entry.
@@ -18,11 +18,9 @@ Transforms remain previews until applied. Tools open with their initial targets 
 
 ## Offset
 
-The Offset icon shows two nested rounded outlines with an even gap between them.
-
 Select one or more outlines and press **O** or find **Offset** through Search (**F**). Enter a signed distance or drag the preview outline to set it. Dragging one preview updates every selected object's offset by the same distance; releasing leaves the preview for review. Choose **Sharp** or **Rounded** corners; Sharp is the default. Apply, Enter, or right-click creates separate, unfilled outline copies in one undo step. Esc or Cancel discards the preview. The original objects and their stitching remain unchanged; new offsets are selected after applying.
 
-Positive distances expand closed outlines and negative distances inset them. On an open line or path, positive places the offset to the left while travelling from its start to end; negative places it to the right. Distances use the selected units. Lines, paths, curves, rectangles, circles, ellipses, and arcs are supported. Circles, circular arcs, and simple rectangles retain their exact editable shape when the transform permits it. Ellipses, stretched arcs, and curves become editable control point curves with a compact set of Bézier segments; other curved offsets become editable polylines. If a curve offset folds, develops a cusp, or needs too many segments for 0.01 mm accuracy, the preview reports an error and Apply stays disabled.
+Positive distances expand closed outlines and negative distances inset them. On an open line or path, positive places the offset to the left while travelling from its start to end; negative places it to the right. Distances use the selected units. Lines, paths, curves, rectangles, circles, ellipses, and arcs are supported. The preview must remain a valid outline. If the distance produces a collapsed or overlapping result, reduce it or change the corner style before applying.
 
 Offset is unavailable when the selection contains text, images, indicators, hidden or locked objects, or stitching-only guides. If an inset collapses or another selected outline cannot be offset, the panel names the failing object and Apply stays disabled. Change the distance or corner style to continue.
 
@@ -49,8 +47,6 @@ Alt applies the current treatment and measurement to every corner of the targete
 Tool settings appear beside the sidebar. Scroll within long panels to reach additional controls.
 
 ## Trim
-
-The editing toolbar remains visible during drawing and is hidden during stitching. Selection-dependent operations require an initial selection. The Select Objects button appears before tool settings, shows the target count, and highlights while choosing targets. It changes to **Confirm Selection** while choosing; click it or right-click the canvas to finish. If all targets are removed, it shows Choose object and confirmation stays disabled until valid targets are selected. Boolean and path-copy role pickers retain their existing behavior.
 
 Trim changes only selected objects; visible unselected outlines still provide crossing boundaries. Choose the scissors icon to activate Trim, or press **K** with the canvas focused. Choose targets using Select Objects if needed. The icon stays highlighted while Trim is active; Escape clears the highlight. Hover over an outline to highlight the portion to remove with a thick rose stroke and a contrasting halo. Click to preview removing that portion between corners or crossings. Make multiple cuts, then Apply, Enter, or right-click to save them as one undo step. Cancel or Escape discards all cuts and exits Trim. Curves, circles, ellipses, arcs, and rounded corners can also be trimmed. Cuts stop at crossings, open endpoints, or sharp corners; Curve and Control Curve anchors also stop cuts, including smooth anchors. For other outlines, smooth joins and closed seams do not stop a cut. Clicking an isolated circle or ellipse removes it entirely. Trim switches to Select; Apply and Cancel leave Select active. Retained curves remain editable; interpolated curves become control curves after trimming.
 
@@ -86,7 +82,7 @@ Review the preview before using Apply, Enter or right-click. A valid empty resul
 
 Tab and Shift+Tab move between controls. Enter or Space activates the focused button, including selection buttons; Enter on the canvas or right-click applies a valid preview. Escape cancels from the canvas, options or objects panel. Apply and Cancel return focus to the canvas. No new global shortcuts are added; Join keeps J.
 
-Results remain editable: drag their contour anchors and handles, use transforms, trim, offset, or attach stitching to an individual contour. Separate contours never form a continuous stitching run. Saved projects and print exports preserve holes. Analytic arcs are converted to cubic segments within 0.001 mm; existing Bézier curves remain curves.
+Results remain editable: drag their contour anchors and handles, use transforms, trim, offset, or attach stitching to an individual contour. Separate contours never form a continuous stitching run. Saved projects and print exports preserve holes.
 
 ![Subtract preview with a red cutter and operand controls](/manual/images/boolean-subtract.png)
 
@@ -104,14 +100,6 @@ Choose **Spacing** for fixed distances or **Count** for a number of new copies. 
 Review the preview and choose **Apply**, press Enter on the canvas, or right-click. Escape or **Cancel** discards the preview. Apply creates one undo step and preserves the source and path. Up to 1,000 copies are supported. Copies preserve source styling and associated stitching.
 
 ![Copy along path preview and settings](/manual/images/copy-along-path.png)
-
-## Search and favorites
-
-![Tool search and favorites menu](images/tool-search.png)
-
-Press **F** or click Search at the left of the bottom toolbar to find any transform or outline tool. Type a name or related word, such as “snip” for Trim. The … menu or a right-click on a search result opens tool documentation and adds or removes a favorite. Up to ten favorites are saved across projects and sessions. Drag favorites to reorder them; right-click one to remove it. Search stays fixed. Drawing and stitching toolbars are unchanged.
-
-While **Confirm Selection** is active for a multi-object tool, right-click the canvas to confirm valid targets. This keeps the tool open; right-click again to apply. Empty or invalid selections must be corrected first.
 
 ## Rectangular array
 

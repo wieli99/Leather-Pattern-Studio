@@ -10,7 +10,7 @@ Hold Shift while dragging an anchor to constrain movement to 45° increments fro
 
 ![Anchor movement constrained with Shift](/manual/images/vertex-snap.png)
 
-Delete or Backspace removes the selection, including after clicking an object in the Model objects panel. Shift-click object rows to select an inclusive range, or Ctrl/⌘-click to toggle individual rows for deletion. While renaming an object, these keys edit its name. Ctrl/⌘+D duplicates the selection. See [transforms](#transforms) to move, rotate, or resize.
+Delete or Backspace removes the selection, with canvas focus or an object row focused. Shift-click object rows to select an inclusive range, or Ctrl/⌘-click to toggle individual rows for deletion. While renaming an object, these keys edit its name. Ctrl/⌘+D duplicates the selection. See [transforms](#transforms) to move, rotate, or resize.
 
 Converted stitching paths can be selected in Select mode to edit their geometry. Alt+click inserts an anchor; drag anchors or curve handles to reshape the line. Stitching follows these edits and remains continuous across inserted anchors. Open **Stitch line** to change stitch settings.
 
@@ -20,7 +20,7 @@ Selected rectangles expose four corner anchors. Dragging one freely converts the
 
 ## Duplicate, copy and paste
 
-Ctrl/⌘+D duplicates the selection. Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. In Model, both commands also work after the pointer leaves the canvas, using its last canvas position. Move the pointer over the desired canvas position before pasting to place the copies there. In print tabs, keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying, measured in millimetres. Paste works across tabs and sessions and creates one undo step. Finish active edits before copying or pasting. While typing in a field, copy and paste edit its text.
+Ctrl/⌘+D duplicates the selection. Ctrl/⌘+C copies selected objects to the system clipboard; Ctrl/⌘+V pastes them, including stitching. In Model, both commands also work after the pointer leaves the canvas, using its last canvas position. Move the pointer over the desired canvas position before pasting to place the copies there. In print tabs, keep the pointer inside the canvas for both commands. Each object keeps its offset from the cursor at copying,. Paste works across tabs and sessions and creates one undo step. Finish active edits before copying or pasting. While typing in a field, copy and paste edit its text.
 
 ## Copy appearance
 
@@ -32,15 +32,15 @@ Copy Styling copies the base fill color, opacity, fill mode, and outline styling
 
 ## Hide and lock objects
 
-Use the eye and lock buttons at the right of any object row to hide/show or lock/unlock it without selecting it first. A solid gray lock marks a locally locked object or group; an unlocked padlock is outlined. Toggling another object preserves your selection. These buttons are disabled during unfinished drawings, property edits, and modifier previews; Apply or Cancel the edit to enable them again. Hidden objects remain in the panel but disappear from the canvas, snapping, and fit bounds. Hiding clears that object's selection. When any selected object is locked, all modifier tools (Move, Rotate, Resize, Mirror, Corner radius, Join, Trim, and Stitch line) are disabled. Locked objects can be selected, copied, and duplicated, but cannot be edited or deleted until unlocked. Duplicates start unlocked. Visibility can be changed while locked. Both states are saved with the project and toggles support undo/redo.
+Use the eye and lock buttons at the right of any object row to hide/show or lock/unlock it without selecting it first. A solid gray lock marks a locally locked object or group; an unlocked padlock is outlined. Toggling another object preserves your selection. These buttons are disabled during unfinished drawings, property edits, and modifier previews; Apply or Cancel the edit to enable them again. Hidden objects remain in the panel but disappear from the canvas, snapping, and fit bounds. Hiding clears that object's selection. When any selected object is locked, all modifier tools (Move, Rotate, Resize, Mirror, Corners, Join, Trim, and Stitch line) are disabled. Locked objects can be selected, copied, and duplicated, but cannot be edited or deleted until unlocked. Duplicates start unlocked. Visibility can be changed while locked. Both states are saved with the project and toggles support undo/redo.
 
 ![Object visibility and lock controls](/manual/images/object-states.png)
 
 ## Object groups
 
-The Model objects panel lists the frontmost object first. The folder-plus button (**New Group**) creates a group containing all currently selected objects and groups. With nothing selected, it creates an empty group. **Group Selection** in the context menu or Ctrl/⌘+G also groups the selection. Groups may contain objects and other groups. Each item has only one parent. Click a group name to select its contents; Ctrl/⌘-click toggles the group; Shift-click selects a visible row range. Canvas clicks still select individual objects.
+The Model objects panel lists the frontmost object first. The folder-plus button (**New Group**) creates a group containing all currently selected objects and groups. With nothing selected, it creates an empty group. **Group Selection** in the context menu or Ctrl/⌘+G also groups the selection. Groups may contain objects and other groups. Click a group name to select its contents; Ctrl/⌘-click toggles the group; Shift-click selects a visible row range. Canvas clicks still select individual objects.
 
-New groups open with the default name selected, so typing immediately replaces it. Press Enter to confirm. Use the arrow to collapse or expand a group. Collapse affects only the panel and is remembered in saved projects and recovery, without adding undo steps. Double-click or F2 renames a group, with its current name selected for replacement. **Ungroup** keeps its contents in place. Delete on a selected group removes its contents too; locked contents prevent deletion.
+New groups open with the default name selected, so typing immediately replaces it. Press Enter to confirm. Use the arrow to collapse or expand a group. Collapsing a group only hides its rows in the panel. Double-click or F2 renames a group, with its current name selected for replacement. **Ungroup** keeps its contents in place. Delete on a selected group removes its contents too; locked contents prevent deletion.
 
 A group's eye and lock controls apply to all descendants. Showing or unlocking a group preserves each child's own state. Child eye and lock icons always show their own local state. Child controls still change their local state while an ancestor hides or locks them. An inherited state remains effective until the ancestor is shown or unlocked. Locked items may still be reorganized in the panel.
 
@@ -60,8 +60,8 @@ Hover an object or folder row to see a medium-sized preview of its current sourc
 
 Join and the boolean tools can produce one compound object containing an outer outline, holes, or separate contours. Drag its anchors and handles normally; double-click an anchor to toggle sharp/smooth. Numeric vertex controls in the Inspector remain available for the original path types.
 
-Alt-click an outline to insert an anchor. Existing stitching stays attached to the split edge and to untouched contours, preserving each closed contour’s spacing and seam. Undo restores both geometry and stitching together.
+Alt-click an outline to insert an anchor. Existing stitching stays attached to the split edge and to untouched contours, preserving each closed contour’s stitching. Undo restores both geometry and stitching together.
 
-Hold Ctrl to show a measurement for each cubic edge; curved edges are measured along the curve rather than its display subdivisions. Offset (O) also accepts compound objects. Cancel discards the offset preview without changing the source.
+Hold Ctrl to show a measurement for each cubic edge; curved edges show their arc length. Offset (O) also accepts compound objects. Cancel discards the offset preview without changing the source.
 
 ![Compound outline with a curved edge, a hole, and logical edge measurements](/manual/images/compound-editing.png)

@@ -24,7 +24,7 @@ Draw indicators directly on a [print layout](#printing), or import size guides f
 
 ## Change appearance
 
-Outline width (mm) in Appearance applies to all outlined shapes. The default is 0.35 mm; resizing preserves physical width. Reset styling restores this default.
+Outline width (mm) in Appearance applies to all outlined shapes. The default is 0.35 mm; resizing preserves physical width.
 
 Hold Shift while placing arrows, bodyless arrows, ruler size guides, or measurement endpoints to constrain direction to 45° increments. Alt bypasses grid/object snapping while retaining this angle constraint. The third measurement click still sets the dimension-line offset.
 

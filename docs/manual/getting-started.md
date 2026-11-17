@@ -16,7 +16,7 @@ Choose units in Settings before entering dimensions. In inch mode you can enter 
 
 ## Round corners and add stitching
 
-1. With the rectangle selected, choose **Corner radius (B)**. Click a corner dot to reveal the numeric fields, then enter **4** in **All corners (mm)**. Choose Apply; Esc discards the preview.
+1. With the rectangle selected, choose **Corners (B)**. Click a corner dot to reveal the numeric fields, then enter **4** in **All corners**. Choose Apply; Esc discards the preview.
 2. Choose **Stitch line (I)**. For this example, use **3.85 mm** spacing and **3 mm** inset from the cut edge. For real work, match spacing to your stitching iron.
 3. Hover an edge to check the preview, then click to place stitching. Repeat on the other edges and rounded corners. Choose Apply to keep the complete session.
 
@@ -24,7 +24,7 @@ For continuous spacing around corners, see [merging stitch lines](#stitching/mer
 
 ## Save your editable project
 
-Choose **Save (Ctrl/⌘+S)** and keep the `.leather.json` file. Depending on your browser, Save opens a file picker or downloads a copy. Use Open to resume from that file. Browser recovery is a convenience, not a backup.
+Choose **Save (Ctrl/⌘+S)** and keep the `.leather` file. Depending on your browser, Save opens a file picker or downloads a copy. Use Open to resume from that file. Browser recovery is a convenience, not a backup.
 
 ## Prepare a print
 
@@ -39,7 +39,7 @@ Save the project again to preserve the layout. Exporting a PDF does not save the
 ## Work faster
 
 - **Tab** enters numeric construction or transform fields; Shift+Tab moves backward.
-- **Space+drag** pans; Ctrl/⌘+scroll zooms at the pointer; **F** fits your artwork.
+- **Space+drag** pans; Ctrl/⌘+scroll zooms at the pointer; **Ctrl/⌘+Shift+F** fits your artwork.
 - Repeat a tool's letter to cycle its variants; right-click its button to choose explicitly.
 - Hold **Alt** to bypass positional snapping.
 - Watch Tool help for the current operation's controls.

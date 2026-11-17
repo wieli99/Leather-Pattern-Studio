@@ -20,7 +20,7 @@ test("manual navigation, search, links and offline articles", async ({
   await manual.getByRole("searchbox").fill("pivot");
   await expect(
     manual.getByRole("region", { name: "Search results" }),
-  ).toContainText("Move, rotate and resize");
+  ).toContainText("Transforms and outline tools");
   await manual.getByRole("searchbox").fill("nothingmatches123");
   await expect(manual.getByText("No matching articles.")).toBeVisible();
   await manual.goto("/manual/index.html#drawing");

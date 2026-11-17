@@ -38,12 +38,14 @@ Space+drag or middle-drag pans, preserving the selected objects and their select
 
 The footer shows the application version. Include it when [reporting a problem](#troubleshooting/report-a-bug). Save before accepting an application update; see [offline use](#files).
 
-## Share feedback
+## Search and favorites
 
-**Feedback** and **Help (?)** sit alongside the file actions in the header, vertically centered with the buttons.
+Press **F** or click Search in the bottom toolbar to find editing tools by name or related words. Select a result to open it. Tools that require a selection remain unavailable until compatible objects are selected.
 
-Click **Feedback** in the header of either workspace to open the [GitHub Discussions page](https://github.com/wieli99/Leather-Pattern-Studio/discussions) in a new tab. This requires an internet connection. Use it for ideas and general feedback; use **Report a bug** for problems.
+Use a result’s **…** menu or right-click it to open its documentation or add it to favorites. Up to ten favorites are remembered across projects. Drag favorites to reorder them; right-click one to remove it.
 
-The bottom bar centers Grid snap, Object snap, and Settings together; on narrow windows these controls occupy a second row. Settings, Help, and Feedback highlight when hovered. Print layout settings and Export print layout use the same button appearance as the rest of the tool.
+![Tool search and favorites menu](/manual/images/tool-search.png)
 
-Properties contains editing fields only. Use Ctrl/⌘+D to duplicate and Delete or Backspace to delete a selection; these actions are no longer buttons in Properties. Reset styling is no longer offered in Properties.
+## Feedback and bug reports
+
+Use **Feedback** in the header for ideas and discussion. Use **Report a bug** for problems; see [reporting a bug](#troubleshooting/report-a-bug). Both require an internet connection.

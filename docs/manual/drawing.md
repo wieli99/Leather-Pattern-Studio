@@ -34,7 +34,7 @@ Enter or right-click finishes paths. Double-click closes polylines and both curv
 ## Polygons (H)
 Center polygon uses a center followed by radius/rotation. Bounding-box polygon uses opposite corners. Up/Down or Shift+wheel changes the side count.
 
-Two-point shapes can be dragged in one gesture. Use [numeric measurements](#measurements) for precision. Repeat P/R/C/H for the next variant; Shift+key selects the previous variant.
+Use [numeric measurements](#measurements) for exact dimensions.
 
 ![Polyline menu with straight and curved path variants](/manual/images/tool-variants.png)
 
@@ -42,6 +42,6 @@ Two-point shapes can be dragged in one gesture. Use [numeric measurements](#meas
 
 Shift constrains corner/center rectangles and bounding-box ellipses/polygons to equal width and height. It snaps center/diameter circle, center polygon, center ellipse first-radius, and three-point arc endpoint directions to 45°. Curves snap anchor directions and control-handle directions to 45°. Center arcs snap start direction and sweep to 45°. Entered measurements take priority. Shift+wheel still changes polygon sides.
 
-Closed polylines and curves join their closing corner without visible line ends. Every closed object has a subtle interior fill, including closed polylines and curves and full-circle arcs. Separate objects that together enclose a region are not filled as a single shape.
+Every closed object has a subtle interior fill, including closed polylines and curves and full-circle arcs. Separate objects that together enclose a region are not filled as a single shape.
 
 Choose the **Measurements (D)** and **Drawing tools (A)** menus below Text for [arrows, crosshairs and size guides](#indicators).

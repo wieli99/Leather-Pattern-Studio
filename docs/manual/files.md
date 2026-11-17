@@ -1,7 +1,5 @@
 # Files, recovery and offline use
 
-The experimental Tauri desktop shell uses operating-system dialogs for project Open and Save. After selecting a file, subsequent saves overwrite it. Cancelling a dialog keeps the current project. Desktop assets are bundled rather than installed through the browser offline cache.
-
 Save opens a file dialog or downloads a project file, depending on your browser. A download notification does not guarantee that the file reached your disk. Open accepts saved project files. New and Open ask before replacing unsaved work.
 
 Recovery does not transfer automatically between browsers, devices, or website addresses. Save projects to files before switching, then use Open in the new location.
@@ -42,11 +40,11 @@ SVG files are imported as single image objects and remain sharp when resized. Th
 
 ![SVG imported as an image object](/manual/images/svg-import.png)
 
-Print layouts and their links are included in saved JSON and recovery. The Model tab is the source of geometry; exporting a print layout does not save the project. PDF, SVG, and PNG export work offline after the production cache has finished installing.
+Print layouts and their links are included in saved projects and recovery. The Model tab is the source of geometry; exporting a print layout does not save the project. PDF, SVG, and PNG export work offline after the production cache has finished installing.
 
 ## Desktop application
 
-The desktop editor uses the same controls as the website. Files opened through the operating system while Open, Save, New, or recovery restoration is running (including replacement confirmation) stay queued until the editor can process them. New projects use `.leather`, containing JSON; existing `.leather.json` and `.json` projects remain readable. Open and Save use operating-system dialogs. Renaming disconnects the previous file; the next Save requests a destination. Export uses a save dialog for the generated PDF, SVG, PNG, DXF or ZIP. The manual is bundled and opens in a separate application window without a network connection.
+The desktop editor uses the same controls as the website. New projects use `.leather`, containing JSON; existing `.leather.json` and `.json` projects remain readable. Open and Save use operating-system dialogs. Renaming disconnects the previous file; the next Save requests a destination. Export uses a save dialog for the generated PDF, SVG, PNG, DXF or ZIP. The manual is bundled and opens in a separate application window without a network connection.
 
 The desktop application checks GitHub automatically once each time it starts. A newer compatible release produces a notification; offline or failed background checks do not interrupt editing. Open **Settings → Check for updates** to check again manually. When an update is available, **Open GitHub release** opens your browser. Save your project, close the application and install the package for your system and CPU. Linux Flatpak bundles must be installed again to update; they do not provide an automatic update repository. Browser recovery and desktop recovery are separate.
 
