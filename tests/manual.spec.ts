@@ -20,7 +20,7 @@ test("manual navigation, search, links and offline articles", async ({
   await manual.getByRole("searchbox").fill("pivot");
   await expect(
     manual.getByRole("region", { name: "Search results" }),
-  ).toContainText("Move, rotate and resize");
+  ).toContainText("Transforms and outline tools");
   await manual.getByRole("searchbox").fill("nothingmatches123");
   await expect(manual.getByText("No matching articles.")).toBeVisible();
   await manual.goto("/manual/index.html#drawing");
@@ -101,7 +101,7 @@ test("first-pattern manual walkthrough produces a saved stitched pattern and pri
   await page.locator(".objects .object-select").first().click();
   await expect(page.getByLabel("Width", { exact: true })).toHaveValue("60");
   await expect(page.getByLabel("Height", { exact: true })).toHaveValue("40");
-  await page.getByRole("button", { name: "Corner radius", exact: true }).click();
+  await page.getByRole("button", { name: "Corners", exact: true }).click();
   await canvas.click({ position: { x: 160, y: 190 } });
   await page.getByLabel("All corners (mm)", { exact: true }).fill("4");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
@@ -122,7 +122,7 @@ test("first-pattern manual walkthrough produces a saved stitched pattern and pri
   await page.getByRole("dialog").getByRole("button", { name: "Create", exact: true }).click();
   await page.getByRole("button", { name: "Import Rectangle 1", exact: true }).first().click();
   await expect(page.getByRole("region", { name: "Print objects", exact: true }).locator(".print-object-name")).toHaveCount(1);
-  await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+  await page.getByRole("button", { name: "Measurements (D)", exact: true }).click({ button: "right" });
   await page.getByRole("menuitemradio", { name: "Square size guide", exact: true }).click();
   const printCanvas = page.getByLabel("Print layout canvas");
   await printCanvas.click({ position: { x: 350, y: 330 } });
@@ -137,4 +137,13 @@ test("first-pattern manual walkthrough produces a saved stitched pattern and pri
   const exported = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "Export", exact: true }).click();
   expect((await exported).suggestedFilename()).toMatch(/\.pdf$/);
+});
+
+test("old Merge bookmarks resolve to the renamed Join manual section",async({page})=>{
+  await page.goto("/manual/index.html#transforms/merge");
+  const heading=page.getByRole("heading",{name:"Join",exact:true});
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeInViewport();
+  await page.getByRole("navigation",{name:"On this page"}).getByRole("link",{name:"Join",exact:true}).click();
+  await expect(page).toHaveURL(/#transforms\/join$/);
 });

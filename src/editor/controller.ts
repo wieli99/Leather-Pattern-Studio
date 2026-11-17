@@ -1,3 +1,13 @@
+import { arrayPlacements, type ArrayKind, type ArraySettings } from "../model/array";
+import { objectSelection } from "../model/objectSelection";
+import { automaticPivot, type PivotMode } from "../model/pivot";
+import { pathPlacements } from "../model/pathPlacements";
+import { transformShape } from "../model/geometry";
+import { stitchRunClosed } from "../model/stitchGeometry";
+import { booleanShapes } from "../model/booleanShapes";
+import { isClosedShape } from "../model/closedShape";
+import type { BooleanOperation } from "../model/boolean";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { stitchTools, type StitchTool } from "./stitchTools";
 import { copyTransferPlacements, shareReceivingGeometry, hitStitchHole, detachTransfer, makeTransfer, pieceFrame, stitchPiece, materialContains, copyStitchData, resolvedStitchGroups, receivingStitches, holeAppearance, holeMark, holeTouchesEdge } from "../model/stitchLayers";
 import type { StitchTransfer } from "../generated/StitchTransfer";
@@ -12,6 +22,8 @@ import { isIndicator } from "../model/indicators";
 import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
+import { offsetShape, type OffsetJoin } from "../model/offset";
+import { flattenContours } from "../model/flattenOutline";
 import { trimAt } from "../model/trim";
 import {
   defaultStitchSettings,
@@ -59,7 +71,9 @@ import {
 import {
   cornerPoints,
   cornerRadii,
-  setCornerRadius,
+  polygonFillets,
+  setCornerTreatment,
+  cornerTreatmentValue,
   anchors,
   stretchShape,
   boundary,
@@ -139,6 +153,12 @@ export class Controller {
     if (this.gesture?.kind === "corner")
       this.pointerMove(this.screen(this.anchorPointer), alt, ctrl, shift);
   }
+  updateVertexModifiers(alt: boolean, ctrl: boolean, shift: boolean) {
+    if (this.gesture?.kind === "vertex" && !this.gesture.handleSide &&
+        (distance(this.gesture.start, this.anchorPointer) > 1e-9 ||
+         distance(this.gesture.start, this.gesture.end) > 1e-9))
+      this.pointerMove(this.screen(this.anchorPointer), alt, ctrl, shift);
+  }
   selectedCorner: { shapeId: string; index: number } | null = null;
   cornerHandles() {
     if (this.tool !== "select" || this.transformTool !== "corner") return [];
@@ -175,6 +195,11 @@ export class Controller {
   core: Pick<Core, "request">;
   files = new ProjectFiles();
   printLayoutActive = false;
+  setPrintLayoutActive(active: boolean) {
+    if (this.printLayoutActive === active) return;
+    this.printLayoutActive = active;
+    this.notify();
+  }
   projectEpoch = 0;
   document = emptyDocument();
   preview: Doc | null = null;
@@ -195,6 +220,105 @@ export class Controller {
   transformError = "";
   transformGeneration = 0;
   transformDraft: Doc | null = null;
+  offsetActive = false;
+  offsetDistance = 3;
+  offsetJoin: OffsetJoin = "sharp";
+  offsetError = "";
+  offsetDraft: Doc | null = null;
+  offsetIds: string[] = [];
+  offsetDrag: { start: Point; distance: number; normal: Point } | null = null;
+  private offsetDragAt(raw: Point) {
+    const originals = this.document.shapes.filter(s => this.selected.includes(s.id));
+    const index = this.offsetIds.findIndex(id => {
+      const shape = this.offsetDraft?.shapes.find(s => s.id === id);
+      return shape && hitTest(shape, raw, 8 / this.zoom, this.units);
+    });
+    const source = originals[index];
+    if (!source) return null;
+    let best = Infinity, normal: Point | null = null;
+    for (const {points,closed} of flattenContours(source, 0.05)) {
+      const area = closed ? points.reduce((sum, a, i) => {
+        const b = points[(i + 1) % points.length];
+        return sum + a.x * b.y - a.y * b.x;
+      }, 0) : 0;
+      for (let i = 0; i < points.length - (closed ? 0 : 1); i++) {
+        const a = points[i], b = points[(i + 1) % points.length];
+        const d = distanceToSegment(raw, a, b);
+        if (d >= best) continue;
+        const dx = b.x - a.x, dy = b.y - a.y, size = Math.hypot(dx, dy);
+        if (size < 1e-9) continue;
+        best = d;
+        const probe = {x:(a.x+b.x)/2-dy/size*0.001,y:(a.y+b.y)/2+dx/size*0.001};
+        const side = source.kind === "compound" ? (contains(source,probe) ? 1 : -1) : closed ? Math.sign(area) : 1;
+        normal = { x: side * dy / size, y: -side * dx / size };
+      }
+    }
+    return normal;
+  }
+  get canOffset() {
+    return this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
+        ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc", "compound"].includes(s.kind) &&
+        !s.stitchOnly && !this.isHidden(s.id));
+  }
+  activateOffset() {
+    if (!this.canOffset) return;
+    this.cancel();
+    this.tool = "select";
+    this.mode = "select";
+    this.beginToolSelection();
+    this.offsetActive = true;
+    this.refreshOffset();
+  }
+  setOffsetDistance(value: number) {
+    this.offsetDistance = value;
+    this.refreshOffset();
+  }
+  setOffsetJoin(value: OffsetJoin) {
+    this.offsetJoin = value;
+    this.refreshOffset();
+  }
+  refreshOffset() {
+    if (!this.offsetActive) return;
+    this.offsetDraft = null;
+    this.offsetIds = [];
+    this.preview = null;
+    if (!this.selected.length) { this.notify(); return; }
+    try {
+      if (!Number.isFinite(this.offsetDistance) || Math.abs(this.offsetDistance) < 1e-8)
+        throw Error("Enter a non-zero finite offset distance.");
+      const selected = new Set(this.selected);
+      const copies = this.document.shapes.filter(s => selected.has(s.id)).map(s => {
+        try { return { sourceId: s.id, shape: offsetShape(s, this.offsetDistance, this.offsetJoin) }; }
+        catch (error) { throw Error(`${s.name}: ${String(error).replace(/^Error: /, "")}`); }
+      });
+      const bySource = new Map(copies.map(copy => [copy.sourceId, copy.shape]));
+      const insert = (nodes: ObjectNode[]): ObjectNode[] => nodes.flatMap<ObjectNode>(node => {
+        if (node.kind === "group") return [{ ...node, children: insert(node.children) }];
+        const copy = bySource.get(node.id);
+        return copy ? [{ kind: "object" as const, id: copy.id }, node] : [node];
+      });
+      const next = { ...this.document, shapes: [...this.document.shapes, ...copies.map(c => c.shape)], objectTree: insert(this.tree) };
+      parseProject(JSON.stringify(this.normalizeTree(next)));
+      this.offsetDraft = next;
+      this.offsetIds = copies.map(c => c.shape.id);
+      this.offsetError = "";
+      this.preview = next;
+    } catch (error) {
+      this.offsetError = String(error).replace(/^Error: /, "");
+    }
+    this.notify();
+  }
+  async applyOffset() {
+    if (this.objectPicker || this.toolSelectionError || !this.offsetActive || !this.offsetDraft || this.offsetError || this.busy) return;
+    const next = this.offsetDraft, ids = this.offsetIds;
+    this.toolSelection = null;
+    this.cancel();
+    if (await this.commit(next)) {
+      this.selectedGroups = [];
+      this.selected = ids;
+      this.notify();
+    }
+  }
   get transformAngle() {
     const s = (this.transformOriginal?.shapes.filter((s) =>
       this.selected.includes(s.id),
@@ -211,17 +335,23 @@ export class Controller {
     return (Math.atan2(m.b, m.a) * 180) / Math.PI;
   }
   pauseGesture() {
+    if (this.offsetDrag) {
+      const startingDistance = this.offsetDrag.distance;
+      this.offsetDrag = null;
+      this.setOffsetDistance(startingDistance);
+    }
     const gesture = this.gesture;
     if (gesture && !this.transformTool && gesture.kind !== "pan") {
       this.preview = null;
       this.selected = gesture.selection;
     }
-    if (gesture?.kind === "move" && this.transformTool) {
+    if (gesture?.kind === "move" && this.transformTool && this.pivotMode === "custom") {
       this.transformPivot = {
         x: this.transformPivot.x + (gesture.displacement?.x ?? 0),
         y: this.transformPivot.y + (gesture.displacement?.y ?? 0),
       };
     }
+    if (gesture && ["move", "rotate", "scale"].includes(gesture.kind)) this.captureNumericBasis();
     this.gesture = null;
     this.drawingDown = null;
     this.guideDrag = null;
@@ -239,6 +369,7 @@ export class Controller {
   }
 
   get transformValid() {
+    if (this.objectPicker || this.toolSelectionError) return false;
     if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
     if (!this.preview) return !this.transformError;
     try {
@@ -248,37 +379,78 @@ export class Controller {
       return false;
     }
   }
+  private captureNumericBasis() {
+    if (!this.transformTool || ["mirror", "corner"].includes(this.transformTool) || this.transformError) return;
+    // Numeric inputs are absolute within this basis; the displayed automatic
+    // pivot can follow preview bounds without changing the calculation pivot.
+    const document = this.transformDraft ?? this.preview ?? this.transformOriginal;
+    if (document) this.numericTransformBasis = {
+      document,
+      values: {...this.transformValues},
+      pivot: {...this.transformPivot},
+      angle: this.transformAngle,
+    };
+  }
   rebaseTransform() {
+    this.numericTransformBasis = null;
     if (this.transformTool && this.preview && !this.transformError)
       this.transformOriginal = this.preview;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
+    this.captureNumericBasis();
   }
   setPivot(point: Point) {
     if (this.transformTool !== "mirror") this.rebaseTransform();
+    this.pivotMode = "custom";
+    this.pivotPlacement = null;
     this.transformPivot = point;
     this.placingPivot = false;
-    if (this.transformTool === "mirror") this.refreshMirror();
+    this.captureNumericBasis();
     this.notify();
   }
   setOrientation(value: "world" | "local") {
     if (this.transformTool !== "mirror") this.rebaseTransform();
     this.transformOrientation = value;
+    this.captureNumericBasis();
     if (this.transformTool === "mirror") this.refreshMirror();
     this.preferences();
     this.notify();
   }
-  resetPivot() {
-    if (this.transformTool !== "mirror") this.rebaseTransform();
-    const b = this.selectionBounds;
-    this.transformPivot = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
-    if (this.transformTool === "mirror") this.refreshMirror();
+  private pivotPlacement: { mode: PivotMode; point: Point } | null = null;
+  beginPivotPlacement() {
+    if (this.objectPicker) return;
+    if (!this.placingPivot) this.pivotPlacement = { mode: this.pivotMode, point: {...this.transformPivot} };
+    this.pivotMode = "custom";
+    this.placingPivot = true;
     this.notify();
   }
-  setCornerValue(value: number, all = false) {
+  cancelPivotPlacement() {
+    if (!this.placingPivot) return false;
+    if (this.pivotPlacement) {
+      this.pivotMode = this.pivotPlacement.mode;
+      this.transformPivot = this.pivotPlacement.point;
+    }
+    this.placingPivot = false;
+    this.pivotPlacement = null;
+    this.centerAutomaticPivot();
+    this.notify();
+    return true;
+  }
+  setPivotMode(mode: PivotMode) {
+    if (mode === "custom") { this.beginPivotPlacement(); return; }
+    this.placingPivot = false;
+    this.pivotPlacement = null;
+    if (this.transformTool !== "mirror") this.rebaseTransform();
+    this.pivotMode = mode;
+    this.centerAutomaticPivot();
+    this.captureNumericBasis();
+    this.notify();
+  }
+  resetPivot() { this.setPivotMode("bounding-box"); }
+  setCornerValue(value: number, all = false, chamfer?: boolean) {
     const target = this.selectedCorner;
     if (!target) return;
     if (!Number.isFinite(value) || value < 0) {
-      this.transformError = "Enter a finite non-negative radius.";
+      this.transformError = "Enter a finite non-negative corner measurement.";
       this.notify();
       return;
     }
@@ -288,10 +460,48 @@ export class Controller {
     this.updateTransformPreview({
       ...doc,
       shapes: doc.shapes.map((s) =>
-        s.id === shape.id ? setCornerRadius(s, target.index, value, all) : s,
+        s.id === shape.id ? setCornerTreatment(s, target.index, value, chamfer ?? this.cornerStyleOverride ?? (shape.cornerChamfers?.[target.index] ?? 0) > 0, all) : s,
       ),
     });
   }
+  bulkCornerStyleOverride: boolean | null = null;
+  get bulkCornerStyle(): boolean | null {
+    const styles = this.active.flatMap(s => polygonFillets(s).corners.map(c => c.chamfer > 0 ? true : c.radius > 0 ? false : this.bulkCornerStyleOverride ?? false));
+    return styles.length && styles.every(v => v === styles[0]) ? styles[0] : null;
+  }
+  setAllCornerValue(value: number) {
+    if (this.objectPicker || this.bulkCornerStyle === null) return;
+    if (!Number.isFinite(value) || value < 0) {
+      this.transformError = "Enter a finite non-negative corner measurement.";
+      this.notify();
+      return;
+    }
+    const chamfer = this.bulkCornerStyle;
+    this.cornerStyleOverride = chamfer;
+    const doc = this.preview ?? this.document;
+    this.updateTransformPreview({...doc, shapes: doc.shapes.map(s => this.selected.includes(s.id)
+      ? setCornerTreatment(s, 0, value, chamfer, true) : s)});
+  }
+  setAllCornerStyle(chamfer: boolean) {
+    if (this.objectPicker) return;
+    this.bulkCornerStyleOverride = chamfer;
+    this.cornerStyleOverride = chamfer;
+    const doc = this.preview ?? this.document;
+    this.updateTransformPreview({...doc, shapes: doc.shapes.map(s => {
+      if (!this.selected.includes(s.id)) return s;
+      return polygonFillets(s).corners.reduce((next, _, i) =>
+        setCornerTreatment(next, i, cornerTreatmentValue(s, i, chamfer), chamfer), s);
+    })});
+  }
+  cornerStyleOverride: boolean | null = null;
+  setCornerStyle(chamfer: boolean) {
+    this.cornerStyleOverride = chamfer;
+    const target = this.selectedCorner;
+    const shape = (this.preview ?? this.document).shapes.find(s => s.id === target?.shapeId);
+    if (!target || !shape) return;
+    this.setCornerValue(cornerTreatmentValue(shape, target.index, chamfer), false, chamfer);
+  }
+
   setTransformValues(values: Partial<typeof this.transformValues>) {
     if (!this.transformOriginal) return;
     const previous = { ...this.transformValues };
@@ -325,6 +535,20 @@ export class Controller {
         y: this.transformPivot.y + dx * Math.sin(t) + dy * Math.cos(t),
       };
     }
+    const basis = this.numericTransformBasis;
+    if (basis && this.transformTool !== "corner") {
+      const old = basis.values;
+      this.updateTransformPreview({
+        ...basis.document,
+        shapes: basis.document.shapes.map(shape => !this.selected.includes(shape.id) ? shape
+          : this.transformTool === "move" ? moveShape(shape,
+            (v.x-old.x)*Math.cos(basis.angle*Math.PI/180)-(v.y-old.y)*Math.sin(basis.angle*Math.PI/180),
+            (v.x-old.x)*Math.sin(basis.angle*Math.PI/180)+(v.y-old.y)*Math.cos(basis.angle*Math.PI/180))
+          : this.transformTool === "rotate" ? rotateShape(shape,v.angle-old.angle,basis.pivot)
+          : stretchShape(shape,v.sx/old.sx,v.sy/old.sy,basis.pivot,basis.angle)),
+      });
+      return;
+    }
     const next = {
       ...this.transformOriginal,
       shapes: this.transformOriginal.shapes.map((s) =>
@@ -353,6 +577,7 @@ export class Controller {
       parseProject(JSON.stringify(this.normalizeTree(next)));
       this.transformError = "";
       this.preview = next;
+      this.centerAutomaticPivot();
       void this.validatePreview(next);
     } catch (e) {
       this.transformError = String(e);
@@ -362,7 +587,8 @@ export class Controller {
   tool: Tool = "select";
   mode: Mode = "select";
   lastRectangle: Mode = "rectangle";
-  lastIndicator: Mode = "measurement";
+  lastMeasurement: Mode = "measurement";
+  lastDrawing: Mode = "arrow";
   lastPolygon: Mode = "polygon";
   lastCircle: Mode = "circle";
   lastPolyline: Mode = "polyline";
@@ -386,6 +612,7 @@ export class Controller {
   snapTarget: Point | null = null;
   snapKind: SnapKind | null = null;
   pointerInside = false;
+  private clipboardOrigin=crypto.randomUUID();
   private clipboardPixel: Point | null = null;
   smartGuides: SmartGuide[] = [];
   grid = true;
@@ -405,7 +632,7 @@ export class Controller {
   space = false;
   gesture: Gesture | null = null;
   message = "Starting geometry engine…";
-  name = "Untitled.leather.json";
+  name = "Untitled.leather";
   restore: Recovery | undefined;
   listeners = new Set<() => void>();
   version = 0;
@@ -459,6 +686,20 @@ export class Controller {
   private dirtyBaseline = "";
   uiSnapshot = () =>
     [
+      JSON.stringify(this.array),
+      this.arrayFollowing,
+      this.arrayStage,
+      this.array ? this.version : 0,
+      this.arrayCenterPicking,
+      JSON.stringify(this.pathCopy),
+      this.pivotMode,
+      this.placingPivot,
+      this.objectPicker,
+      this.booleanOperation,
+      this.booleanPicker,
+      this.booleanCutters.join(","),
+      this.booleanError,
+      this.booleanEmpty,
       this.trimMode,
       JSON.stringify(this.trimDraft),
       this.trimMode ? this.transformError : "",
@@ -470,6 +711,8 @@ export class Controller {
       this.stitchError,
       this.transformTool,
       this.transformTool ? this.version : 0,
+      this.offsetActive,
+      this.offsetActive ? this.version : 0,
       this.revision,
       this.ready,
       this.message,
@@ -479,7 +722,8 @@ export class Controller {
       this.mode,
       this.lastRectangle,
       this.lastCircle,
-      this.lastIndicator,
+      this.lastMeasurement,
+      this.lastDrawing,
       this.lastPolygon,
       this.lastPolyline,
       this.selected.join(","),
@@ -488,6 +732,8 @@ export class Controller {
       this.pending.length,
       this.selectionToolsAvailable,
       !!this.guideDrag,
+      this.gesture?.kind,
+      this.gesture?.handleSide,
       this.grid,
       this.objects,
       this.units,
@@ -501,7 +747,7 @@ export class Controller {
   cursorSnapshot = () =>
     `${this.formatLength(this.cursor.x)}, ${this.formatLength(this.cursor.y)} ${this.unitSymbol}|${this.message}|${this.zoom}`;
   hoverSnapshot = () =>
-    `${this.tool}|${this.placingPivot}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
+    `${this.tool}|${this.arrayFollowing}|${this.arrayCenterPicking}|${this.objectPicker}|${this.placingPivot}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
   private anchorAlt = false;
   private anchorPointer: Point = { x: 0, y: 0 };
   setAnchorModifier(alt: boolean) {
@@ -515,6 +761,7 @@ export class Controller {
       this.space ||
       this.tool !== "select" ||
       this.transformTool ||
+      this.array ||
       this.placingPivot ||
       this.gesture ||
       !this.ready ||
@@ -639,7 +886,7 @@ export class Controller {
     if ((operation === "commit" || operation === "preview") && document && !this.canCommitFromView(document)) {
       throw Error("Edit source geometry on Model");
     }
-    if (this.transformTool || this.stitchMode) this.cancel();
+    if (this.transformTool || this.stitchMode || this.booleanOperation || this.array && operation !== "commit" && operation !== "preview") this.cancel();
     const run = async () => {
       if (!this.ready) return;
       this.busy = true;
@@ -650,6 +897,7 @@ export class Controller {
           await this.core.request(operation, this.revision, document),
         );
         if (operation === "load") {
+          this.clipboardOrigin=crypto.randomUUID();
           this.projectEpoch++;
           this.printLayoutActive = false;
         }
@@ -695,7 +943,7 @@ export class Controller {
     if(!groups.length || groups.length!==selectedIds.size)return "Select editable source stitching first.";
     if(groups.some(g=>this.isLocked(g.shapeId)))return "Unlock the stitching first.";
     const first=groups[0];
-    if(tool==="transfer")return new Set(groups.map(g=>stitchPiece(doc,g).id)).size===1 ? "" : "Select stitching from one source piece.";
+    if(tool==="transfer")return "";
     if(tool==="continue") {
       if(groups.length!==1 || first.holes)return "Select one editable section.";
       if(!first.settings.holeCount)return "Set a fixed hole count before continuing this section.";
@@ -795,7 +1043,7 @@ export class Controller {
   addingStitchRun = false;
   stitchTransferHighlight: string | null = null;
   stitchHoleSelection: { groupId:string; number:number }[] = [];
-  stitchTransferPlacement: { placementId:string; sourceId:string; groupIds:string[]; center:Point; angle:number; rawAngle:number; phase?:"hover"|"placed" } | null = null;
+  stitchTransferPlacement: { placementId:string; groupIds:string[]; center:Point; angle:number; rawAngle:number; phase?:"hover"|"placed" } | null = null;
   stitchSplitJunction = 1;
   stitchSelected: string[] = [];
   stitchSettings: StitchSettings = { ...defaultStitchSettings };
@@ -842,27 +1090,34 @@ export class Controller {
     if (!this.stitchSelected.length) return "Select the stitch lines to transfer.";
     if (this.editingStitchHoles) return "Select stitch lines rather than individual holes.";
     if (this.stitchSelected.some(id=>!this.stitchGroups.some(g=>g.id===id))) return "Detach linked transfers before transferring them again.";
-    const sources=new Set(this.selectedStitchLines.map(g=>stitchPiece(this.document,g).id));
-    if (sources.size!==1) return "Select stitching from one source piece.";
+
     return "";
   }
   beginStitchTransfer() {
     if (this.transferStitchReason || this.busy || this.stitchDraft || this.stitchError) return;
     this.stitchTool="transfer";
     this.stitchOperationSelection=[...this.stitchSelected];
-    const source=stitchPiece(this.document,this.selectedStitchLines[0]);
     this.editingStitchHoles=false; this.addingStitchRun=false;
-    this.stitchTransferPlacement={placementId:crypto.randomUUID(),sourceId:source.id,groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
+    this.stitchTransferPlacement={placementId:crypto.randomUUID(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
     this.stitchHover=null; this.stitchError=""; this.notify();
   }
-  get stitchTransferGhost(): Shape | null {
-    const placement=this.stitchTransferPlacement;
-    const source=this.document.shapes.find(s=>s.id===placement?.sourceId);
-    if (!placement || !source) return null;
-    const center=pieceFrame(source).center,angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
-    const matrix={a:c,b:sn,c:-sn,d:c,e:placement.center.x-c*center.x+sn*center.y,f:placement.center.y-sn*center.x-c*center.y};
-    return {...source,id:"stitch-transfer-preview",rotation:0,transform:multiply(matrix,shapeMatrix(source))};
+  get transferSourceCenter(): Point {
+    const ids=new Set(this.selectedTransferSources.map(s=>s.id));
+    const box=bounds(this.document.shapes.filter(s=>ids.has(s.id)));
+    return {x:box.x+box.width/2,y:box.y+box.height/2};
   }
+  get selectedTransferSources(): Shape[] {
+    const ids=new Set((this.stitchTransferPlacement?.groupIds ?? []).map(id=>this.stitchGroups.find(g=>g.id===id)).filter((g): g is StitchGroup=>!!g).map(g=>stitchPiece(this.document,g).id));
+    return this.document.shapes.filter(s=>ids.has(s.id));
+  }
+  get stitchTransferGhosts(): Shape[] {
+    const placement=this.stitchTransferPlacement;
+    if(!placement)return [];
+    const center=this.transferSourceCenter,angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
+    const matrix={a:c,b:sn,c:-sn,d:c,e:placement.center.x-c*center.x+sn*center.y,f:placement.center.y-sn*center.x-c*center.y};
+    return this.selectedTransferSources.map(source=>({...source,id:`stitch-transfer-preview:${source.id}`,rotation:0,transform:multiply(matrix,shapeMatrix(source))}));
+  }
+  get stitchTransferGhost(): Shape | null { return this.stitchTransferGhosts[0] ?? null; }
   updateStitchTransfer(raw: Point,alt=false) {
     this.queuedTransferPointer=null;
     const placement=this.stitchTransferPlacement;
@@ -870,8 +1125,8 @@ export class Controller {
     placement.center={...raw};
     this.smartGuides=[];this.snapTarget=null;
     if (!alt) {
-      const ghost=this.stitchTransferGhost!;
-      const result=snapRigidMove([...this.document.shapes.filter(s=>s.id!==placement.sourceId && !s.stitchParentId && !this.isHidden(s.id)),ghost],[ghost.id],{x:0,y:0},{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:this.document.guides});
+      const ghosts=this.stitchTransferGhosts;
+      const result=snapRigidMove([...this.document.shapes.filter(s=>!this.selectedTransferSources.some(source=>source.id===s.id) && !s.stitchParentId && !this.isHidden(s.id)),...ghosts],ghosts.map(s=>s.id),{x:0,y:0},{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:this.document.guides});
       placement.center={x:placement.center.x+result.delta.x,y:placement.center.y+result.delta.y};
       this.smartGuides=result.guides;
       if ("target" in result) this.snapTarget=result.target!;
@@ -908,21 +1163,27 @@ export class Controller {
     const pending=this.queuedTransferPointer;this.queuedTransferPointer=null;
     if(pending?.placement===this.stitchTransferPlacement && pending?.placement.phase!=="placed")this.updateStitchTransfer(pending.point,pending.alt);
   }
+  private transferGroupCenter(groupId:string): Point {
+    const placement=this.stitchTransferPlacement!,pivot=this.transferSourceCenter;
+    const source=pieceFrame(stitchPiece(this.document,this.stitchGroups.find(g=>g.id===groupId)!)).center;
+    const a=placement.angle*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),dx=source.x-pivot.x,dy=source.y-pivot.y;
+    return {x:placement.center.x+c*dx-sn*dy,y:placement.center.y+sn*dx+c*dy};
+  }
   private computeTransferPreview() {
     const placement=this.stitchTransferPlacement;
     if (!placement) return {transfers:[] as StitchTransfer[],results:[] as ReturnType<typeof receivingStitches>[],skipped:[] as string[]};
     const transfers:StitchTransfer[]=[],results:ReturnType<typeof receivingStitches>[]=[],skipped:string[]=[];
-    const ghost=this.stitchTransferGhost!,box=bounds([ghost]);
+    const sourceIds=new Set(this.selectedTransferSources.map(s=>s.id)),box=bounds(this.stitchTransferGhosts);
     for (const target of this.document.shapes) {
-      if (target.id===placement.sourceId || target.stitchParentId || this.isHidden(target.id)) continue;
+      if (sourceIds.has(target.id) || target.stitchParentId || this.isHidden(target.id)) continue;
       const other=bounds([target]);
-      if (box.x>other.x+other.width || other.x>box.x+box.width || box.y>other.y+other.height || other.y>box.y+box.height) continue;
+      if(box.x>other.x+other.width || other.x>box.x+box.width || box.y>other.y+other.height || other.y>box.y+box.height)continue;
       if (!stitchClosed(target) || target.stitchOnly || !stitchEdges(target).length) { skipped.push(`${target.name}: unsupported outline`); continue; }
       if (this.isLocked(target.id)) { skipped.push(`${target.name}: locked`); continue; }
       let included=0;
       for (const groupId of placement.groupIds) {
         try {
-          const transfer={...makeTransfer(this.document,groupId,target,placement.center,placement.angle,placement.placementId),number:Math.max(0,...(this.document.stitchTransfers ?? []).map(t=>t.number ?? 0))+1,id:JSON.stringify([placement.placementId,groupId,target.id])};
+          const transfer={...makeTransfer(this.document,groupId,target,this.transferGroupCenter(groupId),placement.angle,placement.placementId),number:Math.max(0,...(this.document.stitchTransfers ?? []).map(t=>t.number ?? 0))+1,id:JSON.stringify([placement.placementId,groupId,target.id])};
           const result=receivingStitches(this.document,transfer);
           if(result.included) { transfers.push(transfer);results.push(result);included+=result.included; }
         } catch (reason) { skipped.push(`${target.name}: ${String(reason)}`); }
@@ -1041,6 +1302,84 @@ export class Controller {
     } catch (error) {
       this.stitchError = String(error);
     }
+    this.notify();
+  }
+  private trimOwners = new Map<string, string>();
+  private numericTransformBasis: { document: Doc; values: { x: number; y: number; angle: number; sx: number; sy: number }; pivot: Point; angle: number } | null = null;
+  pivotMode: PivotMode = "bounding-box";
+  objectPicker = false;
+  toggleObjectPicker() {
+    if (this.busy || this.objectPicker && this.toolSelectionError) return;
+    this.cancelPivotPlacement();
+    this.objectPicker = !this.objectPicker;
+    this.placingPivot = false;
+    this.gesture = null;
+    this.notify();
+  }
+  private centerAutomaticPivot() {
+    if (this.pivotMode === "custom" || !this.active.length) return;
+    const point = automaticPivot(this.active, this.pivotMode, this.units);
+    if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) this.transformPivot = point;
+  }
+  private toolSelection: { ids: string[]; groups: string[] } | null = null;
+  private beginToolSelection() {
+    this.toolSelection = { ids: [...this.selected], groups: [...this.selectedGroups] };
+  }
+  get toolSelectionError() {
+    if (!this.selected.length) return "Choose at least one object.";
+    if (this.selected.some(id => this.isHidden(id) || this.isLocked(id))) return "Choose visible, unlocked objects.";
+    if (this.transformTool === "corner" && this.active.some(s => !cornerPoints(s).length)) return "Choose objects with editable corners.";
+    if (this.trimMode && !this.booleanOperation && this.active.some(s => isIndicator(s.kind) || s.kind === "text" || s.kind === "measurement")) return "Choose trimmable outlines.";
+    return "";
+  }
+  pickToolObject(id: string, shift = false) {
+    this.setToolSelection(objectSelection(this.selected,id,shift));
+  }
+  setToolSelection(ids: string[], groups: string[] = []) {
+    if (!this.objectPicker || this.busy) return;
+    const previous = this.transformDraft ?? this.trimDraft ?? this.preview;
+    this.numericTransformBasis = null;
+    const oldIds = new Set(this.selected);
+    this.selectedGroups = groups;
+    this.selected = [...new Set(ids)];
+    this.transformGeneration++;
+    this.queuedPreview = null;
+    this.previewId++;
+    this.preview = null;
+    this.transformDraft = null;
+    this.trimDraft = null;
+    this.trimHighlight = null;
+    this.transformError = "";
+    this.selectedCorner = null;
+    this.cornerStyleOverride = null;
+    this.bulkCornerStyleOverride = null;
+    if (this.array) { this.refreshArray(); }
+    else if (this.offsetActive) this.refreshOffset();
+    else if (this.transformTool && this.transformTool !== "corner") {
+      if (!oldIds.size) this.centerAutomaticPivot();
+      const values = { ...this.transformValues };
+      const pivot = { ...this.transformPivot };
+      this.transformOriginal = this.document;
+      this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
+      this.setTransformValues(values);
+      this.transformPivot = pivot;
+      const refreshed = this.preview as Doc | null;
+      if (previous && refreshed) this.updateTransformPreview({
+        ...refreshed,
+        shapes: refreshed.shapes.map(shape => oldIds.has(shape.id) && this.selected.includes(shape.id)
+          ? previous.shapes.find(old => old.id === shape.id) ?? shape : shape),
+      });
+    } else if (previous) {
+      const ids = new Set(this.selected);
+      const next = reconcileStitches({...this.document, shapes: this.document.shapes.flatMap(shape =>
+        ids.has(shape.id) && oldIds.has(shape.id) ? previous.shapes.filter(part => part.id === shape.id || this.trimOwners.get(part.id) === shape.id) : [shape])}, this.document);
+      if (this.trimMode) this.trimDraft = next;
+      else this.transformDraft = next;
+      this.preview = next;
+    }
+    this.centerAutomaticPivot();
+    if (this.preview && this.transformTool && !["mirror","corner"].includes(this.transformTool))
+      this.numericTransformBasis = { document: this.preview, values: {...this.transformValues}, pivot: {...this.transformPivot}, angle: this.transformAngle };
     this.notify();
   }
   get selectionToolsAvailable() {
@@ -1176,7 +1515,13 @@ export class Controller {
       const source = this.document.shapes.find((s) => s.id === target.shapeId)!;
       const all = stitchEdges(source).map((e) => e.key),
         index = all.indexOf(target.edges[0]);
-      const adjacent = [index - 1, index + 1]
+      const bridges:string[]=[],bridgeNeighbors:number[]=[];
+      for(const direction of [-1,1]) {
+        const corner=all[(index+direction+all.length)%all.length];
+        const beyond=all[(index+2*direction+all.length)%all.length];
+        if(corner?.includes(":corner:") && !this.stitchGroups.some(g=>g.shapeId===source.id && g.edges.includes(corner)) && this.stitchGroups.some(g=>g.shapeId===source.id && g.edges.includes(beyond))){bridges.push(corner);bridgeNeighbors.push(index+2*direction);}
+      }
+      const adjacent = [index - 1, index + 1,...bridgeNeighbors]
         .filter((i) => stitchClosed(source) || (i >= 0 && i < all.length))
         .map((i) => all[(i + all.length) % all.length]);
       const neighbors = this.stitchGroups.filter(
@@ -1211,13 +1556,13 @@ export class Controller {
           )[0];
         const edges = orderStitchEdges(
           source,
-          [...neighbors.flatMap((g) => g.edges), ...target.edges],
+          [...neighbors.flatMap((g) => g.edges), ...bridges, ...target.edges],
           master.edges[0],
         );
         next = {
           ...master,
           edges,
-          closed: stitchClosed(source) && edges.length === all.length,
+          closed: stitchRunClosed(source,edges),
         };
         this.stitchGeometry(source, next);
         absorbed = neighbors.map((g) => g.id);
@@ -1510,7 +1855,7 @@ export class Controller {
       const merged = {
         ...master,
         edges,
-        closed: stitchClosed(s) && edges.length === stitchEdges(s).length,
+        closed: stitchRunClosed(s,edges),
       };
       this.remapHoleOverrides(s, sources, [merged]);
       this.stitchGeometry(s, merged);
@@ -1625,6 +1970,8 @@ export class Controller {
     return true;
   }
   async commit(document: Doc) {
+    if ((this.pathCopy || this.array) && document !== this.preview) this.cancel();
+    if (this.offsetActive) this.cancel();
     try {
       if (!this.canCommitFromView(document)) return false;
       document = reconcilePrintLayouts(this.normalizeTree(reconcileStitches(document,this.document)));
@@ -1701,8 +2048,14 @@ export class Controller {
     }
   }
 
+  measurementSections = 1;
   polygonSides = 3;
-  adjustPolygonSides(delta: number) {
+  adjustConstructionCount(delta: number) {
+    if (this.mode === "measurement") {
+      this.measurementSections = Math.max(1, Math.min(100, this.measurementSections + delta));
+      this.notify();
+      return;
+    }
     this.polygonSides = Math.max(3, Math.min(100, this.polygonSides + delta));
     this.message = "Ready";
     this.notify();
@@ -1730,7 +2083,8 @@ export class Controller {
                   : mode.startsWith("arc")
                     ? "arc"
                     : "circle";
-    if (isIndicator(mode) || mode === "measurement") this.lastIndicator = mode;
+    if ((variants.measurement as readonly string[]).includes(mode)) this.lastMeasurement = mode;
+    if ((variants.drawing as readonly string[]).includes(mode)) this.lastDrawing = mode;
     if ((variants.polygon as readonly string[]).includes(mode))
       this.lastPolygon = mode;
     if ((variants.polyline as readonly string[]).includes(mode))
@@ -1747,7 +2101,7 @@ export class Controller {
       current = list.indexOf(this.mode);
     this.setMode(
       current < 0
-        ? group === "indicator" ? this.lastIndicator : group === "rectangle"
+        ? group === "measurement" ? this.lastMeasurement : group === "drawing" ? this.lastDrawing : group === "rectangle"
           ? this.lastRectangle
           : group === "circle"
             ? this.lastCircle
@@ -2017,6 +2371,7 @@ export class Controller {
         [...this.pending, this.constrainMeasurement(this.cursor)],
         this.mode === "arc" ? this.arcSweep : undefined,
         this.polygonSides,
+        this.measurementSections,
       );
     } catch {
       return null;
@@ -2024,7 +2379,7 @@ export class Controller {
   }
   beginProperty() {
     if (this.selectionLocked) return;
-    if (this.transformTool || this.stitchMode) return;
+    if (this.transformTool || this.stitchMode || this.booleanOperation) return;
     if (!this.propertySession)
       this.propertySession = {
         original: this.pendingDocument ?? this.document,
@@ -2091,65 +2446,656 @@ export class Controller {
         ? stretchShape(s, 1, -1, pivot, angle) : s),
     });
   }
+  canStartTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+    return this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length &&
+      !this.selectionLocked && this.selected.every(id=>!this.isHidden(id)) &&
+      (tool !== "corner" || this.active.every(shape=>cornerPoints(shape).length > 0));
+  }
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
-    if (this.selectionLocked) return;
-    if (!this.ready || this.busy || !this.selected.length) return;
-    if (tool === "corner" && !this.canEditCorners) return;
+    if (!this.canStartTransform(tool)) return;
     if (this.propertySession) await this.finishProperty();
     this.cancel();
     this.tool = "select";
     this.mode = "select";
+    this.beginToolSelection();
     this.transformTool = tool;
     this.transformOriginal = this.document;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
     if (tool !== "corner") this.resetPivot();
-    else this.selectedCorner = null;
+    else { this.selectedCorner = null; this.cornerStyleOverride = null; this.bulkCornerStyleOverride = null; }
     if (tool === "mirror") { this.mirrorAxis = null; this.mirrorLine = null; this.mirrorHover = null; }
     this.notify();
   }
   async applyTransform() {
     if (!this.transformValid || !this.transformTool || this.busy) return;
     const next = this.transformDraft ?? this.preview;
+    this.toolSelection = null;
     this.cancel();
     if (next && fingerprint(next) !== fingerprint(this.document))
       await this.commit(next);
   }
-  private mergeCache: {
-    key: string;
-    result: ReturnType<typeof mergeShapes>;
-  } | null = null;
-  get mergeResult() {
-    if (this.selectionLocked) return null;
-    if (this.stitchGroups.some((g) => this.selected.includes(g.shapeId))) return null;
-    const key = JSON.stringify([this.revision, this.selected]);
-    if (this.mergeCache?.key !== key) {
-      this.mergeCache = {
-        key,
-        result: mergeShapes(
-          this.document.shapes.filter((s) => this.selected.includes(s.id)),
+  private duplicatePlacement(
+    document: Doc,
+    initialIds: Set<string>,
+    matrix: Parameters<typeof transformShape>[1],
+    rootGroupIds: readonly string[] = [],
+  ): Doc {
+    const data = copyStitchData(document, initialIds, true);
+    const originals = [
+      ...document.shapes.filter(
+        (s) =>
+          initialIds.has(s.id) ||
+          (!!s.stitchParentId && initialIds.has(s.stitchParentId)),
+      ),
+      ...data.shapes,
+    ];
+    const ids = new Map(originals.map((s) => [s.id, crypto.randomUUID()]));
+    const copies = originals.map((s) => ({
+      ...transformShape(s, matrix),
+      id: ids.get(s.id)!,
+      name: `${s.name} copy`,
+      locked: false,
+      stitchParentId: s.stitchParentId ? ids.get(s.stitchParentId) : undefined,
+    }));
+
+    const chosen = new Set([
+      ...rootGroupIds,
+      ...initialIds,
+      ...originals.filter((s) => s.stitchParentId).map((s) => s.id),
+    ]);
+    function copyNode(n: ObjectNode): ObjectNode {
+      return n.kind === "object"
+        ? { ...n, id: ids.get(n.id)! }
+        : {
+            ...n,
+            id: crypto.randomUUID(),
+            name: `${n.name} copy`,
+            locked: false,
+            children: n.children.map(copyNode),
+          };
+    }
+    function duplicateNodes(nodes: ObjectNode[]): ObjectNode[] {
+      return nodes.flatMap((n) =>
+        chosen.has(n.id)
+          ? [copyNode(n), n]
+          : [
+              n.kind === "group"
+                ? { ...n, children: duplicateNodes(n.children) }
+                : n,
+            ],
+      );
+    }
+    const { groups, transfers } = data;
+    const groupIds = new Map(groups.map((g) => [g.id, crypto.randomUUID()]));
+    return {
+      ...document,
+      shapes: [...document.shapes, ...copies],
+      objectTree: [
+        ...duplicateNodes(
+          document.objectTree ?? objectTreeFromShapes(document.shapes),
         ),
+        ...data.shapes.map((s) => ({
+          kind: "object" as const,
+          id: ids.get(s.id)!,
+        })),
+      ],
+      stitchLinks: [
+        ...(document.stitchLinks ?? []),
+        ...(document.stitchLinks ?? [])
+          .map((l, index) => ({
+            ...l,
+            id:
+              Math.max(0, ...(document.stitchLinks ?? []).map((l) => l.id)) +
+              index +
+              1,
+            members: l.members
+              .filter((id) => groupIds.has(id))
+              .map((id) => groupIds.get(id)!),
+          }))
+          .filter((l) => l.members.length >= 2),
+      ],
+      stitchGroups: [
+        ...(document.stitchGroups ?? []),
+        ...groups.map((g) => ({
+          ...g,
+          id: groupIds.get(g.id)!,
+          shapeId: ids.get(g.shapeId)!,
+          continuation: g.continuation
+            ? {
+                ...g.continuation,
+                previousId: groupIds.get(g.continuation.previousId)!,
+              }
+            : undefined,
+        })),
+      ],
+      stitchTransfers: [
+        ...(document.stitchTransfers ?? []),
+        ...copyTransferPlacements(
+          document.stitchTransfers ?? [],
+          transfers.map((t) => ({
+            ...t,
+            id: crypto.randomUUID(),
+            masterId: groupIds.get(t.masterId) ?? t.masterId,
+            targetId: ids.get(t.targetId)!,
+          })),
+        ),
+      ],
+    };
+  }
+  arrayCenterCandidate: Point | null = null;
+  private arrayPointerPixel: Point | null = null;
+  private arrayModifiers = { alt: false, shift: false, ctrl: false };
+  get arrayPreviewCenter() {
+    return this.arrayStage === "center"
+      ? this.arrayCenterCandidate
+      : this.array
+        ? { x: this.array.cx, y: this.array.cy }
+        : null;
+  }
+  updateArrayModifiers(alt: boolean, ctrl: boolean, shift: boolean) {
+    this.arrayModifiers = { alt, ctrl, shift };
+    if (
+      this.array &&
+      this.arrayStage !== "review" &&
+      this.arrayPointerPixel &&
+      this.pointerInside &&
+      !this.objectPicker &&
+      !this.gesture &&
+      !this.space
+    )
+      this.moveArray(this.arrayPointerPixel, alt, shift, ctrl);
+  }
+  refreshArrayConstraint() {
+    const m = this.arrayModifiers;
+    this.updateArrayModifiers(m.alt, m.ctrl, m.shift);
+  }
+  arrayStage: "endpoint1" | "endpoint2" | "center" | "review" = "review";
+  private arrayConfirmed: ArraySettings | null = null;
+  get arrayHasConfirmedPlacement() { return this.arrayConfirmed !== null; }
+  private arrayInvalidDistances = new Set<"vector1" | "vector2">();
+  pickArrayPoint(stage: "endpoint1" | "endpoint2" | "center") {
+    if (!this.array || this.objectPicker) return;
+    if (this.arrayStage === "review")
+      this.arrayConfirmed = structuredClone(this.array);
+    this.transformAxis = undefined;
+    if (stage === "endpoint2" && this.array.rows === 1) this.array.rows = 2;
+    this.arrayCenterCandidate = null;
+    this.arrayStage = stage;
+    this.refreshArray();
+  }
+  confirmArrayPoint() {
+    if (this.arrayStage === "review") return false;
+    if (this.array?.error && this.arrayStage !== "center") return true;
+    if (this.arrayStage === "center" && this.array) {
+      if (!this.arrayCenterCandidate) return true;
+      this.array.cx = this.arrayCenterCandidate.x;
+      this.array.cy = this.arrayCenterCandidate.y;
+    }
+    this.arrayStage = "review";
+    this.arrayCenterCandidate = null;
+    this.smartGuides = [];
+    this.snapTarget = null;
+    this.snapKind = null;
+    this.arrayConfirmed = this.array ? structuredClone(this.array) : null;
+    this.refreshArray();
+    return true;
+  }
+  cancelArrayPoint() {
+    if (this.arrayStage === "review") return false;
+    if (!this.arrayConfirmed) {
+      this.cancel();
+      return true;
+    }
+    this.array = structuredClone(this.arrayConfirmed);
+    this.arrayStage = "review";
+    this.arrayCenterCandidate = null;
+    this.smartGuides = [];
+    this.snapTarget = null;
+    this.snapKind = null;
+    this.refreshArray();
+    return true;
+  }
+  setArrayExtent(extent: boolean) {
+    const state = this.array;
+    if (!state || extent === state.extent) return;
+    for (const [field, count] of [
+      ["vector1", state.columns],
+      ["vector2", state.rows],
+    ] as const) {
+      const v = state[field];
+      const scale = Math.max(1, count - 1);
+      state[field] = {
+        x: v.x * (extent ? scale : 1 / scale),
+        y: v.y * (extent ? scale : 1 / scale),
       };
     }
-    return this.mergeCache.result;
+    state.extent = extent;
+    this.refreshArray();
   }
-  activateMerge() {
-    if (this.selectionLocked) return;
-    const result = this.mergeResult;
-    if (!result || this.busy) return;
+  setArrayDistance(field: "vector1" | "vector2", value: number) {
+    const state = this.array;
+    if (!state) return;
+    if (!Number.isFinite(value) || value <= 0) {
+      this.arrayInvalidDistances.add(field);
+      this.refreshArray();
+      return;
+    }
+    this.arrayInvalidDistances.delete(field);
+    const v = state[field],
+      length = Math.hypot(v.x, v.y);
+    state[field] = {
+      x: (length ? v.x / length : 1) * value,
+      y: (length ? v.y / length : 0) * value,
+    };
+    this.refreshArray();
+  }
+  adjustArrayCount(delta: number) {
+    if (!this.array) return;
+    const field =
+      this.array.kind === "radial"
+        ? "count"
+        : this.arrayStage === "endpoint2"
+          ? "rows"
+          : "columns";
+    const other =
+      field === "rows"
+        ? this.array.columns
+        : field === "columns"
+          ? this.array.rows
+          : 1;
+    if (!Number.isFinite(other) || !Number.isFinite(this.array[field])) return;
+    this.array[field] = Math.max(
+      field === "rows" ? 1 : 2,
+      Math.min(Math.floor(1001 / other), this.array[field] + delta),
+    );
+    this.refreshArray();
+  }
+  get arrayFollowing() {
+    return (
+      !!this.array &&
+      !this.objectPicker &&
+      (this.arrayStage === "endpoint1" || this.arrayStage === "endpoint2")
+    );
+  }
+  get arrayCenterPicking() {
+    return !!this.array && !this.objectPicker && this.arrayStage === "center";
+  }
+  setArrayValue(field: "rows" | "columns" | "count" | "angle", value: number) {
+    if (!this.array) return;
+    this.array[field] = value;
+    this.refreshArray();
+  }
+  setArrayDistribution(step: boolean) {
+    if (!this.array || step === this.array.step) return;
+    this.array.angle *= step ? 1 / this.array.count : this.array.count;
+    this.array.step = step;
+    this.refreshArray();
+  }
+  private moveArray(pixel: Point, alt: boolean, shift: boolean, ctrl = false) {
+    const state = this.array;
+    if (!state || this.objectPicker || this.busy) return;
+    this.pointerInside = true;
+    this.arrayPointerPixel = { ...pixel };
+    if (this.arrayStage === "review") {
+      this.cursor = this.world(pixel);
+      this.notifyPointer();
+      return;
+    }
+    const raw = this.world(pixel);
+    this.arrayModifiers = { alt, shift, ctrl };
+    const box = bounds(this.active),
+      x = box.x + box.width / 2,
+      y = box.y + box.height / 2;
+    let constrained = { ...raw };
+    const axis = this.transformAxis;
+    if (axis === "x") constrained.y = y;
+    else if (axis === "y") constrained.x = x;
+    else if (shift) {
+      const angle =
+        (Math.round(Math.atan2(raw.y - y, raw.x - x) / (Math.PI / 4)) *
+          Math.PI) /
+        4;
+      const radius = Math.hypot(raw.x - x, raw.y - y);
+      constrained = {
+        x: x + radius * Math.cos(angle),
+        y: y + radius * Math.sin(angle),
+      };
+    }
+    let point = this.snap(constrained, alt);
+    if (axis || shift) {
+      const dx = constrained.x - x,
+        dy = constrained.y - y;
+      if (
+        axis === "x"
+          ? Math.abs(point.y - y) > 1e-7
+          : axis === "y"
+            ? Math.abs(point.x - x) > 1e-7
+            : Math.abs((point.x - x) * dy - (point.y - y) * dx) > 1e-7
+      ) {
+        point = constrained;
+        this.smartGuides = [];
+        this.snapTarget = null;
+        this.snapKind = null;
+      }
+    }
+    this.cursor = point;
+    if (this.arrayCenterPicking) {
+      this.arrayCenterCandidate = point;
+      this.refreshArray();
+      return;
+    }
+    if (this.arrayStage === "endpoint1" || this.arrayStage === "endpoint2") {
+      const vector = { x: point.x - x, y: point.y - y };
+      if (this.transformAxis === "x") vector.y = 0;
+      if (this.transformAxis === "y") vector.x = 0;
+      const count =
+        this.arrayStage === "endpoint1" ? state.columns : state.rows;
+      const divisor = state.extent ? 1 : Math.max(1, count - 1);
+      const v = { x: vector.x / divisor, y: vector.y / divisor };
+      if (this.arrayStage === "endpoint1") {
+        state.vector1 = v;
+        if (state.rows === 1) state.vector2 = { x: -v.y, y: v.x };
+      } else {
+        state.vector2 = v;
+      }
+    }
+    this.refreshArray();
+  }
+  array: ArraySettings | null = null;
+  async activateArray(kind: ArrayKind) {
+    if (!this.canStartTransform("move")) return;
+    if (this.propertySession) await this.finishProperty();
     this.cancel();
+    this.beginToolSelection();
+    const box = bounds(this.active);
+    this.array = {
+      kind,
+      extent: true,
+      vector1: { x: 10, y: 0 },
+      vector2: { x: 0, y: 10 },
+      rows: 1,
+      columns: 8,
+      count: 8,
+      angle: 360,
+      step: false,
+      cx: box.x + box.width / 2,
+      cy: box.y + box.height / 2,
+      rotate: true,
+      error: "",
+    };
+    this.tool = "select";
+    this.mode = "select";
+    this.arrayConfirmed = null;
+    this.arrayStage = kind === "radial" ? "center" : "endpoint1";
+    this.refreshArray();
+  }
+  refreshArray() {
+    this.preview = null;
+    const state = this.array;
+    if (!state) return;
+    state.error = "";
+    if (this.arrayStage === "center" && !this.arrayCenterCandidate) {
+      this.notify();
+      return;
+    }
+    try {
+      if (this.toolSelectionError) throw Error(this.toolSelectionError);
+      if (this.arrayInvalidDistances.size)
+        throw Error("Enter positive, finite distances.");
+      const matrices = arrayPlacements(
+        this.arrayStage === "center" && this.arrayCenterCandidate
+          ? {
+              ...state,
+              cx: this.arrayCenterCandidate.x,
+              cy: this.arrayCenterCandidate.y,
+            }
+          : state,
+        bounds(this.active),
+      );
+      let next = this.document;
+      const ids = new Set(this.selected);
+      for (const matrix of matrices)
+        next = this.duplicatePlacement(next, ids, matrix, this.selectedGroups);
+      const normalized = this.normalizeTree(next);
+      parseProject(JSON.stringify(normalized));
+      this.preview = normalized;
+    } catch (error) {
+      state.error = error instanceof Error ? error.message : String(error);
+    }
+    this.notify();
+  }
+  async applyArray() {
+    if (!this.array || this.busy || this.objectPicker) return;
+    if (this.confirmArrayPoint()) return;
+    this.refreshArray();
+    if (!this.preview || this.array.error) return;
+    const next = this.preview;
+    const ids = next.shapes
+      .filter(
+        (s) =>
+          !s.stitchParentId && !this.document.shapes.some((o) => o.id === s.id),
+      )
+      .map((s) => s.id);
+    if (await this.commit(next)) {
+      this.toolSelection = null;
+      this.cancel();
+      this.selectedGroups = [];
+      this.selected = ids;
+      this.notify();
+    } else if (this.array) {
+      this.array.error =
+        "Could not apply copies. Review the document and try again.";
+      this.notify();
+    }
+  }
+  pathCopy: { source: string; path: string; picker: 'source' | 'path' | null; mode: 'spacing' | 'count'; spacing: number; count: number; rotate: boolean; error: string } | null = null;
+  private pathCopySelection: string[] = [];
+  get canCopyAlongPath() { return this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && !this.busy; }
+  activatePathCopy() {
+    if (!this.canCopyAlongPath) return;
+    const source = this.active[0]?.id ?? "";
+    this.cancel();
+    this.pathCopySelection = [...this.selected];
+    this.tool = "select";
+    this.mode = "select";
+    this.pathCopy = { source, path: '', picker: source ? 'path' : 'source', mode: 'spacing', spacing: 10, count: 5, rotate: true, error: '' };
+    this.notify();
+  }
+  pickPathCopy(id: string) {
+    const state = this.pathCopy;
+    if (!state?.picker || this.busy) return;
+    if (this.isHidden(id) || this.isLocked(id)) { state.error = 'Choose a visible, unlocked object.'; this.notify(); return; }
+    if (state.picker === 'source') { state.source = id; state.picker = 'path'; }
+    else { state.path = id; state.picker = null; }
+    this.refreshPathCopy();
+  }
+  refreshPathCopy() {
+    this.preview = null;
+    const state = this.pathCopy;
+    if (!state) return;
+    state.error = '';
+    if (!state.source || !state.path) { this.notify(); return; }
+    try {
+      const source = this.document.shapes.find(s => s.id === state.source)!;
+      const path = this.document.shapes.find(s => s.id === state.path)!;
+      if (this.isHidden(state.source) || this.isLocked(state.source) || this.isHidden(state.path) || this.isLocked(state.path)) throw Error('Choose visible, unlocked objects.');
+      if (!source || !path || source.id === path.id) throw Error('Choose distinct source and path objects.');
+      if (isIndicator(path.kind) || path.kind === 'text' || path.kind === 'measurement' || path.kind === 'compound') throw Error('Choose a single open or closed outline.');
+      const matrices = pathPlacements(path, state.mode, state.mode === 'spacing' ? state.spacing : state.count, state.rotate, center(source));
+      let next = this.document;
+      for (const matrix of matrices) next = this.duplicatePlacement(next, new Set([source.id]), matrix);
+      this.preview = this.normalizeTree(next);
+    } catch (error) { state.error = error instanceof Error ? error.message : String(error); }
+    this.notify();
+  }
+  async applyPathCopy() {
+    if (!this.pathCopy || this.busy) return;
+    this.refreshPathCopy();
+    if (!this.preview || this.pathCopy.error) return;
+    const next = this.preview;
+    const ids = next.shapes.filter(s => !s.stitchParentId && !this.document.shapes.some(original => original.id === s.id)).map(s => s.id);
+    if (await this.commit(next)) { this.cancel(); this.selected = ids; this.notify(); }
+    else if (this.pathCopy) { this.pathCopy.error = "Could not apply copies. Review the document and try again."; this.notify(); }
+  }
+  booleanOperation: BooleanOperation | null = null;
+  booleanTarget = "";
+  booleanCutters: string[] = [];
+  booleanPicker: "target" | "cutters" | null = null;
+  booleanError = "";
+  booleanEmpty = false;
+  private booleanSelection: string[] = [];
+  private booleanCache: { key: string; result: Shape | null } | null = null;
+  get booleanLabel() {
+    return (
+      {
+        union: "Join",
+        subtract: "Subtract",
+        intersect: "Intersect",
+        exclude: "Exclude",
+      } as const
+    )[this.booleanOperation ?? "union"];
+  }
+  booleanEligible(id: string, allowOpen = false) {
+    const shape = this.document.shapes.find((s) => s.id === id);
+    return (
+      !!shape &&
+      (isClosedShape(shape) ||
+        (allowOpen &&
+          (isCurve(shape) ||
+            (["line", "polyline"].includes(shape.kind) &&
+              !shape.radius &&
+              !shape.cornerRadii?.some(Boolean) && !shape.cornerChamfers?.some(Boolean))))) &&
+      !shape.stitchOnly &&
+      !shape.stitchParentId &&
+      !this.isLocked(id) &&
+      !this.isHidden(id) &&
+      !this.stitchGroups.some((g) => g.shapeId === id) &&
+      !(this.document.stitchTransfers ?? []).some(
+        (t) => t.masterId === id || t.targetId === id,
+      )
+    );
+  }
+  get canBoolean() {
+    return (
+      this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
+    );
+  }
+  get canJoin() {
+    return (
+      this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
+    );
+  }
+  setBooleanPicker(picker: "target" | "cutters") {
+    if (!this.booleanOperation || this.busy) return;
+    this.booleanPicker = this.booleanPicker === picker ? null : picker;
+    this.refreshBoolean();
+  }
+  removeBooleanOperand(id: string) {
+    if (!this.booleanOperation || this.busy) return;
+    this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
+    this.refreshBoolean();
+  }
+  activateBoolean(operation: BooleanOperation) {
+    if (!(operation === "union" ? this.canJoin : this.canBoolean) || this.busy)
+      return;
+    const ids = this.document.shapes
+      .filter((s) => this.selected.includes(s.id))
+      .map((s) => s.id);
+    this.cancel();
+    this.booleanSelection = [...this.selected];
+    this.booleanOperation = operation;
+    this.booleanTarget = ids[0] ?? "";
+    this.booleanCutters = ids.slice(1);
+    this.booleanPicker = !ids.length ? "target" : ids.length === 1 ? "cutters" : null;
     this.tool = "select";
     this.mode = "select";
     this.trimMode = true;
     this.mergeMode = true;
-    const ids = new Set(this.selected);
-    this.trimDraft = {
-      ...this.document,
-      shapes: this.document.shapes.flatMap((s) =>
-        s.id === result.id ? [result] : ids.has(s.id) ? [] : [s],
-      ),
-    };
-    this.preview = this.trimDraft;
+    this.transformError = "";
+    this.refreshBoolean();
+  }
+  pickBoolean(id: string) {
+    if (!this.booleanOperation || !this.booleanPicker) return;
+    if (!this.booleanEligible(id, this.booleanOperation === "union")) {
+      this.booleanError =
+        this.booleanOperation === "union"
+          ? "Choose a visible, unlocked closed outline or joinable path without active stitching."
+          : "Choose a visible, unlocked closed outline without active stitching.";
+      this.notify();
+      return;
+    }
+    if (this.booleanPicker === "target") {
+      if (this.booleanTarget && id !== this.booleanTarget)
+        this.booleanCutters.push(this.booleanTarget);
+      this.booleanTarget = id;
+      this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
+      this.booleanPicker = "cutters";
+    } else if (id !== this.booleanTarget) {
+      this.booleanCutters = this.booleanCutters.includes(id)
+        ? this.booleanCutters.filter((x) => x !== id)
+        : [...this.booleanCutters, id];
+    }
+    this.refreshBoolean();
+  }
+  refreshBoolean() {
+    this.trimDraft = null;
+    this.preview = null;
+    this.booleanError = "";
+    this.booleanEmpty = false;
+    const ids = [this.booleanTarget, ...this.booleanCutters];
+    if (!this.booleanTarget || !this.booleanCutters.length) {
+      this.notify();
+      return;
+    }
+    try {
+      if (
+        !ids.every((id) =>
+          this.booleanEligible(id, this.booleanOperation === "union"),
+        )
+      )
+        throw Error(
+          "Choose unlocked closed outlines without active stitching.",
+        );
+      const shapes = ids.map(
+        (id) => this.document.shapes.find((s) => s.id === id)!,
+      );
+      const key = JSON.stringify([this.revision, this.booleanOperation, ids]);
+      if (this.booleanCache?.key !== key) {
+        const openJoin =
+          this.booleanOperation === "union" && !shapes.every(isClosedShape);
+        const result = openJoin
+          ? mergeShapes(shapes)
+          : booleanShapes(this.booleanOperation!, shapes);
+        if (openJoin && !result)
+          throw Error(
+            "Open paths must form one connected chain of straight paths or curves. Do not mix open and closed outlines.",
+          );
+        this.booleanCache = { key, result };
+      }
+      const result = this.booleanCache.result;
+      this.booleanEmpty = !result;
+      this.trimDraft = this.normalizeTree({
+        ...this.document,
+        shapes: this.document.shapes.flatMap((s) =>
+          s.id === this.booleanTarget
+            ? result
+              ? [result]
+              : []
+            : ids.includes(s.id)
+              ? []
+              : [s],
+        ),
+      });
+      parseProject(JSON.stringify(this.trimDraft));
+      this.preview = this.trimDraft;
+    } catch (error) {
+      this.booleanError =
+        error instanceof Error ? error.message : String(error);
+    }
     this.notify();
+  }
+  activateMerge() {
+    this.activateBoolean("union");
   }
   mergeMode = false;
   trimHighlight: Point[] | null = null;
@@ -2157,22 +3103,25 @@ export class Controller {
   trimDraft: Doc | null = null;
   async applyTrim() {
     if (this.selectionLocked) return;
-    if (!this.trimDraft || this.transformError || this.busy) return;
+    if (this.objectPicker || (!this.booleanOperation && this.toolSelectionError) || !this.trimDraft || this.transformError || this.booleanError || this.busy) return;
     const next = this.trimDraft;
     const mergedId = this.mergeMode
-      ? next.shapes.find((s) => this.selected.includes(s.id))?.id
+      ? next.shapes.find((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id))?.id
       : undefined;
+    const boolean = !!this.booleanOperation;
+    this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
+      if (boolean) this.selected = mergedId ? [mergedId] : [];
       if (mergedId) this.selected = [mergedId];
       this.notify();
     }
   }
   get canTrim() {
     return (
-      !this.selectionLocked &&
-      (!this.selected.length ||
-        this.active.some((shape) => !isIndicator(shape.kind) && shape.kind !== "text" && shape.kind !== "measurement"))
+      this.ready && !this.busy && !this.printLayoutActive && !this.selectionLocked &&
+      (!!this.selected.length &&
+        this.active.every((shape) => !isIndicator(shape.kind) && shape.kind !== "text" && shape.kind !== "measurement"))
     );
   }
   activateTrim() {
@@ -2180,13 +3129,40 @@ export class Controller {
     this.cancel();
     this.tool = "select";
     this.mode = "select";
+    this.beginToolSelection();
     this.trimMode = true;
     this.notify();
   }
   cancel() {
+    if (this.toolSelection) {
+      this.selected = this.toolSelection.ids.filter(id => this.document.shapes.some(s => s.id === id));
+      this.selectedGroups = this.toolSelection.groups;
+      this.toolSelection = null;
+    }
+    this.objectPicker = false;
+    this.pivotMode = "bounding-box";
+    this.pivotPlacement = null;
+    this.numericTransformBasis = null;
+    this.trimOwners.clear();
+    if (this.pathCopy) this.selected = this.pathCopySelection;
+    this.pathCopy = null;
+    this.array = null;
+    this.arrayCenterCandidate = null;
+    this.arrayPointerPixel = null;
+    this.arrayStage = "review";
+    this.arrayConfirmed = null;
+    this.arrayInvalidDistances.clear();
+    this.offsetDrag = null;
+    this.offsetActive = false;
+    this.offsetDraft = null;
+    this.offsetIds = [];
+    this.offsetError = "";
     this.mirrorAxis = null;
     this.mirrorLine = null;
     this.mirrorHover = null;
+    if (this.booleanOperation) this.selected = this.booleanSelection;
+    this.booleanOperation = null; this.booleanPicker = null; this.booleanCutters = [];
+    this.booleanError = ""; this.booleanEmpty = false;
     this.mergeMode = false;
     this.trimMode = false;
     this.trimDraft = null;
@@ -2241,7 +3217,7 @@ export class Controller {
       y: (p.y - this.pan.y) / this.zoom,
     };
   }
-  snap(p: Point, disabled = false): Point {
+  snap(p: Point, disabled = false, excludedIds: readonly string[] = this.gesture?.selection ?? []): Point {
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
@@ -2250,7 +3226,7 @@ export class Controller {
     if (this.objects) {
       let best = tolerance;
       for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
-        if (this.gesture?.selection.includes(s.id)) continue;
+        if (excludedIds.includes(s.id)) continue;
         for (const candidate of snapCandidates(s)) {
           const d = distance(candidate.point, p);
           if (d < best) {
@@ -2274,7 +3250,7 @@ export class Controller {
       if (this.snapTarget) return this.snapTarget;
       let edgeShape:Shape|undefined;
       for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
-        if (this.gesture?.selection.includes(s.id)) continue;
+        if (excludedIds.includes(s.id)) continue;
         const box = bounds([s]);
         if (
           p.x < box.x - tolerance ||
@@ -2293,7 +3269,7 @@ export class Controller {
       }
       if(this.snapTarget && edgeShape) {
         const original=this.snapTarget;
-        const aligned=smartSnap(p,this.document.shapes.filter(s=>!this.isHidden(s.id) && !this.gesture?.selection.includes(s.id)),tolerance);
+        const aligned=smartSnap(p,this.document.shapes.filter(s=>!this.isHidden(s.id) && !excludedIds.includes(s.id)),tolerance);
         const combined={...original};
         const guides=aligned.guides.filter(g=>Math.abs(original[g.axis]-p[g.axis])<1e-8);
         for(const guide of guides)combined[guide.axis]=guide.coordinate;
@@ -2328,7 +3304,7 @@ export class Controller {
       const result = smartSnap(
         p,
         this.document.shapes.filter(
-          (shape) => !this.gesture?.selection.includes(shape.id),
+          (shape) => !excludedIds.includes(shape.id),
         ),
         tolerance,
       );
@@ -2453,7 +3429,7 @@ export class Controller {
       this.preview ??
       this.pendingDocument ??
       this.document
-    ).shapes.filter((s) => this.selected.includes(s.id));
+    ).shapes.filter((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id) || this.trimMode && this.selected.includes(this.trimOwners.get(s.id) ?? ""));
   }
   get selectionBounds() {
     return bounds(this.active, this.units);
@@ -2466,9 +3442,19 @@ export class Controller {
     handleSide?: "incoming" | "outgoing";
     axis?: "x" | "y";
   }[] {
-    if (!this.active.length || this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id)) || this.transformTool === "mirror") return [];
+    if (this.array || this.objectPicker || !this.active.length || this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id)) || this.transformTool === "mirror") return [];
     if (this.transformTool === "corner") return this.cornerHandles();
     const curveHandles: ReturnType<Controller["handles"]> = [];
+    if (this.active.length === 1 && this.active[0].kind === "compound" && (!this.transformTool || this.transformTool === "move")) {
+      const shape = this.active[0], matrix = shapeMatrix(shape);
+      let vertex = 0;
+      for (const contour of shape.contours!) for (let i=0;i<contour.length;i++,vertex++) {
+        const c = contour[i], previous = contour[(i+contour.length-1)%contour.length];
+        curveHandles.push({kind:"vertex",vertex,point:applyMatrix(matrix,c[0])});
+        for (const [side,p] of [["incoming",previous[2]],["outgoing",c[1]]] as const)
+          if (distance(p,c[0])>1e-9) curveHandles.push({kind:"vertex",vertex,handleSide:side,point:applyMatrix(matrix,p)});
+      }
+    }
     if (
       this.active.length === 1 &&
       isCurve(this.active[0]) &&
@@ -2666,6 +3652,41 @@ export class Controller {
     ctrl = false,
   ) {
     if (!this.ready || this.busy) return;
+    if (this.array && !this.objectPicker && !this.space && button !== 1) {
+      if (button === 0 || button === 2) {
+        if (this.arrayStage !== "review") {
+          this.moveArray(pixel, alt, shift, ctrl);
+          this.confirmArrayPoint();
+        } else if (button === 2 && !shift && !alt && !ctrl)
+          void this.applyArray();
+        return;
+      }
+    }
+    if (this.objectPicker && button === 2) {
+      if (!shift && !alt && !ctrl && !this.space) this.toggleObjectPicker();
+      return;
+    }
+    if (this.objectPicker && button === 0 && !this.space) {
+      const raw = this.world(pixel);
+      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || ctrl && contains(s,raw)));
+      this.setToolSelection(objectSelection(this.selected,hit?.id,shift));
+      if (!hit) this.gesture = {kind:"marquee",start:raw,end:raw,original:this.document,selection:[...this.selected],pivot:raw,crossing:ctrl};
+      return;
+    }
+    if (this.pathCopy && !this.space && button !== 1) {
+      if (button === 2) { void this.applyPathCopy(); return; }
+      const raw = this.world(pixel);
+      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      if (hit) this.pickPathCopy(hit.id);
+      return;
+    }
+    if (this.offsetActive && button === 2) { void this.applyOffset(); return; }
+    if (this.offsetActive && button === 0 && !this.space) {
+      const raw = this.world(pixel), normal = this.offsetDragAt(raw);
+      if (normal) this.offsetDrag = { start: raw, distance: this.offsetDistance, normal };
+      this.notify();
+      return;
+    }
     if (button !== 1 && !(button === 0 && this.space)) {
       this.selectedGroups = []; this.panelRevision++;
     }
@@ -2673,18 +3694,26 @@ export class Controller {
     this.pointerInside = true;
     const raw = this.world(pixel);
     this.anchorPointer = raw;
+    if (this.booleanOperation && button === 0 && !this.space) {
+      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      if (hit) this.pickBoolean(hit.id);
+      return;
+    }
     if (this.mergeMode && button === 0 && !this.space) return;
     if (this.trimMode && button === 2) { void this.applyTrim(); return; }
     if (this.trimMode && !this.mergeMode && button === 0 && !this.space) {
       const baseline = this.trimDraft ?? this.document;
       const visible = baseline.shapes.filter(s => !this.isHidden(s.id));
-      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => !this.isLocked(s.id));
+      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
       const shapes = trimmed ? [...trimmed, ...baseline.shapes.filter(s => this.isHidden(s.id))] : null;
       this.trimHighlight = null;
       if (shapes) {
         try {
           const next = reconcileStitches({ ...baseline, shapes }, baseline);
           parseProject(JSON.stringify(this.normalizeTree(next)));
+          const changed = baseline.shapes.find(shape => !next.shapes.some(part => part.id === shape.id && JSON.stringify(part) === JSON.stringify(shape)));
+          if (changed) for (const part of next.shapes.filter(part => !baseline.shapes.some(old => old.id === part.id)))
+            this.trimOwners.set(part.id, this.trimOwners.get(changed.id) ?? changed.id);
           this.trimDraft = next;
           this.preview = next;
           this.transformError = "";
@@ -2818,6 +3847,7 @@ export class Controller {
     }
     if (handle) {
       if (handle.kind === "corner") {
+        this.cornerStyleOverride = null;
         this.selectedCorner = {
           shapeId: handle.shapeId!,
           index: handle.vertex!,
@@ -2838,6 +3868,7 @@ export class Controller {
         vertex: handle.vertex,
         handleSide: handle.handleSide,
       };
+      this.notify();
       return;
     }
     const hit = [...(this.preview ?? this.document).shapes]
@@ -2855,7 +3886,7 @@ export class Controller {
         this.selected = this.selected.includes(hit.id)
           ? this.selected.filter((id) => id !== hit.id)
           : [...this.selected, hit.id];
-      } else if (!this.selected.includes(hit.id)) this.selected = [hit.id];
+      } else this.selected = [hit.id];
       if (this.transformTool === "move" && this.selected.includes(hit.id))
         this.gesture = {
           kind: "move",
@@ -2884,6 +3915,17 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
+    if (this.array) this.arrayPointerPixel = { ...pixel };
+    if (this.array && !this.objectPicker && !this.space && !this.gesture) {
+      this.moveArray(pixel, alt, shift, ctrl);
+      return;
+    }
+    if (this.objectPicker && !this.space && !this.gesture) return;
+    if (this.offsetDrag) {
+      const drag = this.offsetDrag, raw = this.snap(this.world(pixel), alt, this.selected);
+      this.setOffsetDistance(drag.distance + (raw.x - drag.start.x) * drag.normal.x + (raw.y - drag.start.y) * drag.normal.y);
+      return;
+    }
     if(!this.stitchTransferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
     this.clipboardPixel = { ...pixel };
     this.mirrorHover = null;
@@ -2899,7 +3941,7 @@ export class Controller {
       this.anchorPointer = this.world(pixel);
       this.trimHighlight = null;
       trimAt((this.trimDraft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
-        span => { this.trimHighlight = span; }, s => !this.isLocked(s.id));
+        span => { this.trimHighlight = span; }, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
       this.notify();
       return;
     }
@@ -2961,7 +4003,7 @@ export class Controller {
     }
     if (
       this.drawingDown?.initial &&
-      (pointCount(this.mode) === 2 || this.mode === "polyline") &&
+      (pointCount(this.mode) === 2 || this.mode === "polyline" || this.mode === "measurement") &&
       distance(pixel, this.drawingDown.pixel) >= 4
     ) {
       this.pending = [this.drawingDown.point];
@@ -3110,15 +4152,20 @@ export class Controller {
           (1 - Math.sin(angle / 2) || 1);
         const step = this.units === "mm" ? (ctrl ? 10 : shift ? 5 : 1) : 25.4 * (ctrl ? 1 : shift ? 1/4 : 1/16);
         const initialRadius = cornerRadii(original)[index];
+        const initialChamfer = polygonFillets(original).corners[index].chamfer;
+        const sensitivity = Math.sin(angle / 2) / (1 - Math.sin(angle / 2) || 1);
+        const travel = initialChamfer > 0 ? -initialChamfer / (Math.cos(angle / 2) || 1) : initialRadius / (sensitivity || 1);
+        const signedTravel = travel + delta / (sensitivity || 1);
+        const chamfer = signedTravel < 0;
         const value =
           distance(g.start, raw) * this.zoom < 2
-            ? initialRadius
-            : Math.max(0, Math.round((initialRadius + delta) / step) * step);
+            ? initialChamfer || initialRadius
+            : Math.max(0, Math.round((chamfer ? -signedTravel * Math.cos(angle / 2) : signedTravel * sensitivity) / step) * step);
         const next =
           distance(g.start, raw) * this.zoom < 2 && !alt
             ? original
-            : setCornerRadius(original, index, value, alt);
-        this.message = `Corner radius ${this.formatLength(cornerRadii(next)[index])} ${this.unitSymbol}${alt ? " (all corners)" : ""}`;
+            : setCornerTreatment(original, index, value, chamfer, alt);
+        this.message = `Corner ${chamfer ? "setback" : "radius"} ${this.formatLength(chamfer ? next.cornerChamfers?.[index] ?? 0 : cornerRadii(next)[index])} ${this.unitSymbol}${alt ? " (all corners)" : ""}`;
         document = {
           ...g.original,
           shapes: g.original.shapes.map((s) =>
@@ -3126,8 +4173,59 @@ export class Controller {
           ),
         };
       }
-      if (g.kind === "vertex") {
+      if (g.kind === "vertex" && g.original.shapes.find(s => selected(s))?.kind === "compound") {
+        const original = g.original.shapes.find(s => selected(s))!;
+        const matrix = shapeMatrix(original), local = applyMatrix(inverse(matrix),g.end);
+        const contours = structuredClone(original.contours!);
+        let index = g.vertex!;
+        for (const contour of contours) {
+          if (index >= contour.length) { index -= contour.length; continue; }
+          const current = contour[index], previous = contour[(index+contour.length-1)%contour.length], anchor = current[0];
+          if (g.handleSide) {
+            if (g.handleSide === "incoming") previous[2] = local; else current[1] = local;
+            if (!alt) {
+              const mirrored = {x:2*anchor.x-local.x,y:2*anchor.y-local.y};
+              if (g.handleSide === "incoming") current[1] = mirrored; else previous[2] = mirrored;
+            }
+          } else {
+            const dx=local.x-anchor.x,dy=local.y-anchor.y;
+            current[1]={x:current[1].x+dx,y:current[1].y+dy};
+            previous[2]={x:previous[2].x+dx,y:previous[2].y+dy};
+            current[0]=local;previous[3]=local;
+          }
+          break;
+        }
+        const box = bounds([{...original,contours,rotation:0,transform:undefined}]);
+        const points = [{x:box.x,y:box.y},{x:box.x+box.width,y:box.y+box.height}];
+        document={...g.original,shapes:g.original.shapes.map(s=>s.id===original.id?{...original,points,contours,rotation:0,transform:matrix}:s)};
+      } else if (g.kind === "vertex") {
         const original = rectanglePath(g.original.shapes.find((s) => selected(s))!);
+        if (shift && !g.handleSide) {
+          const origin = applyMatrix(shapeMatrix(original), original.points[g.vertex!]);
+          const angle = Math.round(Math.atan2(raw.y - origin.y, raw.x - origin.x) / (Math.PI / 4)) * Math.PI / 4;
+          const radius = distance(origin, raw);
+          const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+          const constrained = {
+            x: origin.x + radius * direction.x,
+            y: origin.y + radius * direction.y,
+          };
+          const snapped = this.snap(constrained, alt);
+          const dx = snapped.x - origin.x, dy = snapped.y - origin.y;
+          if (Math.abs(dx * direction.y - dy * direction.x) < 1e-7 &&
+              dx * direction.x + dy * direction.y >= -1e-7) {
+            g.end = snapped;
+          } else {
+            g.end = constrained;
+            this.smartGuides = [];
+            this.snapTarget = null;
+            this.snapKind = null;
+          }
+          this.cursor = g.end;
+        }
+        if (!g.handleSide) {
+          const origin = applyMatrix(shapeMatrix(original), original.points[g.vertex!]);
+          this.message = `Move ${this.formatLength(g.end.x - origin.x)}, ${this.formatLength(g.end.y - origin.y)} ${this.unitSymbol}`;
+        }
         const local = applyMatrix(inverse(shapeMatrix(original)), g.end);
         const closed =
           (original.kind === "polyline" || isCurve(original)) &&
@@ -3197,6 +4295,12 @@ export class Controller {
     this.notifyPointer();
   }
   pointerUp(pixel?: Point, alt = false, shift = false, ctrl = false) {
+    if (this.offsetDrag) {
+      if (pixel) this.pointerMove(pixel, alt, ctrl, shift);
+      this.offsetDrag = null;
+      this.notify();
+      return;
+    }
     if (this.guideDrag) {
       if (pixel) this.updateGuide(pixel, alt, ctrl, shift);
       const g = this.guideDrag;
@@ -3222,7 +4326,7 @@ export class Controller {
     }
     if (this.drawingDown) {
       const d = this.drawingDown;
-      if (d.initial && pixel && distance(pixel,d.pixel) >= 4 && ["arrow","arrow-head","crosshair","size-ruler"].includes(this.mode)) this.pending=[d.point];
+      if (d.initial && pixel && distance(pixel,d.pixel) >= 4 && ["arrow","arrow-head","crosshair","size-ruler","measurement"].includes(this.mode)) this.pending=[d.point];
       this.drawingDown = null;
       const p = pixel
         ? this.drawingPoint(this.world(pixel), alt, shift)
@@ -3265,6 +4369,10 @@ export class Controller {
       this.addPoint(p);
       return;
     }
+    if (pixel && this.gesture?.kind === "vertex" && !this.gesture.handleSide &&
+        (distance(this.gesture.start, this.world(pixel)) > 1e-9 ||
+         distance(this.gesture.start, this.gesture.end) > 1e-9))
+      this.pointerMove(pixel, alt, ctrl, shift);
     const g = this.gesture;
     if (!g) return;
     this.previewId++;
@@ -3272,12 +4380,13 @@ export class Controller {
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
-    if (g.kind === "move" && this.transformTool) {
+    if (g.kind === "move" && this.transformTool && this.pivotMode === "custom") {
       this.transformPivot = {
         x: this.transformPivot.x + (g.displacement?.x ?? 0),
         y: this.transformPivot.y + (g.displacement?.y ?? 0),
       };
     }
+    if (["move", "rotate", "scale"].includes(g.kind)) this.captureNumericBasis();
     if (g.kind === "marquee") {
       const x = Math.min(g.start.x, g.end.x),
         y = Math.min(g.start.y, g.end.y),
@@ -3310,10 +4419,15 @@ export class Controller {
             .map((s) => s.id),
         ]),
       ];
+      if (this.objectPicker) {
+        const picked=[...this.selected];
+        this.selected=[...g.selection];
+        this.setToolSelection(picked);
+      }
       this.notify();
       return;
     }
-    if (this.preview && !this.transformTool) {
+    if (this.preview && !this.transformTool && !this.array) {
       const next = this.preview;
       this.preview = null;
       void this.commit(next);
@@ -3330,6 +4444,7 @@ export class Controller {
         points,
         this.mode === "arc" ? this.arcSweep : undefined,
         this.polygonSides,
+        this.measurementSections,
       );
       if (this.mode === "control-curve")
         shape.handles = this.pendingHandles.slice(0, points.length);
@@ -3371,9 +4486,10 @@ export class Controller {
     const shape = this.document.shapes.find((s) => s.id === id);
     if (!shape) return;
     const next = sharpAnchor(shape, index);
-    if (next !== shape) await this.edit(id, { handles: next.handles });
+    if (next !== shape) await this.edit(id, shape.kind === "compound" ? {contours:next.contours} : { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
+    if (this.booleanOperation || this.pathCopy || this.array) return;
     if (this.selectionLocked) return;
     if (this.stitchMode) return;
     const source =
@@ -3386,7 +4502,7 @@ export class Controller {
             if (s.id !== id) return s;
             const updated = { ...s, ...changes };
             return s.kind === "text" &&
-              (changes.fontSize !== undefined || changes.text !== undefined)
+              (changes.fontSize !== undefined || changes.text !== undefined || changes.fontFamily !== undefined || changes.bold !== undefined || changes.italic !== undefined || changes.underline !== undefined || changes.strikethrough !== undefined || changes.textAlign !== undefined || changes.lineSpacing !== undefined)
               ? resizeText(updated)
               : updated;
           }),
@@ -3403,8 +4519,13 @@ export class Controller {
           "preview",
           revision,
           reconcileStitches(next, this.document),
-        );
+        ).catch((error) => {
+          // A committed or superseded field can invalidate an in-flight preview.
+          if (this.propertySession !== session || token !== this.previewId || this.revision !== revision) return null;
+          throw error;
+        });
         if (
+          result &&
           this.propertySession === session &&
           token === this.previewId &&
           this.revision === revision
@@ -3438,7 +4559,7 @@ export class Controller {
   get canToggleObjectState() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
       !this.drawingDown && !this.transformTool && !this.propertySession &&
-      !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.array && !this.pathCopy && !this.offsetActive && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   async toggleObjectState(id: string, field: "hidden" | "locked") {
     if (!this.canToggleObjectState) return;
@@ -3458,7 +4579,7 @@ export class Controller {
   }
   get canStyle() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
-      !this.transformTool && !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.transformTool && !this.propertySession && !this.array && !this.pathCopy && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   async copyStyling(id: string) {
     if (!this.canStyle) return;
@@ -3509,9 +4630,9 @@ export class Controller {
   }
   get canUseClipboard() {
     if (this.printLayoutActive) return false;
-    return this.ready && !this.busy && this.pointerInside && !!this.clipboardPixel &&
+    return this.ready && !this.busy && !!this.clipboardPixel &&
       !this.gesture && !this.pending.length && !this.transformTool &&
-      !this.propertySession && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.propertySession && !this.array && !this.pathCopy && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   copyObjects(): string | null {
     if (!this.canUseClipboard || (!this.active.length && !this.selectedGroups.length)) return null;
@@ -3526,6 +4647,9 @@ export class Controller {
     return JSON.stringify({
       format: "leather-pattern-designer-clipboard", version: 1,
       anchor: this.world(this.clipboardPixel!),
+      origin:this.clipboardOrigin,
+      externalTransfers:(this.document.stitchTransfers ?? []).filter(t=>ids.has(t.targetId) && !groupIds.has(t.masterId)),
+      fallbackShapeIds:extraShapes.map(s=>s.id),
       document: { version: DOCUMENT_VERSION, shapes: selectedShapes.map(s=>({...s,stitchParentId:s.stitchParentId && ids.has(s.stitchParentId) ? s.stitchParentId : undefined})), objectTree: [...filterObjectTree(this.tree, ids, new Set(this.selectedGroups)),...extraShapes.map(s=>({kind:"object" as const,id:s.id}))], stitchGroups: groups, stitchTransfers:transfers,
         stitchLinks: (this.document.stitchLinks ?? []).map(l => ({
           ...l, members: l.members.filter(id => groupIds.has(id)),
@@ -3543,6 +4667,14 @@ export class Controller {
           !Number.isFinite(payload.anchor?.y)) throw Error("Invalid or unsupported object clipboard");
       const source = parseProject(JSON.stringify(payload.document));
       if (!source.shapes.length && !source.objectTree?.length) return;
+      const external = payload.origin===this.clipboardOrigin && Array.isArray(payload.externalTransfers) ? payload.externalTransfers : [];
+      const liveExternal=external.length>0 && external.every((t:StitchTransfer)=>this.stitchGroups.some(g=>g.id===t.masterId) && source.shapes.some(s=>s.id===t.targetId));
+      if(liveExternal) {
+        const fallbackIds=new Set(payload.fallbackShapeIds ?? []);
+        source.shapes=source.shapes.filter(s=>!fallbackIds.has(s.id));
+        source.stitchGroups=source.stitchGroups?.filter(g=>!fallbackIds.has(g.shapeId));
+        source.objectTree=filterObjectTree(source.objectTree ?? [],new Set(source.shapes.map(s=>s.id)),new Set());
+      }
       const ids = new Map(source.shapes.map(s => [s.id, crypto.randomUUID()]));
       const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, crypto.randomUUID()]));
       const copies = source.shapes.map(s => ({
@@ -3558,7 +4690,7 @@ export class Controller {
         stitchGroups: [...this.stitchGroups, ...(source.stitchGroups ?? []).map(g => ({
           ...g, id: groupIds.get(g.id)!, shapeId: ids.get(g.shapeId)!, continuation:g.continuation ? { ...g.continuation, previousId:groupIds.get(g.continuation.previousId)! } : undefined,
         }))],
-        stitchTransfers:[...(this.document.stitchTransfers ?? []), ...copyTransferPlacements(this.document.stitchTransfers ?? [],(source.stitchTransfers ?? []).map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId)!,targetId:ids.get(t.targetId)! })))],
+        stitchTransfers:[...(this.document.stitchTransfers ?? []), ...copyTransferPlacements(this.document.stitchTransfers ?? [],[...(source.stitchTransfers ?? []),...(liveExternal ? external : [])].map((t:StitchTransfer) => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
         stitchLinks: [...(this.document.stitchLinks ?? []), ...(source.stitchLinks ?? []).map(l => ({
           ...l, id: ++linkId, members: l.members.map(id => groupIds.get(id)!),
         }))],
@@ -3569,7 +4701,7 @@ export class Controller {
   async duplicate() {
     this.cancel();
     const initialIds=new Set(this.active.map(s=>s.id));
-    const data=copyStitchData(this.document,initialIds);
+    const data=copyStitchData(this.document,initialIds,true);
     const originals=[...this.document.shapes.filter(s=>initialIds.has(s.id) || !!s.stitchParentId && initialIds.has(s.stitchParentId)),...data.shapes];
     const ids=new Map(originals.map(s=>[s.id,crypto.randomUUID()]));
     const copies=originals.map(s=>({...moveShape(s,10,10),id:ids.get(s.id)!,name:`${s.name} copy`,locked:false,stitchParentId:s.stitchParentId ? ids.get(s.stitchParentId) : undefined}));
@@ -3587,8 +4719,9 @@ export class Controller {
     const groupIds = new Map(groups.map(g => [g.id,crypto.randomUUID()]));
     const success = await this.commit({
       ...this.document, shapes:[...this.document.shapes,...copies], objectTree:[...duplicateNodes(this.tree),...data.shapes.map(s=>({kind:"object" as const,id:ids.get(s.id)!}))],
+      stitchLinks:[...(this.document.stitchLinks ?? []),...(this.document.stitchLinks ?? []).map((l,index)=>({...l,id:Math.max(0,...(this.document.stitchLinks ?? []).map(l=>l.id))+index+1,members:l.members.filter(id=>groupIds.has(id)).map(id=>groupIds.get(id)!)})).filter(l=>l.members.length>=2)],
       stitchGroups:[...this.stitchGroups,...groups.map(g => ({ ...g,id:groupIds.get(g.id)!,shapeId:ids.get(g.shapeId)!,continuation:g.continuation ? { ...g.continuation,previousId:groupIds.get(g.continuation.previousId)! } : undefined }))],
-      stitchTransfers:[...(this.document.stitchTransfers ?? []),...copyTransferPlacements(this.document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId)!,targetId:ids.get(t.targetId)! })))],
+      stitchTransfers:[...(this.document.stitchTransfers ?? []),...copyTransferPlacements(this.document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
     });
     if (success) {
       this.selectedGroups = [];
@@ -3639,6 +4772,10 @@ export class Controller {
     } else this.pan = { x: this.pan.x - dx, y: this.pan.y - dy };
     this.notify();
   }
+  async confirmReplacement() {
+    if (isTauri()) return !this.dirty || await invoke<boolean>("confirm_replace");
+    return this.confirmReplace();
+  }
   confirmReplace() {
     return (
       !this.dirty ||
@@ -3647,22 +4784,28 @@ export class Controller {
   }
   async newProject() {
     if (this.fileBusy) return;
-    if (!this.confirmReplace()) return;
-    this.cancel();
-    await this.transact("load", emptyDocument());
-    this.files.handle = null;
-    this.collapsedGroups.clear(); this.selectedGroups = []; this.panelRevision++;
-    this.name = "Untitled.leather.json";
-    this.savedBaseline = fingerprint(this.document);
-    this.dirty = false;
-    this.notify();
-  }
-  async open() {
-    if (this.fileBusy) return;
-    if (!this.confirmReplace()) return;
     this.fileBusy = true;
     try {
-      const file = await this.files.open();
+      if (!(await this.confirmReplacement())) return;
+      this.cancel();
+      await this.transact("load", emptyDocument());
+      this.files.handle = null;
+      this.collapsedGroups.clear(); this.selectedGroups = []; this.panelRevision++;
+      this.name = "Untitled.leather";
+      this.savedBaseline = fingerprint(this.document);
+      this.dirty = false;
+      this.notify();
+    } finally {
+      this.fileBusy = false;
+    }
+  }
+  async open(requestId?: number) {
+    if (this.fileBusy) return;
+    const previousHandle = this.files.handle;
+    this.fileBusy = true;
+    try {
+      if (!(await this.confirmReplacement())) return;
+      const file = await this.files.open(requestId);
       if (!file) return;
       this.cancel();
       await this.transact("load", file.document);
@@ -3674,6 +4817,7 @@ export class Controller {
       this.scheduleRecovery();
       this.notify();
     } catch (e) {
+      this.files.handle = previousHandle;
       this.fail(e);
     } finally {
       this.fileBusy = false;
@@ -3684,7 +4828,7 @@ export class Controller {
     if (this.fileBusy) return;
     let name = value.trim();
     if (!name) return;
-    if (!/\.json$/i.test(name)) name += ".leather.json";
+    if (!/\.(json|leather)$/i.test(name)) name += ".leather";
     if (name === this.name) return;
     this.name = name;
     this.files.handle = null;
@@ -3697,7 +4841,7 @@ export class Controller {
     if (this.fileBusy) return;
     this.fileBusy = true;
     try {
-      if (this.transformTool || this.stitchMode) this.cancel();
+      if (this.transformTool || this.stitchMode || this.booleanOperation) this.cancel();
       await this.finishProperty();
       await this.transactionQueue;
       const doc = this.document,
@@ -3719,17 +4863,23 @@ export class Controller {
     }
   }
   async restoreProject() {
-    if (this.fileBusy || !this.restore || !this.confirmReplace()) return;
-    const value = this.restore;
-    this.restore = undefined;
-    this.cancel();
-    await this.transact("load", parseProject(JSON.stringify(value.document)));
-    this.collapsedGroups = new Set(value.collapsedGroupIds ?? []);
-    this.selectedGroups = []; this.panelRevision++;
-    this.files.handle = null;
-    this.name = value.name;
-    this.savedBaseline = "";
-    this.dirty = true;
-    this.notify();
+    if (this.fileBusy || !this.restore) return;
+    this.fileBusy = true;
+    try {
+      if (!(await this.confirmReplacement())) return;
+      const value = this.restore;
+      this.restore = undefined;
+      this.cancel();
+      await this.transact("load", parseProject(JSON.stringify(value.document)));
+      this.collapsedGroups = new Set(value.collapsedGroupIds ?? []);
+      this.selectedGroups = []; this.panelRevision++;
+      this.files.handle = null;
+      this.name = value.name;
+      this.savedBaseline = "";
+      this.dirty = true;
+      this.notify();
+    } finally {
+      this.fileBusy = false;
+    }
   }
 }

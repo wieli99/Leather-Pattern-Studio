@@ -10,7 +10,7 @@ test('global units accept fractions, preserve dimensions and persist', { tag: "@
   await canvas.click({ position: { x: 450, y: 390 } });
   await page.getByRole('button', { name: 'Select (V)', exact: true }).click();
   const width = page.getByLabel('Width', { exact: true });
-  await width.fill('25.4');
+  await width.fill('12.7*2');
   await width.press('Enter');
   async function units(value: string) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -89,9 +89,9 @@ test('fractional corner drafts survive clamping and invalid stitches block Apply
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Units', { exact: true }).selectOption('in-fractional');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Corner radius', exact: true }).click();
+  await page.getByRole('button', { name: 'Corners', exact: true }).click();
   await canvas.click({ position: { x: 155, y: 185 } });
-  const corner = page.getByLabel('Corner radius (in)', { exact: true });
+  const corner = page.getByLabel('Radius (in)', { exact: true });
   await corner.fill('');
   await corner.pressSequentially('1/8', { delay: 100 });
   await expect(corner).toHaveValue('1/8');
@@ -106,7 +106,8 @@ test('fractional corner drafts survive clamping and invalid stitches block Apply
   await spacing.press('Enter');
   await expect(spacing).toBeVisible();
   await page.getByLabel('Stitch inset', { exact: true }).fill('1/16');
-  await expect(apply).toBeDisabled();
+  // Leaving an invalid draft restores its last valid value.
+  await expect(apply).toBeEnabled();
   await spacing.fill('1/8');
   await expect(apply).toBeEnabled();
   await spacing.fill('');

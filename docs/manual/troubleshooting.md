@@ -25,7 +25,7 @@ First load a production build online and allow caching to finish. Keep saved fil
 Export a PDF from a print layout, print at Actual size / 100%, and disable Fit to page. Measure a printed size guide before cutting. Preview zoom does not change exported dimensions.
 
 ## Current limits
-The editor is a 2D pattern workspace. SVG imports are images, not editable paths. Merge supports specific connected outlines; it is not a general boolean operation. See [Merge](#transforms/merge) for supported selections.
+The editor is a 2D pattern workspace. SVG imports are images, not editable paths. Join, Subtract, Intersect and Exclude support closed-outline boolean operations, including curves and holes. Open-path Join has separate endpoint-joining requirements. See [Join](#transforms/join) and [boolean tools](#transforms/subtract-intersect-and-exclude) for supported selections.
 
 ## Report a bug
 Click **Report a bug** beside Help in either workspace, or the bug icon to the right of the version number in the drawing footer. Project JSON and system information are enabled by default; turn either off to exclude it. The project snapshot includes committed unsaved changes, but not unfinished gestures. Reporting does not save or modify your project.

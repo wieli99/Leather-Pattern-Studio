@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>studio.leather.pattern-designer</id>
+  <name>Leather Pattern Studio</name>
+  <summary>Design leather patterns with precise dimensions</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <description><p>Create leather patterns, arrange print layouts, and export physically sized drawings.</p></description>
+  <launchable type="desktop-id">studio.leather.pattern-designer.desktop</launchable>
+  <url type="homepage">https://github.com/wieli99/Leather-Pattern-Studio</url>
+  <provides><mediatype>application/x-leather-pattern</mediatype></provides>
+</component>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { editableNumber, parseExpression } from "../model/expression";
 import { editableLength, parseLength } from "../model/units";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
@@ -82,11 +83,34 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   active.value = item.id;
   pinned.value = item.point;
   pinnedAngle.value = item.angle;
-  draft.value = ["Angle", "Sweep"].includes(item.key) ? String(item.value) : editableLength(item.value, editor.units);
+  draft.value = ["Angle", "Sweep"].includes(item.key) ? editableNumber(item.value) : editableLength(item.value, editor.units);
+  // Wheel handlers read immediately after focus, before Vue renders the draft.
+  field.value = draft.value;
   error.value = "";
   // Select after Vue replaces the display value with the editable draft.
   await nextTick();
-  if (document.activeElement === field) field.select();
+  if (document.activeElement !== field) return;
+  const canvas = field.closest(".viewport")?.querySelector("canvas");
+  const label = field.closest("label");
+  if (canvas && label) {
+    const view = canvas.getBoundingClientRect();
+    const box = label.getBoundingClientRect();
+    const displacement = (start: number, end: number, low: number, high: number) =>
+      end - start > high - low ? (low + high - start - end) / 2
+        : start < low ? low - start : end > high ? high - end : 0;
+    const insetX = Math.min(120, view.width / 4);
+    const insetY = Math.min(120, view.height / 4);
+    const dx = displacement(box.left, box.right, view.left + insetX, view.right - insetX);
+    const dy = displacement(box.top, box.bottom, view.top + insetY, view.bottom - insetY);
+    if (dx || dy) {
+      editor.pan = { x: editor.pan.x + dx, y: editor.pan.y + dy };
+      pinned.value = { x: pinned.value.x + dx, y: pinned.value.y + dy };
+      editor.notify();
+      await nextTick();
+    }
+  }
+  // Set the selection without select() asking Firefox to scroll the field.
+  if (document.activeElement === field) field.setSelectionRange(0, field.value.length);
 }
 function input(item: (typeof items.value)[number], event: Event) {
   draft.value = (event.target as HTMLInputElement).value;
@@ -105,13 +129,13 @@ function input(item: (typeof items.value)[number], event: Event) {
         editor.measurementLocks[signKey] ??=
           Math.sign(editor.cursor[axis] - editor.pending.at(-1)![axis]) || 1;
       }
-      editor.measurementLocks[item.key] = (["Angle", "Sweep"].includes(item.key) ? Number(draft.value) : (parseLength(draft.value, editor.units) ?? NaN));
+      editor.measurementLocks[item.key] = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
     }
     editor.notify();
   }
 }
 async function confirm(item: (typeof items.value)[number]) {
-  const value = (["Angle", "Sweep"].includes(item.key) ? Number(draft.value) : (parseLength(draft.value, editor.units) ?? NaN));
+  const value = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
   const signedHeight = item.key === "Height" &&
     ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
     editor.pending.length === 2;
@@ -159,11 +183,11 @@ async function confirm(item: (typeof items.value)[number]) {
 function cancel() {
   active.value = undefined;
   error.value = "";
-  document.querySelector<HTMLCanvasElement>("canvas")?.focus();
+  document.querySelector<HTMLCanvasElement>("canvas")?.focus({ preventScroll: true });
 }
 function cycleField(event: KeyboardEvent) {
   if (
-    !editor.measurementFields.length || event.isComposing || event.ctrlKey ||
+    event.isComposing || event.ctrlKey ||
     event.metaKey || event.altKey
   ) return;
   const input = event.target as HTMLInputElement;
@@ -176,8 +200,8 @@ function cycleField(event: KeyboardEvent) {
   event.preventDefault();
   const next =
     fields[(index + (event.shiftKey ? -1 : 1) + fields.length) % fields.length];
-  next.focus();
-  if (next === input) next.select();
+  next.focus({ preventScroll: true });
+  if (next === input) next.setSelectionRange(0, next.value.length);
 }
 function style(item: (typeof items.value)[number]) {
   const p = active.value === item.id ? pinned.value : item.point;
@@ -203,8 +227,9 @@ function style(item: (typeof items.value)[number]) {
         item.key === "Angle" ? "Direction" : item.key
       }}</span>
       <input
+        v-numeric-wheel="['Angle', 'Sweep'].includes(item.key) ? 'number' : editor.units"
         :readonly="!!editor.gesture"
-        :type="editor.units === 'mm' || ['Angle', 'Sweep'].includes(item.key) ? 'number' : 'text'"
+        type="text"
         step="any"
         :aria-label="item.key || 'Edge length'"
         :value="active === item.id ? draft : (['Angle', 'Sweep'].includes(item.key) ? Number(item.value.toFixed(2)) : editor.formatLength(item.value))"

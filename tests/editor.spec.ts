@@ -18,7 +18,7 @@ async function rect(page: any) {
   await expect(page.getByLabel("Width", { exact: true })).toBeVisible();
 }
 async function cornerRadius(page: any) {
-  await page.getByRole("button", { name: "Corner radius", exact: true }).click();
+  await page.getByRole("button", { name: "Corners", exact: true }).click();
   await page.getByLabel("Pattern drawing canvas").click({
     position: { x: 160, y: 190 },
   });
@@ -56,8 +56,28 @@ test("precise rectangle, rounded corners, undo, redo and download", async ({
   });
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  expect((await download).suggestedFilename()).toContain(".json");
+  expect((await download).suggestedFilename()).toContain(".leather");
 });
+test("Select tool copies and pastes with the pointer outside the canvas", async ({ page }) => {
+  await ready(page);
+  await rect(page);
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  // Clear the drawing's automatic selection, then select its edge with Select.
+  await canvas.click({ position: { x: 550, y: 450 } });
+  await canvas.click({ position: { x: 300, y: 180 } });
+  const objects = page.locator(".objects .object-select");
+  await expect(page.getByLabel("Width", { exact: true })).toBeVisible();
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.mouse.move(5, 5);
+  await page.keyboard.press(`${modifier}+c`);
+  await canvas.hover({ position: { x: 500, y: 430 } });
+  await page.mouse.move(5, 5);
+  await page.keyboard.press(`${modifier}+v`);
+  await expect(objects).toHaveCount(2);
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(objects).toHaveCount(1);
+});
+
 test("draw every primitive, multi-select and delete", async ({ page }) => {
   await ready(page);
   const canvas = page.getByLabel("Pattern drawing canvas");
@@ -193,7 +213,9 @@ test("move, cancel, scale, rotate and duplicate through the viewport", async ({
   await expect
     .poll(async () => Math.abs(await value("Rotation (degrees)")))
     .toBeGreaterThan(1);
-  await page.getByRole("button", { name: "Duplicate", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Duplicate", exact: true })).toHaveCount(0);
+  await c.focus();
+  await page.keyboard.press("Control+d");
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
 test("saved project opens and invalid file preserves current work", { tag: "@manual" }, async ({
@@ -283,7 +305,7 @@ test("corner tool previews, edits numerically and applies once", { tag: "@manual
   await ready(page);
   await rect(page);
   await page
-    .getByRole("button", { name: "Corner radius", exact: true })
+    .getByRole("button", { name: "Corners", exact: true })
     .click();
   const canvas = page.getByLabel("Pattern drawing canvas"),
     box = (await canvas.boundingBox())!;
@@ -295,7 +317,7 @@ test("corner tool previews, edits numerically and applies once", { tag: "@manual
   await page.mouse.move(x + 25, y + 25, { steps: 5 });
   await page.mouse.up();
   await page.keyboard.up("Control");
-  const corner = page.getByLabel("Corner radius (mm)", { exact: true });
+  const corner = page.getByLabel("Radius (mm)", { exact: true });
   await expect(corner).toBeVisible();
   await corner.fill("999");
   await canvas.focus();
@@ -326,9 +348,85 @@ test("inline rename controls download filename", { tag: "@manual" }, async ({ pa
   await expect(filename).toHaveValue("Untitled");
   await filename.fill("Wallet");
   await manualScreenshot(page, "rename.png");
+  const pending = page.waitForEvent("download");
   await page.getByLabel("Project filename").press("Enter");
   await expect(filename).toHaveValue("Wallet");
-  const pending = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  expect((await pending).suggestedFilename()).toBe("Wallet.leather.json");
+  expect((await pending).suggestedFilename()).toBe("Wallet.leather");
+});
+
+test("right-click confirms Model targets before applying", async ({page})=>{
+  await ready(page);
+  await rect(page);
+  await page.getByRole("button",{name:"Move",exact:true}).click();
+  const popup=page.locator(".transform-options");
+  const picker=popup.locator(".objects-confirm");
+  await picker.click();
+  await expect(picker).toHaveAttribute("aria-pressed","true");
+  const canvas=page.getByLabel("Pattern drawing canvas");
+  await canvas.click({button:"right",position:{x:550,y:500}});
+  await expect(picker).toHaveAttribute("aria-pressed","false");
+  await expect(popup).toBeVisible();
+  await canvas.click({button:"right",position:{x:550,y:500}});
+  await expect(popup).toBeHidden();
+});
+
+test("Corners switches styles through zero and edits chamfer setback", {tag:"@manual"}, async ({page}) => {
+  await ready(page);
+  await rect(page);
+  await cornerRadius(page);
+  await page.getByLabel("Radius (mm)", {exact:true}).fill("5");
+  await page.getByRole("combobox", {name:"Style", exact:true}).selectOption("chamfer");
+  const setback = page.getByLabel("Setback (mm)", {exact:true});
+  await expect(setback).toHaveValue("5");
+  await setback.fill("0");
+  await setback.press("ArrowDown");
+  await expect(setback).toHaveValue("0");
+  await setback.press("ArrowUp");
+  await expect(setback).toHaveValue("0.01");
+  await setback.press("Control+ArrowUp");
+  await expect(setback).toHaveValue("0.01");
+  await setback.dispatchEvent("wheel", {deltaY:-1,altKey:true,shiftKey:true});
+  await expect(setback).toHaveValue("5.01");
+  await setback.dispatchEvent("wheel", {deltaY:1,altKey:true,ctrlKey:true,shiftKey:true});
+  await expect(setback).toHaveValue("0");
+  await setback.fill("999");
+  await page.getByLabel("Pattern drawing canvas").focus();
+  await expect(setback).toHaveValue("70");
+  await setback.fill("4");
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.focus();
+  await expect(setback).toHaveValue("4");
+  await manualScreenshot(page, "corner-chamfer.png");
+  await page.getByRole("button",{name:"Apply",exact:true}).click();
+  await cornerRadius(page);
+  await expect(setback).toHaveValue("4");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x+160,box.y+190);
+  await page.mouse.down();
+  await page.mouse.move(box.x+190,box.y+220,{steps:10});
+  await page.mouse.up();
+  await expect(page.getByLabel("Radius (mm)",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Cancel",exact:true}).click();
+});
+
+test("bulk corner input is available without clicking a marker", async ({page}) => {
+  await ready(page);
+  await rect(page);
+  await page.getByRole("button",{name:"Corners",exact:true}).click();
+  const all = page.getByLabel("All corners (mm)",{exact:true});
+  await expect(all).toBeVisible();
+  await expect(page.getByLabel("Radius (mm)",{exact:true})).toHaveCount(0);
+  await all.fill("5");
+  await page.getByRole("combobox",{name:"All corners style",exact:true}).selectOption("chamfer");
+  await all.fill("0");
+  await all.press("ArrowUp");
+  await expect(all).toHaveValue("0.01");
+  await all.dispatchEvent("wheel",{deltaY:-1,altKey:true,ctrlKey:true});
+  await expect(all).toHaveValue("10.01");
+  await all.fill("4");
+  await page.getByRole("button",{name:"Apply",exact:true}).click();
+  await page.getByRole("button",{name:"Corners",exact:true}).click();
+  await expect(all).toHaveValue("4");
+  await expect(page.getByRole("combobox",{name:"All corners style",exact:true})).toHaveValue("chamfer");
+  await page.getByRole("button",{name:"Cancel",exact:true}).click();
 });

@@ -8,11 +8,25 @@ While constructing a shape, Tab enters available dimension fields and selects th
 
 ![Entering exact width and height during rectangle construction](/manual/images/construction-dimensions.png)
 
-Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Enter applies the edit; Esc leaves the field.
+Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Enter applies the edit; Esc leaves the field.
+
+![Canvas panned to reveal an off-screen dimension field](/manual/images/offscreen-measurement-focus.png)
 
 Choose units in Settings. Inch fields accept decimal values (`1.375`), fractions (`3/8`), and mixed fractions (`1 3/8`), including negative coordinates (`-1 3/8`). Fractional labels round to the nearest 1/64 inch and show ≈ when approximate. Focus a dimensional field to see its precise decimal value; leaving it unchanged preserves the stored measurement. Areas use decimal square inches. Angles and resize factors retain their existing units. The setting applies to properties, construction dimensions, transforms, stitching, guides, rulers, coordinates, and measurement objects. Free text is unchanged.
 
 In inch mode, guide and corner adjustments use 1/16 inch normally, 1/4 inch with Shift, and 1 inch with Ctrl. Alt keeps its existing free-placement or all-corners behavior. Rotation steps remain in degrees.
+
+## Calculate values in numeric fields
+
+Every numeric field accepts `+`, `-`, `*`, `/`, parentheses, negative numbers, and scientific notation, such as `(10+5)*2` or `1e-3`. Multiplication and division take precedence over addition and subtraction. Values update live as the expression becomes valid; the expression stays visible while you type. Enter or leaving the field uses the result, following the field’s normal confirmation behavior. Tab still cycles construction fields; Enter confirms a construction measurement or selected edge edit.
+
+Length formulas use the field’s current unit: `(2+1)/2` means 1.5 mm in millimetre mode and 1.5 inches in inch mode. Mixed inch fractions remain supported: `(1 1/2)*2` gives 3 inches. Unit suffixes, variables, and functions are unsupported. Counts still require whole numbers, and each field retains its limits.
+
+Incomplete formulas, division by zero, and out-of-range results do not change the last valid geometry. Invalid tool inputs block confirmation until repaired or discarded. Leaving a property or settings field discards an invalid draft. Esc keeps the field’s normal cancellation behavior. Alt+wheel adjusts the evaluated result and replaces the formula with a number; it ignores invalid drafts.
+
+Displayed and editable values hide floating-point noise. Display rounding never changes saved geometry, and focusing a field without editing preserves its stored precision. Only evaluated numbers are saved; formulas are temporary input.
+
+![A formula entered in grid spacing](/manual/images/numeric-formula.png)
 
 ## Align objects with snapping
 
@@ -46,7 +60,7 @@ Guideline increments update when modifiers change without moving the pointer, in
 
 ## Persistent measurements
 
-Choose **Measurement** (the ruler icon) below Text in the toolbar, or press **D** with the canvas focused. Click point A, click point B, then move the pointer perpendicular to A–B and click a third time to place the indicator. The preview shows the direct A–B distance in the selected units, with closed arrowheads and extension lines reaching the measurement points. Place the indicator on either side of the endpoints. Short dimensions put arrowheads outside the endpoints and the label above the line to keep them readable.
+Choose **Measurement** (the ruler icon) below Text in the toolbar, or press **D** with the canvas focused. Click point A and click point B, or drag from A to B and release. Then move the pointer perpendicular to A–B and click a third time to place the indicator. The preview shows the direct A–B distance in the selected units, with closed arrowheads and extension lines reaching the measurement points. Place the indicator on either side of the endpoints. Short dimensions put arrowheads outside the endpoints and the label above the line to keep them readable.
 
 After choosing B, press Tab to enter a signed **Offset** in the selected units. A positive value places the indicator to the left of the A-to-B direction; a negative value places it on the other side. Enter confirms placement, or click the canvas to place it with the entered offset. Clearing the field restores pointer control. Esc or changing tools cancels an unfinished measurement. The tool stays active after placement for another measurement.
 
@@ -58,6 +72,10 @@ With Select, select the annotation by its label or strokes. Properties provides 
 
 Select one closed shape to see its read-only **Area (mm² or in²)** in Properties, displayed to two decimal places. The measurement follows rounded corners, curves, and transforms and updates after edits and undo/redo. Zoom does not affect area. Open paths, text, and multiple selections do not show an area.
 
-Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in Properties. Opacity ranges from 0% (transparent) to 100%. These settings affect only the interior. **Reset styling** restores the subtle theme fill.
+Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in Properties. Opacity ranges from 0% (transparent) to 100%. These settings affect only the interior.
 
-Closed shapes offer a **Fill mode** select: **Solid**, **Skiving** (full-length angled lines), **Glueing** (waves), and **Cutout** (crosshatched full-length diagonal lines). Markings overlay the fill and ignore fill opacity. **Outline color** and **Outline opacity (%)** control both outlines and markings. Pattern spacing is fixed in millimetres. **Reset styling** restores Solid, default fill settings, and theme outline styling. Outline controls also apply to open paths, text, and measurements.
+Closed shapes offer a **Fill mode** select: **Solid**, **Skiving** (full-length angled lines), **Glueing** (waves), and **Cutout** (crosshatched full-length diagonal lines). Markings overlay the fill and ignore fill opacity. **Outline color** and **Outline opacity (%)** control both outlines and markings. Pattern spacing is fixed in millimetres. Outline controls also apply to open paths, text, and measurements.
+
+### Equal measurement sections
+
+Measurement starts with one section. Shift+wheel or Up/Down changes the count from 1 to 100 during placement, including while choosing the third-click offset. Each equal span shows its own distance and arrows. The count is retained for subsequent placements; Properties offers Sections and Offset. All spans share the offset and form one annotation for undo, saving, and printing. Rotating or transforming a measurement keeps its equal sections aligned along the same dimension line. Tool help lists Up/Down and Shift+wheel as “Add / remove equal sections” throughout placement.

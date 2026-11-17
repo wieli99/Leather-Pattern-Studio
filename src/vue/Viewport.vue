@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { measureText } from "../model/text";
+import { measureText, textFamily } from "../model/text";
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { editor as defaultEditor } from "../editor/instance";
 import type { Controller } from "../editor/controller";
@@ -53,7 +53,7 @@ async function saveText() {
       return;
     }
     const size = d.original?.fontSize ?? 5;
-    const layout = measureText(d.text, size);
+    const layout = measureText(d.text, size, d.original ?? {});
     const shape: Shape = {
       ...(d.original ?? {}),
       id: d.original?.id ?? crypto.randomUUID(),
@@ -97,8 +97,14 @@ const textStyle = computed(() => {
     : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
   const p = applyMatrix(m, d.point);
   const size = d.original?.fontSize ?? 5;
-  const layout = measureText(d.text, size);
+  const layout = measureText(d.text, size, d.original ?? {});
   return {
+    fontFamily: textFamily(d.original ?? {}),
+    fontWeight: d.original?.bold ? "bold" : "normal",
+    fontStyle: d.original?.italic ? "italic" : "normal",
+    textDecoration: [d.original?.underline ? "underline" : "", d.original?.strikethrough ? "line-through" : ""].join(" "),
+    textAlign: (d.original?.textAlign ?? "left") as "left" | "center" | "right",
+    lineHeight: d.original?.lineSpacing ?? 1.2,
     width: `${layout.width * state.zoom}px`,
     height: `${layout.height * state.zoom}px`,
     left: `${editor.screen(p).x}px`,
@@ -135,7 +141,7 @@ function doubleClick(event: MouseEvent) {
     editor.active.length === 1
   ) {
     const shape = editor.active[0];
-    if (["rectangle", "polyline", "control-curve"].includes(shape.kind)) {
+    if (["rectangle", "polyline", "control-curve", "compound"].includes(shape.kind)) {
       const handle = editor.handleAt(editor.world(pixel(event)));
       if (
         handle?.kind === "vertex" &&
@@ -167,8 +173,10 @@ const canvas = ref<HTMLCanvasElement | null>(null),
   hover = useEditorSelector(editor, editor.hoverSnapshot);
 const cursor = computed(() => {
   if (e.value.transformTool === "mirror" && e.value.mirrorHover) return "pointer";
+  if (e.value.offsetDrag) return "grabbing";
   hover.value;
   if (editor.tool === "text") return "none";
+  if (editor.array && !editor.objectPicker) return editor.arrayFollowing || editor.arrayCenterPicking ? "crosshair" : "default";
   if (editor.placingPivot) return "crosshair";
   if (editor.hoverHandle === "move") return "move";
   return editor.tool !== "select"
@@ -205,8 +213,11 @@ function down(event: PointerEvent) {
 }
 function wheel(event: WheelEvent) {
   event.preventDefault();
-  if (editor.mode.startsWith("polygon") && event.shiftKey) {
-    if (event.deltaY) editor.adjustPolygonSides(event.deltaY < 0 ? 1 : -1);
+  if (editor.array && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (event.deltaY) editor.adjustArrayCount(event.deltaY<0 ? 1 : -1);return;
+  }
+  if ((editor.mode.startsWith("polygon") || editor.mode === "measurement") && event.shiftKey) {
+    if (event.deltaY) editor.adjustConstructionCount(event.deltaY < 0 ? 1 : -1);
     return;
   }
   editor.wheel(
@@ -218,16 +229,27 @@ function wheel(event: WheelEvent) {
   );
 }
 function updateModifiers(event: KeyboardEvent) {
+  if (
+    ["Shift", "Alt", "Control", "Meta"].includes(event.key) &&
+    !(
+      event.target instanceof HTMLElement &&
+      event.target.closest("input,textarea,select,[contenteditable=true]")
+    )
+  )
+    editor.updateArrayModifiers(event.altKey, event.ctrlKey, event.shiftKey);
   editor.updateGuideModifiers(event.altKey, event.ctrlKey, event.shiftKey);
   editor.setAnchorModifier(event.altKey);
   editor.setDrawingModifier(event.shiftKey);
   editor.setMeasurementModifier(event.ctrlKey);
   editor.updateCornerModifiers(event.altKey, event.ctrlKey, event.shiftKey);
+  editor.updateVertexModifiers(event.altKey, event.ctrlKey, event.shiftKey);
 }
 function clearModifiers() {
+  editor.updateArrayModifiers(false,false,false);
   editor.setAnchorModifier(false);
   editor.setDrawingModifier(false);
   editor.setMeasurementModifier(false);
+  editor.updateVertexModifiers(false, false, false);
 }
 let detach: (() => void) | undefined;
 onMounted(() => {
@@ -280,7 +302,7 @@ defineExpose({ beginText, cancelText });
     @click="editor.polylineClick($event.detail)"
     @pointerleave="editor.leavePointer()"
     @pointercancel="editor.pauseGesture()"
-    @lostpointercapture="editor.gesture && editor.pauseGesture()"
+    @lostpointercapture="(editor.gesture || editor.offsetDrag) && editor.pauseGesture()"
     @contextmenu.prevent
   />
   <div
@@ -318,8 +340,9 @@ textarea {
   padding: 0;
   margin: 0;
   font: inherit;
-  font-family: sans-serif;
-  line-height: 1.2;
+  font-family: inherit;
+  line-height: inherit;
+  text-align: inherit;
   color: var(--text);
   background: transparent;
   border: 0;

@@ -521,3 +521,20 @@ it("prints detached guide stitches with their piece once and freezes them in sna
  expect(snapshot.stitchGroups).toHaveLength(1);
  expect(snapshot.shape.stitchParentId).toBeUndefined();
 });
+
+it.each([0, 45])("reselection reconciles folder pivots and placements at %s degrees", async angle => {
+  const { reconcilePrintTargets } = await import("./printLayout");
+  const original = importPrintNode(doc, importPrintNode(doc, empty, "folder", 95, 100), "folder", 180, 100);
+  const [first, second] = original.tree!;
+  const previous = transformPrintNodes(original, [first.id], 12, 8, angle, {x:0,y:0});
+  const candidate = transformPrintNodes(original, [second.id], 12, 8, angle, {x:0,y:0});
+  const result = reconcilePrintTargets(original, previous, candidate, [first.id], [second.id]);
+  expect(result.tree![0]).toEqual(original.tree![0]);
+  expect(result.instances[0]).toEqual(original.instances[0]);
+  expect(result.tree![1]).toEqual(candidate.tree![1]);
+  expect(result.instances[1]).toEqual(candidate.instances[1]);
+  const retained = reconcilePrintTargets(original, previous, candidate, [first.id], [first.id,second.id]);
+  expect(retained.tree![0]).toEqual(previous.tree![0]);
+  expect(retained.instances[0]).toEqual(previous.instances[0]);
+  expect(retained.tree![1]).toEqual(candidate.tree![1]);
+});

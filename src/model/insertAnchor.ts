@@ -1,8 +1,13 @@
+import { contourShape } from "./compound";
+import { applyMatrix, inverse, shapeMatrix } from "./geometry";
+import { cubicSegments } from "./curves";
 import { stitchEdges, anchorReplacements } from "./stitchGeometry";
 import type { Point, Shape } from "./project";
 import { boundary, distance, worldCubics, worldPoints } from "./geometry";
 import { cubicAt, isCurve, type Cubic } from "./curves";
 
+// Internal split metadata lets compounds rekey untouched contours without matching coordinates.
+const splitIndices = new WeakMap<Shape, number>();
 const lerp = (a: Point, b: Point, t: number): Point => ({
   x: a.x + (b.x - a.x) * t,
   y: a.y + (b.y - a.y) * t,
@@ -15,6 +20,29 @@ export function insertAnchor(
   onPoint?: (point: Point) => void,
   convertOnly = false,
 ): Shape | null {
+  if (shape.kind === "compound") {
+    const matrix = shapeMatrix(shape), inv = inverse(matrix);
+    for (let i=0;i<shape.contours!.length;i++) {
+      const part = {...contourShape(shape,shape.contours![i]),rotation:0,transform:matrix};
+      const next = insertAnchor(part,point,tolerance,onPoint,convertOnly);
+      if (!next) continue;
+      const contours = shape.contours!.map((c,j) => j === i ? cubicSegments(next).map(c => c.map(p => applyMatrix(inv,p)) as Cubic) : c);
+      const result: Shape = {...shape,contours};
+      const localSplit = splitIndices.get(next);
+      const offset = shape.contours!.slice(0,i).reduce((n,c) => n+c.length,0);
+      const split = localSplit === undefined ? undefined : offset+localSplit;
+      const after = new Map(stitchEdges(result).map(edge => [Number(edge.key.split(":").at(-1)),edge.key]));
+      const mapping = new Map(stitchEdges(shape).map(edge => {
+        const index = Number(edge.key.split(":").at(-1));
+        const shifted = index + (split !== undefined && index > split ? 1 : 0);
+        const indexes = index === split ? [shifted,shifted+1] : [shifted];
+        return [edge.key,indexes.flatMap(i => after.has(i) ? [after.get(i)!] : [])] as const;
+      }));
+      anchorReplacements.set(result,mapping);
+      return result;
+    }
+    return null;
+  }
   let segments: Cubic[];
   if (isCurve(shape)) segments = worldCubics(shape);
   else {
@@ -130,6 +158,7 @@ export function insertAnchor(
     cornerRadii: undefined,
     sweep: undefined,
   };
+  if (isCurve(shape) && !convertOnly) splitIndices.set(result,index);
   if (shape.stitchOnly) {
     const after = stitchEdges(result);
     const mapping = new Map<string, string[]>();

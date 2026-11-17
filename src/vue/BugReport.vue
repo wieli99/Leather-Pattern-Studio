@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openExternal, saveArtifact } from "../platform";
 import { computed, ref } from "vue";
 import { editor } from "../editor/instance";
 import { bugReport } from "../editor/bugReport";
@@ -20,14 +21,11 @@ function open() {
   dialog.value?.showModal();
 }
 function openGitHub() {
-  window.open(report.value.url, "_blank", "noopener,noreferrer");
+  void openExternal(report.value.url);
 }
 function download() {
   if (!project.value) return;
-  const url = URL.createObjectURL(new Blob([project.value], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url; link.download = "bug-report-project.json"; link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  void saveArtifact(new Blob([project.value], { type: "application/json" }), "bug-report-project.json").catch(e => { error.value = String(e); });
 }
 </script>
 <template>

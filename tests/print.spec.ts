@@ -130,6 +130,12 @@ test("Fit restores the default page view on an empty print tab", async ({ page }
   const canvas = page.getByLabel("Print layout canvas");
   await expect(canvas).toBeVisible();
   await page.getByRole("button", { name: "Fit", exact: true }).click();
+  // Visibility does not mean the asynchronous SVG/font rendering has painted a page.
+  // Wait for the white paper before capturing the reference, rather than a blank canvas.
+  await expect.poll(() => canvas.evaluate((el: HTMLCanvasElement) => {
+    const ctx = el.getContext("2d")!;
+    return Array.from(ctx.getImageData(el.width / 2, el.height / 2, 1, 1).data);
+  })).toEqual([255, 255, 255, 255]);
   const initial = await canvas.screenshot();
   await canvas.hover({ position: { x: 300, y: 200 } });
   await page.keyboard.down("Control");
@@ -189,10 +195,13 @@ test("layouts are optional, import folders repeatedly, arrange copies, persist, 
     .click();
   await expect(page.getByLabel("Print move X")).toHaveCount(0);
   await page.getByRole("button", { name: "Rotate (E)", exact: true }).click();
-  await page.getByLabel("Print rotation", { exact: true }).fill("45");
+  await page.getByLabel("Print rotation", { exact: true }).fill("(30+60)/2");
+  await page.getByLabel("Print rotation", { exact: true }).press("ArrowUp");
+  await expect(page.getByLabel("Print rotation", { exact: true })).toHaveValue("46");
+  await page.getByLabel("Print rotation", { exact: true }).press("ArrowDown");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const doc = await save(page);
-  expect(doc.version).toBe(21);
+  expect(doc.version).toBe(23);
   expect(doc.printLayouts).toHaveLength(1);
   expect(doc.printLayouts[0].instances).toHaveLength(2);
   expect(doc.shapes[0]).toMatchObject(rectangle);
@@ -932,9 +941,11 @@ test("print tools select first, apply by right click, and mirror linked artwork"
   // Import centers the placement in the viewport; click the object using its saved position.
   const initial = await save(page);
   const placement = initial.printLayouts[0].instances[0];
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
   await page.getByRole("button", { name: "Move (G)", exact: true }).click();
+  await expect(page.getByRole("button",{name:"Move (G)",exact:true})).toHaveAttribute("aria-pressed","true");
   await page.mouse.click(
-    box.x + 50 + (10 + placement.x) * 2,
+    box.x + 50 + (10 + placement.x) * 2 + 70,
     box.y + 50 + (10 + placement.y) * 2,
   );
   await expect(
@@ -1386,7 +1397,7 @@ test("Model source selection clears outside the list and resets its range anchor
 test("tool rails keep separators and share history and fit icons", async ({ page }) => {
   await load(page);
   const grid = page.getByRole("navigation", { name: "Drawing tools" });
-  const textDivider = grid.getByRole("separator", { name: "Indicator tools" });
+  const textDivider = grid.getByRole("separator", { name: "Text and indicator tools" });
   for (const height of [600, 768, 800, 900]) {
     await page.setViewportSize({ width: 1280, height });
     expect((await textDivider.boundingBox())!.height).toBe(1);
@@ -1465,7 +1476,7 @@ test("all print indicator variants, image import, editing, cancellation and tab 
   await create(page);
   const canvas = page.getByLabel("Print layout canvas");
   for (const [index, label] of ["Square size guide", "Ruler size guide", "Arrow", "Bodyless arrow", "Crosshair"].entries()) {
-    await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+    await page.getByRole("button", { name: index < 2 ? "Measurements (D)" : "Drawing tools (A)", exact: true }).click({ button: "right" });
     await page.getByRole("menuitemradio", { name: label, exact: true }).click();
     await canvas.click({ position: { x: 180, y: 170 + index * 30 } });
     await canvas.click({ position: { x: 250, y: 190 + index * 30 } });
@@ -1551,7 +1562,7 @@ test("print property edits use layout units, preview locally, cancel and undo on
   await dialog.getByLabel("Units", { exact: true }).selectOption("in-decimal");
   await dialog.getByRole("button", { name: "Create", exact: true }).click();
   const canvas = page.getByLabel("Print layout canvas");
-  await page.getByRole("button", { name: "Measurement (D)", exact: true }).click({ button: "right" });
+  await page.getByRole("button", { name: "Measurements (D)", exact: true }).click({ button: "right" });
   await page.getByRole("menuitemradio", { name: "Square size guide", exact: true }).click();
   const box = (await canvas.boundingBox())!;
   await canvas.click({ position: { x: box.width / 2, y: 210 } });
@@ -1600,9 +1611,9 @@ test("print drawing layout and previews avoid asynchronous image generation", as
   await load(page); await create(page);
   const rail = page.getByRole("navigation", { name: "Print tools" });
   const order = await rail.locator('button[aria-label], [role=separator]').evaluateAll(elements => elements.map(el => el.getAttribute('aria-label') ?? 'separator'));
-  expect(order.slice(0, 9)).toEqual(['Select (V)', 'Move (G)', 'Rotate (E)', 'Mirror (M)', 'separator', 'Text (T)', 'Measurement (D)', 'Import image', 'separator']);
+  expect(order.slice(0, 10)).toEqual(['Select (V)', 'Move (G)', 'Rotate (E)', 'Mirror (M)', 'separator', 'Text (T)', 'Measurements (D)', 'Drawing tools (A)', 'Import image', 'separator']);
   const canvas = page.getByLabel('Print layout canvas');
-  await page.getByRole('button', { name: 'Measurement (D)', exact: true }).click({button: 'right'});
+  await page.getByRole('button', { name: 'Measurements (D)', exact: true }).click({button: 'right'});
   await page.getByRole('menuitemradio', { name: 'Ruler size guide', exact: true }).click();
   await canvas.click({position: {x: 180, y: 200}});
   await page.evaluate(() => {
@@ -1640,4 +1651,230 @@ test("large print object lists scroll within their sections", async ({ page }, i
     }
   }
   await page.screenshot({ path: info.outputPath("scrolling-print-lists.png") });
+});
+
+test(
+  "assembly diamonds remain inside a four-sheet piece",
+  { tag: "@manual" },
+  async ({ page }) => {
+    await load(page, [
+      {
+        ...rectangle,
+        id: "large",
+        name: "Large piece",
+        points: [
+          { x: 0, y: 0 },
+          { x: 260, y: 340 },
+        ],
+      },
+    ]);
+    await create(page);
+    await page
+      .getByRole("button", { name: "Import Large piece", exact: true })
+      .click();
+    const project = await save(page);
+    const layout = project.printLayouts[0];
+    layout.instances[0].x = 190;
+    layout.instances[0].y = 277;
+    layout.pages = [
+      { column: 0, row: 0 },
+      { column: 1, row: 0 },
+      { column: 0, row: 1 },
+      { column: 1, row: 1 },
+    ];
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await (
+      await chooser
+    ).setFiles({
+      name: "assembly.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(project)),
+    });
+    // The old A4 tab remains clickable until Open finishes loading the project.
+    // Wait for the load and its workspace reset before selecting the new tab.
+    await expect(page.getByRole("textbox", { name: "Project filename" })).toHaveValue("assembly.json");
+    await expect(page.getByRole("tab", { name: "Model", exact: true })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "A4", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "A4", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("Print layout canvas", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => (await save(page)).printLayouts[0].pages.length)
+      .toBe(4);
+    await page.getByRole("button", { name: "Fit", exact: true }).click();
+    // Only manual capture needs to wait for the asynchronous canvas bitmap.
+    // Normal browser tests verify the exported assembly marks below.
+    if (process.env.MANUAL_SCREENSHOTS === "1") {
+      await expect.poll(() => page.getByLabel("Print layout canvas", { exact: true }).evaluate((canvas: HTMLCanvasElement) => {
+        const pixels = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
+        let white = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] === 255 && pixels[i + 1] === 255 && pixels[i + 2] === 255) white++;
+        }
+        return white;
+      })).toBeGreaterThan(100000);
+    }
+    await manualScreenshot(page, "print-assembly.png");
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Export print layout" });
+    await dialog.getByLabel("Format", { exact: true }).selectOption("svg");
+    await expect(
+      dialog.getByRole("button", { name: "Export", exact: true }),
+    ).toBeEnabled({ timeout: 40000 });
+    const pending = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "Export", exact: true }).click();
+    const stream = await (await pending).createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream!) chunks.push(chunk);
+    const { default: JSZip } = await import("jszip");
+    const archive = await JSZip.loadAsync(Buffer.concat(chunks));
+    const files = Object.values(archive.files).filter((file) =>
+      file.name.endsWith(".svg"),
+    );
+    expect(files).toHaveLength(4);
+    for (const file of files) {
+      const svg = await file.async("string");
+      expect(svg.match(/data-assembly="registration"/g)).toHaveLength(2);
+      expect(svg.match(/data-assembly="label"/g)).toHaveLength(2);
+    }
+  },
+);
+test("print rail matches Model button presentation without extra drawing tools", async ({ page }) => {
+  await load(page);
+  const model = page.getByRole("navigation", { name: "Drawing tools" });
+  const select = model.getByRole("button", { name: "Select (V)", exact: true });
+  const size = await select.boundingBox();
+  const icon = await select.locator("svg").innerHTML();
+  await create(page);
+  const rail = page.getByRole("navigation", { name: "Print tools" });
+  const printSelect = rail.getByRole("button", { name: "Select (V)", exact: true });
+  const printSize = await printSelect.boundingBox();
+  expect(printSize?.width).toBe(size?.width);
+  expect(printSize?.height).toBe(size?.height);
+  expect(await printSelect.locator("svg").innerHTML()).toBe(icon);
+  await page.getByRole("button",{name:"Import Piece",exact:true}).click();
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
+  for (const [label, key] of [["Select", "V"], ["Move", "G"], ["Rotate", "E"], ["Mirror", "M"]]) {
+    const button = rail.getByRole("button", { name: `${label} (${key})`, exact: true });
+    await expect(button.locator("small")).toHaveText(key);
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+  }
+  await expect(rail.getByRole("button", { name: /Polyline|Rectangle|Circle|Shapes|Stitch line|Resize/ })).toHaveCount(0);
+});
+
+test("shared Print pivot selector preserves previews and V supports cancellable custom placement", async ({page})=>{
+  await load(page);
+  await create(page);
+  await page.getByRole("button",{name:"Import Piece",exact:true}).click();
+  const original=await save(page);
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
+  await page.getByRole("button",{name:"Move (G)",exact:true}).click();
+  const pivot=page.getByRole("group",{name:"Pivot",exact:true});
+  await expect(pivot.getByRole("button",{name:"Bounding box",exact:true})).toHaveAttribute("aria-pressed","true");
+  await page.getByLabel("Print move X").fill("12");
+  await pivot.getByRole("button",{name:"Median",exact:true}).click();
+  await pivot.getByRole("button",{name:"Custom",exact:true}).click();
+  await expect(page.getByText("Click to place the custom pivot. Escape cancels placement.")).toBeVisible();
+  const canvas=page.getByLabel("Print layout canvas");
+  await canvas.focus();
+  await page.keyboard.press("Escape");
+  await expect(pivot.getByRole("button",{name:"Median",exact:true})).toHaveAttribute("aria-pressed","true");
+  await page.keyboard.press("v");
+  await expect(pivot.getByRole("button",{name:"Custom",exact:true})).toHaveAttribute("aria-pressed","true");
+  await canvas.click({position:{x:300,y:250}});
+  await expect(page.getByText("Click Custom or press V to reposition the pivot.")).toBeVisible();
+  const custom=pivot.getByRole("button",{name:"Custom",exact:true});
+  await expect(custom).toHaveAttribute("title","Custom");
+  await custom.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Click to place the custom pivot. Escape cancels placement.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(custom).toHaveAttribute("aria-pressed","true");
+  await expect(pivot.locator('button[aria-pressed="true"]')).toHaveCount(1);
+  await custom.click();
+  await expect(page.getByText("Click to place the custom pivot. Escape cancels placement.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  const bounding=pivot.getByRole("button",{name:"Bounding box",exact:true});
+  await bounding.focus();
+  await page.keyboard.press("Space");
+  await expect(bounding).toHaveAttribute("aria-pressed","true");
+
+  await expect(page.getByRole("button",{name:"Set pivot (V)",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Apply",exact:true}).click();
+  const result=await save(page);
+  expect(result.printLayouts[0].instances[0].x).toBeCloseTo(original.printLayouts[0].instances[0].x+12);
+});
+
+test("Print tools share the Objects confirmation phase and preserve pending edits",async({page})=>{
+  await load(page); await create(page);
+  const move=page.getByRole("button",{name:"Move (G)",exact:true});
+  await expect(move).toBeDisabled();
+  await page.getByRole("button",{name:"Import Piece",exact:true}).click();
+  const original=await save(page);
+  const placement=original.printLayouts[0].instances[0];
+  await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
+  await move.click();
+  const popup=page.locator(".print-transform");
+  const objects=popup.locator(".objects-confirm");
+  await expect(objects).toHaveAttribute("aria-pressed","false");
+  await expect(popup.getByText("Shift-click on the canvas to add or remove objects.",{exact:true})).toHaveCount(0);
+  await page.getByLabel("Print move X").fill("12");
+  await objects.click();
+  await expect(popup.getByText("Shift-click on the canvas to add or remove objects.",{exact:true})).toBeVisible();
+  await expect(popup.getByRole("button",{name:"Apply",exact:true})).toBeDisabled();
+  const canvas=page.getByLabel("Print layout canvas");
+  const point={x:50+(10+placement.x)*2+60,y:50+(10+placement.y)*2};
+  await canvas.click({position:point,modifiers:["Shift"]});
+  await expect(objects).toBeDisabled();
+  await canvas.click({position:point});
+  await expect(objects).toHaveText(/(Select Objects|Confirm Selection).*[(]1[)]/);
+  await objects.focus(); await page.keyboard.press("Enter");
+  await expect(objects).toHaveAttribute("aria-pressed","false");
+  await expect(popup.getByText("Shift-click on the canvas to add or remove objects.",{exact:true})).toHaveCount(0);
+  await page.getByLabel("Print move X").fill("12");
+  await popup.getByRole("button",{name:"Apply",exact:true}).click();
+  const result=await save(page);
+  expect(result.printLayouts[0].instances[0].x).toBeCloseTo(placement.x+12);
+});
+
+test("Print reselection keeps panel ranges and restores only removed targets",async({page})=>{
+  await load(page,[{...rectangle,id:"other",name:"Other",points:[{x:120,y:0},{x:140,y:20}]}]);
+  await create(page);
+  await page.getByRole("button",{name:"Import Pattern",exact:true}).click();
+  const original=await save(page);
+  const tree=page.getByLabel("Print object tree");
+  await tree.getByRole("button",{name:"Piece",exact:true}).click();
+  await tree.getByRole("button",{name:"Other",exact:true}).click({modifiers:["Shift"]});
+  await page.getByRole("button",{name:"Move (G)",exact:true}).click();
+  await page.getByLabel("Print move X").fill("12");
+  const popup=page.locator(".print-transform");
+  const objects=popup.locator(".objects-confirm");
+  await expect(objects).toHaveText(/(Select Objects|Confirm Selection).*[(]2[)]/);
+  await objects.click();
+  await tree.getByRole("button",{name:"Other",exact:true}).click();
+  await expect(objects).toHaveText(/(Select Objects|Confirm Selection).*[(]1[)]/);
+  await expect(page.getByLabel("Print move X")).toHaveValue("12.00");
+  await page.getByLabel("Print layout canvas").click({button:"right",position:{x:550,y:500}});
+  await expect(objects).toHaveAttribute("aria-pressed","false");
+  await expect(popup).toBeVisible();
+  await expect(page.getByLabel("Print move X")).toHaveValue("12.00");
+  await page.getByLabel("Print layout canvas").click({button:"right",position:{x:550,y:500}});
+  const result=await save(page);
+  for (const before of original.printLayouts[0].instances) {
+    const after=result.printLayouts[0].instances.find((item:any)=>item.id===before.id);
+    expect(after.x).toBeCloseTo(before.x+(before.sourceId==="other" ? 12 : 0));
+  }
+});
+test("favorites return immediately when switching back to Model", async ({page})=>{
+ await load(page);
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeVisible();
+ await create(page);
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeHidden();
+ await page.getByRole("tab",{name:"Model",exact:true}).click();
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeVisible();
+ await page.locator(".object-select").first().click();
+ await page.getByRole("tab",{name:"A4",exact:true}).click();
+ await page.getByRole("tab",{name:"Model",exact:true}).click();
+ await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeVisible();
 });

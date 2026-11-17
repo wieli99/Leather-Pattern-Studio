@@ -1,75 +1,304 @@
 <script setup lang="ts">
-import { parseLength } from "../model/units";
+import { handleToolEnter } from "./toolKeyboard";
+import ToolSearch from "./ToolSearch.vue";
+import SelectionHint from "./SelectionHint.vue";
+import PivotSelector from "./PivotSelector.vue";
+import ToolObjectPicker from "./ToolObjectPicker.vue";
 import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
-import { computed, ref } from "vue";
-import { cornerRadii } from "../model/geometry";
+import { computed } from "vue";
+import { polygonFillets } from "../model/geometry";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
-import { transformShortcuts } from "./tools";
+import { focusModelCanvas } from "./canvasFocus";
 const e = useEditor();
+async function applyArray() {
+  await editor.applyArray();
+  if (!editor.array) focusModelCanvas();
+}
+async function applyPathCopy() {
+  await editor.applyPathCopy();
+  if (!editor.pathCopy) focusModelCanvas();
+}
+function cancelPathCopy() { editor.cancel(); focusModelCanvas(); }
+async function applyOutline() {
+  await editor.applyTrim();
+  if (!editor.trimMode) focusModelCanvas();
+}
+function cancelOutline() {
+  editor.cancel();
+  focusModelCanvas();
+}
 const cornerShape = computed(() =>
   e.value.active.find((s) => s.id === e.value.selectedCorner?.shapeId),
 );
 const radii = computed(() =>
-  cornerShape.value ? cornerRadii(cornerShape.value) : [],
+  cornerShape.value ? polygonFillets(cornerShape.value).corners.map(c => c.chamfer || c.radius) : [],
 );
+const selectedChamfer = computed(() => e.value.cornerStyleOverride ??
+  ((cornerShape.value?.cornerChamfers?.[e.value.selectedCorner?.index ?? 0] ?? 0) > 0));
+const bulkCorners = computed(() => e.value.active.flatMap(s => polygonFillets(s).corners));
+const bulkValues = computed(() => bulkCorners.value.map(c => c.chamfer || c.radius));
+const bulkMixed = computed(() => e.value.bulkCornerStyle === null || !bulkValues.value.every(v => Math.abs(v - bulkValues.value[0]) < 1e-9));
 const squareSelection = computed(() => e.value.active.some(s => s.kind === "size-square"));
-const focusedFactor = ref<string | null>(null);
-const drafts = ref<Record<string, string>>({});
-function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
-  const text = (event.target as HTMLInputElement).value;
-  drafts.value[key] = text;
-  const n = key === "x" || key === "y" ? (parseLength(text, e.value.units) ?? NaN) : text.trim() ? Number(text) : NaN;
-  editor.setTransformValues({ [key]: n });
-}
 </script>
 <template>
   <div
-    v-if="e.stitchMode || e.selectionToolsAvailable || (e.tool === 'select' && e.trimMode && !e.busy)"
+    v-if="!e.printLayoutActive"
     class="transform-overlay"
   >
+    <section
+      v-if="e.array"
+      class="transform-options array-options"
+      :aria-label="
+        e.array.kind === 'rectangular'
+          ? 'Rectangular Array settings'
+          : 'Radial Array settings'
+      "
+      @keydown.enter="handleToolEnter($event, applyArray)"
+      @keydown.esc.stop.prevent="editor.cancelArrayPoint() || cancelPathCopy()"
+    >
+      <strong>{{
+        e.array.kind === "rectangular" ? "Rectangular Array" : "Radial Array"
+      }}</strong>
+      <ToolObjectPicker />
+      <hr />
+      <small>{{
+        e.arrayStage === "review"
+          ? "Review the array. Enter or right click applies."
+          : e.arrayStage === "center"
+            ? "Select center point."
+            : "Select " +
+              (e.arrayStage === "endpoint1" ? "endpoint 1" : "endpoint 2") +
+              ". X/Y constrains direction."
+      }}</small>
+      <template v-if="e.array.kind === 'rectangular'">
+        <button
+          :disabled="e.objectPicker || e.arrayStage !== 'review'"
+          @click="
+            editor.pickArrayPoint('endpoint1');
+            focusModelCanvas();
+          "
+        >
+          Select endpoint 1
+        </button>
+        <button
+          :disabled="e.objectPicker || e.arrayStage !== 'review'"
+          @click="
+            editor.pickArrayPoint('endpoint2');
+            focusModelCanvas();
+          "
+        >
+          Select endpoint 2
+        </button>
+        <label
+          >Mode<select
+            aria-label="Mode"
+            :value="e.array.extent ? 'extent' : 'spacing'"
+            @change="editor.setArrayExtent(($event.target as HTMLSelectElement).value === 'extent')"
+          >
+            <option value="extent">Extent</option>
+            <option value="spacing">Spacing</option>
+          </select></label
+        >
+        <div class="transform-inputs" data-hint-edit="array">
+          <label
+            v-for="(field,i) in (['vector1','vector2'] as const)"
+            :key="field"
+            >Distance {{ i + 1 }} ({{ e.unitSymbol }})
+            <LengthInput
+              :step="1"
+              :min="0.01"
+              :value="Math.hypot(e.array[field]?.x ?? 0, e.array[field]?.y ?? 0)"
+              @invalid="editor.setArrayDistance(field, NaN)"
+              @commit="editor.setArrayDistance(field, $event)"
+            />
+          </label>
+        </div>
+        <div class="transform-inputs" data-hint-edit="array">
+          <label v-for="field in (['columns','rows'] as const)" :key="field"
+            >{{ field === "columns" ? "Number" : "Repeat" }}
+            <LengthInput
+              scalar
+              integer
+              :min="field === 'columns' ? 2 : 1"
+              :max="
+                Math.floor(
+                  1001 / (field === 'columns' ? e.array.rows : e.array.columns),
+                )
+              "
+              :step="1"
+              :value="e.array[field]"
+              @invalid="editor.setArrayValue(field, NaN)"
+              @commit="editor.setArrayValue(field, $event)"
+            />
+          </label>
+        </div>
+      </template>
+      <template v-else>
+        <button
+          :disabled="e.objectPicker || e.arrayStage !== 'review'"
+          @click="
+            editor.pickArrayPoint('center');
+            focusModelCanvas();
+          "
+        >
+          Select center point
+        </button>
+        <label
+          >Mode<select
+            aria-label="Mode"
+            :value="e.array.step ? 'spacing' : 'total'"
+            @change="editor.setArrayDistribution(($event.target as HTMLSelectElement).value === 'spacing')"
+          >
+            <option value="total">Total</option>
+            <option value="spacing">Spacing</option>
+          </select></label
+        >
+        <div class="transform-inputs" data-hint-edit="array">
+          <label
+            >Degrees<LengthInput
+              scalar
+              :step="1"
+              :value="e.array.angle"
+              @invalid="editor.setArrayValue('angle', NaN)"
+              @commit="editor.setArrayValue('angle', $event)"
+          /></label>
+          <label
+            >Number<LengthInput
+              scalar
+              integer
+              :min="2"
+              :max="1001"
+              :step="1"
+              :value="e.array.count"
+              @invalid="editor.setArrayValue('count', NaN)"
+              @commit="editor.setArrayValue('count', $event)"
+          /></label>
+        </div>
+        <label class="stitch-toggle"
+          >Rotate copies<input
+            type="checkbox"
+            v-model="e.array.rotate"
+            @change="editor.refreshArray()"
+        /></label>
+      </template>
+      <small>Shift+wheel changes count. Counts include the original.</small>
+      <p v-if="e.array.error" role="alert">{{ e.array.error }}</p>
+      <div class="actions tool-popup-footer">
+        <button
+          :disabled="
+            !e.preview ||
+            !!e.array.error ||
+            e.busy ||
+            e.objectPicker ||
+            e.arrayStage !== 'review'
+          "
+          @click="applyArray()"
+        >
+          Apply</button
+        ><button @click="cancelPathCopy()">Cancel</button>
+      </div>
+    </section>
+    <section v-if="e.pathCopy" class="transform-options path-copy-options" aria-label="Copy along path settings" @keydown.esc.stop.prevent="cancelPathCopy()">
+      <strong>Copy along path</strong>
+      <button v-for="role in (['source', 'path'] as const)" :key="role" class="boolean-picker" :aria-pressed="e.pathCopy.picker === role" @click="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()">
+        <span class="boolean-picker-label">{{ role === 'source' ? 'Select Source' : 'Select Path' }}</span><span class="boolean-object-name">{{ e.pathCopy![role] ? '(1)' : 'Choose object' }}</span>
+      </button>
+      <hr>
+      <label>Distribution<select v-model="e.pathCopy.mode" @change="editor.refreshPathCopy()"><option value="spacing">Spacing</option><option value="count">Count</option></select></label>
+      <div class="transform-inputs" data-hint-edit="path-copy">
+      <label v-if="e.pathCopy.mode === 'spacing'">Spacing ({{ e.unitSymbol }})<LengthInput :min="0.01" :value="e.pathCopy.spacing" @invalid="e.pathCopy.spacing = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.spacing = $event; editor.refreshPathCopy()" /></label>
+      <label v-else>New copies<LengthInput scalar integer :min="1" :max="1000" :step="1" :value="e.pathCopy.count" @invalid="e.pathCopy.count = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.count = $event; editor.refreshPathCopy()" /></label>
+      </div>
+      <label class="stitch-toggle">Rotate with path<input v-model="e.pathCopy.rotate" type="checkbox" @change="editor.refreshPathCopy()" /></label>
+      <small v-if="e.preview && !e.pathCopy.picker">{{ e.preview.shapes.filter(s => !e.document.shapes.some(o => o.id === s.id) && !s.stitchParentId).length }} new objects</small>
+      <p v-if="e.pathCopy.error" role="alert">{{ e.pathCopy.error }}</p>
+      <div class="actions tool-popup-footer"><button :disabled="!e.preview || !!e.pathCopy.error || e.busy" @click="applyPathCopy()">Apply</button><button @click="cancelPathCopy()">Cancel</button></div>
+    </section>
     <StitchToolbox />
     <StitchToolbar />
-    <section v-if="e.trimMode" class="transform-options" :aria-label="e.mergeMode ? 'Merge settings' : 'Trim settings'"
-      @keydown.enter.prevent="editor.applyTrim()" @keydown.esc.stop.prevent="editor.cancel()">
-      <strong>{{ e.mergeMode ? "Merge" : "Trim" }}</strong>
-      <small>{{ e.mergeMode ? "Apply to merge the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
+    <section v-if="e.trimMode" class="transform-options" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
+      @keydown.esc.stop.prevent="cancelOutline()">
+      <strong>{{ e.booleanOperation ? e.booleanLabel : e.mergeMode ? "Join" : "Trim" }}</strong>
+      <template v-if="!e.booleanOperation"><ToolObjectPicker /></template>
+      <template v-if="e.booleanOperation">
+        <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'target'"
+          :title="e.booleanPicker === 'target' ? 'Stop choosing a target' : 'Choose a target object'"
+          @click="editor.setBooleanPicker('target')">
+          <span class="boolean-picker-label">Select Target</span>
+          <span>{{ e.booleanTarget ? '(1)' : 'Choose object' }}</span>
+        </button>
+        <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'cutters'"
+          :title="e.booleanPicker === 'cutters' ? 'Stop choosing other objects' : 'Choose other objects'"
+          @click="editor.setBooleanPicker('cutters')">
+          <span>{{ e.booleanOperation === 'subtract' ? 'Select subtract objects' : 'Select other objects' }}</span>
+          <span>({{ e.booleanCutters.length }})</span>
+        </button>
+        <SelectionHint :active="e.booleanPicker === 'cutters'" />
+        <p v-if="e.booleanError" role="alert">{{ e.booleanError }}</p>
+        <p v-if="e.booleanEmpty" role="status">Result is empty. Apply removes the input objects.</p>
+      </template>
+      <small v-else>{{ e.mergeMode ? "Apply to join the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
-        <button :disabled="!e.trimDraft || !!e.transformError || e.busy" @click="editor.applyTrim()">Apply</button>
+        <button :disabled="e.objectPicker || (!e.booleanOperation && !!e.toolSelectionError) || !e.trimDraft || !!e.transformError || !!e.booleanError || e.busy" @click="applyOutline()">Apply</button>
+        <button @click="cancelOutline()">Cancel</button>
+      </div>
+    </section>
+    <section v-if="e.offsetActive" class="transform-options" aria-label="Offset settings"
+      @keydown.enter="handleToolEnter($event, () => editor.applyOffset())" @keydown.esc.stop.prevent="editor.cancel()">
+      <strong>Offset</strong>
+      <ToolObjectPicker /><hr>
+      <small>Positive expands closed outlines; negative insets. On open paths, positive goes left from start to end.</small>
+      <div class="transform-inputs" data-hint-edit="transform">
+        <label>Distance ({{ e.unitSymbol }})<LengthInput fixed non-zero aria-label="Offset distance" :value="e.offsetDistance"
+          @invalid="editor.setOffsetDistance(NaN)" @commit="editor.setOffsetDistance($event)" /></label>
+      </div>
+      <label>Corner style
+        <select :value="e.offsetJoin" @change="editor.setOffsetJoin(($event.target as HTMLSelectElement).value as 'sharp' | 'rounded')">
+          <option value="sharp">Sharp</option><option value="rounded">Rounded</option>
+        </select>
+      </label>
+      <p v-if="e.offsetError" role="alert">{{ e.offsetError }}</p>
+      <div class="actions tool-popup-footer">
+        <button :disabled="e.objectPicker || !!e.toolSelectionError || !e.offsetDraft || !!e.offsetError || e.busy" @click="editor.applyOffset()">Apply</button>
         <button @click="editor.cancel()">Cancel</button>
       </div>
     </section>
     <div
       v-if="e.transformTool && !e.stitchMode"
       class="transform-options"
-      @keydown.enter.prevent="!$event.isComposing && editor.applyTransform()"
-      @keydown.esc.stop="editor.cancel()"
+      @keydown.enter="handleToolEnter($event, () => editor.applyTransform())"
+      @keydown.esc.stop="editor.cancelPivotPlacement() || editor.cancel()"
     >
       <strong>{{
         e.transformTool === "scale"
           ? "Resize"
           : e.transformTool === "mirror" ? "Mirror"
           : e.transformTool === "corner"
-            ? "Corner radius"
+            ? "Corners"
             : e.transformTool === "move"
               ? "Move"
               : "Rotate"
       }}</strong>
+      <ToolObjectPicker /><hr>
       <small>{{ {
         move: "Drag the gizmo or enter X/Y distances to move the selection.",
         rotate: "Drag the rotation ring or enter an angle to rotate the selection.",
         scale: "Drag the gizmo or enter X/Y factors to resize the selection.",
         mirror: "Click an axis or straight outline edge on the canvas to mirror.",
-        corner: "Drag a corner to adjust its radius; click a corner to enter an exact value."
+        corner: "Drag inward to round; drag outward through zero to chamfer. Click a corner for exact values."
       }[e.transformTool] }}</small>
-      <div v-if="e.transformTool === 'corner'" class="transform-inputs">
-
+      <div v-if="e.transformTool === 'corner'" class="transform-inputs corner-inputs">
+        <template v-if="bulkCorners.length">
+          <label>All corners style <select :disabled="e.objectPicker" :value="e.bulkCornerStyle === null ? 'mixed' : e.bulkCornerStyle ? 'chamfer' : 'round'" @change="editor.setAllCornerStyle(($event.target as HTMLSelectElement).value === 'chamfer')"><option disabled value="mixed">Mixed</option><option value="round">Round</option><option value="chamfer">Chamfer</option></select></label>
+          <label :title="e.bulkCornerStyle === null ? 'Choose a style first' : e.bulkCornerStyle ? 'Equal edge setback' : 'Radius'">All corners ({{ e.unitSymbol }})<LengthInput clamp placeholder="Mixed" :disabled="e.objectPicker || e.bulkCornerStyle === null" :mixed="bulkMixed" :value="bulkValues[0] ?? 0" :min="0" @invalid="editor.setAllCornerValue(NaN)" @commit="editor.setAllCornerValue($event)" /></label>
+        </template>
         <template v-if="cornerShape">
-          <label>Corner radius ({{ e.unitSymbol }})<LengthInput clamp :value="radii[e.selectedCorner!.index]" :min="0" @invalid="editor.setCornerValue(NaN)" @commit="editor.setCornerValue($event)" /></label>
-          <label>All corners ({{ e.unitSymbol }})<LengthInput clamp placeholder="Mixed" :mixed="!radii.every(r => r === radii[0])" :value="radii[0] ?? 0" :min="0" @invalid="editor.setCornerValue(NaN, true)" @commit="editor.setCornerValue($event, true)" /></label>
+          <label>Style <select :value="selectedChamfer ? 'chamfer' : 'round'" @change="editor.setCornerStyle(($event.target as HTMLSelectElement).value === 'chamfer')"><option value="round">Round</option><option value="chamfer">Chamfer</option></select></label>
+          <label>{{ selectedChamfer ? 'Setback' : 'Radius' }} ({{ e.unitSymbol }})<LengthInput clamp :value="radii[e.selectedCorner!.index]" :min="0" @invalid="editor.setCornerValue(NaN)" @commit="editor.setCornerValue($event)" /></label>
         </template>
       </div>
       <div v-else-if="e.transformTool !== 'mirror'" class="transform-inputs" data-hint-edit="transform">
@@ -89,7 +318,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
         >
           <label>{{ item[1] }}
             <LengthInput fixed v-if="e.transformTool === 'move'" :aria-label="item[1]" :value="e.transformValues[item[0] as 'x' | 'y']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
-            <input v-else type="number" :aria-label="item[1]" step="0.01" :value="focusedFactor === item[0] ? drafts[item[0]] : e.transformTool === 'rotate' ? e.transformValues.angle : e.transformValues[item[0] as keyof typeof e.transformValues].toFixed(2)" @focus="focusedFactor = item[0]; drafts[item[0]] = ($event.target as HTMLInputElement).value" @blur="focusedFactor = null" @input="value(item[0] as keyof typeof e.transformValues, $event)" />
+            <LengthInput v-else scalar :precision="e.transformTool === 'scale' ? 2 : undefined" :aria-label="item[1]" :value="e.transformValues[item[0] as 'angle' | 'sx' | 'sy']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
           </label>
         </template>
       </div>
@@ -107,17 +336,7 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
           <option value="local">Local</option>
         </select></label
       >
-      <div v-if="e.transformTool !== 'corner'" class="actions">
-        <button
-          :aria-pressed="e.placingPivot"
-          @click="
-            editor.placingPivot = true;
-            editor.notify();
-          "
-        >
-          Set pivot (V)</button
-        ><button @click="editor.resetPivot()">Reset pivot</button>
-      </div>
+      <PivotSelector v-if="e.transformTool !== 'corner'" :disabled="e.objectPicker" :mode="e.pivotMode" :placing="e.placingPivot" @change="editor.setPivotMode($event)" @cancel="editor.cancelPivotPlacement()" />
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
       <div class="actions tool-popup-footer">
         <button
@@ -128,72 +347,6 @@ function value(key: "x" | "y" | "angle" | "sx" | "sy", event: Event) {
         ><button @click="editor.cancel()">Cancel</button>
       </div>
     </div>
-    <div
-      v-if="!e.stitchMode && e.selectionToolsAvailable"
-      class="transform-toolbox"
-      role="toolbar"
-      aria-label="Transform selection"
-    >
-      <button
-        v-for="item in transformShortcuts"
-        :key="item[0]"
-        :disabled="e.selectionLocked || (item[0] === 'corner' && !e.canEditCorners)"
-        :aria-label="item[1]"
-        :title="`${item[1]} (${item[2]})`"
-        :aria-pressed="e.transformTool === item[0]"
-        :aria-keyshortcuts="item[2].toLowerCase()"
-        @click="editor.activateTransform(item[0])"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="22"
-          height="22"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.7"
-          aria-hidden="true"
-        >
-          <path
-            v-if="item[0] === 'rotate'"
-            d="M20 10a8 8 0 1 0-2 8M20 4v6h-6"
-          />
-          <path
-            v-else-if="item[0] === 'move'"
-            d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"
-          />
-          <path
-            v-else-if="item[0] === 'mirror'"
-            d="M12 2v20M9 6 3 18h6ZM15 6l6 12h-6Z"
-          />
-          <path
-            v-else-if="item[0] === 'corner'"
-            d="M4 20V12a8 8 0 0 1 8-8h8M4 4h4M4 4v4"
-          />
-          <path
-            v-else
-            d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M4 4l6 6M20 20l-6-6M20 4l-6 6M4 20l6-6"
-          />
-        </svg>
-      </button>
-      <button
-        aria-label="Merge"
-        aria-keyshortcuts="j"
-        :title="e.mergeResult ? 'Merge (J)' : 'Merge (J) requires connected straight outlines or endpoint-connected paths of the same family, without stitches'"
-        :disabled="e.selectionLocked || !e.mergeResult || e.busy"
-        :aria-pressed="e.mergeMode"
-        @click="editor.activateMerge()"
-      >
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-          <path d="M3 3h11v6h7v12H9v-7H3Z" />
-        </svg>
-      </button>
-      <button :disabled="!e.canTrim" aria-label="Trim" title="Trim (K)" aria-keyshortcuts="k" :aria-pressed="e.trimMode && !e.mergeMode" @click="editor.activateTrim()">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-          <circle cx="6" cy="6" r="3" />
-          <circle cx="6" cy="18" r="3" />
-          <path d="M8.2 8.2 20 20M8.2 15.8 20 4" />
-        </svg>
-      </button>
-    </div>
+    <ToolSearch v-if="!e.stitchMode" />
   </div>
 </template>

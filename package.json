@@ -1,15 +1,17 @@
 {
   "name": "leather-pattern-studio",
-  "version": "0.4.0-beta.1",
+  "version": "0.4.0-beta.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
-    "build": "npm run wasm && vue-tsc --noEmit && vite build",
+    "build": "npm run wasm:release && vue-tsc --noEmit && vite build",
     "desktop": "tauri dev",
     "wasm": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --dev",
+    "wasm:release": "npm run types && wasm-pack build crates/document --target web --out-dir ../../src/wasm --release",
+    "check:fast": "vue-tsc --noEmit && vitest run",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test && playwright test --config playwright.dev.config.ts",
     "test:rust": "cargo test --manifest-path crates/document/Cargo.toml",
     "preview": "vite preview --host 0.0.0.0 --port 5173 --strictPort",
     "types": "cargo test --manifest-path crates/document/Cargo.toml export_bindings",
@@ -18,23 +20,25 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-opener": "^2.7.3",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.2",
     "markdown-it": "^15.0.3",
-    "pdfjs-dist": "^6.4.299",
+    "paper": "0.17.0",
+    "pdfjs-dist": "^6.5.438",
     "reka-ui": "^2.0.0",
     "svg2pdf.js": "^2.9.0",
-    "vue": "^3.5.0"
+    "vue": "^3.5.45"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.0",
+    "@playwright/test": "1.64.1",
     "@tauri-apps/cli": "^2.0.0",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.0.0",
-    "@vitejs/plugin-vue": "^6.0.0",
+    "@vitejs/plugin-vue": "^6.0.11",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
     "vue-tsc": "^3.3.14"
   }
 }

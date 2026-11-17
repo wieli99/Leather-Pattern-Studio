@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, nextTick } from "vue";
+import { isTauri, openExternal } from "../platform";
+import { invoke } from "@tauri-apps/api/core";
 import MarkdownIt from "markdown-it";
 const md = new MarkdownIt({ html: false, linkify: false });
 const sources = import.meta.glob("../../docs/manual/*.md", {
@@ -63,14 +65,30 @@ async function navigate() {
   query.value = "";
   document.title = `${page.value?.title ?? "Page not found"} · Leather Pattern Studio manual`;
   await nextTick();
-  const anchor = route.value.split("/")[1];
-  if (anchor) document.getElementById(anchor)?.scrollIntoView();
+  const section = route.value.split("/")[1];
+  // Preserve bookmarks from before the outline tool was renamed to Join.
+  const anchor = page.value?.id === "transforms" && section === "merge" ? "join" : section;
+  if (anchor) {
+    const requestedRoute = route.value;
+    // Illustration loading changes section positions on direct bookmarked visits.
+    await Promise.all([...document.querySelectorAll<HTMLImageElement>("article img")].map(img => img.decode().catch(() => undefined)));
+    if (route.value === requestedRoute) document.getElementById(anchor)?.scrollIntoView();
+  }
   else document.querySelector<HTMLElement>("article")?.focus();
 }
 onMounted(() => {
+  const click = (event: MouseEvent) => {
+    if (!isTauri()) return;
+    const anchor = (event.target as Element)?.closest?.("a");
+    if (!anchor) return;
+    if (anchor.pathname === "/" && !anchor.hash) { event.preventDefault(); void invoke("focus_editor"); }
+    else if (/^https?:/.test(anchor.href) && anchor.origin !== location.origin) { event.preventDefault(); void openExternal(anchor.href); }
+  };
+  document.addEventListener("click", click);
+  onUnmounted(() => document.removeEventListener("click", click));
   window.addEventListener("hashchange", navigate);
   void navigate();
-  if (import.meta.env.PROD && "serviceWorker" in navigator)
+  if (!isTauri() && import.meta.env.PROD && "serviceWorker" in navigator)
     void navigator.serviceWorker.register("/sw.js");
 });
 onUnmounted(() => window.removeEventListener("hashchange", navigate));

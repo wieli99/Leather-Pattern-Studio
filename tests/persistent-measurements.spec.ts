@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 
 test('three-click measurements persist, edit, undo and cancel', { tag: "@manual" }, async ({page}, info) => {
   await page.goto('/');
-  const tool = page.getByRole('button',{name:'Measurement (D)',exact:true});
+  const tool = page.getByRole('button',{name:'Measurements (D)',exact:true});
   await expect(tool).toBeEnabled();
   const textBox = await page.getByRole('button',{name:'Text (T)',exact:true}).boundingBox();
   expect((await tool.boundingBox())!.y).toBeGreaterThan(textBox!.y);
@@ -13,9 +13,10 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
   await expect(tool).toHaveAttribute('aria-pressed', 'true');
   await canvas.click({position:{x:220,y:220}});
   await canvas.click({position:{x:520,y:220}});
+  await canvas.press('ArrowUp');
   await expect(page.locator('.objects .object-select')).toHaveCount(0);
   await canvas.press('Tab');
-  const constructionOffset = page.getByRole('spinbutton',{name:'Offset',exact:true});
+  const constructionOffset = page.getByRole('textbox',{name:'Offset',exact:true});
   await expect(constructionOffset).toBeFocused();
   await constructionOffset.pressSequentially('-15');
   await constructionOffset.press('Tab');
@@ -32,6 +33,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
   await expect(page.locator('.objects .object-select')).toHaveCount(1);
   await page.getByRole('button',{name:'Select (V)',exact:true}).click();
   const offset = page.getByLabel('Offset (mm)',{exact:true});
+  await expect(page.getByLabel('Sections',{exact:true})).toHaveValue('2');
   await expect(offset).toHaveValue('-15');
   await offset.fill('20');
   await offset.press('Enter');
@@ -47,6 +49,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
   await expect(page.locator('.objects .object-select')).toHaveCount(1);
   await page.locator('.objects .object-select').first().click();
   await expect(offset).toHaveValue('20');
+  await expect(page.getByLabel('Sections',{exact:true})).toHaveValue('2');
   await tool.click();
   await canvas.click({position:{x:300,y:400}});
   await canvas.press('Escape');
@@ -56,7 +59,7 @@ test('three-click measurements persist, edit, undo and cancel', { tag: "@manual"
 
 test('measurement project files reopen with transformed distance and editable offset', async ({page}, info) => {
   await page.goto('/');
-  await expect(page.getByRole('button',{name:'Measurement (D)',exact:true})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Measurements (D)',exact:true})).toBeEnabled();
   await page.evaluate(() => {
     delete (window as any).showSaveFilePicker;
     delete (window as any).showOpenFilePicker;
@@ -92,7 +95,7 @@ test('measurement project files reopen with transformed distance and editable of
 
 test('short measurement labels remain selectable above outside arrowheads', async ({page}, info) => {
   await page.goto('/');
-  await page.getByRole('button',{name:'Measurement (D)',exact:true}).click();
+  await page.getByRole('button',{name:'Measurements (D)',exact:true}).click();
   const canvas = page.getByLabel('Pattern drawing canvas');
   await canvas.click({position:{x:220,y:220}});
   await canvas.click({position:{x:235,y:220}});
@@ -104,4 +107,25 @@ test('short measurement labels remain selectable above outside arrowheads', asyn
   await canvas.click({position:{x:227,y:318}});
   await expect(page.getByLabel('Distance (mm)',{exact:true})).toHaveText('5.00');
   await page.screenshot({path:info.outputPath('short-measurement-arrowheads.png')});
+});
+
+
+test('measurement drag releases into offset placement', async ({page}) => {
+  await page.goto('/');
+  await page.getByRole('button',{name:'Measurements (D)',exact:true}).click();
+  const canvas = page.getByLabel('Pattern drawing canvas');
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x+220,box.y+220);
+  await page.mouse.down();
+  await page.mouse.move(box.x+520,box.y+220,{steps:8});
+  await page.mouse.up();
+  await expect(page.locator('.objects .object-select')).toHaveCount(0);
+  await canvas.press('Tab');
+  const offset = page.getByRole('textbox',{name:'Offset',exact:true});
+  await expect(offset).toBeFocused();
+  await offset.fill('12');
+  await offset.press('Enter');
+  await expect(page.locator('.objects .object-select')).toHaveCount(1);
+  await page.getByRole('button',{name:'Undo',exact:true}).click();
+  await expect(page.locator('.objects .object-select')).toHaveCount(0);
 });

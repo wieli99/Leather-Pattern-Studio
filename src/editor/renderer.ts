@@ -1,3 +1,5 @@
+import { flattenOutline } from "../model/flattenOutline";
+import { textFont, measureText } from "../model/text";
 import { constructionGuides } from "./construction";
 import { drawAnnotation } from "./annotationRenderer";
 import {
@@ -24,15 +26,24 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
     b = s.points[s.points.length - 1];
   if ("beginPath" in ctx) ctx.beginPath();
   if (isIndicator(s.kind)) return;
-  if (isCurve(s)) {
+  if (s.kind === "compound") {
+    for (const contour of s.contours ?? []) {
+      ctx.moveTo(contour[0][0].x, contour[0][0].y);
+      for (const [, c1, c2, end] of contour)
+        ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
+      ctx.closePath();
+    }
+  } else if (isCurve(s)) {
     ctx.moveTo(a.x, a.y);
     for (const [, c1, c2, end] of cubicSegments(s))
       ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, end.x, end.y);
-  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii) {
+    if (isClosedShape(s)) ctx.closePath();
+  } else if ((isPolygon(s) && s.radius > 0) || s.cornerRadii || s.cornerChamfers) {
     const corners = polygonFillets(s).corners;
     ctx.moveTo(corners.at(-1)!.end.x, corners.at(-1)!.end.y);
     for (const c of corners) {
       ctx.lineTo(c.start.x, c.start.y);
+      if (!c.radius) ctx.lineTo(c.end.x, c.end.y);
       if (c.radius)
         ctx.arc(
           c.center.x,
@@ -74,10 +85,14 @@ export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
       0,
       Math.PI * 2,
     );
-  else
-    s.points.forEach((p, i) =>
+  else {
+    const closed = s.kind === "polyline" && isClosedShape(s);
+    const points = closed ? s.points.slice(0, -1) : s.points;
+    points.forEach((p, i) =>
       i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y),
     );
+    if (closed) ctx.closePath();
+  }
 }
 export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
   const ctx = canvas.getContext("2d")!;
@@ -206,28 +221,28 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       const path = new Path2D(),
         m = shapeMatrix(s);
       path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
-      const selected = editor.selected.includes(s.id);
-      ctx.lineWidth = s.strokeWidth ?? 0.35;
-      ctx.strokeStyle = preview
+      const selected = editor.pathCopy ? s.id === editor.pathCopy.source : editor.booleanOperation ? s.id === editor.booleanTarget : editor.selected.includes(s.id);
+      ctx.lineWidth = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? Math.max(s.strokeWidth ?? 0.35, 2/editor.zoom) : s.strokeWidth ?? 0.35;
+      ctx.strokeStyle = editor.pathCopy?.path === s.id ? "#e34646" : editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : preview
         ? color("preview")
         : selected
           ? color("accent")
           : editor.hover === s.id
             ? color("text")
             : color("shape");
-      if (!selected && !preview && editor.hover !== s.id) {
+      if (!selected && !preview && editor.hover !== s.id && !(editor.booleanOperation && editor.booleanCutters.includes(s.id))) {
         ctx.strokeStyle = s.strokeColor ?? color("shape");
         ctx.globalAlpha = s.strokeOpacity ?? 1;
       }
       if (isClosedShape(s) && (!s.stitchOnly || selected || preview)) {
         ctx.save();
         ctx.globalAlpha = s.fillOpacity ?? (selected ? 0.12 : 0.05);
-        ctx.fillStyle = s.fillColor ?? (selected ? color("accent") : color("shape"));
-        ctx.fill(path);
+        ctx.fillStyle = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : s.fillColor ?? (selected ? color("accent") : color("shape"));
+        ctx.fill(path, s.kind === "compound" ? "evenodd" : "nonzero");
         ctx.restore();
         if (s.fillMode === "skiving" || s.fillMode === "glueing" || s.fillMode === "cutout") {
           ctx.save();
-          ctx.clip(path);
+          ctx.clip(path, s.kind === "compound" ? "evenodd" : "nonzero");
           ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
           ctx.strokeStyle = s.strokeColor ?? color("shape");
           ctx.globalAlpha = s.strokeOpacity ?? 1;
@@ -260,22 +275,97 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         drawAnnotation(ctx, s, editor.units);
       } else if (s.kind === "text") {
         ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-        ctx.font = `${s.fontSize ?? 5}px sans-serif`;
+        ctx.font = textFont(s);
         ctx.textBaseline = "top";
         ctx.fillStyle = ctx.strokeStyle;
-        (s.text ?? "")
-          .split("\n")
-          .forEach((line, i) =>
-            ctx.fillText(
-              line,
-              s.points[0].x,
-              s.points[0].y + i * (s.fontSize ?? 5) * 1.2,
-            ),
-          );
+        const size = s.fontSize ?? 5;
+        const width = measureText(s.text ?? "", size, s).width;
+        (s.text ?? "").split("\n").forEach((line, i) => {
+          const w = ctx.measureText(line).width;
+          const x = s.points[0].x + (s.textAlign === "right" ? width - w : s.textAlign === "center" ? (width - w) / 2 : 0);
+          const y = s.points[0].y + i * size * (s.lineSpacing ?? 1.2);
+          ctx.fillText(line, x, y);
+          ctx.lineWidth = size / 15;
+          for (const offset of [s.underline ? size : null, s.strikethrough ? size * .5 : null]) {
+            if (offset === null) continue;
+            ctx.beginPath(); ctx.moveTo(x, y + offset); ctx.lineTo(x + w, y + offset); ctx.stroke();
+          }
+        });
       } else if (!s.stitchOnly || selected || preview) ctx.stroke(path);
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.filter(s => !editor.isHidden(s.id)).forEach((s) => shape(s));
+    if (editor.array && editor.active.length && !editor.objectPicker) {
+      const state = editor.array,
+        box = bounds(editor.active),
+        origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      ctx.save();
+      ctx.strokeStyle = color("accent");
+      ctx.lineWidth = 1 / z;
+      ctx.setLineDash([4 / z, 4 / z]);
+      ctx.beginPath();
+      if (state.kind === "rectangular") {
+        const vectors = [state.vector1, state.vector2];
+        for (let i = 0; i < vectors.length; i++) {
+          if (i === 1 && state.rows === 1 && editor.arrayStage !== "endpoint2")
+            continue;
+          const v = vectors[i];
+          if (!v) continue;
+          const scale = state.extent
+            ? 1
+            : Math.max(1, (i === 0 ? state.columns : state.rows) - 1);
+          const end = { x: origin.x + v.x * scale, y: origin.y + v.y * scale };
+          ctx.moveTo(origin.x, origin.y);
+          ctx.lineTo(end.x, end.y);
+          ctx.stroke();
+          drawPivotPoint(ctx, end, z, color("accent"));
+          ctx.font = `${12 / z}px sans-serif`;
+          ctx.fillStyle = color("text");
+          ctx.fillText(
+            editor.formatLength(Math.hypot(v.x, v.y)) + " " + editor.unitSymbol,
+            end.x + 6 / z,
+            end.y - 6 / z,
+          );
+          ctx.beginPath();
+        }
+      } else {
+        const p = editor.arrayPreviewCenter ?? editor.cursor;
+        const r = Math.max(25 / z, Math.hypot(origin.x - p.x, origin.y - p.y));
+        const start =
+          Math.hypot(origin.x - p.x, origin.y - p.y) > 1e-9
+            ? Math.atan2(origin.y - p.y, origin.x - p.x)
+            : 0;
+        const end = start + (state.angle * Math.PI) / 180;
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + r * Math.cos(start), p.y + r * Math.sin(start));
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + r * Math.cos(end), p.y + r * Math.sin(end));
+        ctx.moveTo(p.x + r * Math.cos(start), p.y + r * Math.sin(start));
+        ctx.arc(p.x, p.y, r, start, end, state.angle < 0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        drawPivotPoint(ctx, p, z, color("accent"));
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (editor.pathCopy?.path) {
+      const target = editor.document.shapes.find(s => s.id === editor.pathCopy!.path);
+      if (target) try {
+        const { points } = flattenOutline(target);
+        if (points.length > 1) {
+          const [a,b] = points, angle = Math.atan2(b.y-a.y,b.x-a.x), r = 6/editor.zoom;
+          ctx.save(); ctx.strokeStyle = "#e34646"; ctx.lineWidth = 2/editor.zoom;
+          ctx.beginPath(); ctx.arc(a.x,a.y,3/editor.zoom,0,Math.PI*2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(a.x+Math.cos(angle)*r*3,a.y+Math.sin(angle)*r*3); ctx.stroke(); ctx.restore();
+        }
+      } catch { /* Invalid operands are explained in the settings panel. */ }
+    }
+    if (editor.booleanOperation && editor.preview) {
+      ctx.save(); ctx.globalAlpha = 0.65;
+      editor.document.shapes.filter(s => editor.booleanCutters.includes(s.id)).forEach(s => shape(s, true));
+      ctx.restore();
+    }
     drawStitches(ctx,editor,color);
     if (editor.trimMode && editor.pointerInside && editor.trimHighlight) {
       const [a] = editor.trimHighlight;
@@ -292,7 +382,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.stroke();
       ctx.restore();
     }
-    if (editor.transformTool === "mirror") {
+    if (editor.transformTool === "mirror" && editor.active.length && !editor.objectPicker) {
       const line = editor.mirrorLine;
       const p = line ? line[0] : editor.transformPivot;
       const angle = line ? Math.atan2(line[1].y-p.y, line[1].x-p.x)
@@ -394,7 +484,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.arc(p.x, p.y, 3 / z, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (editor.active.length) {
+    if (editor.active.length && !editor.booleanOperation && !editor.pathCopy) {
       const b = bounds(editor.active, editor.units);
       ctx.strokeStyle = color("accent");
       ctx.lineWidth = 1 / z;
@@ -405,7 +495,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       const hovered = editor.pointerInside
         ? editor.handleAt(editor.cursor)
         : undefined;
-      if (editor.transformTool === "rotate") {
+      if (editor.transformTool === "rotate" && !editor.objectPicker) {
         drawRotationGizmo(ctx, pivot, z, editor.transformValues.angle, hovered?.kind === "rotate", color("accent"), color("text"));
       }
       for (const handle of editor.handles()) {
@@ -426,7 +516,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.lineWidth = 2 / z;
         if (handle.handleSide && editor.active.length === 1) {
           const s = editor.active[0];
-          const a = applyMatrix(shapeMatrix(s), s.points[handle.vertex!]);
+          const a = applyMatrix(shapeMatrix(s), s.kind === "compound" ? s.contours!.flat()[handle.vertex!][0] : s.points[handle.vertex!]);
           ctx.lineWidth = 1 / z;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);

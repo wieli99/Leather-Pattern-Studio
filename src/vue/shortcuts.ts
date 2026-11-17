@@ -1,3 +1,4 @@
+import { focusModelCanvas } from "./canvasFocus";
 import { editor } from "../editor/instance";
 import { tools, groupKeys, transformShortcuts } from "./tools";
 export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
@@ -17,6 +18,67 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     document.querySelector("[role=dialog]")
   )
     return;
+  if (!editor.stitchMode && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
+    e.preventDefault(); window.dispatchEvent(new Event("tool-search")); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+    e.preventDefault(); editor.fit(); return;
+  }
+  if (editor.array && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (
+      editor.arrayStage !== "review" &&
+      ["x", "y"].includes(e.key.toLowerCase())
+    ) {
+      editor.transformAxis =
+        editor.transformAxis === e.key.toLowerCase()
+          ? undefined
+          : (e.key.toLowerCase() as "x" | "y");
+      editor.refreshArrayConstraint();
+      editor.notify();
+      return;
+    }
+    if (
+      !e.shiftKey &&
+      e.key.toLowerCase() === "v" &&
+      editor.array.kind === "radial"
+    ) {
+      e.preventDefault();
+      editor.pickArrayPoint("center");
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (!editor.cancelArrayPoint()) editor.cancel();
+      focusModelCanvas();
+      return;
+    }
+    if (e.key === "Enter" && target.tagName === "CANVAS") {
+      e.preventDefault();
+      if (editor.objectPicker) editor.toggleObjectPicker();
+      else void editor.applyArray();
+      return;
+    }
+  }
+  if (editor.pathCopy && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === 'Escape') { e.preventDefault(); editor.cancel(); focusModelCanvas(); return; }
+    if (e.key === 'Enter' && target.tagName === 'CANVAS') { e.preventDefault(); void editor.applyPathCopy(); return; }
+  }
+  if (editor.booleanOperation && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      editor.cancel();
+      focusModelCanvas();
+      return;
+    }
+    if (e.key === "Enter" && target.tagName === "CANVAS") {
+      e.preventDefault();
+      void editor.applyTrim();
+      return;
+    }
+  }
+  if (e.key === "Escape" && editor.placingPivot && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault(); editor.cancelPivotPlacement(); return;
+  }
   const canvas = target.tagName === "CANVAS";
   const objectDelete =
     target.closest(".objects button") !== null &&
@@ -54,7 +116,12 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     return;
   }
   if (mod && !e.shiftKey && e.key.toLowerCase() === "a") {
-    if (editor.transformTool) {
+    if (editor.objectPicker) {
+      e.preventDefault();
+      editor.setToolSelection(editor.document.shapes.filter(s=>!editor.isHidden(s.id) && !editor.isLocked(s.id)).map(s=>s.id));
+      return;
+    }
+    if (editor.array || editor.transformTool || editor.offsetActive || editor.trimMode && !editor.booleanOperation) {
       e.preventDefault();
       return;
     }
@@ -80,26 +147,33 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   }
   if (e.key === "Tab" && !e.shiftKey && canvas) {
     const field = document.querySelector<HTMLInputElement>(
-      editor.stitchMode ? ".stitch-options input, .stitch-options select" : editor.transformTool
+      editor.stitchMode ? ".stitch-options input, .stitch-options select" : editor.offsetActive
+        ? ".transform-inputs input"
+        : editor.transformTool
         ? ".transform-inputs input"
         : ".construction-measurements input",
     );
     if (field) {
       e.preventDefault();
-      field.focus();
+      field.focus({ preventScroll: true });
     }
     return;
   }
   if (!e.shiftKey && e.key.toLowerCase() === "i" && !editor.pending.length && !editor.drawingDown && !editor.busy) {
     e.preventDefault(); editor.activateStitch(); return;
   }
-  if (!e.shiftKey && editor.selectionToolsAvailable) {
+  if (!e.shiftKey && !editor.stitchMode && !editor.pending.length && !editor.drawingDown && !editor.busy) {
     const k = e.key.toLowerCase();
     if (k === "i" || k === "k" || k === "j") {
       e.preventDefault();
       if (k === "i") editor.activateStitch();
       else if (k === "k") editor.activateTrim();
       else editor.activateMerge();
+      return;
+    }
+    if (k === "o") {
+      e.preventDefault();
+      editor.activateOffset();
       return;
     }
     if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
@@ -126,8 +200,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   ) {
     const k = e.key.toLowerCase();
     if (k === "v") {
-      editor.placingPivot = true;
-      editor.notify();
+      editor.beginPivotPlacement();
       return;
     }
     if (k === "x" || k === "y") {
@@ -137,12 +210,12 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     }
   }
   if (
-    editor.mode.startsWith("polygon") &&
+    (editor.mode.startsWith("polygon") || editor.mode === "measurement") &&
     !mod &&
     (e.key === "ArrowUp" || e.key === "ArrowDown")
   ) {
     e.preventDefault();
-    editor.adjustPolygonSides(e.key === "ArrowUp" ? 1 : -1);
+    editor.adjustConstructionCount(e.key === "ArrowUp" ? 1 : -1);
     return;
   }
   if (editor.stitchMode && (e.key === "Enter" || e.key === "Escape")) {
@@ -156,6 +229,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   }
   if (e.key === "Enter") {
     if (editor.trimMode) void editor.applyTrim();
+    else if (editor.offsetActive) void editor.applyOffset();
     else if (editor.transformTool) void editor.applyTransform();
     else editor.finish();
   }

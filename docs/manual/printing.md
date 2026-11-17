@@ -19,7 +19,9 @@ Drag print tabs left or right to reorder them. An empty dashed outline reserves 
 
 ## Draw directly on a print tab
 
-Choose **Text (T)**, **Measurement (D)**, or **Import image** below Mirror in the print toolbar. The Measurement variant menu includes Measurement, Square size guide, Ruler size guide, Arrow, Bodyless arrow, and Crosshair; D and Shift+D cycle variants. Placement, numeric construction fields, Shift constraints, Alt snapping bypass, and cancellation work as on Model. Measurements use this layout’s units.
+The left tool sidebar uses the same button layout, selection styling, and shortcut captions as Model. Print keeps its own existing tool set: Select, Move, Rotate, Mirror, Text, Measurements, Drawing tools, Import image, Undo, Redo, and Fit.
+
+Choose **Text (T)**, **Measurements (D)**, **Drawing tools (A)**, or **Import image** below Mirror in the print toolbar. Measurements contains Measurement, Square size guide, and Ruler size guide; D and Shift+D cycle these variants. Drawing tools contains Arrow, Bodyless arrow, and Crosshair; A and Shift+A cycle these variants. Placement, numeric construction fields, Shift constraints, Alt snapping bypass, and cancellation work as on Model. Measurements use this layout’s units.
 
 New objects belong only to the active print tab. They are never linked or synced to Model or another print tab. Select an independent object to edit its Properties below Pages in the right sidebar. Double-click text on paper to edit it; Ctrl/⌘+Enter applies and Escape cancels. Image import uses the same formats and initial viewport-relative size as Model. Each completed creation or edit is one undo step; switching tabs cancels unfinished placement.
 
@@ -44,8 +46,8 @@ Hover an object or folder in either Model objects panel to preview its source ar
 Select a row in **Print objects**, or click artwork on paper. Shift-click rows for a range; Ctrl/⌘-click toggles individual rows. Drag a selection box on empty paper to select several placements; Shift adds to the selection.
 
 - Drag selected artwork to move it; drag its rotation ring to rotate. Release to apply.
-- Choose **Move (G)** or **Rotate (E)** for numeric values, axis handles and pivot controls. Press Tab to enter fields. Move values are relative distances in the layout units; rotation is in degrees.
-- Use **V** or Set pivot, then click to place the pivot. Alt bypasses positional snapping. Select a folder to transform its contents together.
+- Select objects before choosing **Move (G)** or **Rotate (E)** for numeric values, axis handles and pivot controls. Targets are confirmed when the tool opens. Click **Select Objects** to reselect and click **Confirm Selection**. While choosing, canvas clicks replace selection and Shift-click toggles; panel Shift-click still selects a range. Gizmos and Apply wait for confirmation. Pending edits on retained targets are preserved. Press Tab to enter fields. Move values are relative distances in the layout units; rotation is in degrees.
+- Use the shared **Pivot** icon row (hover over an icon to see its name): **Bounding box** centers the combined bounds, **Median** averages object centers with equal weight, and **Custom** starts placement. Click Custom again or press **V** to repeat custom placement; click to place it. Escape restores the previous pivot mode without discarding the preview. Alt bypasses positional snapping. New tool sessions start with Bounding box. Select a folder to transform its contents together.
 - For dedicated tool previews, Apply, Enter or right-click commits; Esc or Cancel discards. Finish the preview before editing something else.
 - Rotation steps are 1° normally, Shift 5°, Ctrl 10°, or Alt for free rotation.
 
@@ -82,7 +84,9 @@ Return to Model to edit source geometry, resize pattern pieces, or paste styling
 
 White sheets show the physical paper; dashed inset lines show printable areas. Grey gutters separate sheets on screen and do not add distance to the artwork. Hold **Ctrl** to reveal **+** controls at exposed edges, then click one to add a blank neighbouring sheet.
 
-Artwork crossing a printable boundary is clipped onto adjacent sheets, which are added automatically after placement or source edits. Paired `|<` marks and matching edge identifiers show where to join the sheets. Trim away the blank margins along adjoining edges and align the matching marks. The Pages section is a read-only list of sheets and the objects they contain. An object spanning sheets appears under each of them.
+Artwork crossing a printable boundary is clipped onto adjacent sheets, which are added automatically after placement or source edits. Matching half-diamonds sit inside each closed pattern piece at the page join. Trim adjoining margins along the dashed guides, then match the halves into complete diamonds and tape the edges together. The marks remain on the piece after cutting away excess paper. Matching page-pair identifiers sit clear of the diamond tips and distinguish joins; labels are omitted where space is limited or a concave outline cuts into their area. Pieces that only touch a page join receive no connector. Narrow spans receive smaller diamonds; very small spans and open paths receive no automatic connector. The Pages section is a read-only list of sheets and the objects they contain. An object spanning sheets appears under each of them.
+
+![Assembly diamonds inside a four-sheet pattern piece](/manual/images/print-assembly.png)
 
 Hold **Ctrl** to show add-page + icons, page delete buttons and page numbers (top-left to bottom-right, skipping empty cells). Ctrl-click exposed paper to toggle page selection; objects in front take priority. Delete/Backspace deletes selected pages and their objects, but refuses if an affected object also appears on an unselected page. Select every page containing that object to delete it. Deleting all sheets leaves one empty sheet.
 
@@ -96,12 +100,12 @@ Ctrl-drag exposed paper to move one page and its contents. A page containing a s
 
 New print tabs fit and center all sheets. Returning to a tab restores its view. Tool settings open at the top-left beside the tools. Grid snap also aligns artwork centers with page centers and displays alignment guides; Alt bypasses snapping. Alt+right-click flips the clicked placement left/right along its local axes; add Ctrl to flip top/bottom.
 
-The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. The **Fit** icon (a rectangle inside four framing corners) below Redo shows all sheets. With no artwork, Fit or F restores the default page-centered view. Undo and Redo use the same arrow buttons as Model, below a separator. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Model uses different units. Arbitrary text is unchanged.
+The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl/⌘+wheel zooms around the pointer, and Space-drag pans. The **Fit** icon (a rectangle inside four framing corners) below Redo shows all sheets. With no artwork, Fit or Ctrl/⌘+Shift+F restores the default page-centered view. Undo and Redo use the same arrow buttons as Model, below a separator. Movement snapping can be switched off below the canvas; Alt temporarily bypasses snapping. Print dimensions, measurements, and size-guide labels use the layout's units, including when Model uses different units. Arbitrary text is unchanged.
 
 ## Preview and export
 
 1. Activate the print tab and press **Export** in the header.
-2. Choose **PDF**, **SVG**, or **PNG (300 DPI)**.
+2. Choose **PDF**, **SVG**, **PNG (300 DPI)**, or **DXF (outlines only)**.
 3. Inspect the generated, non-editable preview. Use Previous/Next page and Preview zoom.
 4. Press **Export** to download the generated artifact.
 
@@ -111,4 +115,10 @@ PDF contains all sheets as vector pages, with images embedded. SVG and PNG produ
 
 Print PDF at **Actual size / 100%** and disable “Fit to page.” Check a printed size guide with a ruler before cutting material. Browser preview zoom does not change exported dimensions. Very large paper may exceed raster memory limits; choose PDF or SVG if PNG generation reports this.
 
-Export and PDF preview work offline after caching completes. See [Files, recovery and offline use](#files). Software browser checks do not replace verification on your physical printer.
+Export and PDF preview work offline after caching completes. See [Files, recovery and offline use](#files).
+
+### DXF for cutting software
+
+DXF downloads one continuous drawing of visible pattern outlines at actual size in millimetres. Complete outlines cross paper boundaries without clipping; paper margins, screen gutters and assembly marks are omitted. Placement, rotation, mirroring and repeated copies are preserved. Stitch holes, stitch-only objects, images, text, measurements, indicators and fills are omitted. The preview shows the exported outlines in black on a white background.
+
+Curves export as closely spaced straight segments. Closed outlines, including closed curves and full-circle arcs, stay closed; open paths stay open. Excessively complex outlines or layouts report an export error rather than reducing accuracy. Import using millimetres if your cutting software does not detect units. Check a known dimension after import. Arrange pieces and configure kerf, cutting order and machine settings in your cutting software. DXF export does not nest pieces or remove overlapping copies.

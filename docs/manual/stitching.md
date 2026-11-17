@@ -6,7 +6,7 @@ Choose **Stitch line** (the rounded edge with inset stitch marks that turn with 
 
 Select a tool to show its settings in the smaller options box beside the sidebar. **Apply** and **Cancel** stay in that box. Apply, Enter, or right-click commits the active operation in one undo step. Cancel discards its preview. Both return to selection within Stitch mode; click a line or choose **Place or edit stitching** to open line settings again.
 
-**Switching tools discards unapplied changes**, matching Move/Rotate. Apply before switching if you want to keep the preview. Clicking the already-active tool preserves it. Escape first leaves individual-hole editing, then cancels the operation, then returns to Select when idle. Invalid settings or failed saves to the document keep the operation available for correction.
+**Switching tools discards unapplied changes**, matching Move/Rotate. Apply before switching if you want to keep the preview. Clicking the already-active tool preserves it. Escape first leaves individual-hole editing, then cancels the operation, then returns to Select when idle. Invalid settings keep the preview available for correction.
 
 ![Stitching toolbar with contextual Link options and Apply/Cancel](/manual/images/stitch-toolbar.png)
 
@@ -26,10 +26,10 @@ Preset management stays beside its presets. Detach and Remove transfer stay besi
 
 1. Activate Stitch and choose the line settings you want.
 2. Hover an edge to preview stitching. On open paths, point at the desired side. Closed pieces stitch inside. Each edge, curve segment, and rounded corner is a separate target; circles and ellipses use their whole perimeter.
-3. Click to place a preview. Shift while placing merges compatible neighboring stitching; differing neighbor settings are rejected.
+3. Click to place a preview. Shift-add an adjacent side of a rounded rectangle to include its intervening unstitched corner. Shift while placing merges compatible neighboring stitching; differing neighbor settings are rejected.
 4. Apply to keep the result, or Cancel to discard it.
 
-Click the visible stitch path to select it; clicking the source edge is not necessary. In Select mode, clicking ordinary attached stitching opens Stitch settings. Shift-click adds or removes lines. Alt-click selects all visible, unlocked stitching belonging to a piece; Alt+Shift-click adds it. Snapping and selection tolerances follow zoom.
+Click the visible stitch path to select it; clicking the source edge is not necessary. In Select mode, clicking ordinary attached stitching opens Stitch settings. Shift-click adds or removes lines. Alt-click selects all visible, unlocked stitching belonging to a piece; Alt+Shift-click adds it.
 
 ![Stitch-line settings and a stitched rounded rectangle](/manual/images/stitch-lines.png)
 
@@ -57,7 +57,7 @@ The **Load preset** picker inside **Presets** applies a browser preset to the pr
 
 Choose **Hole count → Fixed count** and enter the number of holes. Two holes at 3.38 mm span exactly 3.38 mm rather than stretching to fill the edge. Alignment positions the run within the available length. Counts that do not fit are rejected.
 
-Apply the first run, then select it and Shift-click a free position farther along the same edge. Enter a count and **Gap to next hole**, measured from the preceding run’s last hole. For example, place two holes at 3.38 mm and continue with a larger gap to clear a pocket edge. Upstream count/spacing edits move the continuation; deleting the preceding run preserves the following run’s position as an independent run.
+Continue run requires a fixed-count preceding section; the continuation may use Auto count. Apply the first run, then select it and Shift-click a free position farther along the same edge. Enter a count and **Gap to next hole**, measured from the preceding run’s last hole. For example, place two holes at 3.38 mm and continue with a larger gap to clear a pocket edge. Upstream count/spacing edits move the continuation; deleting the preceding run preserves the following run’s position as an independent run.
 
 Clicking a free position on a partially stitched edge starts an independent section. Its initial one-hole run can be extended by entering a count. Sections may use Auto or fixed count; overlapping spans and duplicate positions are rejected. Merge and Split operate on full-length lines rather than counted runs.
 
@@ -75,7 +75,7 @@ Healthy links show a chain and number while Stitch is active or Ctrl is held. Mi
 
 ## Geometry and warnings
 
-Stitching follows moves, rotations, resizing and edge edits while inset, spacing and sizes remain physical. Removing an edge removes its stitching; surviving runs retain settings. Invalid inset geometry shows a warning instead of silently altering the line.
+Stitching follows moves, rotations, resizing and edge edits while inset, spacing and sizes remain physical. Removing an edge removes its stitching; surviving runs retain settings. Invalid inset geometry shows a warning. On compound outlines, stitching must stay inside the material without crossing a hole or outer boundary; reduce the inset if another contour blocks it.
 
 Rounding a corner spanned by a merged group adds the new arc to that group and recalculates continuous spacing. If only one adjoining edge is stitched, or the edges belong to separate groups, the arc stays unstitched.
 
@@ -97,12 +97,14 @@ Switch to **Select (V)** to edit stitching path geometry. Alt-click inserts anch
 
 Unlike ordinary count-check links, Transfer stitching preserves actual source hole positions rather than centering each receiving line independently.
 
-1. Select the lines to transfer from one source piece.
+1. Select the lines to transfer from one or more source pieces. Their current relative positions and angles are preserved during placement.
 2. Choose **Transfer stitching** (two stitched corners connected by an arrow) in the bottom toolbar. The hovering preview shows the master outline and only selected lines.
 3. Move it over receiving pieces using normal grid/object snapping. Wheel rotates by 1°, Ctrl/⌘+wheel zooms, Shift gives 5°, and Alt allows free rotation and bypasses placement snapping. Hold Space for viewport navigation; Space+Ctrl+wheel zooms.
 4. Review receiving-piece results. Left-click to place and freeze the preview. Further left-clicks reposition it. Apply, right-click, or Enter then commits all eligible receivers together. With no eligible receiver, the preview stays active with an explanation. Cancel discards it.
 
 ![Hovering master preview for transferring selected stitching](/manual/images/stitch-transfer.png)
+
+![Transferring stitching from multiple source pieces together](/manual/images/stitch-transfer-multiple.png)
 
 Visible, unlocked closed pieces containing selected hole centers can receive stitching. Outside centers are excluded; red rings flag hole footprints touching or crossing an edge. The status message names successes and skipped pieces. Repeating the tool adds independent placements, including on the same receiver.
 
@@ -110,17 +112,15 @@ Master edits update live transfers; layout moves and rotations preserve assembly
 
 **Detach** preserves currently included holes and creates independent, editable native guide paths; separate clipped runs retain their gaps. Spacing, inset, alignment, count and appearance become editable. Edit path changes the guide without changing the material outline. Guide objects follow their receiving piece’s layout moves/rotations.
 
-Copying a receiver alone creates independent editable stitching; copying source and receiver together retains links. Removing a master removes its live transfers. Old detached records preserve initial positions on reconstructed guides; changing placement settings or geometry recalculates those holes.
+Copying a receiver within the current editor session retains its live source link. Pasting into another project or editor creates independent editable stitching. Copying source and receiver together retains links between their copies. Removing a master removes its live transfers.
 
 
-## Updated section workflow and preset backups
+## Delete stitching
 
-Add run, Edit path and Delete are no longer toolbar tools. Continue run is available beside Stitch line. Click a free position on a partially stitched edge to create an independent section. Select a section and Shift-click a free position farther along the same edge to continue it; the clicked position sets the gap. Existing stitching remains selectable normally. Sections must not overlap. Auto count is available for continuations; reduce count or adjust end clearance if it conflicts with another section.
+With canvas focus, press Delete to remove selected lines immediately in one undo step. Undo restores them. Use Select (V) to edit converted stitching paths; deleting their last stitch group also removes the converted path.
 
-DEL immediately removes selected lines in one undo step. Use Select (V) to edit path geometry. Ctrl/⌘+wheel always zooms during transfer placement; ordinary wheel rotates, Shift uses 5° steps and Alt bypasses snapping. Ctrl rotation is removed.
+## Preset backups
 
-Open **Presets** to load or manage presets in an attached box to the left of the settings. On narrow canvases it opens above them. It starts closed; use the same button or Escape to close it. Presets are saved in this browser only. The Presets section contains Save as, Update, Rename, Delete, Export presets and Import presets. Export downloads all presets. Import previews the incoming library and offers safe Merge or explicit Replace all presets. Legacy project presets can be imported through that same review.
+Open **Presets** beside the line settings to load or manage your library. Close it with the same button or Escape. Presets belong to this browser, so export a backup before moving to another browser or device. Import previews the incoming library: choose **Merge** to combine it with existing presets or **Replace all presets** to replace the library. Legacy project presets can be imported through the same review.
 
-Continue run requires a fixed-count preceding section. Its new continuation can use Auto count. If an edited gap does not fit, its preview remains editable; reduce the gap or count before applying. Transfer hover shares one receiving-geometry snapshot between rendering and settings. Movement can snap compatible horizontal and vertical edges at the same time in Model, transfer placement and print layouts. Keyboard shortcuts are listed in the right-side Tool help rather than in the settings box. Standalone converted paths do not generate material-edge warnings.
-
-![Preset panel beside stitching settings](images/stitch-presets.png)
+![Preset panel beside stitching settings](/manual/images/stitch-presets.png)

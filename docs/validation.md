@@ -1,6 +1,6 @@
 # Validation
 
-Run the complete checks with `tools/dev/run.sh check`. Tests use production assets and the real Rust/Wasm worker, not a JavaScript fallback.
+Use focused tests or `tools/dev/run.sh fast` between commits; the fast command requires existing generated Wasm/contracts. Run the complete checks once before preparing a PR for editor changes with `tools/dev/run.sh check`. See the [validation cadence](deployment.md#validation-cadence) for prerequisites and CI gates. Tests use production assets and the real Rust/Wasm worker, not a JavaScript fallback.
 
 ## Reference environment
 

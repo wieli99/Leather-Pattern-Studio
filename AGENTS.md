@@ -2,15 +2,19 @@
 
 ## Project Structure & Module Organization
 
-`src/main.ts` mounts the Vue application. `src/vue/` contains Vue single-file components, typed subscription composables, and keyboard bindings. `src/editor/` contains the independent editor controller, Canvas renderer, worker client, and browser persistence. `src/model/` contains geometry helpers and project migration. `crates/document/` owns typed documents, validation, and history in Rust/Wasm. `src/generated/` contains generated contracts; regenerate rather than editing them. `src/wasm/`, `dist/`, and test reports are generated artifacts. Browser acceptance tests live in `tests/`; unit tests sit beside their modules as `*.test.ts`. `src-tauri/` is optional future desktop packaging.
+`src/main.ts` mounts the Vue application. `src/vue/` contains Vue single-file components, typed subscription composables, and keyboard bindings. `src/editor/` contains the independent editor controller, Canvas renderer, worker client, and browser persistence. `src/model/` contains geometry helpers and project migration. `crates/document/` owns typed documents, validation, and history in Rust/Wasm. `src/generated/` contains generated contracts; regenerate rather than editing them. `src/wasm/`, `dist/`, and test reports are generated artifacts. Browser acceptance tests live in `tests/`; unit tests sit beside their modules as `*.test.ts`. `src-tauri/` owns native desktop windows, file access, and platform integration; `packaging/` contains Flatpak metadata. Desktop builds share the Vue editor and Rust/Wasm engine with the website.
 
 ## Build, Test, and Development Commands
 
 Prefer the provided **Podman** workflow for a reproducible Node.js, Rust/Wasm, and browser-test environment matching CI. It requires Bash and a working Podman installation. Contributors may use an equivalent local environment; use `tools/dev/Containerfile` and `package-lock.json` as the toolchain and dependency references. Do not assume a particular operating system or install system tools without the contributor's agreement.
 
 - `tools/dev/run.sh dev`: install locked dependencies, generate Wasm, and serve at `http://127.0.0.1:5174`.
+- `tools/dev/run.sh fast`: install locked dependencies, check TypeScript, and run unit tests using existing generated Wasm/contracts. Run `tools/dev/run.sh npm run wasm` first on a fresh checkout or after Rust/contract changes.
 - `tools/dev/run.sh check`: run Rust tests, production build, unit tests, and three-engine browser tests.
-- `tools/dev/run.sh npm run build`: generate contracts/Wasm, check TypeScript, and build offline assets.
+- `tools/dev/run.sh manual-check`: verify all manual screenshots against an existing production build in the reference browser container.
+- `tools/dev/run.sh npm run build`: generate contracts and release-optimized Wasm, check TypeScript, and build offline assets.
+- `tools/dev/run.sh npm run wasm`: generate contracts and development Wasm; used by the development runner.
+- `tools/dev/run.sh npm run wasm:release`: generate contracts and release-optimized Wasm; used by production builds.
 - `tools/dev/run.sh preview`: serve an existing production build, including offline support.
 
 ## Coding Style & Architecture
@@ -19,9 +23,11 @@ Use Vue Composition API with `<script setup lang="ts">`, strict TypeScript, two-
 
 Geometry uses double-precision millimetres. Screen coordinates must not change saved dimensions. Committed document state and history belong to Rust; pointer previews never mutate history. Preserve project migrations and inactive legacy stitch metadata.
 
+For every numeric input you implement or change, verify valid bounds and steps for typing, arrow keys, and Alt+scroll, including modifier keys and boundary values.
+
 ## Testing Guidelines
 
-Run Vitest unit tests, Rust tests, and Playwright acceptance tests for meaningful editor changes. Test cancellation, invalid geometry, transaction boundaries, stale responses, and project round trips. Offline tests require the production build. No coverage percentage is mandated. Record browser-engine results separately from physical operating-system/device validation.
+Between commits, run focused tests for the behavior changed; use `tools/dev/run.sh fast` for a frontend TypeScript/unit pass. Regenerate Wasm/contracts and run Rust tests when Rust or document contracts change. Run `tools/dev/run.sh check` once before preparing a PR for meaningful editor changes; after further edits, repeat affected checks rather than the entire suite unless new failures or unresolved concerns justify it. CI independently runs full validation on PRs and protected-branch pushes. Test cancellation, invalid geometry, transaction boundaries, stale responses, and project round trips. For changes in `src-tauri/`, run native Rust tests with `cargo test --release --locked --manifest-path src-tauri/Cargo.toml` inside the toolchain from `tools/dev/Desktop.Containerfile` and exercise the affected desktop flow. Desktop CI builds and tests both CPU architectures for Linux, Windows, and macOS. Offline tests require the production build. No coverage percentage is mandated. Record browser-engine results separately from physical operating-system/device validation.
 
 ## Commits & Pull Requests
 
@@ -29,7 +35,9 @@ Use concise imperative commit subjects. Keep changes focused and avoid unrelated
 
 ## User manual maintenance
 
-Keep `docs/manual/` updated with every user-visible behavior change in the same change. Update affected procedures, shortcut references, and screenshots. Verify internal links and instructions against the implementation before reporting completion. The bundled manual is opened through the ? link and must remain available offline.
+Batch updates to `docs/manual/` and screenshot refreshes during PR preparation, after the behavior and UI have settled. Complete affected procedures, shortcut references, and screenshots in the same PR as the user-visible changes, before opening it. Intermediate tasks and commits may leave documentation pending; report that explicitly rather than claiming PR readiness.
+
+When committing user-visible changes with deferred documentation, include a short `Pending documentation` checklist in the commit body naming the changed behavior, affected manual pages, and screenshots to review or refresh. During PR preparation, review the feature branch's commit messages and resolve the accumulated checklist. Continue focused tests and necessary UI inspection during implementation; deferring documentation does not defer behavior validation. Verify manual links and instructions against the final implementation and run the required screenshot checks before reporting PR readiness. The bundled manual is opened through the ? link and must remain available offline.
 
 ## Development and releases
 

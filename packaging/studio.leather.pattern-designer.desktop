@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Leather Pattern Studio
+Exec=leather-pattern-studio %f
+Icon=studio.leather.pattern-designer
+Categories=Graphics;
+MimeType=application/x-leather-pattern;
+Terminal=false
+X-Flatpak-FileForwarding=true

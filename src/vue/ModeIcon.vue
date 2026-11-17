@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Mode } from "../editor/construction";
-const props = defineProps<{ mode: Mode | "image" }>();
+const props = defineProps<{ mode: Mode | "image" | "compound" }>();
 const center = computed(
     () =>
       props.mode.includes("center") ||

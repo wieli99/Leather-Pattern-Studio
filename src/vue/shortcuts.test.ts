@@ -1,18 +1,31 @@
 import { beforeEach, expect, test, vi } from "vitest";
 const editor = vi.hoisted(() => ({
   space: false,
+  booleanOperation: null as string | null,
+  applyTrim: vi.fn(),
   pending: [] as unknown[],
   drawingDown: false,
   busy: false,
   selectionToolsAvailable: true,
+  objectPicker: false,
+  offsetActive: false,
+  trimMode: false,
+  isHidden: vi.fn(()=>false),
+  isLocked: vi.fn(()=>false),
+  setToolSelection: vi.fn(),
   tool: "select",
   selected: ["a"],
   transformTool: null as string | null,
   placingPivot: false,
+  beginPivotPlacement: vi.fn(),
+  cancelPivotPlacement: vi.fn(),
   transformAxis: undefined as string | undefined,
   notify: vi.fn(),
   mode: "select",
   cycle: vi.fn(),
+  cancel: vi.fn(),
+  selectedGroups: [] as string[],
+  document: { shapes: [{ id: "a" }] },
   activateTransform: vi.fn(),
   activateStitch: vi.fn(),
   activateTrim: vi.fn(),
@@ -40,9 +53,13 @@ class ElementStub {
 beforeEach(() => {
   vi.clearAllMocks();
   editor.pending = [];
+  editor.booleanOperation = null;
   editor.tool = "select";
   editor.selected = ["a"];
   editor.selectionToolsAvailable = true;
+  editor.objectPicker = false;
+  editor.offsetActive = false;
+  editor.trimMode = false;
   editor.transformTool = null;
   editor.placingPivot = false;
   editor.transformAxis = undefined;
@@ -120,7 +137,7 @@ test("native clipboard writes snapshots and leaves text fields alone", () => {
   expect(event.preventDefault).not.toHaveBeenCalled();
 });
 
-test("I stitches, K trims, J merges, and M still mirrors", () => {
+test("I stitches, K trims, J joins, and M still mirrors", () => {
   press("i");
   press("k");
   press("j");
@@ -149,7 +166,9 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
   editor.selected = [];
   for (const key of ["i", "k", "j"]) press(key);
   expect(editor.activateStitch).toHaveBeenCalledOnce();
-  editor.activateStitch.mockClear();
+  expect(editor.activateTrim).toHaveBeenCalledOnce();
+  expect(editor.activateMerge).toHaveBeenCalledOnce();
+  vi.clearAllMocks();
   editor.pending = [{}];
   editor.selected = ["a"];
   editor.selectionToolsAvailable = false;
@@ -164,7 +183,7 @@ test("selection tool shortcuts respect focus, modifiers and selection", () => {
 
 test("D selects Measurement without taking over text fields or modified shortcuts", () => {
   press("d");
-  expect(editor.cycle).toHaveBeenLastCalledWith("indicator", 1);
+  expect(editor.cycle).toHaveBeenLastCalledWith("measurement", 1);
   vi.clearAllMocks();
   editor.pending = [];
   press("d", { target: new ElementStub("INPUT", true) });
@@ -189,13 +208,50 @@ test("pivot and axis shortcuts remain active while a transform gesture blocks to
   editor.transformTool = "move";
   editor.selectionToolsAvailable = false;
   press("v");
-  expect(editor.placingPivot).toBe(true);
+  expect(editor.beginPivotPlacement).toHaveBeenCalledOnce();
   expect(editor.setTool).not.toHaveBeenCalled();
   press("x");
   expect(editor.transformAxis).toBe("x");
   press("y");
   expect(editor.transformAxis).toBe("y");
-  expect(editor.notify).toHaveBeenCalledTimes(3);
+  expect(editor.notify).toHaveBeenCalledTimes(2);
   editor.transformTool = null;
   editor.selectionToolsAvailable = true;
+});
+
+test("A cycles drawing tools forward and backward without taking over text input", () => {
+  press("a");
+  expect(editor.cycle).toHaveBeenLastCalledWith("drawing", 1);
+  press("A", { shiftKey: true });
+  expect(editor.cycle).toHaveBeenLastCalledWith("drawing", -1);
+  vi.clearAllMocks();
+  press("a", { target: new ElementStub("INPUT", true) });
+  press("a", { ctrlKey: true });
+  press("a", { metaKey: true });
+  expect(editor.cycle).not.toHaveBeenCalled();
+});
+
+test("boolean buttons retain native Enter/Space and Escape cancels from the panel", () => {
+  editor.booleanOperation = "subtract";
+  expect(press("Enter",{target:new ElementStub("BUTTON")}).preventDefault).not.toHaveBeenCalled();
+  expect(press(" ",{code:"Space",target:new ElementStub("BUTTON")}).preventDefault).not.toHaveBeenCalled();
+  expect(editor.applyTrim).not.toHaveBeenCalled();
+  press("Escape",{target:new ElementStub("BUTTON")});
+  expect(editor.cancel).toHaveBeenCalledOnce();
+});
+
+test("Enter on the canvas applies a boolean preview", () => {
+  editor.booleanOperation = "union";
+  press("Enter");
+  expect(editor.applyTrim).toHaveBeenCalledOnce();
+});
+
+test("Select all respects the Objects selection phase",()=>{
+  editor.transformTool="move";
+  press("a",{ctrlKey:true});
+  expect(editor.setToolSelection).not.toHaveBeenCalled();
+  editor.objectPicker=true;
+  press("a",{ctrlKey:true});
+  expect(editor.setToolSelection).toHaveBeenCalledWith(["a"]);
+  expect(editor.cancel).not.toHaveBeenCalled();
 });

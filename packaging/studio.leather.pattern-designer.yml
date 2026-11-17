@@ -1,0 +1,38 @@
+app-id: studio.leather.pattern-designer
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: leather-pattern-studio
+finish-args:
+  - --env=GTK_USE_PORTAL=1
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --own-name=studio.leather.pattern-designer.*
+modules:
+  - name: studio
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 leather-pattern-studio /app/bin/leather-pattern-studio
+      - install -Dm644 studio.leather.pattern-designer.desktop /app/share/applications/studio.leather.pattern-designer.desktop
+      - install -Dm644 studio.leather.pattern-designer.xml /app/share/mime/packages/studio.leather.pattern-designer.xml
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/studio.leather.pattern-designer.svg
+      - install -Dm644 studio.leather.pattern-designer.metainfo.xml /app/share/metainfo/studio.leather.pattern-designer.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/studio.leather.pattern-designer/LICENSE
+    sources:
+      - type: file
+        path: studio.leather.pattern-designer.metainfo.xml
+      - type: file
+        path: ../LICENSE
+      - type: file
+        path: leather-pattern-studio
+      - type: file
+        path: studio.leather.pattern-designer.desktop
+      - type: file
+        path: studio.leather.pattern-designer.xml
+      - type: file
+        path: ../src/assets/leather-studio-icon.svg
+        dest-filename: icon.svg

@@ -994,3 +994,51 @@ export function printItemIntersects(
   }
   return false;
 }
+
+/** Preserve retained targets while restoring removed placements and folder pivots. */
+export function reconcilePrintTargets(
+  original: PrintLayout,
+  previous: PrintLayout,
+  candidate: PrintLayout,
+  oldIds: string[],
+  nextIds: string[],
+): PrintLayout {
+  function affected(layout: PrintLayout, ids: string[]) {
+    const result = new Set<string>(printDescendants(layout, ids));
+    function visit(nodes: PrintNode[], inherited = false) {
+      for (const node of nodes) {
+        const included = inherited || ids.includes(node.id);
+        if (included) result.add(node.id);
+        if (node.kind === "group") visit(node.children, included);
+      }
+    }
+    visit(printTree(layout));
+    return result;
+  }
+  const old = affected(original, oldIds), next = affected(original, nextIds);
+  const index = (layout: PrintLayout) => {
+    const result = new Map<string, PrintNode>();
+    function visit(nodes: PrintNode[]) {
+      for (const node of nodes) {
+        result.set(node.id, node);
+        if (node.kind === "group") visit(node.children);
+      }
+    }
+    visit(printTree(layout));
+    return result;
+  };
+  const before = index(previous), added = index(candidate);
+  function tree(nodes: PrintNode[]): PrintNode[] {
+    return nodes.map(node => {
+      if (node.kind === "instance") return node;
+      const source = next.has(node.id) ? (old.has(node.id) ? before : added).get(node.id) : node;
+      return { ...(source?.kind === "group" ? source : node), children: tree(node.children) };
+    });
+  }
+  return {
+    ...previous,
+    tree: tree(printTree(original)),
+    instances: original.instances.map(instance => !next.has(instance.id) ? instance :
+      (old.has(instance.id) ? previous : candidate).instances.find(i => i.id === instance.id) ?? instance),
+  };
+}

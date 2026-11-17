@@ -47,7 +47,7 @@ test("curved trim highlights, cancels, applies, undoes and round trips", { tag: 
     buffer: Buffer.from(JSON.stringify({ version: 11, shapes })),
   });
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
-  await page.locator(".objects .object-select").first().click();
+  await page.getByRole("button", { name: "Circle", exact: true }).click();
   const trim = page.getByRole("button", { name: "Trim", exact: true });
   await page.getByRole("button", { name: "Circle (C)", exact: true }).click();
   await trim.click();

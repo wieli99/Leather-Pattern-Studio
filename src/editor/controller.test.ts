@@ -1,5 +1,5 @@
 import { test, expect, vi, afterEach } from "vitest";
-import { emptyDocument, parseProject, type Doc } from "../model/project";
+import { DOCUMENT_VERSION, emptyDocument, parseProject, type Doc } from "../model/project";
 vi.mock("./core", () => ({
   Core: class {
     document = emptyDocument();
@@ -21,6 +21,11 @@ vi.mock("./core", () => ({
       if (op === "undo" && this.past.length) {
         this.future.push(this.document);
         this.document = this.past.pop()!;
+        this.revision++;
+      }
+      if (op === "redo" && this.future.length) {
+        this.past.push(this.document);
+        this.document = this.future.pop()!;
         this.revision++;
       }
       return {
@@ -45,6 +50,127 @@ function editor() {
   return e;
 }
 afterEach(() => vi.useRealTimers());
+test("a competing commit cancels Offset and preserves the property edit", async () => {
+  const e=editor();
+  const shape={id:"piece",name:"Piece",kind:"rectangle" as const,points:[{x:0,y:0},{x:80,y:40}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape]});
+  e.selected=[shape.id];
+  e.activateOffset();
+  await e.commit({...e.document,shapes:[{...shape,name:"Edited"}]});
+  await e.applyOffset();
+  expect(e.offsetActive).toBe(false);
+  expect(e.document.shapes).toHaveLength(1);
+  expect(e.document.shapes[0].name).toBe("Edited");
+});
+test("Offset previews copies, commits one undo step, and leaves the source unchanged", async () => {
+  const e = editor();
+  const shape = { id: "piece", name: "Piece", kind: "rectangle" as const,
+    points: [{x:0,y:0},{x:80,y:40}], radius:0, rotation:0 };
+  await e.commit({ ...emptyDocument(), shapes: [shape] });
+  e.selected = [shape.id];
+  e.activateOffset();
+  expect(e.offsetActive).toBe(true);
+  expect(e.preview?.shapes).toHaveLength(2);
+  e.setOffsetDistance(-3);
+  expect(e.offsetError).toBe("");
+  expect(e.preview?.shapes[1].points[0]).toEqual({x:3,y:3});
+  e.setOffsetDistance(-30);
+  expect(e.offsetDraft).toBeNull();
+  expect(e.offsetError).toMatch(/Piece:/);
+  e.setOffsetDistance(-3);
+  await e.applyOffset();
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.document.shapes[0]).toEqual(shape);
+  expect(e.selected).toEqual([e.document.shapes[1].id]);
+  expect(e.canUndo).toBe(true);
+  await e.transact("undo");
+  expect(e.document.shapes).toHaveLength(1);
+});
+test("Offset cancel and unsupported selections make no document changes", () => {
+  const e = editor();
+  const line = { id: "line", name: "Line", kind: "line" as const,
+    points: [{x:0,y:0},{x:20,y:0}], radius:0, rotation:0 };
+  e.document = { ...emptyDocument(), shapes: [line] };
+  e.selected = [line.id];
+  e.activateOffset();
+  e.cancel();
+  expect(e.document.shapes).toEqual([line]);
+  expect(e.preview).toBeNull();
+  e.document.shapes.push({ ...line, id: "text", kind: "text", text: "T", fontSize: 10 });
+  e.selected = [line.id, "text"];
+  expect(e.canOffset).toBe(false);
+});
+test("Offset does not copy or alter stitching on its source", async () => {
+  const { stitchEdges, insideStitchSide } = await import("../model/stitchGeometry");
+  const { defaultStitchSettings } = await import("../model/stitch");
+  const e = editor();
+  const shape = { id: "piece", name: "Piece", kind: "rectangle" as const,
+    points: [{x:0,y:0},{x:80,y:40}], radius:0, rotation:0 };
+  const group = { id: "stitches", shapeId: shape.id,
+    edges: [stitchEdges(shape)[0].key], side: insideStitchSide(shape),
+    closed: false, settings: { ...defaultStitchSettings } };
+  await e.commit({ ...emptyDocument(), shapes: [shape], stitchGroups: [group] });
+  e.selected = [shape.id];
+  e.activateOffset();
+  await e.applyOffset();
+  expect(e.document.stitchGroups).toEqual([group]);
+  expect(e.document.shapes[0]).toEqual(shape);
+  expect(e.document.shapes[1].id).not.toBe(group.shapeId);
+});
+test("Offset copies multiple objects beside their sources in the object tree", async () => {
+  const e = editor();
+  const shapes = ["a", "b"].map((id, index) => ({ id, name: id, kind: "rectangle" as const,
+    points: [{x:index * 100,y:0},{x:index * 100 + 80,y:40}], radius:0, rotation:0 }));
+  await e.commit({ ...emptyDocument(), shapes,
+    objectTree: [{ kind: "group", id: "folder", name: "Folder", children: [{kind:"object",id:"a"}] }, {kind:"object",id:"b"}] });
+  e.selected = ["a", "b"];
+  e.activateOffset();
+  await e.applyOffset();
+  expect(e.document.shapes).toHaveLength(4);
+  expect(e.selected).toHaveLength(2);
+  expect(e.tree[0]).toMatchObject({kind:"group", children:[{kind:"object"},{kind:"object",id:"a"}]});
+  if (e.tree[0].kind !== "group") throw Error("Expected group");
+  expect(e.selected).toContain(e.tree[0].children[0].id);
+  expect(e.tree[1]).toMatchObject({kind:"object"});
+  expect(e.selected).toContain(e.tree[1].id);
+  expect(e.tree[2]).toEqual({kind:"object",id:"b"});
+});
+test("dragging an offset preview changes the shared distance and release keeps it pending", async () => {
+  const e = editor();
+  const shapes = [0, 100].map((x, i) => ({ id: `piece-${i}`, name: `Piece ${i}`, kind: "rectangle" as const,
+    points: [{x,y:0},{x:x+80,y:40}], radius:0, rotation:0 }));
+  await e.commit({ ...emptyDocument(), shapes });
+  e.selected = shapes.map(s => s.id);
+  e.activateOffset();
+  const start = e.screen({x:40,y:-3}), end = e.screen({x:40,y:-7});
+  e.pointerDown(start, 0, false, false);
+  e.pointerMove(end, false);
+  e.pointerUp(end);
+  expect(e.offsetDistance).toBeCloseTo(7);
+  expect(e.offsetDraft?.shapes).toHaveLength(4);
+  expect(e.document.shapes).toHaveLength(2);
+  e.pointerDown(e.screen({x:40,y:-7}), 0, false, false);
+  e.pointerMove(e.screen({x:40,y:-9}), false);
+  e.pauseGesture();
+  expect(e.offsetDistance).toBeCloseTo(7);
+  await e.applyOffset();
+  expect(e.document.shapes).toHaveLength(4);
+});
+test("offset drag follows grid snapping and Alt bypasses it", async () => {
+  const e = editor();
+  e.grid = true; e.gridSize = 5;
+  const shape = { id:"piece", name:"Piece", kind:"rectangle" as const,
+    points:[{x:0,y:0},{x:80,y:40}], radius:0, rotation:0 };
+  await e.commit({ ...emptyDocument(), shapes:[shape] });
+  e.selected = [shape.id]; e.activateOffset();
+  const start = e.screen({x:40,y:-3}), end = e.screen({x:40,y:-6});
+  e.pointerDown(start,0,false,false); e.pointerMove(end,false); e.pointerUp(end);
+  expect(e.offsetDistance).toBeCloseTo(5);
+  e.pointerDown(e.screen({x:40,y:-5}),0,false,false);
+  e.pointerMove(e.screen({x:40,y:-6}),true);
+  e.pointerUp(e.screen({x:40,y:-6}),true);
+  expect(e.offsetDistance).toBeCloseTo(6);
+});
 test("cancel discards drawing and transforms without document changes", () => {
   const e = editor();
   e.setTool("rectangle");
@@ -661,7 +787,7 @@ test("curve duplicate clicks and invalid short paths do not create extra anchors
   await vi.waitFor(() => expect(e.revision).toBe(1));
   expect(e.document.shapes[0].points).toHaveLength(2);
 });
-test("selected Bézier handles mirror when edited and cancellation restores original", async () => {
+test.each([false, true])("selected Bézier handles mirror when edited and cancellation restores original (Shift=%s)", async (shift) => {
   const e = editor();
   e.setMode("control-curve");
   e.addPoint({ x: 0, y: 0 });
@@ -678,7 +804,7 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
     .handles()
     .find((h) => h.vertex === 0 && h.handleSide === "outgoing")!;
   e.pointerDown(e.screen(h.point), 0, false, false);
-  e.pointerMove(e.screen({ x: 20, y: 30 }), true);
+  e.pointerMove(e.screen({ x: 20, y: 30 }), true, false, shift);
   expect(e.preview!.shapes[0].handles![0]).toEqual({
     incoming: { x: -10, y: 0 },
     outgoing: { x: 20, y: 30 },
@@ -687,7 +813,7 @@ test("selected Bézier handles mirror when edited and cancellation restores orig
   expect(JSON.stringify(e.document)).toBe(original);
   expect(e.revision).toBe(1);
   e.pointerDown(e.screen(h.point), 0, false, false);
-  e.pointerMove(e.screen({ x: 20, y: 30 }), true);
+  e.pointerMove(e.screen({ x: 20, y: 30 }), true, false, shift);
   e.pointerUp();
   await vi.waitFor(() => expect(e.revision).toBe(2));
   await e.transact("undo");
@@ -1494,9 +1620,13 @@ test("delayed recovery excludes pending stitching and inspector edits cannot cha
   expect(e.document.shapes[0].name).toBe("Safe");
   await vi.advanceTimersByTimeAsync(301);
   const { recovery } = await import("./persistence");
-  expect(
-    vi.mocked(recovery).mock.calls.at(-1)?.[0]?.document.stitchGroups,
-  ).toEqual([]);
+  // Other editor instances can still have recovery timers pending. Inspect only
+  // writes for this document, rather than whichever editor happened to run last.
+  const writes = vi.mocked(recovery).mock.calls.filter(([value]) =>
+    value?.document.shapes.some(shape => shape.id === "safe"),
+  );
+  expect(writes.length).toBeGreaterThan(0);
+  expect(writes.at(-1)![0]!.document.stitchGroups).toEqual([]);
   e.cancel();
 });
 
@@ -1541,6 +1671,8 @@ test("path conversion cancels or commits as one transaction", async () => {
 
 test("trim activation and cancellation update the toolbar subscription", () => {
   const e = editor();
+  e.document={...emptyDocument(),shapes:[{id:"a",name:"A",kind:"line",points:[{x:0,y:0},{x:10,y:0}],radius:0,rotation:0}]};
+  e.selected=["a"];
   const initial = e.uiSnapshot();
   e.activateTrim();
   expect(e.trimMode).toBe(true);
@@ -1643,15 +1775,15 @@ test("renaming disconnects files and requires saving without changing geometry",
   const document = e.document;
   e.files.handle = { name: e.name };
   e.rename("  Wallet  ");
-  expect(e.name).toBe("Wallet.leather.json");
+  expect(e.name).toBe("Wallet.leather");
   expect(e.files.handle).toBeNull();
   expect(e.dirty).toBe(true);
   expect(e.document).toBe(document);
   e.rename(" ");
-  expect(e.name).toBe("Wallet.leather.json");
+  expect(e.name).toBe("Wallet.leather");
   e.fileBusy = true;
   e.rename("Other");
-  expect(e.name).toBe("Wallet.leather.json");
+  expect(e.name).toBe("Wallet.leather");
 });
 
 test('merge previews, cancels, and commits one selected object', async () => {
@@ -1738,6 +1870,7 @@ test("curved trim previews cancel, accumulate and commit as one undo step", asyn
     ],
   });
   const original = JSON.stringify(e.document);
+  e.selected = [circle.id];
   e.activateTrim();
   e.pointerMove(e.screen({ x: 60, y: 40 }), false);
   expect(e.trimHighlight!.length).toBeGreaterThan(2);
@@ -1825,17 +1958,40 @@ test("clipboard preserves cursor offsets across viewports and snapshots copied g
   await target.transact("undo");
   expect(target.document.shapes).toHaveLength(1);
 });
-test("clipboard ignores unrelated text and requires an idle canvas pointer", async () => {
+test("clipboard ignores unrelated text and requires an idle editor with a canvas position", async () => {
   const e = editor();
   expect(e.copyObjects()).toBeNull();
   e.pointerMove({ x: 100, y: 100 }, false);
   await e.pasteObjects("ordinary text");
   expect(e.document.shapes).toHaveLength(0);
   e.leavePointer();
-  expect(e.canUseClipboard).toBe(false);
+  expect(e.canUseClipboard).toBe(true);
   e.pointerMove({ x: 100, y: 100 }, false);
   e.busy = true;
   expect(e.canUseClipboard).toBe(false);
+});
+
+test("Select tool clipboard keeps the last canvas position after the pointer leaves", async () => {
+  const e = editor();
+  await e.commit({ version: DOCUMENT_VERSION, shapes: [{
+    id: "source", name: "Original", kind: "rectangle",
+    points: [{ x: 10, y: 20 }, { x: 30, y: 40 }], radius: 0, rotation: 0,
+  }] });
+  e.setTool("select");
+  const pixel = e.screen({ x: 20, y: 20 });
+  e.pointerDown(pixel, 0, false, false);
+  e.pointerUp(pixel);
+  expect(e.selected).toEqual(["source"]);
+  e.leavePointer();
+  const text = e.copyObjects();
+  expect(text).not.toBeNull();
+  e.pointerMove(e.screen({ x: 60, y: 70 }), false);
+  e.leavePointer();
+  await e.pasteObjects(text!);
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.document.shapes[1].points).toEqual([{ x: 50, y: 70 }, { x: 70, y: 90 }]);
+  await e.transact("undo");
+  expect(e.document.shapes).toHaveLength(1);
 });
 
 test("group tree moves reject stale revisions and grouping preserves effective locks", async () => {
@@ -1918,7 +2074,7 @@ test("hidden group outlines are excluded from mirror references", async () => {
   expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).not.toBe("edge");
 });
 
-test("outline tools reject text without cancelling and allow mixed selections", () => {
+test("outline tools reject text without cancelling; Trim requires compatible targets while stitching accepts mixed selections", () => {
   const e = editor();
   e.document.shapes = [{ ...shape, id: "text", kind: "text", text: "Label" }, shape];
   e.selected = ["text"];
@@ -1932,7 +2088,7 @@ test("outline tools reject text without cancelling and allow mixed selections", 
   expect(e.stitchMode).toBe(false);
   expect(e.canUndo).toBe(false);
   e.selected = ["text", shape.id];
-  expect(e.canTrim).toBe(true);
+  expect(e.canTrim).toBe(false);
   expect(e.canStitch).toBe(true);
   e.document = {
     ...e.document,
@@ -1951,10 +2107,13 @@ test('measurement commits once after three points and supports exact signed offs
   e.addPoint({x:40,y:0});
   expect(e.document.shapes).toHaveLength(0);
   expect(e.measurementFields).toEqual(['Offset']);
+  e.adjustConstructionCount(2);
+  expect(e.constructionPreview?.measurementSections).toBe(3);
   e.measurementLocks.Offset = -15;
   e.addPoint({x:20,y:50});
   await vi.waitFor(() => expect(e.document.shapes).toHaveLength(1));
   expect(e.document.shapes[0].measurementOffset).toBe(-15);
+  expect(e.document.shapes[0].measurementSections).toBe(3);
   await e.transact('undo');
   expect(e.document.shapes).toHaveLength(0);
   e.addPoint({x:0,y:0});
@@ -2036,7 +2195,7 @@ test("initialization rejects a stale worker document version", async () => {
   vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
   await e.initialize();
   expect(e.ready).toBe(false);
-  expect(e.message).toContain("expects document version 21, but geometry worker returned 15");
+  expect(e.message).toContain("expects document version 23, but geometry worker returned 15");
 });
 
 test("unit preferences leave document, grid and history unchanged", () => {
@@ -2226,7 +2385,7 @@ test("a failed Apply retains the staged stitching session for correction",async(
  expect(e.stitchError).toContain("Worker refused");
 });
 
-test("Alt replaces, Alt+Shift adds object stitching, and transfer rejects multiple source pieces",async()=>{
+test("Alt replaces, Alt+Shift adds object stitching, and transfer accepts multiple source pieces",async()=>{
  const e=editor(),{shape,group}=runFixture();
  const other={...shape,id:"other",points:[{x:0,y:25},{x:100,y:25}]};
  const second={...group,id:"other-line",shapeId:other.id};
@@ -2236,7 +2395,8 @@ test("Alt replaces, Alt+Shift adds object stitching, and transfer rejects multip
  expect(e.stitchSelected).toEqual([group.id]);
  e.stitchClick({x:50,y:25},true,true);
  expect(e.stitchSelected).toEqual([group.id,second.id]);
- expect(e.transferStitchReason).toContain("one source piece");
+ expect(e.transferStitchReason).toBe("");
+ e.beginStitchTransfer();expect(e.stitchTransferGhosts).toHaveLength(2);
 });
 
 test("transfer preview rotates with shared modifiers and places all eligible pieces in one transaction",async()=>{
@@ -2467,4 +2627,1068 @@ test("focus loss preserves stitching sessions and their draft", () => {
   expect(e.stitchMode).toBe(true);
   expect(e.stitchOriginal).toBe(original);
   expect(e.stitchDraft).toBe(draft);
+});
+
+test("a rejected property preview cannot overwrite the status after its field commits", async () => {
+  const e = editor();
+  await e.commit({ version: 5, shapes: [shape] });
+  let rejectPreview!: (error: Error) => void;
+  const request = e.core.request.bind(e.core);
+  vi.spyOn(e.core, "request").mockImplementation((op, revision, next) =>
+    op === "preview"
+      ? new Promise((_, reject) => { rejectPreview = reject; })
+      : request(op, revision, next),
+  );
+  e.beginProperty();
+  const preview = e.edit("a", { rotation: 20 });
+  await e.finishProperty();
+  const message = e.message;
+  rejectPreview(Error("Stale document revision"));
+  await preview;
+  expect(e.message).toBe(message);
+  expect(e.document.shapes[0].rotation).toBe(20);
+  expect(e.preview).toBeNull();
+});
+
+
+test("measurement drag sets endpoints without committing, including release without movement events", async () => {
+  for (const move of [false, true]) {
+    const e = editor();
+    e.setMode("measurement");
+    const a = {x:100,y:100}, b = {x:200,y:100};
+    e.pointerDown(a,0,false,false);
+    if (move) {
+      e.pointerMove(b,false);
+      expect(e.pending).toHaveLength(1);
+      expect(e.constructionPreview).not.toBeNull();
+    }
+    e.pointerUp(b);
+    expect(e.pending).toHaveLength(2);
+    expect(e.measurementFields).toEqual(["Offset"]);
+    expect(e.document.shapes).toHaveLength(0);
+    e.measurementLocks.Offset = 12;
+    e.confirmMeasurement();
+    await vi.waitFor(() => expect(e.document.shapes).toHaveLength(1));
+    expect(e.document.shapes[0].measurementOffset).toBe(12);
+    await e.transact("undo");
+    expect(e.document.shapes).toHaveLength(0);
+  }
+});
+
+test("measurement short clicks and cancelled drags leave no committed shapes", () => {
+  const e = editor();
+  e.setMode("measurement");
+  e.pointerDown({x:100,y:100},0,false,false);
+  e.pointerUp({x:101,y:100});
+  expect(e.pending).toHaveLength(1);
+  e.cancel();
+  e.pointerDown({x:100,y:100},0,false,false);
+  e.pointerMove({x:200,y:150},false);
+  e.cancel();
+  e.pointerUp({x:200,y:150});
+  expect(e.pending).toHaveLength(0);
+  expect(e.document.shapes).toHaveLength(0);
+});
+
+test.each([.5,8])("Shift-add bridges a rounded corner of radius %s in either direction",async radius=>{
+ const e=editor();
+ const {stitchEdges,insideStitchSide}=await import("../model/stitchGeometry");
+ const {defaultStitchSettings}=await import("../model/stitch");
+ const shape={id:"rounded",name:"Rounded",kind:"rectangle" as const,points:[{x:0,y:0},{x:40,y:30}],radius,rotation:0};
+ const keys=stitchEdges(shape).map(e=>e.key);
+ const base={shapeId:shape.id,side:insideStitchSide(shape),settings:{...defaultStitchSettings,inset:.2},closed:false};
+ for(const [from,to] of [[0,2],[2,0],[6,0]]) {
+   await e.commit({...emptyDocument(),shapes:[shape],stitchGroups:[{...base,id:"first",edges:[keys[from]]}]});
+   const target={...base,id:"preview",edges:[keys[to]]};
+   const joined=e.stitchPlacement(target,true);
+   expect(joined.next.edges).toHaveLength(3);
+   expect(joined.next.edges).toContain(keys[from]);expect(joined.next.edges).toContain(keys[to]);
+   expect(joined.absorbed).toEqual(["first"]);
+   expect(e.stitchPlacement(target,false).next.edges).toEqual([keys[to]]);
+ }
+});
+
+test("receiver clipboard keeps same-editor live sources and falls back in another editor",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selected=[receiver.id];e.pointerMove(e.screen({x:200,y:0}),false);
+ const text=e.copyObjects()!;
+ await e.pasteObjects(text);
+ expect(e.document.stitchTransfers).toHaveLength(2);
+ expect(e.document.stitchTransfers![1].masterId).toBe(group.id);
+ expect(e.document.shapes).toHaveLength(3);
+ const other=editor();other.pointerMove(other.screen({x:0,y:0}),false);
+ await other.pasteObjects(text);
+ expect(other.document.stitchTransfers ?? []).toHaveLength(0);
+ expect(other.stitchGroups.length).toBeGreaterThan(0);
+ expect(other.document.shapes.some(s=>s.stitchParentId)).toBe(true);
+});
+
+test("multi-source transfers preserve hole distances under shared rotation and undo",async()=>{
+ const {receivingStitches}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const other={...shape,id:"other",rotation:30,points:[{x:0,y:35},{x:100,y:35}]};
+ const second={...group,id:"second",shapeId:other.id};
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:150,y:-100},{x:450,y:200}],radius:0,rotation:0};
+ await e.commit({...emptyDocument(),shapes:[shape,other,receiver],stitchGroups:[group,second]});
+ const before=[e.stitchGeometry(shape,group).holes[0].point,e.stitchGeometry(other,second).holes[0].point];
+ e.activateStitch();e.stitchSelected=[group.id,second.id];e.beginStitchTransfer();
+ e.stitchTransferPlacement!.angle=47;e.updateStitchTransfer({x:300,y:50},true);
+ const transfers=e.stitchTransferPreview.transfers;
+ expect(transfers).toHaveLength(2);
+ const after=transfers.map(t=>receivingStitches(e.document,t).geometry.holes[0].point);
+ expect(Math.hypot(after[1].x-after[0].x,after[1].y-after[0].y)).toBeCloseTo(Math.hypot(before[1].x-before[0].x,before[1].y-before[0].y),6);
+ e.cancelStitchOperation();expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+});
+
+test("duplicate receiver preserves external source and duplicates internal count links",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const second={...group,id:"second",settings:{...group.settings,startClearance:20}};
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group,second],stitchLinks:[{id:1,members:[group.id,second.id]}]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selected=[receiver.id];await e.duplicate();
+ expect(e.document.stitchTransfers).toHaveLength(2);
+ expect(e.document.stitchTransfers![1].masterId).toBe(group.id);
+ e.selected=[shape.id];await e.duplicate();
+ expect(e.document.stitchLinks).toHaveLength(2);
+ expect(e.document.stitchLinks![1].members.every(id=>id!==group.id && id!==second.id)).toBe(true);
+});
+
+test("copy and duplicate nested groups remap source links to the copied stitching",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group],objectTree:[{kind:"group",id:"folder",name:"Assembly",children:[{kind:"group",id:"nested",name:"Nested",children:[{kind:"object",id:shape.id},{kind:"object",id:receiver.id}]}]}]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selectGroup("folder");e.pointerMove(e.screen({x:100,y:100}),false);
+ const copied=e.copyObjects()!;
+ await e.duplicate();
+ const duplicate=e.document.stitchTransfers!.find(t=>t.targetId!==receiver.id)!;
+ expect(duplicate.masterId).not.toBe(group.id);
+ expect(e.stitchGroups.find(g=>g.id===duplicate.masterId)?.shapeId).not.toBe(shape.id);
+ const other=editor();other.pointerMove(other.screen({x:50,y:50}),false);await other.pasteObjects(copied);
+ expect(other.document.stitchTransfers).toHaveLength(1);
+ const transfer=other.document.stitchTransfers![0];
+ expect(transfer.masterId).not.toBe(group.id);
+ expect(other.stitchGroups.some(g=>g.id===transfer.masterId)).toBe(true);
+ expect(parseProject(JSON.stringify(other.document)).stitchTransfers).toHaveLength(1);
+});
+
+test("clipboard falls back when an external source disappears before paste",async()=>{
+ const {makeTransfer}=await import("../model/stitchLayers");
+ const e=editor(),{shape,group}=runFixture();
+ const receiver={id:"receiver",name:"Receiver",kind:"rectangle" as const,points:[{x:200,y:0},{x:300,y:20}],radius:0,rotation:0};
+ const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:[group]};
+ await e.commit({...doc,stitchTransfers:[makeTransfer(doc,group.id,receiver,{x:250,y:10},0,"placement")]});
+ e.selected=[receiver.id];e.pointerMove(e.screen({x:200,y:0}),false);const text=e.copyObjects()!;
+ await e.commit({...emptyDocument(),shapes:[receiver]});
+ await e.pasteObjects(text);
+ expect(e.document.stitchTransfers ?? []).toHaveLength(0);
+ expect(e.stitchGroups.length).toBeGreaterThan(0);
+});
+
+async function vertexEditor(rotation = 0, closed = false, curve = false) {
+  const e = editor();
+  await e.commit({ ...emptyDocument(), shapes: [{
+    id: "path", name: "Path", kind: curve ? "control-curve" : "polyline",
+    points: [{ x: 10, y: 10 }, { x: 110, y: 10 }, { x: 110, y: 110 }, ...(closed ? [{ x: 10, y: 10 }] : [])],
+    radius: 0, rotation,
+    ...(curve ? { handles: Array.from({ length: closed ? 4 : 3 }, () => ({ incoming: { x: -2, y: -3 }, outgoing: { x: 2, y: 3 } })) } : {}),
+  }] });
+  e.setMode("select");
+  e.selected = ["path"];
+  return e;
+}
+
+const firstVertex = (e: Controller) => e.handles().find(h => h.kind === "vertex" && h.vertex === 0 && !h.handleSide)!.point;
+
+test.each([
+  [30, 5, 0], [30, 20, 45], [5, 30, 90], [-20, 30, 135],
+  [-30, 5, 180], [-30, -20, -135], [-5, -30, -90], [20, -30, -45], [0, 0, 0],
+])("Shift constrains vertex displacement (%s, %s) to %s degrees", async (dx, dy, degrees) => {
+  const e = await vertexEditor();
+  const origin = firstVertex(e);
+  // Pick up off-center; snapping must still use the vertex itself.
+  e.pointerDown(e.screen({ x: origin.x + 1, y: origin.y + 1 }), 0, false, false);
+  e.pointerMove(e.screen({ x: origin.x + dx, y: origin.y + dy }), true, false, true);
+  const point = e.preview!.shapes[0].points[0];
+  const radius = Math.hypot(dx, dy), angle = degrees * Math.PI / 180;
+  expect(point.x).toBeCloseTo(origin.x + radius * Math.cos(angle));
+  expect(point.y).toBeCloseTo(origin.y + radius * Math.sin(angle));
+  expect(e.message).toBe(`Move ${e.formatLength(point.x - origin.x)}, ${e.formatLength(point.y - origin.y)} ${e.unitSymbol}`);
+  expect(e.revision).toBe(1);
+  e.cancel();
+  expect(e.document.shapes[0].points[0]).toEqual(origin);
+});
+
+test("vertex constraint follows world axes for rotated closed curves and preserves handles", async () => {
+  const e = await vertexEditor(27, true, true);
+  const before = e.document;
+  const origin = firstVertex(e);
+  e.pointerDown(e.screen(origin), 0, false, false);
+  e.pointerMove(e.screen({ x: origin.x + 30, y: origin.y + 5 }), true, false, true);
+  const preview = e.preview!;
+  expect(preview.shapes[0].points[0]).toEqual(preview.shapes[0].points[3]);
+  expect(preview.shapes[0].handles).toEqual(before.shapes[0].handles);
+  e.pointerUp();
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  const moved = firstVertex(e);
+  expect(moved.x).toBeCloseTo(origin.x + Math.hypot(30, 5));
+  expect(moved.y).toBeCloseTo(origin.y);
+  await e.transact("undo");
+  expect(e.document).toEqual(before);
+});
+
+test("vertex modifiers update stationary previews and pointer release uses current modifiers", async () => {
+  const e = await vertexEditor();
+  const origin = firstVertex(e), target = { x: origin.x + 30, y: origin.y + 5 };
+  e.pointerDown(e.screen(origin), 0, false, false);
+  e.pointerMove(e.screen(target), true);
+  e.updateVertexModifiers(true, false, true);
+  expect(e.preview!.shapes[0].points[0].y).toBeCloseTo(origin.y);
+  e.updateVertexModifiers(true, false, false);
+  expect(e.preview!.shapes[0].points[0]).toEqual(target);
+  e.pointerUp(e.screen(target), true, true);
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.document.shapes[0].points[0].y).toBeCloseTo(origin.y);
+});
+
+test("vertex grid/object snapping respects the constrained ray and Alt bypasses it", async () => {
+  const e = await vertexEditor();
+  const origin = firstVertex(e);
+  e.grid = true;
+  e.gridSize = 10;
+  e.pointerDown(e.screen(origin), 0, false, false);
+  const move = (dx: number, dy: number, alt = false) => {
+    e.pointerMove(e.screen({ x: origin.x + dx, y: origin.y + dy }), alt, false, true);
+    return e.preview!.shapes[0].points[0];
+  };
+  expect(move(28, 3)).toEqual({ x: 40, y: 10 });
+  expect(move(28, 3, true).x).toBeCloseTo(10 + Math.hypot(28, 3));
+  e.grid = false;
+  e.objects = true;
+  e.document.shapes.push({ id: "target", name: "Target", kind: "polyline", points: [{ x: 40, y: 11 }, { x: 100, y: 150 }], rotation: 0, radius: 0 });
+  expect(move(28, 3).x).toBeCloseTo(10 + Math.hypot(28, 3));
+  expect(move(28, 3).y).toBeCloseTo(10);
+  expect(e.snapTarget).toBeNull();
+  e.document.shapes[1].points[0].y = 10;
+  expect(move(28, 3)).toEqual({ x: 40, y: 10 });
+});
+
+test("off-axis grid snapping cannot break a vertex constraint", async () => {
+  const e = await vertexEditor();
+  e.document.shapes[0].points[0].y = 11;
+  const origin = firstVertex(e);
+  e.grid = true;
+  e.gridSize = 10;
+  e.pointerDown(e.screen(origin), 0, false, false);
+  e.pointerMove(e.screen({ x: origin.x + 28, y: origin.y + 3 }), false, false, true);
+  expect(e.preview!.shapes[0].points[0].x).toBeCloseTo(origin.x + Math.hypot(28, 3));
+  expect(e.preview!.shapes[0].points[0].y).toBeCloseTo(origin.y);
+  // Releasing Shift at pointer-up commits the unconstrained grid result.
+  e.pointerUp(e.screen({ x: 39, y: 12 }), false, false);
+  await vi.waitFor(() => expect(e.revision).toBe(2));
+  expect(e.document.shapes[0].points[0]).toEqual({ x: 40, y: 10 });
+});
+
+test("clicking a rectangle vertex with Shift leaves its geometry and history unchanged", async () => {
+  const e = editor();
+  e.setMode("rectangle");
+  e.addPoint({ x: 0, y: 0 });
+  e.addPoint({ x: 100, y: 50 });
+  await vi.waitFor(() => expect(e.revision).toBe(1));
+  e.setMode("select");
+  const original = e.document, origin = firstVertex(e);
+  e.pointerDown(e.screen(origin), 0, true, false);
+  e.pointerUp(e.screen(origin), false, true);
+  expect(e.document).toEqual(original);
+  expect(e.revision).toBe(1);
+});
+
+test("measurement and drawing groups remember and cycle independently", () => {
+  const e = editor();
+  e.cycle("measurement");
+  expect(e.mode).toBe("measurement");
+  e.cycle("measurement", -1);
+  expect(e.mode).toBe("size-ruler");
+  e.cycle("drawing");
+  expect(e.mode).toBe("arrow");
+  e.cycle("drawing", -1);
+  expect(e.mode).toBe("crosshair");
+  e.cycle("measurement");
+  expect(e.mode).toBe("size-ruler");
+  e.cycle("drawing");
+  expect(e.mode).toBe("crosshair");
+  e.cycle("drawing");
+  expect(e.mode).toBe("arrow");
+});
+
+test("subtract single target picks cutters, cancels, commits holes, and undoes atomically",async()=>{
+ const e=editor();
+ const rect=(id:string,x:number,size:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:x},{x:x+size,y:x+size}],radius:0,rotation:0});
+ await e.commit({...e.document,shapes:[rect("base",0,30),rect("cut",10,5),rect("other",50,10)]});
+ e.selected=["base"];const revision=e.revision;
+ e.activateBoolean("subtract");
+ expect(e.booleanPicker).toBe("cutters");expect(e.trimDraft).toBeNull();
+ e.pointerDown(e.screen({x:12,y:12}),0,false,false);expect(e.preview!.shapes[0].contours).toHaveLength(2);
+ expect(e.revision).toBe(revision);
+ e.cancel();expect(e.selected).toEqual(["base"]);expect(e.document.shapes).toHaveLength(3);
+ e.activateBoolean("subtract");e.pickBoolean("cut");await e.applyTrim();
+ expect(e.document.shapes).toHaveLength(2);expect(e.selected).toEqual(["base"]);
+ expect(e.revision).toBe(revision+1);await e.transact("undo");
+ expect(e.document.shapes).toHaveLength(3);await e.transact("redo");
+ expect(e.document.shapes[0].contours).toHaveLength(2);
+});
+
+test("empty intersection consumes inputs and target picking retains the new target",async()=>{
+ const e=editor();
+ const rect=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+10,y:10}],radius:0,rotation:0});
+ await e.commit({...e.document,shapes:[rect("a",0),rect("b",20)]});
+ e.selected=["b","a"];e.activateBoolean("intersect");
+ expect(e.booleanTarget).toBe("a");expect(e.booleanEmpty).toBe(true);
+ await e.applyTrim();expect(e.document.shapes).toHaveLength(0);expect(e.selected).toEqual([]);
+ await e.transact("undo");e.selected=["a","b"];e.activateBoolean("subtract");
+ e.booleanPicker="target";e.pickBoolean("b");expect(e.booleanCutters).toEqual(["a"]);
+ await e.applyTrim();expect(e.selected).toEqual(["b"]);expect(e.document.shapes[0].id).toBe("b");
+});
+
+test('compound anchors edit within one preview and preserve other contours',async()=>{
+ const {booleanShapes}=await import('../model/booleanShapes');
+ const rect=(id:string,x:number,size:number)=>({id,name:id,kind:'rectangle' as const,points:[{x,y:x},{x:x+size,y:x+size}],radius:0,rotation:0});
+ const shape=booleanShapes('subtract',[rect('base',0,30),rect('cut',10,5)])!;
+ const e=editor();await e.commit({...e.document,shapes:[shape]});e.selected=[shape.id];e.zoom=20;
+ const handle=e.handles().find(h=>h.kind==='vertex' && h.vertex===shape.contours![0].length && !h.handleSide)!;
+ const original=JSON.stringify(e.document);
+ e.pointerDown(e.screen(handle.point),0,false,false);
+ e.pointerMove(e.screen({x:handle.point.x+1,y:handle.point.y+1}),true);
+ expect(JSON.stringify(e.document)).toBe(original);
+ expect(e.preview!.shapes[0].contours![0]).toEqual(shape.contours![0]);
+ expect(e.preview!.shapes[0].contours![1]).not.toEqual(shape.contours![1]);
+ e.cancel();expect(JSON.stringify(e.document)).toBe(original);
+});
+
+test("Join starts from one open path and previews additions without committing", async () => {
+  const e = editor();
+  const line = (id: string, x: number) => ({id,name:id,kind:"line" as const,points:[{x,y:0},{x:x+10,y:0}],rotation:0,radius:0});
+  await e.commit({...e.document,shapes:[line("a",0),line("b",10),line("c",50)]});
+  e.selected=["a"];
+  expect(e.canJoin).toBe(true);
+  expect(e.canBoolean).toBe(false);
+  const revision=e.revision;
+  e.activateMerge();
+  expect(e.booleanLabel).toBe("Join");
+  expect(e.booleanPicker).toBe("cutters");
+  expect(e.booleanError).toBe("");
+  e.pickBoolean("c");
+  expect(e.booleanError).toContain("connected chain");
+  expect(e.trimDraft).toBeNull();
+  e.removeBooleanOperand("c");
+  e.pickBoolean("b");
+  expect(e.preview!.shapes[0].kind).toBe("polyline");
+  expect(e.revision).toBe(revision);
+  e.cancel();
+  expect(e.selected).toEqual(["a"]);
+  expect(e.document.shapes).toHaveLength(3);
+});
+
+test("target picker keeps its live preview and permits applying",async()=>{
+  const e=editor();
+  const rectangle=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+20,y:20}],radius:0,rotation:0});
+  await e.commit({...e.document,shapes:[rectangle("a",0),rectangle("b",10)]});
+  e.selected=["a","b"];e.activateMerge();
+  const before=e.revision, preview=JSON.stringify(e.preview);
+  e.setBooleanPicker("target");
+  expect(e.booleanPicker).toBe("target");
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  expect(e.revision).toBe(before);
+  e.pickBoolean("b");
+  expect(e.booleanTarget).toBe("b");expect(e.booleanCutters).toEqual(["a"]);
+  expect(e.active.map(s=>s.id)).toEqual(["b"]);
+  expect(e.booleanPicker).toBe("cutters");expect(e.preview).not.toBeNull();
+  await e.applyTrim();expect(e.selected).toEqual(["b"]);
+  await e.transact("undo");expect(e.document.shapes).toHaveLength(2);
+});
+
+test("real compound commits preserve stitched contours, links, transfers, hole counts and history after insertion",async()=>{
+  const {booleanShapes}=await import("../model/booleanShapes");
+  const {stitchEdges,stitchGeometry}=await import("../model/stitchGeometry");
+  const {defaultStitchSettings}=await import("../model/stitch");
+  const {insertAnchor}=await import("../model/insertAnchor");
+  const {cubicAt}=await import("../model/curves");
+  const {worldCubics}=await import("../model/geometry");
+  const {makeTransfer}=await import("../model/stitchLayers");
+  const rect=(id:string,x:number,y:number,w:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y},{x:x+w,y:y+w}],radius:0,rotation:0});
+  const shape=booleanShapes("subtract",[rect("base",0,0,30),rect("cut",10,10,10)])!;
+  const receiver=rect("receiver",50,0,30);
+  let offset=0;
+  const groups=shape.contours!.map((contour,i)=>{
+    const edges=stitchEdges(shape).slice(offset,offset+contour.length).map(e=>e.key);offset+=contour.length;
+    return {id:"group"+i,shapeId:shape.id,edges:[...edges.slice(2),...edges.slice(0,2)],side:1 as const,closed:true,
+      settings:{...defaultStitchSettings,inset:1,spacing:3.38},holeOverrides:{"1":{...defaultStitchSettings,inset:1,spacing:3.38,style:"round" as const,roundDiameter:0.8}}};
+  });
+  const doc:Doc={...emptyDocument(),shapes:[shape,receiver],stitchGroups:groups,stitchLinks:[{id:1,members:groups.map(g=>g.id)}]};
+  doc.stitchTransfers=[makeTransfer(doc,groups[0].id,receiver,{x:65,y:15},0,"placement")];
+  const e=editor();expect(await e.commit(doc)).toBe(true);
+  const original=JSON.stringify(e.document), before=e.revision;
+  const counts=e.document.stitchGroups!.map(g=>stitchGeometry(e.document.shapes.find(s=>s.id===shape.id)!,g).holes.length);
+  const next=insertAnchor(e.document.shapes.find(s=>s.id===shape.id)!,cubicAt(worldCubics(shape)[0],0.5),0.001)!;
+  expect(await e.commit({...e.document,shapes:e.document.shapes.map(s=>s.id===next.id?next:s)})).toBe(true);
+  expect(e.revision).toBe(before+1);
+  expect(e.document.stitchGroups).toHaveLength(2);
+  expect(e.document.stitchLinks).toEqual(doc.stitchLinks);
+  expect(e.document.stitchTransfers).toHaveLength(1);
+  expect(e.document.stitchTransfers![0].masterId).toBe(groups[0].id);
+  e.document.stitchGroups!.forEach((g,i)=>{
+    expect(g.closed).toBe(true);
+    expect(g.holeOverrides).toEqual(groups[i].holeOverrides);
+    expect(stitchGeometry(e.document.shapes.find(s=>s.id===shape.id)!,g).holes).toHaveLength(counts[i]);
+  });
+  const after=JSON.stringify(e.document);
+  await e.transact("undo");expect(JSON.stringify(e.document)).toBe(original);
+  await e.transact("redo");expect(JSON.stringify(e.document)).toBe(after);
+  expect(parseProject(after).stitchGroups).toEqual(e.document.stitchGroups);
+});
+
+test("compound Offset activation creates a preview and cancellation leaves the original untouched",async()=>{
+  const {booleanShapes}=await import("../model/booleanShapes");
+  const rect=(id:string,x:number,y:number,w:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y},{x:x+w,y:y+w}],radius:0,rotation:0});
+  const shape=booleanShapes("subtract",[rect("base",0,0,30),rect("cut",10,10,10)])!;
+  const e=editor();await e.commit({...e.document,shapes:[shape]});e.selected=[shape.id];
+  const before=JSON.stringify(e.document);
+  expect(e.canOffset).toBe(true);e.activateOffset();
+  expect(e.offsetError).toBe("");expect(e.preview!.shapes).toHaveLength(2);
+  expect(e.preview!.shapes[1].kind).toBe("compound");
+  e.cancel();expect(JSON.stringify(e.document)).toBe(before);
+});
+
+test('copy along path previews without history and commits one undo step', async () => {
+  const e = editor();
+  const source = { id:'source', name:'Source', kind:'rectangle' as const, points:[{x:2,y:3},{x:4,y:5}], radius:0, rotation:0 };
+  const path = { id:'path', name:'Path', kind:'polyline' as const, points:[{x:0,y:0},{x:20,y:0}], radius:0, rotation:0 };
+  await e.commit({...emptyDocument(), shapes:[source,path]});
+  e.selected = [source.id];
+  e.activatePathCopy();
+  e.pickPathCopy(path.id);
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.preview?.shapes).toHaveLength(4);
+  await e.applyPathCopy();
+  expect(e.document.shapes).toHaveLength(4);
+  expect(e.pathCopy).toBeNull();
+  await e.transact('undo');
+  expect(e.document.shapes).toHaveLength(2);
+});
+test('copy along path cancellation restores selection and drops invalid previews', async () => {
+  const e = editor();
+  const shape = {id:'piece',name:'Piece',kind:'rectangle' as const,points:[{x:0,y:0},{x:20,y:20}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape]});
+  e.selected = [shape.id];
+  e.activatePathCopy(); e.pickPathCopy(shape.id);
+  expect(e.pathCopy?.error).toMatch(/distinct/);
+  expect(e.preview).toBeNull();
+  e.cancel();
+  expect(e.selected).toEqual([shape.id]);
+  expect(e.document.shapes).toHaveLength(1);
+});
+test('copy along path preserves stitched sources and round trips fresh dependencies', async () => {
+  const e = editor(), {shape, group} = runFixture();
+  const path = {id:'path',name:'Path',kind:'polyline' as const,points:[{x:0,y:0},{x:40,y:0}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape,path],stitchGroups:[group]});
+  e.selected = [shape.id]; e.activatePathCopy();
+  e.pathCopy!.mode = 'count'; e.pathCopy!.count = 2;
+  e.pickPathCopy(path.id);
+  expect(e.pathCopy?.error).toBe('');
+  await e.applyPathCopy();
+  const result = parseProject(JSON.stringify(e.document));
+  expect(result.stitchGroups).toHaveLength(3);
+  expect(new Set(result.stitchGroups!.map(g => g.id)).size).toBe(3);
+  expect(result.shapes.find(s => s.id === shape.id)).toEqual(shape);
+});
+
+test('path rotation preserves centers of transformed source copies', async () => {
+  const { center } = await import('../model/geometry');
+  const e = editor();
+  const source = {id:'source',name:'Source',kind:'rectangle' as const,points:[{x:12,y:8},{x:24,y:18}],radius:0,rotation:27,transform:{a:1,b:0,c:0,d:1,e:90,f:-35}};
+  const path = {id:'path',name:'Path',kind:'rectangle' as const,points:[{x:40,y:60},{x:140,y:140}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[source,path]});
+  e.selected = [source.id]; e.activatePathCopy();
+  e.pathCopy!.mode = 'count'; e.pathCopy!.count = 15;
+  e.pathCopy!.rotate = false; e.pickPathCopy(path.id);
+  const fixed = e.preview!.shapes.slice(2).map(center);
+  e.pathCopy!.rotate = true; e.refreshPathCopy();
+  e.preview!.shapes.slice(2).map(center).forEach((p,i) => {
+    expect(p.x).toBeCloseTo(fixed[i].x,10);
+    expect(p.y).toBeCloseTo(fixed[i].y,10);
+  });
+});
+
+test("selection phases preserve retained edits, require confirmation and restore selection on cancel",async()=>{
+  const e=editor();
+  const shape=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+20,y:20}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[shape("a",0),shape("b",40)]});
+  e.selected=["a","b"];
+  await e.activateTransform("move");
+  expect(e.objectPicker).toBe(false);
+  e.setTransformValues({x:5});
+  e.toggleObjectPicker();
+  e.pickToolObject("a",true);
+  expect(e.preview!.shapes.map(s=>s.points[0].x)).toEqual([0,45]);
+  expect(e.transformValid).toBe(false);
+  const before=e.revision;
+  await e.applyTransform();
+  expect(e.revision).toBe(before);
+  e.toggleObjectPicker();
+  await e.applyTransform();
+  expect(e.document.shapes.map(s=>s.points[0].x)).toEqual([0,45]);
+  await e.transact("undo");
+  e.selected=["a"];
+  e.activateOffset();
+  e.toggleObjectPicker();
+  e.setToolSelection([]);
+  e.toggleObjectPicker();
+  expect(e.objectPicker).toBe(true);
+  e.pickToolObject("b");
+  e.cancel();
+  expect(e.selected).toEqual(["a"]);
+});
+
+test("Trim only highlights selected outlines and keeps unselected crossings", async () => {
+  const e = editor();
+  const a = {id:"a",name:"A",kind:"line" as const,points:[{x:0,y:0},{x:100,y:0}],radius:0,rotation:0};
+  const b = {...a,id:"b",name:"B",points:[{x:50,y:-30},{x:50,y:30}]};
+  await e.commit({...emptyDocument(),shapes:[a,b]});
+  e.selected=["a"];
+  e.activateTrim();
+  e.pointerMove(e.screen({x:50,y:20}),false);
+  expect(e.trimHighlight).toBeNull();
+  e.pointerDown(e.screen({x:25,y:0}),0,false,false);
+  expect(e.trimDraft!.shapes.find(s=>s.id==="b")).toEqual(b);
+  expect(e.trimDraft!.shapes.find(s=>s.id==="a")!.points[0].x).toBeCloseTo(50);
+  e.cancel();
+  expect(e.selected).toEqual(["a"]);
+});
+
+test("selection-dependent tools require an initial selection",async()=>{
+  const e=editor();
+  expect(e.canBoolean).toBe(false);
+  expect(e.canJoin).toBe(false);
+  expect(e.canTrim).toBe(false);
+  expect(e.canOffset).toBe(false);
+  expect(e.canCopyAlongPath).toBe(false);
+  e.activateBoolean("subtract"); e.activatePathCopy(); e.activateTrim(); e.activateOffset();
+  await e.activateTransform("move");
+  expect(e.booleanOperation).toBeNull();
+  expect(e.pathCopy).toBeNull();
+  expect(e.trimMode).toBe(false);
+  expect(e.offsetActive).toBe(false);
+  expect(e.transformTool).toBeNull();
+});
+
+test("canvas selection uses plain replacement and Shift toggling while operation actions wait",async()=>{
+  const e=editor();
+  const line=(id:string,y:number)=>({id,name:id,kind:"line" as const,points:[{x:0,y},{x:100,y}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[line("a",0),line("b",30)]});
+  e.selected=["a","b"];
+  e.activateTrim();
+  e.pointerDown(e.screen({x:50,y:0}),0,false,false);
+  expect(e.trimDraft!.shapes.map(s=>s.id)).toEqual(["b"]);
+  e.toggleObjectPicker();
+  e.pickToolObject("a",true);
+  expect(e.trimDraft!.shapes.map(s=>s.id)).toEqual(["a","b"]);
+  e.pickToolObject("b");
+  expect(e.selected).toEqual(["b"]);
+  e.pickToolObject("a",true);
+  expect(e.selected).toEqual(["b","a"]);
+  e.pickToolObject("b",true);
+  expect(e.selected).toEqual(["a"]);
+  e.toggleObjectPicker();
+  expect(e.objectPicker).toBe(false);
+});
+
+test("pivot modes preserve pending geometry and custom placement can be cancelled",async()=>{
+  const e=editor();
+  const rect=(id:string,x:number,width:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+width,y:20}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[rect("a",0,100),rect("b",200,20)]});
+  e.selected=["a","b"];
+  await e.activateTransform("rotate");
+  expect(e.pivotMode).toBe("bounding-box");
+  e.setPivotMode("median");
+  expect(e.transformPivot).toEqual({x:130,y:10});
+  e.setTransformValues({angle:30});
+  const preview=JSON.stringify(e.preview);
+  const pivot={...e.transformPivot};
+  e.beginPivotPlacement();
+  expect(e.pivotMode).toBe("custom");
+  expect(e.cancelPivotPlacement()).toBe(true);
+  expect(e.pivotMode).toBe("median");
+  expect(e.transformPivot).toEqual(pivot);
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  e.setPivotMode("custom");
+  e.setPivot({x:300,y:400});
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  e.toggleObjectPicker();
+  e.pickToolObject("b",true);
+  expect(e.transformPivot).toEqual({x:300,y:400});
+  e.cancel();
+  await e.activateTransform("rotate");
+  expect(e.pivotMode).toBe("bounding-box");
+});
+
+test("Select replaces an existing multi-selection and Shift-click toggles only the hit object",async()=>{
+  const e=editor();
+  const line=(id:string,y:number)=>({id,name:id,kind:"line" as const,points:[{x:0,y},{x:100,y}],radius:0,rotation:0});
+  await e.commit({...emptyDocument(),shapes:[line("a",0),line("b",30)]});
+  e.setMode("select");
+  e.selected=["a","b"];
+  e.pointerDown(e.screen({x:20,y:0}),0,false,false);
+  expect(e.selected).toEqual(["a"]);
+  e.pointerDown(e.screen({x:20,y:30}),0,true,false);
+  expect(e.selected).toEqual(["a","b"]);
+  e.pointerDown(e.screen({x:20,y:0}),0,true,false);
+  expect(e.selected).toEqual(["b"]);
+});
+
+test("reopening Objects cancels custom pivot placement and keeps pivot actions suspended until confirmed",async()=>{
+  const e=editor();
+  await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"rectangle",points:[{x:100,y:100},{x:120,y:120}],radius:0,rotation:0}]});
+  e.selected=["a"];
+  await e.activateTransform("rotate");
+  e.beginPivotPlacement();
+  expect(e.pivotMode).toBe("custom");
+  e.toggleObjectPicker();
+  expect(e.pivotMode).toBe("bounding-box");
+  expect(e.placingPivot).toBe(false);
+  e.beginPivotPlacement();
+  expect(e.placingPivot).toBe(false);
+  e.toggleObjectPicker();
+  e.beginPivotPlacement();
+  expect(e.placingPivot).toBe(true);
+});
+
+test("absolute numeric rotation of an asymmetric outline does not drift with input history",async()=>{
+  const make=async()=>{
+    const e=editor();
+    await e.commit({...emptyDocument(),shapes:[{id:"triangle",name:"Triangle",kind:"polyline",points:[{x:0,y:0},{x:100,y:0},{x:0,y:40},{x:0,y:0}],radius:0,rotation:0}]});
+    e.selected=["triangle"]; await e.activateTransform("rotate"); return e;
+  };
+  const direct=await make(), incremental=await make();
+  direct.setTransformValues({angle:30});
+  const expected=JSON.stringify(direct.preview);
+  direct.setTransformValues({angle:30});
+  expect(JSON.stringify(direct.preview)).toBe(expected);
+  incremental.setTransformValues({angle:15});incremental.setTransformValues({angle:30});
+  expect(JSON.stringify(incremental.preview)).toBe(expected);
+});
+
+for (const mode of ["bounding-box","median","custom"] as const) for (const finish of ["release","pause"] as const) {
+  test(mode+" Move pivot is displaced once on "+finish,async()=>{
+    const e=editor();
+    await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"rectangle",points:[{x:0,y:0},{x:100,y:40}],radius:0,rotation:0}]});
+    e.selected=["a"];await e.activateTransform("move");
+    if(mode==="custom") e.setPivot({x:50,y:20}); else e.setPivotMode(mode);
+    const before=e.revision;
+    e.pointerDown(e.screen({x:50,y:20}),0,false,false);
+    e.pointerMove(e.screen({x:60,y:20}),true);
+    if(finish==="pause") e.pauseGesture(); else e.pointerUp(e.screen({x:60,y:20}),true);
+    expect(e.transformPivot.x).toBeCloseTo(60);
+    const preview=JSON.stringify(e.preview);
+    e.setTransformValues({...e.transformValues});
+    expect(JSON.stringify(e.preview)).toBe(preview);
+    expect(e.revision).toBe(before);
+    await e.applyTransform();
+    expect(e.revision).toBe(before+1);
+    await e.transact("undo");
+    expect(e.document.shapes[0].points[0].x).toBe(0);
+  });
+}
+
+test("absolute numeric scaling remains stable after automatic pivot recentering",async()=>{
+  const e=editor();
+  await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"polyline",points:[{x:0,y:0},{x:100,y:0},{x:0,y:40},{x:0,y:0}],radius:0,rotation:0}]});
+  e.selected=["a"];await e.activateTransform("scale");
+  e.setTransformValues({sx:2,sy:0.5});
+  const preview=JSON.stringify(e.preview);
+  e.setTransformValues({sx:2,sy:0.5});
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  e.cancel();
+  expect(e.document.shapes[0].points[1]).toEqual({x:100,y:0});
+});
+
+test("consecutive Move gestures retain the correct automatic gizmo and numeric basis",async()=>{
+  const e=editor();
+  await e.commit({...emptyDocument(),shapes:[{id:"a",name:"A",kind:"rectangle",points:[{x:0,y:0},{x:100,y:40}],radius:0,rotation:0}]});
+  e.selected=["a"];await e.activateTransform("move");
+  for(const x of [50,60]) {
+    e.pointerDown(e.screen({x,y:20}),0,false,false);
+    e.pointerMove(e.screen({x:x+10,y:20}),true);
+    e.pointerUp(e.screen({x:x+10,y:20}),true);
+    expect(e.transformPivot.x).toBeCloseTo(x+10);
+  }
+  const preview=JSON.stringify(e.preview);
+  e.setTransformValues({...e.transformValues});
+  expect(JSON.stringify(e.preview)).toBe(preview);
+  expect(e.preview!.shapes[0].points[0].x).toBeCloseTo(20);
+});
+
+test("canvas right-click confirms targets before applying and rejects invalid selection", async()=>{
+  const e=editor();
+  const shape={id:"a",name:"A",kind:"rectangle" as const,points:[{x:0,y:0},{x:20,y:20}],radius:0,rotation:0};
+  await e.commit({...emptyDocument(),shapes:[shape]});
+  e.selected=["a"];
+  await e.activateTransform("move");
+  e.setTransformValues({x:5});
+  e.toggleObjectPicker();
+  const revision=e.revision;
+  e.pointerDown({x:200,y:200},2,false,false);
+  expect(e.objectPicker).toBe(false);
+  expect(e.transformTool).toBe("move");
+  expect(e.revision).toBe(revision);
+  expect(e.document.shapes[0].points[0].x).toBe(0);
+  e.toggleObjectPicker();
+  e.setToolSelection([]);
+  e.pointerDown({x:200,y:200},2,false,false);
+  expect(e.objectPicker).toBe(true);
+  expect(e.revision).toBe(revision);
+  e.setToolSelection(["a"]);
+  e.busy=true;
+  e.pointerDown({x:200,y:200},2,false,false);
+  expect(e.objectPicker).toBe(true);
+});
+
+test("outward corner dragging crosses rounding through zero into chamfer and cancels", () => {
+  const e = editor();
+  e.document = {version:23, shapes:[{id:"r",name:"Rectangle",kind:"rectangle",points:[{x:0,y:0},{x:40,y:20}],radius:3,rotation:0}]};
+  e.selected = ["r"];
+  e.transformTool = "corner";
+  const h = e.cornerHandles()[0];
+  e.pointerDown(e.screen(h.point),0,false,false,false);
+  e.pointerMove(e.screen({x:h.point.x-8,y:h.point.y-8}),false,false,false);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBeGreaterThan(0);
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBe(0);
+  e.pointerMove(e.screen({x:h.point.x+3,y:h.point.y+3}),false,false,false);
+  expect(e.preview?.shapes[0].cornerRadii?.[0]).toBeGreaterThan(3);
+  expect(e.document.shapes[0].cornerChamfers).toBeUndefined();
+  e.cancel();
+  expect(e.preview).toBeNull();
+  expect(e.document.shapes[0].radius).toBe(3);
+});
+
+test("chamfer exact edits preserve zero style and apply in one undoable transaction", async () => {
+  const e = editor();
+  await e.transact("load", {version:23,shapes:[{id:"r",name:"Rectangle",kind:"rectangle",points:[{x:0,y:0},{x:40,y:20}],radius:3,rotation:0}]});
+  e.selected = ["r"];
+  await e.activateTransform("corner");
+  e.selectedCorner = {shapeId:"r",index:0};
+  e.setCornerStyle(true);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBeCloseTo(3);
+  e.setCornerValue(0);
+  e.setCornerValue(4);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBe(4);
+  e.setCornerValue(-1);
+  expect(e.transformError).toContain("non-negative");
+  e.setCornerValue(4);
+  await e.applyTransform();
+  expect(e.document.shapes[0].cornerChamfers?.[0]).toBe(4);
+  await e.transact("undo");
+  expect(e.document.shapes[0].cornerChamfers).toBeUndefined();
+  await e.transact("redo");
+  expect(e.document.shapes[0].cornerChamfers?.[0]).toBe(4);
+});
+
+test("bulk corner controls work before selecting a marker across multiple objects", async () => {
+  const e = editor();
+  const shape = {id:"a",name:"Rectangle",kind:"rectangle" as const,points:[{x:0,y:0},{x:40,y:20}],radius:0,rotation:0};
+  await e.transact("load", {version:23,shapes:[shape,{...shape,id:"b",radius:3}]});
+  e.selected = ["a","b"];
+  await e.activateTransform("corner");
+  expect(e.selectedCorner).toBeNull();
+  e.setAllCornerValue(4);
+  expect(e.preview?.shapes.map(s => s.radius)).toEqual([4,4]);
+  e.setAllCornerStyle(true);
+  e.setAllCornerValue(0);
+  expect(e.bulkCornerStyle).toBe(true);
+  e.setAllCornerValue(5);
+  expect(e.preview?.shapes.every(s => s.cornerChamfers?.every(v => v === 5))).toBe(true);
+  e.setAllCornerValue(-1);
+  expect(e.transformError).toContain("non-negative");
+  e.setAllCornerValue(5);
+  await e.applyTransform();
+  await e.transact("undo");
+  expect(e.document.shapes.map(s => s.radius)).toEqual([0,3]);
+});
+
+test("mixed bulk styles require an explicit choice and preserve cut endpoints", async () => {
+  const e = editor();
+  const shape = {id:"a",name:"Rectangle",kind:"rectangle" as const,points:[{x:0,y:0},{x:40,y:20}],radius:0,rotation:0};
+  await e.transact("load",{version:23,shapes:[{...shape,cornerRadii:[3,0,0,0]},{...shape,id:"b",cornerChamfers:[5,0,0,0]}]});
+  e.selected = ["a","b"];
+  await e.activateTransform("corner");
+  expect(e.bulkCornerStyle).toBeNull();
+  e.setAllCornerValue(4);
+  expect(e.preview).toBeNull();
+  e.setAllCornerStyle(true);
+  expect(e.bulkCornerStyle).toBe(true);
+  expect(e.preview?.shapes[0].cornerChamfers?.[0]).toBeCloseTo(3);
+  expect(e.preview?.shapes[1].cornerChamfers?.[0]).toBeCloseTo(5);
+  e.cancel();
+  expect(e.document.shapes[0].cornerRadii?.[0]).toBe(3);
+});
+
+async function arrayEditor() {
+  const e = editor();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [
+      {
+        id: "source",
+        name: "Source",
+        kind: "rectangle",
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+      {
+        id: "other",
+        name: "Other",
+        kind: "rectangle",
+        points: [
+          { x: 40, y: 0 },
+          { x: 50, y: 10 },
+        ],
+        radius: 0,
+        rotation: 0,
+      },
+    ],
+  });
+  e.selected = ["source"];
+  e.grid = false;
+  e.objects = false;
+  return e;
+}
+test("rectangular endpoint confirmation is separate from applying and undo", async () => {
+  const e = await arrayEditor(),
+    before = e.uiSnapshot();
+  await e.activateArray("rectangular");
+  expect(e.uiSnapshot()).not.toBe(before);
+  expect(e.arrayStage).toBe("endpoint1");
+  e.pointerMove(e.screen({ x: 75, y: 40 }), true);
+  expect(e.array?.vector1).toEqual({ x: 70, y: 35 });
+  e.pointerDown(e.screen({ x: 75, y: 40 }), 0, false, true);
+  e.pointerUp();
+  expect(e.arrayStage).toBe("review");
+  expect(e.document.shapes).toHaveLength(2);
+  const positions = JSON.stringify(e.preview);
+  e.pointerMove(e.screen({ x: 100, y: 100 }), true);
+  expect(JSON.stringify(e.preview)).toBe(positions);
+  expect(e.cursor).toEqual({ x: 100, y: 100 });
+  expect(e.smartGuides).toEqual([]);
+  await e.applyArray();
+  expect(e.document.shapes).toHaveLength(9);
+  await e.transact("undo");
+  expect(e.document.shapes).toHaveLength(2);
+  await e.transact("redo");
+  expect(e.document.shapes).toHaveLength(9);
+});
+test("extent and spacing modes preserve arrangement and define count changes", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.pointerDown(e.screen({ x: 75, y: 5 }), 0, false, true);
+  const points = () => e.preview!.shapes.map((s) => s.points);
+  const before = points();
+  e.setArrayExtent(false);
+  expect(points()).toEqual(before);
+  expect(e.array?.vector1).toEqual({ x: 10, y: 0 });
+  e.setArrayValue("columns", 3);
+  expect(e.preview!.shapes).toHaveLength(4);
+  e.setArrayExtent(true);
+  expect(e.array?.vector1).toEqual({ x: 20, y: 0 });
+});
+test("optional second direction can be cancelled or confirmed independently", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.pointerDown(e.screen({ x: 75, y: 5 }), 0, false, true);
+  e.pickArrayPoint("endpoint2");
+  expect(e.array?.rows).toBe(2);
+  e.pointerMove(e.screen({ x: 15, y: 35 }), true);
+  expect(e.array?.vector2).toEqual({ x: 10, y: 30 });
+  expect(e.cancelArrayPoint()).toBe(true);
+  expect(e.array?.rows).toBe(1);
+  e.pickArrayPoint("endpoint2");
+  e.pointerDown(e.screen({ x: 15, y: 35 }), 0, false, true);
+  expect(e.arrayStage).toBe("review");
+  expect(e.preview?.shapes).toHaveLength(17);
+});
+test("radial center is chosen first and subsequent cursor movement leaves it stable", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  expect(e.preview).toBeNull();
+  expect(e.arrayStage).toBe("center");
+  e.pointerDown(e.screen({ x: -10, y: 5 }), 2, false, true);
+  expect(e.arrayStage).toBe("review");
+  expect(e.array?.cx).toBe(-10);
+  expect(e.document.shapes).toHaveLength(2);
+  expect(e.preview?.shapes).toHaveLength(9);
+  e.pointerMove(e.screen({ x: -25, y: 5 }), true);
+  expect(e.array?.angle).toBe(360);
+  e.setArrayValue("count", 4);
+  e.setArrayDistribution(true);
+  expect(e.array?.angle).toBe(90);
+  e.setArrayDistribution(false);
+  expect(e.array?.angle).toBe(360);
+  e.pickArrayPoint("center");
+  e.pointerMove(e.screen({ x: -100, y: 5 }), true);
+  e.cancelArrayPoint();
+  expect(e.array?.cx).toBe(-10);
+  expect(e.arrayStage).toBe("review");
+});
+test("source picking, invalid counts, failed commits and outside changes are safe", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  e.toggleObjectPicker();
+  e.setToolSelection(["other"]);
+  e.toggleObjectPicker();
+  expect(e.selected).toEqual(["other"]);
+  e.setArrayValue("columns", NaN);
+  expect(e.preview).toBeNull();
+  e.setArrayValue("columns", 3);
+  const commit = vi.spyOn(e, "commit").mockResolvedValueOnce(false);
+  await e.applyArray();
+  expect(e.array?.error).toMatch(/Could not apply/);
+  commit.mockRestore();
+  e.cancel();
+  expect(e.selected).toEqual(["source"]);
+});
+test("arrays preserve nested groups and stitches through a project round trip", async () => {
+  const e = editor(),
+    { shape, group } = runFixture();
+  await e.commit({
+    ...emptyDocument(),
+    shapes: [shape],
+    stitchGroups: [group],
+    objectTree: [
+      {
+        kind: "group",
+        id: "root",
+        name: "Root",
+        children: [
+          {
+            kind: "group",
+            id: "nested",
+            name: "Nested",
+            children: [{ kind: "object", id: shape.id }],
+          },
+        ],
+      },
+    ],
+  });
+  e.selected = [shape.id];
+  e.selectedGroups = ["root"];
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  expect(e.array?.error).toBe("");
+  await e.applyArray();
+  const result = parseProject(JSON.stringify(e.document));
+  expect(result.stitchGroups).toHaveLength(8);
+  expect(result.objectTree?.filter((n) => n.kind === "group")).toHaveLength(8);
+});
+test("panning and wheel counts do not commit array previews", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  const revision = e.revision;
+  e.pointerDown(e.screen({ x: 10, y: 10 }), 1, false, false);
+  e.pointerMove(e.screen({ x: 20, y: 20 }), true);
+  e.pointerUp();
+  expect(e.revision).toBe(revision);
+  e.adjustArrayCount(1);
+  expect(e.array?.columns).toBe(9);
+});
+test("array wheel limits and invalid distance drafts preserve confirmed direction", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.confirmArrayPoint();
+  const direction = { ...e.array!.vector2 };
+  e.setArrayDistance("vector2", NaN);
+  expect(e.preview).toBeNull();
+  e.setArrayDistance("vector2", Math.hypot(direction.x, direction.y));
+  expect(e.array!.vector2).toEqual(direction);
+  expect(e.array!.error).toBe("");
+  e.setArrayValue("rows", 2);
+  e.setArrayValue("columns", 500);
+  e.adjustArrayCount(1);
+  expect(e.array!.columns).toBe(500);
+  await e.commit({
+    ...e.document,
+    shapes: e.document.shapes.map((s) => ({ ...s, name: s.name + " edited" })),
+  });
+  expect(e.array).toBeNull();
+  expect(e.preview).toBeNull();
+});
+test("radial hover previews candidate centers without changing confirmed settings or history", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  const revision = e.revision,
+    center = { x: e.array!.cx, y: e.array!.cy };
+  e.pointerMove(e.screen({ x: -15, y: 5 }), true);
+  expect(e.preview?.shapes).toHaveLength(9);
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+  expect({ x: e.array!.cx, y: e.array!.cy }).toEqual(center);
+  expect(e.revision).toBe(revision);
+  e.confirmArrayPoint();
+  expect(e.array!.cx).toBe(-15);
+  e.pickArrayPoint("center");
+  e.pointerMove(e.screen({ x: -25, y: 10 }), true);
+  expect(e.array!.cx).toBe(-15);
+  e.cancelArrayPoint();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+});
+test("array constraints update without pointer movement and Alt retains Shift snapping", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("rectangular");
+  e.pointerMove(e.screen({ x: 25, y: 15 }), true);
+  expect(e.array!.vector1).toEqual({ x: 20, y: 10 });
+  e.updateArrayModifiers(true, false, true);
+  expect(e.array!.vector1.x).toBeCloseTo(e.array!.vector1.y);
+  e.updateArrayModifiers(true, false, false);
+  expect(e.array!.vector1).toEqual({ x: 20, y: 10 });
+  e.transformAxis = "y";
+  e.refreshArrayConstraint();
+  expect(e.array!.vector1.x).toBe(0);
+  e.transformAxis = undefined;
+  e.refreshArrayConstraint();
+  expect(e.array!.vector1).toEqual({ x: 20, y: 10 });
+});
+test("source picking preserves the radial hover center", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  e.pointerMove(e.screen({ x: -15, y: 5 }), true);
+  const points = e.preview!.shapes.map((s) => s.points);
+  e.toggleObjectPicker();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+  e.refreshArray();
+  expect(e.preview!.shapes.map((s) => s.points)).toEqual(points);
+  e.toggleObjectPicker();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+});
+test("cancelling radial center repositioning clears the discarded snap target", async () => {
+  const e = await arrayEditor();
+  await e.activateArray("radial");
+  e.pointerDown(e.screen({ x: -15, y: 5 }), 0, false, true);
+  e.pickArrayPoint("center");
+  e.objects = true;
+  e.pointerMove(e.screen({ x: 40.1, y: 0.1 }), false);
+  expect(e.snapTarget).not.toBeNull();
+  e.cancelArrayPoint();
+  expect(e.arrayPreviewCenter).toEqual({ x: -15, y: 5 });
+  expect(e.snapTarget).toBeNull();
+  expect(e.snapKind).toBeNull();
+  expect(e.smartGuides).toEqual([]);
 });

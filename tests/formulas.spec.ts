@@ -1,0 +1,72 @@
+import { manualScreenshot } from "./manual-capture";
+import { readFile } from 'node:fs/promises';
+import { test, expect } from '@playwright/test';
+
+test('formulas update properties live and reject incomplete drafts without losing precision', async ({ page }) => {
+  await page.goto('/');
+  const rectangle = page.getByRole('button', { name: 'Rectangle (R)', exact: true });
+  await expect(rectangle).toBeEnabled();
+  await rectangle.click();
+  const canvas = page.getByLabel('Pattern drawing canvas');
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.click({ position: { x: 450, y: 390 } });
+  await page.getByRole('button', { name: 'Select (V)', exact: true }).click();
+  const width = page.getByLabel('Width', { exact: true });
+  await width.fill('(10+5)*2');
+  await expect(width).toHaveValue('(10+5)*2');
+  await width.press('Enter');
+  await expect(width).toHaveValue('30');
+  await width.fill('30+');
+  await expect(width).toHaveAttribute('aria-invalid', 'true');
+  await width.press('Tab');
+  await expect(width).toHaveValue('30');
+  await width.fill('1/3');
+  await width.press('Enter');
+  await width.focus();
+  const exact = await width.inputValue();
+  expect(Number(exact)).toBeCloseTo(1/3, 12);
+  await width.press('Tab');
+  await width.focus();
+  await expect(width).toHaveValue(exact);
+  await width.fill('20+5');
+  await width.press('Escape');
+  await width.focus();
+  await expect(width).toHaveValue(exact);
+  await width.press('Tab');
+  await page.evaluate(() => { delete (window as any).showSaveFilePicker; });
+  async function savedShapes() {
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    return JSON.parse(await readFile((await (await download).path())!, 'utf8')).shapes;
+  }
+  const before = await savedShapes();
+  await width.focus();
+  await width.press('Tab');
+  expect(await savedShapes()).toEqual(before);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(width).toHaveValue('30');
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(width).toHaveValue('0.3');
+  await width.focus();
+  await expect(width).toHaveValue(exact);
+});
+
+test('settings use current units and wheel adjusts an evaluated formula', { tag: '@manual' }, async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Rectangle (R)', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const grid = page.getByLabel('Grid spacing (mm)', { exact: true });
+  await grid.fill('(2+3)*2');
+  await manualScreenshot(page.getByRole('dialog', { name: 'Settings', exact: true }), "numeric-formula.png");
+  await grid.dispatchEvent('wheel', { deltaY: -100, altKey: true });
+  await expect(grid).toHaveValue('11');
+  await grid.fill('1/0');
+  await expect(grid).toHaveAttribute('aria-invalid', 'true');
+  await grid.press('Tab');
+  await expect(grid).toHaveValue('11');
+  await page.getByLabel('Units', { exact: true }).selectOption('in-fractional');
+  const inches = page.getByLabel('Grid spacing (in)', { exact: true });
+  await inches.fill('(1 1/2)/2');
+  await inches.press('Tab');
+  await expect(inches).toHaveValue('3/4');
+});

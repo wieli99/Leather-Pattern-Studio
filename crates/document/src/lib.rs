@@ -26,6 +26,7 @@ pub enum Kind {
     Curve,
     #[serde(rename = "control-curve")]
     ControlCurve,
+    Compound,
     Rectangle,
     Circle,
     Ellipse,
@@ -108,6 +109,9 @@ pub struct Shape {
     pub points: Vec<Point>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
+    pub contours: Option<Vec<Vec<[Point; 4]>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub handles: Option<Vec<CurveHandles>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -129,9 +133,50 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub measurement_offset: Option<f64>,
+    #[serde(
+        default,
+        rename = "measurementSections",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub measurement_sections: Option<u32>,
     #[serde(default, rename = "fontSize", skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub font_size: Option<f64>,
+    #[serde(
+        default,
+        rename = "fontFamily",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub font_family: Option<String>,
+    #[serde(default, rename = "bold", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bold: Option<bool>,
+    #[serde(default, rename = "italic", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub italic: Option<bool>,
+    #[serde(default, rename = "underline", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub underline: Option<bool>,
+    #[serde(
+        default,
+        rename = "strikethrough",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub strikethrough: Option<bool>,
+    #[serde(default, rename = "textAlign", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub text_align: Option<String>,
+    #[serde(
+        default,
+        rename = "lineSpacing",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub line_spacing: Option<f64>,
+
     #[serde(
         default,
         rename = "cornerRadii",
@@ -139,6 +184,13 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub corner_radii: Option<Vec<f64>>,
+    #[serde(
+        default,
+        rename = "cornerChamfers",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub corner_chamfers: Option<Vec<f64>>,
     pub radius: f64,
     pub rotation: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -584,14 +636,25 @@ impl ObjectNode {
 }
 // Logical boundary order mirrors the renderer, independent of viewport and transforms.
 fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
-    let closed = matches!(shape.kind, Kind::Rectangle | Kind::Circle | Kind::Ellipse)
-        || matches!(
-            shape.kind,
-            Kind::Polyline | Kind::Curve | Kind::ControlCurve
-        ) && shape.points.first() == shape.points.last()
+    let closed = matches!(
+        shape.kind,
+        Kind::Rectangle | Kind::Circle | Kind::Ellipse | Kind::Compound
+    ) || matches!(
+        shape.kind,
+        Kind::Polyline | Kind::Curve | Kind::ControlCurve
+    ) && shape.points.first() == shape.points.last()
         || shape.kind == Kind::Arc && shape.sweep.is_some_and(|s| s.abs() == 360.0);
     let kind = serde_json::to_value(&shape.kind).unwrap();
-    let prefix = format!("{}:{}:", kind.as_str().unwrap(), shape.points.len());
+    let point_count = if shape.kind == Kind::Compound {
+        shape
+            .contours
+            .as_ref()
+            .map(|c| c.iter().map(Vec::len).sum())
+            .unwrap_or(0)
+    } else {
+        shape.points.len()
+    };
+    let prefix = format!("{}:{}:", kind.as_str().unwrap(), point_count);
     let mut keys = vec![];
     if shape.kind == Kind::Rectangle || shape.kind == Kind::Polyline && closed {
         let points = if shape.kind == Kind::Rectangle {
@@ -650,7 +713,16 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
             }
         }
         let uniform = shape.radius.min(if max.is_finite() { max } else { 0.0 });
-        let requested = shape.corner_radii.clone().unwrap_or(vec![uniform; n]);
+        let requested: Vec<f64> = (0..n)
+            .map(|i| {
+                let chamfer = shape.corner_chamfers.as_ref().map_or(0.0, |v| v[i]);
+                if chamfer > 0.0 && factors[i] > 0.0 {
+                    chamfer / factors[i]
+                } else {
+                    shape.corner_radii.as_ref().map_or(uniform, |v| v[i])
+                }
+            })
+            .collect();
         let mut scale: f64 = 1.0;
         for i in 0..n {
             let used = requested[i] * factors[i] + requested[(i + 1) % n] * factors[(i + 1) % n];
@@ -667,6 +739,12 @@ fn stitch_boundary(shape: &Shape) -> (Vec<String>, bool) {
             }
             if requested[i] * scale > 0.0 && factors[i] > 0.0 {
                 keys.push(format!("{prefix}corner:{i}"));
+            }
+        }
+    } else if shape.kind == Kind::Compound {
+        if let Some(contours) = &shape.contours {
+            for (i, _) in contours.iter().flatten().enumerate() {
+                keys.push(format!("{prefix}edge:{i}"));
             }
         }
     } else if matches!(shape.kind, Kind::Circle | Kind::Ellipse | Kind::Arc) {
@@ -773,10 +851,10 @@ impl Document {
         }
         if !matches!(
             self.version,
-            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
+            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23). Reload the application.",
                 self.version
             ));
         }
@@ -819,7 +897,7 @@ impl Document {
             }
         }
         for s in &self.shapes {
-            if let Some(radii) = &s.corner_radii {
+            for radii in [&s.corner_radii, &s.corner_chamfers].into_iter().flatten() {
                 let count = if s.kind == Kind::Rectangle {
                     4
                 } else if s.kind == Kind::Polyline
@@ -835,6 +913,17 @@ impl Document {
                     || radii.iter().any(|r| !r.is_finite() || *r < 0.0 || *r > 1e7)
                 {
                     return Err("Invalid corner radii".into());
+                }
+            }
+        }
+        for shape in &self.shapes {
+            if let Some(chamfers) = &shape.corner_chamfers {
+                for (i, value) in chamfers.iter().enumerate() {
+                    if *value > 0.0
+                        && shape.corner_radii.as_ref().map_or(shape.radius, |r| r[i]) > 0.0
+                    {
+                        return Err("Corner cannot be both rounded and chamfered".into());
+                    }
                 }
             }
         }
@@ -890,6 +979,11 @@ impl Document {
             {
                 return Err("Invalid shape".into());
             }
+            if s.measurement_sections
+                .is_some_and(|v| !(1..=100).contains(&v))
+            {
+                return Err("Invalid measurement sections".into());
+            }
             if s.kind == Kind::Measurement
                 && s.measurement_offset
                     .is_none_or(|v| !v.is_finite() || v.abs() > 1e7)
@@ -901,7 +995,14 @@ impl Document {
                     .text
                     .as_ref()
                     .is_none_or(|t| t.trim().is_empty() || t.chars().count() > 10000)
-                    || s.font_size.is_none_or(|n| !n.is_finite() || n <= 0.0))
+                    || s.font_size.is_none_or(|n| !n.is_finite() || n <= 0.0)
+                    || s.line_spacing.is_some_and(|n| !n.is_finite() || n <= 0.0)
+                    || s.font_family
+                        .as_deref()
+                        .is_some_and(|f| !["sans", "serif", "mono"].contains(&f))
+                    || s.text_align
+                        .as_deref()
+                        .is_some_and(|a| !["left", "center", "right"].contains(&a)))
             {
                 return Err("Invalid text".into());
             }
@@ -913,7 +1014,35 @@ impl Document {
             } else if s.handles.is_some() {
                 return Err("Handles require a control point curve".into());
             }
+            if s.kind == Kind::Compound {
+                let contours = s.contours.as_ref().ok_or("Missing compound contours")?;
+                let count: usize = contours.iter().map(Vec::len).sum();
+                if contours.is_empty() || count > 10000 || contours.iter().any(Vec::is_empty) {
+                    return Err("Invalid compound contours".into());
+                }
+                for contour in contours {
+                    for (i, cubic) in contour.iter().enumerate() {
+                        let previous = &contour[(i + contour.len() - 1) % contour.len()][3];
+                        if (cubic[0].x - previous.x).hypot(cubic[0].y - previous.y) > 1e-7 {
+                            return Err("Compound contour must be closed and continuous".into());
+                        }
+                        if cubic.iter().any(|p| {
+                            !p.x.is_finite()
+                                || !p.y.is_finite()
+                                || p.x.abs() > 1e7
+                                || p.y.abs() > 1e7
+                        }) {
+                            return Err("Invalid compound coordinate".into());
+                        }
+                    }
+                }
+            } else if s.contours.is_some() {
+                return Err("Contours require a compound path".into());
+            }
             let mut geometry = s.points.clone();
+            if let Some(contours) = &s.contours {
+                geometry.extend(contours.iter().flatten().flatten().cloned());
+            }
             if let Some(handles) = &s.handles {
                 for (p, h) in s.points.iter().zip(handles) {
                     for v in [&h.incoming, &h.outgoing] {
@@ -1082,7 +1211,22 @@ impl Document {
                 }
                 continue;
             }
-            let (boundary, closed) = stitch_boundary(parent);
+            let (mut boundary, closed) = stitch_boundary(parent);
+            if parent.kind == Kind::Compound {
+                let first = group.edges.first().ok_or("Missing stitch edge")?;
+                let index = boundary
+                    .iter()
+                    .position(|k| k == first)
+                    .ok_or("Missing stitch edge")?;
+                let mut offset = 0;
+                for contour in parent.contours.as_ref().ok_or("Missing contours")? {
+                    if index < offset + contour.len() {
+                        boundary = boundary[offset..offset + contour.len()].to_vec();
+                        break;
+                    }
+                    offset += contour.len();
+                }
+            }
             let start = group
                 .edges
                 .first()
@@ -1287,7 +1431,7 @@ impl Default for Editor {
                 stitch_presets: None,
                 stitch_transfers: None,
                 print_layouts: vec![],
-                version: 21,
+                version: 23,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -1307,7 +1451,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]})
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]})
             .to_string()
     }
     pub fn snapshot(&self) -> String {
@@ -1420,7 +1564,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 21;
+                next.version = 23;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -1571,7 +1715,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 21;
+        doc.version = 23;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1616,6 +1760,28 @@ mod tests {
         assert!(bad.validate().is_err());
     }
     #[test]
+    fn chamfers_roundtrip_and_validate() {
+        let json = r#"{"version":23,"shapes":[{"id":"r","name":"Rectangle","kind":"rectangle","points":[{"x":0,"y":0},{"x":40,"y":20}],"radius":0,"cornerChamfers":[5,0,0,0],"rotation":0}]}"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        assert!(doc.validate().is_ok());
+        assert_eq!(
+            serde_json::from_str::<Document>(&serde_json::to_string(&doc).unwrap())
+                .unwrap()
+                .shapes[0]
+                .corner_chamfers,
+            Some(vec![5.0, 0.0, 0.0, 0.0])
+        );
+        let mut invalid = doc.clone();
+        invalid.shapes[0].corner_chamfers = Some(vec![-1.0; 4]);
+        assert!(invalid.validate().is_err());
+        invalid.shapes[0].corner_chamfers = Some(vec![1.0; 3]);
+        assert!(invalid.validate().is_err());
+        invalid.shapes[0].corner_chamfers = Some(vec![1.0; 4]);
+        invalid.shapes[0].radius = 2.0;
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
     fn corner_radii_roundtrip_and_validation() {
         let json = r#"{"version":7,"shapes":[{"id":"r","name":"Rectangle","kind":"rectangle","points":[{"x":0,"y":0},{"x":40,"y":20}],"radius":0,"cornerRadii":[15,0,0,5],"rotation":0}]}"#;
         let mut editor = Editor::new();
@@ -1636,10 +1802,11 @@ mod tests {
     }
     #[test]
     fn persistent_measurement_validation_and_history() {
-        let json = r#"{"version":14,"shapes":[{"id":"m","name":"Measurement","kind":"measurement","points":[{"x":0,"y":0},{"x":40,"y":0}],"measurementOffset":-12,"radius":0,"rotation":0}]}"#;
+        let json = r#"{"version":14,"shapes":[{"id":"m","name":"Measurement","kind":"measurement","points":[{"x":0,"y":0},{"x":40,"y":0}],"measurementOffset":-12,"measurementSections":3,"radius":0,"rotation":0}]}"#;
         let mut editor = Editor::new();
         editor.execute("commit", json, 0).unwrap();
         assert_eq!(editor.document.shapes[0].measurement_offset, Some(-12.0));
+        assert_eq!(editor.document.shapes[0].measurement_sections, Some(3));
         let saved = editor.document.clone();
         editor.execute("undo", "", 1).unwrap();
         assert!(editor.document.shapes.is_empty());
@@ -1660,7 +1827,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1690,9 +1857,56 @@ mod tests {
         }
     }
     #[test]
+    fn compound_contours_roundtrip_and_validation() {
+        let mut doc: Document = serde_json::from_str(&sample()).unwrap();
+        doc.version = 23;
+        let shape = &mut doc.shapes[0];
+        shape.kind = Kind::Compound;
+        let p = |x, y| Point { x, y };
+        shape.contours = Some(vec![vec![
+            [p(0.0, 0.0), p(0.0, 0.0), p(10.0, 0.0), p(10.0, 0.0)],
+            [p(10.0, 0.0), p(10.0, 0.0), p(10.0, 10.0), p(10.0, 10.0)],
+            [p(10.0, 10.0), p(10.0, 10.0), p(0.0, 0.0), p(0.0, 0.0)],
+        ]]);
+        assert!(doc.validate().is_ok());
+        let copy: Document = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+        assert_eq!(copy, doc);
+        let mut stitched = doc.clone();
+        let second = stitched.shapes[0].contours.as_ref().unwrap()[0]
+            .iter()
+            .map(|c| {
+                c.clone().map(|p| Point {
+                    x: p.x + 20.0,
+                    y: p.y,
+                })
+            })
+            .collect();
+        stitched.shapes[0].contours.as_mut().unwrap().push(second);
+        stitched.stitch_groups = vec![serde_json::from_value(serde_json::json!({
+            "id":"run","shapeId":"a","edges":["compound:6:edge:3","compound:6:edge:4","compound:6:edge:5"],
+            "side":1,"closed":true,
+            "settings":{"style":"french","spacing":3.85,"inset":1.0,"alignment":"center"}
+        })).unwrap()];
+        assert!(stitched.validate().is_ok());
+        stitched.stitch_groups[0].edges[2] = "compound:6:edge:0".into();
+        assert!(stitched.validate().is_err());
+        let mut broken = doc.clone();
+        broken.shapes[0].contours.as_mut().unwrap()[0][0][0].x = 1.0;
+        assert!(broken.validate().is_err());
+        let mut broken = doc.clone();
+        broken.shapes[0].contours.as_mut().unwrap()[0][0][1].x = f64::INFINITY;
+        assert!(broken.validate().is_err());
+        let mut broken = doc.clone();
+        broken.shapes[0].kind = Kind::Rectangle;
+        assert!(broken.validate().is_err());
+        doc.shapes[0].contours = None;
+        assert!(doc.validate().is_err());
+    }
+
+    #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 21;
+        d.version = 23;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -1851,7 +2065,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 21;
+        doc.version = 23;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1978,7 +2192,7 @@ mod print_tests {
         editor
             .execute("load", r#"{"version":5,"shapes":[]}"#, 0)
             .unwrap();
-        assert_eq!(editor.document.version, 21);
+        assert_eq!(editor.document.version, 23);
         assert!(editor.document.print_layouts.is_empty());
         editor.execute("load", &project().to_string(), 1).unwrap();
         let original = editor.document.clone();

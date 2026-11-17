@@ -141,6 +141,9 @@ test("edge tabs persist, settings center, and themes remain selectable", async (
   for (const theme of ["dark", "light", "solarized", "nord", "contrast"]) {
     await page.getByLabel("Theme", { exact: true }).selectOption(theme);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const select = page.getByLabel("Theme", { exact: true });
+    await expect(select).toHaveCSS("appearance", "none");
+    if (theme !== "light") await expect(select).not.toHaveCSS("background-color", "rgb(255, 255, 255)");
   }
   await page.getByLabel("Theme", { exact: true }).selectOption("light");
   await page.getByText("Settings", { exact: true }).click();
@@ -412,10 +415,10 @@ test("object context menu duplicates, renames and captures styling", { tag: "@ma
   await expect(rows).toHaveCount(2);
   await page.getByLabel("Fill mode", { exact: true }).selectOption("cutout");
   await page.getByLabel("Outline color", { exact: true }).fill("#123456");
-  await page.getByRole("button", { name: "Reset styling", exact: true }).click();
-  await expect(page.getByLabel("Fill mode", { exact: true })).toHaveValue("solid");
-  await expect(page.getByLabel("Outline color", { exact: true })).not.toHaveValue("#123456");
-  await expect(color).not.toHaveValue("#ff0000");
+  await color.fill("#00ff00");
+  await color.dispatchEvent("input");
+  await color.blur();
+  await expect(page.getByRole("button", { name: "Reset styling", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Rectangle 1 copy", exact: true }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Paste Styling", exact: true }).click();
   await expect(color).toHaveValue("#ff0000");
@@ -440,10 +443,13 @@ test("object visibility and locks persist and protect edits", { tag: "@manual" }
   await page.getByRole("button", { name: "Show Rectangle 1", exact: true }).click();
   await page.getByRole("button", { name: "Lock Rectangle 1", exact: true }).click();
   await row.click();
-  for (const name of ["Move", "Rotate", "Resize", "Mirror", "Corner radius", "Merge", "Trim"]) {
+  for (const name of ["Move", "Rotate", "Resize", "Mirror", "Corners", "Trim"]) {
     await expect(page.getByRole("toolbar", { name: "Transform selection" }).getByRole("button", { name, exact: true })).toBeDisabled();
   }
   await expect(page.getByRole("button", { name: "Stitch line", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Search tools", exact: true }).click();
+  await expect(page.locator(".search-results").getByRole("button", { name: "Join", exact: true })).toBeDisabled();
+  await page.getByRole("textbox", { name: "Search tools", exact: true }).press("Escape");
   await manualScreenshot(page, "object-states.png");
   await page.keyboard.press("Delete");
   await expect(row).toHaveCount(1);

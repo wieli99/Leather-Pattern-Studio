@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import { construct } from '../editor/construction';
-import { measurementGeometry } from './measurement';
+import { measurementGeometry, measurementSegments } from './measurement';
 import { intersectsBox, boundary, bounds, hitTest, transformShape } from './geometry';
 import { parseProject } from './project';
 import { stitchEdges } from './stitchGeometry';
@@ -79,4 +79,26 @@ test('crossing selection respects inch measurement label gaps', () => {
   for (const units of ['mm', 'in-fractional', 'in-decimal'] as const) {
     expect(boundary(s, units).lines).toEqual(measurementGeometry(s, units).lines);
   }
+});
+
+test.each([undefined, {a:-2,b:0.5,c:0.3,d:3,e:12,f:-7}])('rotated sections retain the parent pivot with affine transform %j', (transform) => {
+  const s = {...measurement(), rotation:90, measurementSections:2, transform};
+  const parent = measurementGeometry({...s,measurementSections:undefined});
+  const spans = measurementSegments(s).map(part=>measurementGeometry(part));
+  const close = (actual: {x:number;y:number}, expected: {x:number;y:number}) => {
+    expect(actual.x).toBeCloseTo(expected.x);
+    expect(actual.y).toBeCloseTo(expected.y);
+  };
+  close(spans[0].a,parent.a);
+  close(spans[1].b,parent.b);
+  close(spans[0].b,spans[1].a);
+  close(spans[0].end,spans[1].start);
+  close(spans[0].start,parent.start);
+  close(spans[1].end,parent.end);
+  for (const span of spans) {
+    expect(span.length).toBeCloseTo(parent.length/2);
+    expect(span.offset).toBeCloseTo(parent.offset);
+    expect(hitTest(s,span.middle,0.1)).toBe(true);
+  }
+  expect(boundary(s).lines).toEqual(spans.flatMap(span=>span.lines));
 });

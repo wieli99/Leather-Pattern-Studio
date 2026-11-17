@@ -8,6 +8,9 @@ updates:
     # Node typings match the Node 22 build/runtime environment.
     # vue-tsc currently imports TypeScript's JS implementation, absent in TS 7.
     ignore:
+      # Firefox file chooser cancellation regression: microsoft/playwright#43994.
+      - dependency-name: '@playwright/test'
+        versions: ['1.65.x']
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
       - dependency-name: typescript

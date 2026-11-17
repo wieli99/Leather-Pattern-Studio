@@ -1,8 +1,10 @@
+import { textFamily, measureText } from "../model/text";
+import { flattenContours } from "../model/flattenOutline";
 import { holeAppearance, holeMark } from "../model/stitchLayers";
 import { shapePath } from "./renderer";
 import { bounds, shapeMatrix } from "../model/geometry";
 import { isClosedShape } from "../model/closedShape";
-import { measurementGeometry } from "../model/measurement";
+import { measurementSegments, measurementGeometry } from "../model/measurement";
 import { indicatorGeometry, isIndicator } from "../model/indicators";
 import { stitchGeometry } from "../model/stitchGeometry";
 import { stitchMarks } from "../model/stitch";
@@ -128,9 +130,12 @@ function label(
   angle: number,
   size: number,
   centre = true,
+  shape?: Shape,
 ) {
-  // SVG and PDF use the bundled Liberation Sans face; text remains actual vector text.
-  return `<text transform="translate(${xy(point)}) rotate(${n((angle * 180) / Math.PI)})" font-family="PrintSans" font-size="${n(size)}" ${centre ? 'text-anchor="middle"' : ""} y="${n(size * 0.35)}">${escape(text)}</text>`;
+  const font = shape
+    ? `font-family="${textFamily(shape)}" font-weight="${shape.bold ? "bold" : "normal"}" font-style="${shape.italic ? "italic" : "normal"}" text-decoration="${[shape.underline ? "underline" : "", shape.strikethrough ? "line-through" : ""].join(" ")}"`
+    : 'font-family="PrintSans"';
+  return `<text transform="translate(${xy(point)}) rotate(${n((angle * 180) / Math.PI)})" ${font} font-size="${n(size)}" ${centre ? 'text-anchor="middle"' : ""} y="${n(size * 0.35)}">${escape(text)}</text>`;
 }
 function lines(segments: [Point, Point][]) {
   return segments.map(([a, b]) => `M${xy(a)} L${xy(b)}`).join(" ");
@@ -141,6 +146,9 @@ export function printShapeSvg(
   sourceId: string,
   layout: PrintLayout,
 ): string {
+  if (shape.kind === "measurement" && shape.measurementSections)
+    return measurementSegments(shape)
+      .map(part => printShapeSvg(doc, part, sourceId, layout)).join("");
   const m = shapeMatrix(shape),
     matrix = `matrix(${[m.a, m.b, m.c, m.d, m.e, m.f].map(n).join(" ")})`;
   const color = shape.strokeColor ?? "#111111",
@@ -163,12 +171,13 @@ export function printShapeSvg(
         label(
           line,
           {
-            x: shape.points[0].x,
-            y: shape.points[0].y + size * 0.65 + i * size * 1.2,
+            x: shape.points[0].x + (shape.textAlign === "right" || shape.textAlign === "center" ? (shape.textAlign === "right" ? 1 : .5) * (measureText(shape.text ?? "", size, shape).width - measureText(line, size, shape).width) : 0),
+            y: shape.points[0].y + size * 0.65 + i * size * (shape.lineSpacing ?? 1.2),
           },
           0,
           size,
           false,
+          shape,
         ),
       )
       .join("")}</g>`;
@@ -180,7 +189,7 @@ export function printShapeSvg(
       id = `clip-${shape.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
     let fill = "";
     if (isClosedShape(shape) && !shape.stitchOnly) {
-      fill = `<path d="${path}" fill="${shape.fillColor ?? "#111111"}" fill-opacity="${shape.fillOpacity ?? 0.05}"/>`;
+      fill = `<path d="${path}" fill-rule="${shape.kind === "compound" ? "evenodd" : "nonzero"}" fill="${shape.fillColor ?? "#111111"}" fill-opacity="${shape.fillOpacity ?? 0.05}"/>`;
       if (["skiving", "glueing", "cutout"].includes(shape.fillMode ?? "")) {
         const box = bounds([{ ...shape, rotation: 0, transform: undefined }]);
         if (box.width + box.height > 200000)
@@ -211,7 +220,7 @@ export function printShapeSvg(
               );
           }
         }
-        fill += `<defs><clipPath id="${id}"><path d="${path}"/></clipPath></defs><path clip-path="url(#${id})" d="${hatch.join(" ")}" ${style}/>`;
+        fill += `<defs><clipPath id="${id}"><path d="${path}" clip-rule="${shape.kind === "compound" ? "evenodd" : "nonzero"}"/></clipPath></defs><path clip-path="url(#${id})" d="${hatch.join(" ")}" ${style}/>`;
       }
     }
     result = `<g transform="${matrix}">${fill}${shape.stitchOnly ? "" : `<path d="${path}" ${style}/>`}</g>`;
@@ -238,6 +247,59 @@ export function printShapeSvg(
 }
 export function orderedPrintPages(layout: PrintLayout) {
   return [...layout.pages].sort((a, b) => a.row - b.row || a.column - b.column);
+}
+const assemblyTolerance = 1e-7;
+function polygonInterior(points: Point[], p: Point) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[j],
+      b = points[i];
+    const vx = b.x - a.x,
+      vy = b.y - a.y;
+    const t = Math.max(
+      0,
+      Math.min(
+        1,
+        ((p.x - a.x) * vx + (p.y - a.y) * vy) / (vx * vx + vy * vy || 1),
+      ),
+    );
+    if (Math.hypot(p.x - a.x - t * vx, p.y - a.y - t * vy) <= assemblyTolerance)
+      return false;
+    if (
+      (a.y > p.y) !== (b.y > p.y) &&
+      p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x
+    )
+      inside = !inside;
+  }
+  return inside;
+}
+/** Inclusive segment/rectangle intersection, including a notch wholly inside the box. */
+function segmentTouchesRectangle(
+  a: Point,
+  b: Point,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+) {
+  let enter = 0,
+    leave = 1;
+  for (const [start, delta, low, high] of [
+    [a.x, b.x - a.x, left, right],
+    [a.y, b.y - a.y, top, bottom],
+  ]) {
+    if (Math.abs(delta) <= assemblyTolerance) {
+      if (start < low - assemblyTolerance || start > high + assemblyTolerance)
+        return false;
+    } else {
+      const t1 = (low - assemblyTolerance - start) / delta,
+        t2 = (high + assemblyTolerance - start) / delta;
+      enter = Math.max(enter, Math.min(t1, t2));
+      leave = Math.min(leave, Math.max(t1, t2));
+      if (enter > leave) return false;
+    }
+  }
+  return true;
 }
 export function pageSvg(
   doc: Doc,
@@ -288,15 +350,118 @@ export function pageSvg(
             b.x + b.width > x;
     });
     if (!crossing) continue;
-    const px =
-        layout.margin + (dx ? (dx > 0 ? size.width : 0) : size.width / 2),
-      py = layout.margin + (dy ? (dy > 0 ? size.height : 0) : size.height / 2);
-    const key = dx
-      ? `V${Math.max(page.column, page.column + dx)},${page.row}`
-      : `H${page.column},${Math.max(page.row, page.row + dy)}`;
-    marks += `<g transform="translate(${n(px)} ${n(py)}) rotate(${dx > 0 ? 0 : dx < 0 ? 180 : dy > 0 ? 90 : -90})" stroke="#111" stroke-width=".3" fill="none"><path d="M1 -3 V3 M5 -2 L2 0 L5 2"/></g>`;
-    if (layout.margin >= 3)
-      marks += `<g fill="#111">${label(key, { x: px + (dx ? (dx * layout.margin) / 2 : 0), y: py + (dy ? (dy * layout.margin) / 2 : 4) }, dx ? Math.PI / 2 : 0, 2)}</g>`;
+    const neighbour = { column: page.column + dx, row: page.row + dy };
+    const pages = orderedPrintPages(layout);
+    const pageNumber = (p: PrintPage) =>
+      pages.findIndex((q) => q.column === p.column && q.row === p.row) + 1;
+    const pair = [pageNumber(page), pageNumber(neighbour)]
+      .sort((a, b) => a - b)
+      .join("–");
+    const length = dx ? size.height : size.width;
+    const origin = {
+      x: layout.margin + (dx > 0 ? size.width : 0),
+      y: layout.margin + (dy > 0 ? size.height : 0),
+    };
+    const at = (along: number, outward: number): Point => ({
+      x: origin.x + (dx ? dx * outward : along),
+      y: origin.y + (dy ? dy * outward : along),
+    });
+    marks += `<path data-assembly="trim" d="${lines([[at(0, 0), at(length, 0)]])}" stroke="#555" stroke-width=".15" stroke-dasharray="2 2" fill="none"/>`;
+    let connector = 0;
+    for (const item of items) {
+      if (!isClosedShape(item.shape) || item.shape.stitchOnly) continue;
+      const contours = flattenContours(item.shape, 0.01).map(c => c.points);
+      const interior = (p: Point) => contours.filter(points => polygonInterior(points,p)).length % 2 === 1;
+      const hits: number[] = [];
+      for (const points of contours) for (let i = 0; i < points.length; i++) {
+        const a = points[i],
+          b = points[(i + 1) % points.length];
+        const av = dx ? a.x : a.y,
+          bv = dx ? b.x : b.y;
+        if ((av <= edge && bv > edge) || (bv <= edge && av > edge)) {
+          const t = (edge - av) / (bv - av);
+          hits.push(dx ? a.y + t * (b.y - a.y) - y : a.x + t * (b.x - a.x) - x);
+        }
+      }
+      hits.sort((a, b) => a - b);
+      for (let i = 0; i + 1 < hits.length; i += 2) {
+        const start = Math.max(0, hits[i]),
+          end = Math.min(length, hits[i + 1]);
+        const radius = Math.min(2, (end - start) / 4);
+        if (radius < 0.5) continue;
+        const along = (start + end) / 2;
+        const worldCentre = dx
+          ? { x: edge, y: y + along }
+          : { x: x + along, y: edge };
+        const offset = assemblyTolerance * 10;
+        if (
+          ![-1, 1].every((sign) =>
+            interior({
+              x: worldCentre.x + (dx ? sign * offset : 0),
+              y: worldCentre.y + (dy ? sign * offset : 0),
+            }),
+          )
+        )
+          continue;
+        // Both pages derive the same diamond; the paper clip retains one half.
+        const polygon = [
+          at(along - radius, 0),
+          at(along, -radius),
+          at(along + radius, 0),
+        ];
+        const clipId = `assembly-${dx}-${dy}-${connector}`;
+        const localOutlines = contours.map(points => points.map((p) => ({
+          x: p.x - x + layout.margin,
+          y: p.y - y + layout.margin,
+        })));
+        marks += `<defs><clipPath id="${clipId}"><path clip-rule="evenodd" d="${localOutlines.map(points => `M${points.map(xy).join(" L")}Z`).join(" ")}"/></clipPath></defs><path data-assembly="registration" clip-path="url(#${clipId})" d="M${polygon.map(xy).join(" L")}Z" stroke="#111" stroke-width=".2" fill="none"/>`;
+        const key = `${pair} ${++connector}`;
+        const width = key.length * 1.2;
+        // Leave 1 mm between the diamond tip and the nearest label edge.
+        // Vertical joins need half the text width; horizontal joins need half its height.
+        const centre = at(along, -(radius + 1 + (dx ? width / 2 : 1.5)));
+        // Only label generous interior spans; check the complete label rectangle.
+        const corners = [-1, 1].flatMap((u) =>
+          [-1, 1].map((v) => ({
+            x: centre.x + (u * width) / 2,
+            y: centre.y + v * 1.5,
+          })),
+        );
+        const worldCorners = corners.map((p) => ({
+          x: p.x - layout.margin + x,
+          y: p.y - layout.margin + y,
+        }));
+        const left = worldCorners[0].x,
+          top = worldCorners[0].y;
+        const right = worldCorners[3].x,
+          bottom = worldCorners[3].y;
+        const boundaryTouchesLabel = contours.some(points => points.some((p, i) =>
+          segmentTouchesRectangle(
+            p,
+            points[(i + 1) % points.length],
+            left,
+            top,
+            right,
+            bottom,
+          ),
+        ));
+        if (
+          !boundaryTouchesLabel &&
+          corners.every(
+            (p) =>
+              p.x >= layout.margin &&
+              p.x <= layout.width - layout.margin &&
+              p.y >= layout.margin &&
+              p.y <= layout.height - layout.margin &&
+              interior({
+                x: p.x - layout.margin + x,
+                y: p.y - layout.margin + y,
+              }),
+          )
+        )
+          marks += `<g data-assembly="label" fill="#111">${label(key, centre, 0, 2)}</g>`;
+      }
+    }
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${layout.width}mm" height="${layout.height}mm" viewBox="0 0 ${layout.width} ${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="${decorationsOnly ? "none" : "white"}"/><defs><clipPath id="paper-clip"><rect x="${layout.margin}" y="${layout.margin}" width="${size.width}" height="${size.height}"/></clipPath></defs><g clip-path="url(#paper-clip)"><g transform="translate(${n(layout.margin - x)} ${n(layout.margin - y)})">${artwork}</g></g>${marks}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${layout.width}mm" height="${layout.height}mm" viewBox="0 0 ${layout.width} ${layout.height}"><rect width="${layout.width}" height="${layout.height}" fill="${decorationsOnly ? "none" : "white"}"/><defs><clipPath id="paper-clip"><rect x="${layout.margin}" y="${layout.margin}" width="${size.width}" height="${size.height}"/></clipPath></defs><g clip-path="url(#paper-clip)"><g transform="translate(${n(layout.margin - x)} ${n(layout.margin - y)})">${artwork}</g></g><g clip-path="url(#paper-clip)">${marks}</g></svg>`;
 }

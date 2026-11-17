@@ -2,7 +2,8 @@ import type { Point, Shape } from "../model/project";
 import { zeroHandles } from "../model/curves";
 import { distance } from "../model/geometry";
 export const variants = {
-  indicator: ["measurement", "size-square", "size-ruler", "arrow", "arrow-head", "crosshair"],
+  measurement: ["measurement", "size-square", "size-ruler"],
+  drawing: ["arrow", "arrow-head", "crosshair"],
   polygon: ["polygon", "polygon-box"],
   polyline: ["polyline", "curve", "control-curve"],
   rectangle: ["rectangle", "rectangle-center", "rectangle-three"],
@@ -18,7 +19,8 @@ export const variants = {
 } as const;
 export type Mode =
   | (typeof variants.polygon)[number]
-  | (typeof variants.indicator)[number]
+  | (typeof variants.measurement)[number]
+  | (typeof variants.drawing)[number]
   | "text"
   | "measurement"
   | "select"
@@ -83,13 +85,14 @@ export function construct(
   points: Point[],
   sweep?: number,
   sides = 3,
+  sections = 1,
 ): Shape {
   const [a, b, c] = points;
   let kind: Shape["kind"] = "polyline",
     out = points,
     rotation = 0;
   if (!a || !b) throw Error("Place another point");
-  if (mode !== "measurement" && (variants.indicator as readonly string[]).includes(mode)) {
+  if (mode !== "measurement" && ([...variants.measurement, ...variants.drawing] as readonly string[]).includes(mode)) {
     if (distance(a,b) < 1e-9) throw Error("Indicator must have positive size");
     if (mode === "crosshair") {
       const radius = distance(a,b);
@@ -108,6 +111,7 @@ export function construct(
     if (len < 1e-9) throw Error("Choose distinct measurement endpoints");
     return {
       id: "", name: "", kind: "measurement", points: [a, b], rotation: 0, radius: 0,
+      ...(sections > 1 ? { measurementSections: sections } : {}),
       measurementOffset: c
         ? ((c.x - a.x) * -(b.y - a.y) + (c.y - a.y) * (b.x - a.x)) / len
         : 0,

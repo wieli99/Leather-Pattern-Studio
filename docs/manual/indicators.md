@@ -1,6 +1,6 @@
 # Indicators
 
-Choose **Measurement (D)** below Text in the left toolbar. Right-click the button, hold it, or focus it and press Down to choose Arrow, Bodyless arrow, Crosshair, Square size guide, or Ruler size guide. The button remembers your last variant. D and Shift+D cycle the submenu. Measurement and the two size guides appear first.
+Choose **Measurements (D)** for Measurement, Square size guide, and Ruler size guide, or **Drawing tools (A)** for Arrow, Bodyless arrow, and Crosshair. Both buttons appear below Text in Model and print layouts. Right-click, hold, or focus a button and press Down to open its menu. Each group remembers its last variant. D / Shift+D and A / Shift+A cycle their respective groups forward / backward.
 
 ![Indicator examples and variant menu](/manual/images/indicators.png)
 
@@ -24,7 +24,7 @@ Draw indicators directly on a [print layout](#printing), or import size guides f
 
 ## Change appearance
 
-Outline width (mm) in Appearance applies to all outlined shapes. The default is 0.35 mm; resizing preserves physical width. Reset styling restores this default.
+Outline width (mm) in Appearance applies to all outlined shapes. The default is 0.35 mm; resizing preserves physical width.
 
 Hold Shift while placing arrows, bodyless arrows, ruler size guides, or measurement endpoints to constrain direction to 45° increments. Alt bypasses grid/object snapping while retaining this angle constraint. The third measurement click still sets the dimension-line offset.
 

@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 
@@ -71,4 +72,34 @@ test("font size updates text dimensions and undo restores them", async ({ page }
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(size).toHaveValue("5");
   expect(await dimensions()).toEqual(original);
+});
+
+test("whole label formatting survives inline editing and undo @manual", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Text (T)", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 240, y: 240 } });
+  const input = page.getByRole("textbox", { name: "Label text", exact: true });
+  await input.fill("Front\nLeather");
+  await input.press("Control+Enter");
+  await page.getByLabel("Font", { exact: true }).selectOption("serif");
+  await page.getByRole("button", { name: "Bold", exact: true }).click();
+  await page.getByRole("button", { name: "Italic", exact: true }).click();
+  await page.getByRole("button", { name: "Underline", exact: true }).click();
+  await page.getByRole("button", { name: "Strikethrough", exact: true }).click();
+  await page.getByLabel("Alignment", { exact: true }).selectOption("center");
+  const spacing = page.getByLabel("Line spacing", { exact: true });
+  await spacing.fill("1.8");
+  await spacing.press("Enter");
+  await expect(page.getByRole("status").first()).toHaveText("Ready");
+  await manualScreenshot(page, "text-formatting.png");
+  await canvas.dblclick({ position: { x: 245, y: 245 } });
+  await expect(input).toHaveCSS("font-family", "PatternSerif");
+  await expect(input).toHaveCSS("font-weight", "700");
+  await expect(input).toHaveCSS("font-style", "italic");
+  await input.fill("Back\nLeather");
+  await input.press("Control+Enter");
+  await expect(page.getByRole("button", { name: "Bold", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.getByLabel("Font", { exact: true })).toHaveValue("serif");
 });

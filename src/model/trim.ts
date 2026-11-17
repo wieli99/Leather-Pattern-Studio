@@ -42,9 +42,10 @@ export function trimAt(
       cornerRadii: undefined,
       transform: undefined,
       handles: undefined,
+      contours: undefined,
       sweep: undefined,
     };
-    if (isCurve(source)) {
+    if (isCurve(source) || source.kind === "compound") {
       for (const c of worldCubics(source))
         pieces.push({
           source,
@@ -186,12 +187,12 @@ export function trimAt(
     return norm > 0 && (u.x * v.x + u.y * v.y) / norm > 1 - 1e-7;
   };
   const closed =
-    !isCurve(source) &&
+    !isCurve(source) && source.kind !== "compound" &&
     smooth(ordered[indices[count - 1]], ordered[indices[0]]);
   if (!closed) cuts.push(0, count);
   for (let i = 1; i < count; i++)
     if (
-      isCurve(source) ||
+      isCurve(source) || source.kind === "compound" ||
       !smooth(ordered[indices[i - 1]], ordered[indices[i]])
     )
       cuts.push(i);

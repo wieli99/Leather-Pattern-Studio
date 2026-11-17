@@ -1,20 +1,14 @@
+import { editableNumber, parseExpression } from "./expression";
 /** Documents always store millimetres; these helpers only convert presentation. */
 export type UnitMode = 'mm' | 'in-fractional' | 'in-decimal';
 export const unitSymbol = (mode: UnitMode) => mode === 'mm' ? 'mm' : 'in';
 export const fromMillimetres = (value: number, mode: UnitMode) => mode === 'mm' ? value : value / 25.4;
 export const toMillimetres = (value: number, mode: UnitMode) => mode === 'mm' ? value : value * 25.4;
 
-/** No expressions or implicit units: decimal, fraction, or signed mixed fraction. */
+/** Evaluate in display units, then convert the final result once. */
 export function parseLength(text: string, mode: UnitMode): number | null {
-  const input = text.trim();
-  let value: number;
-  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(input)) value = Number(input);
-  else {
-    if (mode === 'mm') return null;
-    const match = /^([+-]?)(?:(\d+)\s+)?(\d+)\s*\/\s*(\d+)$/.exec(input);
-    if (!match || Number(match[4]) === 0) return null;
-    value = (Number(match[2] ?? 0) + Number(match[3]) / Number(match[4])) * (match[1] === '-' ? -1 : 1);
-  }
+  const value = parseExpression(text, mode !== 'mm');
+  if (value === null) return null;
   const result = toMillimetres(value, mode);
   return Number.isFinite(result) ? result : null;
 }
@@ -33,5 +27,5 @@ export function formatLength(value: number, mode: UnitMode, precision = 2): stri
 }
 
 /** Editing precision is independent of display rounding. */
-export const editableLength = (value: number, mode: UnitMode) => String(fromMillimetres(value, mode));
+export const editableLength = (value: number, mode: UnitMode) => editableNumber(fromMillimetres(value, mode));
 export const formatArea = (value: number, mode: UnitMode) => `${Number((mode === 'mm' ? value : value / (25.4 * 25.4)).toFixed(2))} ${unitSymbol(mode)}²`;

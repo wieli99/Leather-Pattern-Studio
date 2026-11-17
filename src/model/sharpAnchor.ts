@@ -1,3 +1,5 @@
+import { contourShape } from "./compound";
+import { cubicSegments } from "./curves";
 import type { Shape } from "./project";
 import { insertAnchor } from "./insertAnchor";
 import { zeroHandles } from "./curves";
@@ -10,6 +12,19 @@ export function rectanglePath(shape: Shape): Shape {
 }
 
 export function sharpAnchor(shape: Shape, index: number): Shape {
+  if (shape.kind === "compound") {
+    let offset = 0;
+    for (let i=0;i<shape.contours!.length;i++) {
+      const contour = shape.contours![i];
+      if (index < offset + contour.length) {
+        const part = {...contourShape(shape,contour),rotation:0,transform:undefined};
+        const next = sharpAnchor(part,index-offset);
+        return {...shape,contours:shape.contours!.map((c,j)=>j===i?cubicSegments(next):c)};
+      }
+      offset += contour.length;
+    }
+    return shape;
+  }
   if (shape.kind !== "control-curve" || !shape.handles || !shape.points[index])
     return shape;
   const last = shape.points.length - 1;
@@ -35,6 +50,19 @@ export function sharpAnchor(shape: Shape, index: number): Shape {
 
 /** Toggle sharp anchors to mirrored tangents derived from their neighbours. */
 export function toggleAnchor(shape: Shape, index: number): Shape {
+  if (shape.kind === "compound") {
+    let offset = 0;
+    for (let i=0;i<shape.contours!.length;i++) {
+      const contour = shape.contours![i];
+      if (index < offset + contour.length) {
+        const part = {...contourShape(shape,contour),rotation:0,transform:undefined};
+        const next = toggleAnchor(part,index-offset);
+        return {...shape,contours:shape.contours!.map((c,j)=>j===i?cubicSegments(next):c)};
+      }
+      offset += contour.length;
+    }
+    return shape;
+  }
   if (shape.kind === "rectangle") return toggleAnchor(rectanglePath(shape), index);
   if (shape.kind === "polyline" && shape.points[index]) {
     const radii = cornerRadii(shape);

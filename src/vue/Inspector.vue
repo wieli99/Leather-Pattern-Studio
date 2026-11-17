@@ -103,7 +103,7 @@ const imageAspectLocked = ref(true);
 function size(axis: "x" | "y", v: string) {
   if (s.value!.kind === "image" && imageAspectLocked.value) {
     const factor = +v / (axis === "x" ? width.value : height.value);
-    edit(stretchShape(s.value!,factor,factor,c.value));
+    edit(stretchShape(s.value!, factor, factor, c.value));
     return;
   }
   if (["curve", "control-curve"].includes(s.value!.kind)) {
@@ -200,19 +200,49 @@ function vertex(i: number, axis: "x" | "y", v: string) {
 }
 </script>
 <template>
-  <p v-if="e.transformTool || e.stitchMode">
+  <p v-if="e.array || e.pathCopy || e.transformTool || e.stitchMode || e.booleanOperation">
     Apply or cancel to edit properties.
   </p>
-  <fieldset v-if="s" class="object-properties">
+  <fieldset v-if="s" class="object-properties" :disabled="!!e.array || !!e.booleanOperation || !!e.pathCopy">
     <PanelSection class="property-section" section-key="object" title="Object" :level="3" :disabled="editor.isLocked(s.id)">
     <Field :controller="editor" label="Name" :value="s.name" @commit="edit({ name: $event })" />
     <template v-if="s.kind === 'text'">
-      <Field
-        :controller="editor"
-        label="Text"
-        :value="s.text ?? ''"
-        @commit="edit({ text: $event })"
-      />
+      <label class="field"><span>Font</span><select aria-label="Font" :value="s.fontFamily ?? 'sans'" @change="edit({ fontFamily: ($event.target as HTMLSelectElement).value })"><option value="sans">Sans-serif</option><option value="serif">Serif</option><option value="mono">Monospace</option></select></label>
+      <div class="field">
+        <span id="text-formatting-label">Style</span>
+        <div class="text-formatting" role="group" aria-labelledby="text-formatting-label">
+          <button type="button" aria-label="Bold" title="Bold"
+            :aria-pressed="s.bold ?? false" @click="edit({ bold: !s.bold })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 4h7a4 4 0 0 1 0 8H6z M6 12h8a4 4 0 0 1 0 8H6z" />
+            </svg>
+          </button>
+          <button type="button" aria-label="Italic" title="Italic"
+            :aria-pressed="s.italic ?? false" @click="edit({ italic: !s.italic })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 4h10 M4 20h10 M15 4 9 20" />
+            </svg>
+          </button>
+          <button type="button" aria-label="Underline" title="Underline"
+            :aria-pressed="s.underline ?? false" @click="edit({ underline: !s.underline })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 3v8a6 6 0 0 0 12 0V3 M4 21h16" />
+            </svg>
+          </button>
+          <button type="button" aria-label="Strikethrough" title="Strikethrough"
+            :aria-pressed="s.strikethrough ?? false" @click="edit({ strikethrough: !s.strikethrough })">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 5c-2-3-12-3-12 2 0 2 2 3 6 4 M6 18c2 3 12 3 12-2 0-1-1-2-3-3 M3 12h18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <label class="field"><span>Alignment</span><select aria-label="Alignment" :value="s.textAlign ?? 'left'" @change="edit({ textAlign: ($event.target as HTMLSelectElement).value })"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
+      <Field :controller="editor" label="Line spacing" :value="s.lineSpacing ?? 1.2" @commit="edit({ lineSpacing: +$event })" />
       <Field :controller="editor" dimension
         label="Font size"
         :value="s.fontSize ?? 5"
@@ -244,6 +274,22 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         :min="0.001"
         @commit="size('x', $event)"
       />
+      <button v-if="s.kind === 'image'" type="button" class="aspect-ratio-lock"
+        aria-label="Lock aspect ratio" :aria-pressed="imageAspectLocked"
+        :title="imageAspectLocked ? 'Unlink width and height' : 'Link width and height'"
+        :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+        @click="imageAspectLocked = !imageAspectLocked">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <template v-if="imageAspectLocked">
+            <path d="M10 8H6a4 4 0 0 0 0 8h4 M14 8h4a4 4 0 0 1 0 8h-4 M8 12h8" />
+          </template>
+          <template v-else>
+            <rect x="1" y="8.5" width="9" height="7" rx="3.5" />
+            <rect x="14" y="8.5" width="9" height="7" rx="3.5" />
+          </template>
+        </svg>
+      </button>
       <Field :controller="editor" dimension
         label="Height"
         :value="height"
@@ -279,9 +325,9 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       <Field :controller="editor" dimension v-if="s.kind === 'arrow'" label="Head size (local mm)"
         :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
     </template>
-    <label v-if="s.kind === 'image'"><input v-model="imageAspectLocked" type="checkbox" /> Lock aspect ratio</label>
     <Field :controller="editor" v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
+      <Field :controller="editor" label="Sections" :value="s.measurementSections ?? 1" :min="1" :max="100" @commit="edit({ measurementSections: Math.round(+$event) })" />
       <Field :controller="editor" dimension
         label="Offset (mm)"
         :value="measurementGeometry(s).offset"
@@ -342,8 +388,6 @@ function vertex(i: number, axis: "x" | "y", v: string) {
           @commit="fill({ fillOpacity: +$event / 100 })" />
       </div>
     </template>
-    <button :disabled="!e.ready || !!e.transformTool || e.stitchMode"
-      @click="edit({ fillColor: undefined, fillOpacity: undefined, fillMode: undefined, strokeColor: undefined, strokeOpacity: undefined, strokeWidth: undefined })">Reset styling</button>
     </PanelSection>
     <fieldset :disabled="editor.isLocked(s.id)" class="vertex-properties">
     <details
@@ -394,13 +438,34 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       }}
     </p>
   </template>
-  <div v-if="selected.length" class="actions">
-    <button :disabled="!e.ready" @click="editor.duplicate()">Duplicate</button>
-    <button :disabled="!e.ready || editor.selectionLocked" @click="editor.delete()">Delete</button>
-  </div>
 </template>
 
 <style scoped>
 .object-properties,
 .vertex-properties { border: 0; padding: 0; margin: 0; min-width: 0; }
+.text-formatting {
+  display: flex;
+  gap: 4px;
+}
+.text-formatting button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 5px;
+}
+.field-row > .aspect-ratio-lock {
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  height: 32px;
+  margin-top: 19px;
+  padding: 4px;
+}
+.text-formatting button[aria-pressed="true"],
+.aspect-ratio-lock[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
 </style>

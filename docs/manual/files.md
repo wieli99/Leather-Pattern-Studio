@@ -20,9 +20,9 @@ When an application update offers **Reload**, save your project before accepting
 
 ## Save and reopen a project
 
-Edit the filename directly at the top left. The .leather.json suffix is hidden from the editable field; saved filenames retain it. Enter or clicking outside commits; Escape cancels. Blank names are ignored. Names without a .json suffix receive .leather.json. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
+Edit the filename directly at the top left. The .leather suffix (and legacy .leather.json suffix) is hidden from the editable field; saved filenames retain it. Enter commits the name and saves the project immediately. Clicking outside commits the name without saving; Escape cancels. Blank names are ignored. Names without a .leather or .json suffix receive .leather. Renaming marks the project unsaved and disconnects the previous disk file without changing it.
 
-Choose **Save** (Ctrl/⌘+S). When Save opens a file dialog, choose a destination on the first save or after renaming; later saves overwrite that selected file. Other browsers download a copy using the current filename. The browser controls the destination and may rename duplicates.
+Choose **Save** (Ctrl/⌘+S). When Save opens a file dialog, choose a destination on the first save or after renaming; later saves overwrite that selected file. Other browsers download a copy using the current filename. The browser controls the destination and may rename duplicates. In Firefox, enable **Always ask you where to save files** in the browser’s download settings, then select the existing file and confirm replacement to avoid accumulating copies. The app cannot request replacement for ordinary downloads.
 
 “Download started” clears the change indicator for the exported revision but does not confirm a disk write. Keep the file and use **Open** to edit it again. Browser recovery remains separate.
 
@@ -30,7 +30,7 @@ Choose **Save** (Ctrl/⌘+S). When Save opens a file dialog, choose a destinatio
 
 ## Import an image
 
-Choose **Import image** below Measurement, then select a PNG, JPEG, WebP or SVG. It is inserted at the view centre behind existing objects, preserving its aspect ratio. Use Select to move it and the transform controls to resize, rotate or mirror it. The inspector offers width, height and image opacity. Aspect ratio is locked by default; unlock it to edit width and height independently.
+Choose **Import image** below Measurement, then select a PNG, JPEG, WebP or SVG. It is inserted at the view centre behind existing objects, preserving its aspect ratio. Use Select to move it and the transform controls to resize, rotate or mirror it. The inspector offers width, height and image opacity. The link icon between Width and Height in Geometry keeps both dimensions proportional by default. Click it to unlink them and edit either dimension independently; click again to restore proportional editing.
 
 Use the object panel to reorder, hide or lock images. Images are embedded in saved projects and recovery, and remain available offline. The total project limit is 10 MB; individual imports larger than 7 MB are rejected. Use [Print layouts and export](#printing) to arrange linked copies or import an independent image directly onto a print tab, and export physically sized pages.
 
@@ -40,4 +40,14 @@ SVG files are imported as single image objects and remain sharp when resized. Th
 
 ![SVG imported as an image object](/manual/images/svg-import.png)
 
-Print layouts and their links are included in saved JSON and recovery. The Model tab is the source of geometry; exporting a print layout does not save the project. PDF, SVG, and PNG export work offline after the production cache has finished installing.
+Print layouts and their links are included in saved projects and recovery. The Model tab is the source of geometry; exporting a print layout does not save the project. PDF, SVG, and PNG export work offline after the production cache has finished installing.
+
+## Desktop application
+
+The desktop editor uses the same controls as the website. New projects use `.leather`, containing JSON; existing `.leather.json` and `.json` projects remain readable. Open and Save use operating-system dialogs. Renaming disconnects the previous file; the next Save requests a destination. Export uses a save dialog for the generated PDF, SVG, PNG, DXF or ZIP. The manual is bundled and opens in a separate application window without a network connection.
+
+The desktop application checks GitHub automatically once each time it starts. A newer compatible release produces a notification; offline or failed background checks do not interrupt editing. Open **Settings → Check for updates** to check again manually. When an update is available, **Open GitHub release** opens your browser. Save your project, close the application and install the package for your system and CPU. Linux Flatpak bundles must be installed again to update; they do not provide an automatic update repository. Browser recovery and desktop recovery are separate.
+
+Closing the desktop editor or choosing the operating system’s Quit action (including ⌘+Q on macOS) with unsaved changes asks whether to discard them. **OK** discards the changes and closes the editor; **Cancel** keeps the editor open. Save first to keep your changes. Closing is blocked while a file operation is running.
+
+![Desktop update controls in Settings, shown with the High Contrast theme](/manual/images/desktop-updates.png)

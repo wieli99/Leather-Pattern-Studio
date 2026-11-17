@@ -57,7 +57,7 @@ test("rounding a stitched perimeter adapts through the worker and commits with h
   });
   await page.locator(".objects .object-select").first().click();
   await page
-    .getByRole("button", { name: "Corner radius", exact: true })
+    .getByRole("button", { name: "Corners", exact: true })
     .click();
   await page
     .getByLabel("Pattern drawing canvas")

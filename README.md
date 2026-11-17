@@ -18,7 +18,7 @@ Go from an idea to a paper pattern with precise dimensions, stitch-hole placemen
 - **Refine your pieces.** Edit curves, round corners, move, rotate, resize, mirror, trim, and merge geometry. Group related objects and add labels, measurements, and reference images.
 - **Plan for leatherwork.** Mark skiving, glueing, and cutout areas, and add stitching with spacing and inset matched to your tools.
 - **Keep paper layouts in sync.** Arrange linked copies of your pieces on print tabs. Source edits update the artwork while preserving its placement on the page.
-- **Take your work with you.** Save editable `.leather.json` files and export print layouts as PDF, SVG, or PNG. The editor, manual, and exports work offline after caching completes.
+- **Take your work with you.** Save editable `.leather.json` files and export print layouts as PDF, SVG, PNG, or outline-only DXF. The editor, manual, and exports work offline after caching completes.
 
 ### Stitching that follows your pattern
 
@@ -49,11 +49,17 @@ Follow [your first pattern](https://leather.wieli.at/manual/index.html#getting-s
 
 Projects save as version 21, including linked print layouts, embedded images, text, object groups, indicators, measurements, and attached stitch groups. Versions 1–20 migrate on open; older application builds cannot open version-21 files. Keep backup copies before upgrading.
 
-Save/Save As use native browser file pickers where supported; other browsers download JSON copies. Browser recovery is separate from saved files and can be cleared or evicted. Save before accepting an application update.
+New project files use `.leather` and contain JSON. Existing `.leather.json` and `.json` projects remain readable. Save uses native file dialogs on desktop and browser file pickers where supported; other browsers download copies. Recovery is separate from saved files and can be cleared or evicted. Save before accepting an application update.
+
+## Desktop builds
+
+The Tauri 2 desktop builds share the website’s Vue editor and Rust/Wasm engine. Packages target Linux (Flatpak), Windows (NSIS) and macOS (DMG), each for x64 and ARM64. Development packages are attached to the Desktop packages GitHub Actions runs; release downloads are published through GitHub Releases separately.
+
+Desktop launches check for updates automatically. **Settings → Check for updates** retries manually; installation is through GitHub. Windows packages are unsigned, and macOS packages use ad-hoc signing without notarization. See [desktop packaging and installation](docs/deployment.md#desktop-packages) for platform restrictions and release instructions.
 
 ## Current limitations
 
-The desktop browser workflow is the validation target. CI exercises Chromium, Firefox, and WebKit on Linux; this does not certify physical Windows/macOS devices, native file dialogs, or touch/mobile editing. General-purpose booleans and offsets are outside the supported workflow. Offline use requires an initial successful online load and completed cache installation.
+Browser CI exercises Chromium, Firefox, and WebKit in Linux containers. Desktop CI builds packages and runs native Rust tests on both CPU architectures for each target OS. These checks do not certify physical Windows/macOS devices, native file dialogs, or touch/mobile editing. General-purpose booleans and offsets are outside the supported workflow. Browser offline use requires an initial successful online load and completed cache installation; desktop builds bundle the editor and manual.
 
 Bug reports may include project contents and system information. Review attachments before submitting a public GitHub issue. See the bundled manual for current procedures and limitations.
 
@@ -75,11 +81,13 @@ tools/dev/run.sh check
 
 Runs Rust tests, generated TypeScript contracts, production build, unit tests, and Chromium/Firefox/WebKit acceptance tests. Browser system libraries are baked into the cached development image, using the locked Playwright version, so individual test containers retain the required libraries. Browser binaries use a persistent Podman volume; `check` installs any missing binaries. To test offline behavior, build and run `tools/dev/run.sh preview`; development mode intentionally does not register a service worker. Offline use starts after the first successful online load and cache installation. Serve deployments over HTTPS (localhost also works).
 
+For a quicker TypeScript and unit-test pass between commits, run `tools/dev/run.sh fast` after generating Wasm/contracts with `tools/dev/run.sh npm run wasm` (or starting development). Run the full check once before preparing a PR for editor changes, rather than before every commit. CI keeps full coverage with parallel browser jobs; see the [validation cadence](docs/deployment.md#validation-cadence).
+
 See the [contributor guidelines](AGENTS.md) and [development and release workflow](docs/deployment.md) for contribution and pull request guidance.
 
 ### Code organization
 
-`src/editor/` contains the controller, renderer, worker client and persistence; `src/model/` contains migration and geometry helpers; `crates/document/` owns validated documents and history in Rust/Wasm. `src/generated/` contains Rust-generated TypeScript contracts; `src/wasm/` is generated and ignored. The Tauri shell remains optional and is not required for browser delivery.
+`src/editor/` contains the controller, renderer, worker client and persistence; `src/model/` contains migration and geometry helpers; `crates/document/` owns validated documents and history in Rust/Wasm. `src/generated/` contains Rust-generated TypeScript contracts; `src/wasm/` is generated and ignored. `src-tauri/` owns the native desktop shell and file access; `packaging/` contains Flatpak metadata. Desktop packaging is not required for browser delivery.
 
 ## License
 
