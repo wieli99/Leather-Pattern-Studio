@@ -314,3 +314,28 @@ for (const operation of ["Join","Subtract","Intersect","Exclude"]) {
     await expect(hint).toHaveCount(0);
   });
 }
+
+test("desktop CSP permits startup and closed-outline subtraction", async ({ page }) => {
+  const { readFileSync } = await import("node:fs");
+  const { app } = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.route("**/*", async route => {
+    if (!route.request().isNavigationRequest()) return route.continue();
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: {
+      ...response.headers(), "content-security-policy": app.security.csp,
+    } });
+  });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Open", exact: true })).toBeEnabled();
+  await load(page, [rectangle("Base", 20), {
+    ...rectangle("Cutter", 35), points: [{ x: 35, y: 35 }, { x: 55, y: 55 }],
+  }]);
+  await page.locator(".objects .object-select").filter({ hasText: "Base" }).click();
+  await page.getByRole("button", { name: "Subtract", exact: true }).click();
+  await page.locator(".objects .object-select").filter({ hasText: "Cutter" }).click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
+  expect(errors).toEqual([]);
+});

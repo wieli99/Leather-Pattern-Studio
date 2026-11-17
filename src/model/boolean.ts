@@ -1,4 +1,4 @@
-import paper from "paper";
+import paper from "paper/dist/paper-core";
 import type { Point } from "./project";
 import type { Cubic } from "./curves";
 
