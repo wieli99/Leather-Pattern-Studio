@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+      - name: Test desktop artifact promotion
+        run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
       - name: Build and test once
         run: tools/dev/run.sh sh -c 'npm ci && npm run test:rust && npm run build && npm test'
       - name: Validate deployment bundle
