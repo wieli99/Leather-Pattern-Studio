@@ -1,0 +1,15 @@
+# CodeQL review of the vendored crate
+
+Reviewed against analysis 2194053168 / PR #82 (source 58e92c2), including the SARIF code-flow traces. These are reviews of the seven specific reported paths, not a claim that all upstream unsafe code is free of defects. Scanning remains enabled.
+
+| Alert | Reported location | Review |
+| --- | --- | --- |
+| 1 | src/log.rs:85, cleartext logging | The source is uuid_string_is_valid, which returns bool via FromGlib<gboolean> for bool. The reported path instead routes that conversion through FromGlib<u32> for LogLevel and into its invalid-level panic. These are different generic instantiations; the UUID string is not the returned boolean and is not logged along this path. |
+| 2 | src/object.rs:470, invalid pointer | Traces originate in console_charset, file_set_contents, file_set_contents_full, and filename_from_uri. Their typed conversions produce GString, Error, PathBuf or Option<GString>, not ObjectRef. Crossing the generic from_glib_none/full helper into ObjectRef is not a callable typed path. The character/error output pointers are also written by C before conversion, with the error branches checking null. |
+| 3 | src/object.rs:493, invalid pointer | Traces start at GError/hostname outputs in the same file/URI helpers, then cross from_glib_full into ObjectRef. Actual result types select Error or optional string/path conversions, not the GObject implementation. |
+| 4 | src/subclass/boxed.rs:76, invalid pointer | The reported charset/error conversion crosses a generic conversion into a derived boxed type in the cfg(test) test module. The charset/error functions do not return this boxed test type. |
+| 5 | src/value.rs:462, invalid pointer | The charset/error generic conversion traces are routed into Value's GValue copy implementation. The concrete return types are strings/errors/paths, not Value; the alleged cross-instantiation call is absent. |
+| 6 | src/value.rs:470, invalid pointer | GError/hostname outputs are routed through generic conversion into Value's clear/free functions. These conversions do not select Value. C output parameters and nullable optional-string conversion are not an uninitialized GValue. |
+| 7 | src/collections/ptr_slice.rs:900, invalid pointer | truncate decrements len while retaining the owned allocation, drops the T wrapper in that slot, then writes a null pointer into the still-allocated slot. drop_in_place runs T's destructor; it does not deallocate the storage of T itself. TransparentPtrType guarantees a pointer-compatible representation. The allocation is freed separately by PtrSlice::drop. The reported drop-in-place to write use-after-free confuses the wrapper's referent with the array slot. |
+
+The real VariantStrIter advisory is separate: its output parameter was passed through an immutable reference. That defect is fixed by the exact upstream two-line patch and reproduced by the release-mode regression (original segfaults, backport passes). None of the CodeQL resolutions dismisses that advisory based on non-use.

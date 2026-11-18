@@ -83,6 +83,12 @@ The build reads `package.json` to display the application version. Version selec
 
 Dependabot monitors dependencies and opens update PRs; review them before merging. In repository Settings → Advanced Security, enable Secret Protection and push protection, and configure CodeQL default setup for JavaScript/TypeScript and Rust. Review findings under Security → Code scanning. These are repository settings, separate from personal push protection, and are not enabled merely by adding the deployment workflow. Making CodeQL findings block merges requires separate merge-protection configuration.
 
+### Linux glib security backport
+
+The GTK 0.18 dependency chain requires glib 0.18, while the upstream fix for RUSTSEC-2024-0429 first shipped in glib 0.20. The application patches all crates.io glib references to the compatible copy in `vendor/glib`. Its BACKPORT.md records the archive checksum, upstream fix, exact changes, and removal condition. Release-mode native tests exercise the affected iterator methods. Do not remove the patch merely by adding a second, newer glib dependency: GTK would still use the vulnerable version.
+
+Version-only scanners may still flag glib 0.18.5. Resolve that discrepancy with the checked-in patch and test evidence; do not suppress unrelated findings or claim that a version upgrade occurred. The backport must reach the released application before the release is described as fixed.
+
 ### Dependency compatibility
 
 Keep `@types/node` on Node 22 to match the build container and deployment tooling. TypeScript 7 is deferred because the current `vue-tsc` integration imports `typescript/lib/tsc`, which TypeScript 7 does not export. Dependabot ignores those upgrades until the toolchain is migrated; compatible updates remain enabled. Revisit these limits when updating the runtime or Vue type checker.
