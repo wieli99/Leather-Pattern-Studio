@@ -83,6 +83,12 @@ The build reads `package.json` to display the application version. Version selec
 
 Dependabot monitors dependencies and opens update PRs; review them before merging. In repository Settings → Advanced Security, enable Secret Protection and push protection, and configure CodeQL default setup for JavaScript/TypeScript and Rust. Review findings under Security → Code scanning. These are repository settings, separate from personal push protection, and are not enabled merely by adding the deployment workflow. Making CodeQL findings block merges requires separate merge-protection configuration.
 
+### Linux glib security backport
+
+The GTK 0.18 dependency chain requires glib 0.18, while the upstream fix for RUSTSEC-2024-0429 first shipped in glib 0.20. The application patches all crates.io glib references to the compatible copy in `vendor/glib`. Its BACKPORT.md records the archive checksum, upstream fix, exact changes, and removal condition. Release-mode native tests exercise the affected iterator methods. Do not remove the patch merely by adding a second, newer glib dependency: GTK would still use the vulnerable version.
+
+Version-only scanners may still flag glib 0.18.5. Resolve that discrepancy with the checked-in patch and test evidence; do not suppress unrelated findings or claim that a version upgrade occurred. The backport must reach the released application before the release is described as fixed.
+
 ### Dependency compatibility
 
 Keep `@types/node` on Node 22 to match the build container and deployment tooling. TypeScript 7 is deferred because the current `vue-tsc` integration imports `typescript/lib/tsc`, which TypeScript 7 does not export. Dependabot ignores those upgrades until the toolchain is migrated; compatible updates remain enabled. Revisit these limits when updating the runtime or Vue type checker.
@@ -112,6 +118,12 @@ On Linux install the matching GitHub bundle with `flatpak install --user ./Leath
 Windows packages are unsigned and may show publisher warnings or be blocked by Smart App Control or organization policy. macOS packages are ad-hoc signed without notarization; users may need to allow the application in Privacy & Security. Do not promise that unsigned packages run under every security policy.
 
 The desktop application queries published GitHub Releases automatically once per launch. Background failures remain silent; Settings → Check for updates retries manually and reports failures. Stable installations exclude prereleases. An available update links to its release page; installation is manual. No private download server is required. Validate native dialogs, file associations, clipboard, offline help, exports and upgrade behavior on each target before publishing. Build success and browser-engine tests alone do not establish native OS compatibility.
+
+Desktop validation runs on PRs targeting dev/main, main pushes, and version tags. It does not run on dev pushes: an open release PR already validates the proposed merge with main. Web CI still independently validates every PR and protected-branch push. Final main source is validated again, and tags build release packages.
+
+Rust caches separate operating systems, target architectures, compiler versions, lockfiles, and configuration. Source-specific cache entries restore compatible earlier builds, but every build and test still runs. Linux mounts registry/git caches into the toolchain container and restores host ownership afterward. PR cache isolation means unrelated PRs may still start cold; subsequent pushes and reruns benefit most. Cache misses remain valid cold builds.
+
+Inspect annotations/logs before retrying infrastructure failures. Retry a failed job at most once when the cause is transient; repeated acquisition cancellations are external blockers. Investigate test failures before retrying. Limit active monitoring to ten minutes per task and report pending job links rather than polling indefinitely.
 
 Require **Desktop build and test** alongside **Build and test** in branch protection. This additional gate fails when any desktop package job fails or is skipped; it does not certify physical-device validation.
 

@@ -16,3 +16,6 @@ tempfile = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gio = "0.18"
+
+[patch.crates-io]
+glib = { path = "../vendor/glib" }
