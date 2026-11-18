@@ -13,6 +13,7 @@ concurrency:
 jobs:
   frontend:
     name: Shared desktop frontend
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -137,41 +138,25 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [packages, linux]
+    name: Publish desktop draft
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') }}
+    needs: [frontend, packages, linux]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
-      checks: read
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Validate release version and source
+      - name: Promote validated main packages
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
-          git merge-base --is-ancestor HEAD origin/main
-          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" --jq '.check_runs[] | select(.name == "Build and test") | .conclusion' | grep -qx success
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: desktop-*-*
-          path: packages
-      - name: Create draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir release
-          find packages -type f \( -name '*.flatpak' -o -name '*-setup.exe' -o -name '*.dmg' \) -exec cp {} release/ \;
-          cd release
-          sha256sum ./* > SHA256SUMS
-          flags=()
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --generate-notes "${flags[@]}" ./*
+        run: python3 tools/ci/promote-desktop.py "$GITHUB_REF_NAME"
   desktop-check:
-    name: Desktop build and test
-    if: always()
+    name: ${{ startsWith(github.ref, 'refs/tags/') && 'Desktop tag validation (unused)' || 'Desktop build and test' }}
+    if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     needs: [frontend, packages, linux]
     runs-on: ubuntu-24.04
     steps:
