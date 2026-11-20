@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "tests",
   // Source-module checks run against Vite in playwright.dev.config.ts.
-  testIgnore: "dxf.spec.ts",
+  testIgnore: ["dxf.spec.ts", "vector.spec.ts"],
   timeout: 30000,
   workers: 1,
   use: {

@@ -105,13 +105,18 @@ export function worldPoints(s: Shape): Point[] {
   return s.points.map((p) => applyMatrix(shapeMatrix(s), p));
 }
 export function bounds(shapes: Shape[], units: UnitMode = "mm"): Bounds {
-  const points = shapes.flatMap(s => outlineBounds(s, units));
-  if (!points.length) return { x: 0, y: 0, width: 100, height: 100 };
-  const xs = points.map((p) => p.x),
-    ys = points.map((p) => p.y),
-    x = Math.min(...xs),
-    y = Math.min(...ys);
-  return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+  let x = Infinity, y = Infinity, right = -Infinity, bottom = -Infinity;
+  for (const shape of shapes) {
+    for (const p of outlineBounds(shape, units)) {
+      x = Math.min(x, p.x);
+      y = Math.min(y, p.y);
+      right = Math.max(right, p.x);
+      bottom = Math.max(bottom, p.y);
+    }
+  }
+  return x === Infinity
+    ? { x: 0, y: 0, width: 100, height: 100 }
+    : { x, y, width: right - x, height: bottom - y };
 }
 export function isPolygon(s: Shape): boolean {
   return (

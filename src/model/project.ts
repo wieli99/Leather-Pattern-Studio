@@ -15,20 +15,20 @@ export type Doc = {
   printLayouts?: import("./printLayout").PrintLayout[];
   stitchPresets?: import("../generated/StitchPreset").StitchPreset[];
   stitchTransfers?: import("../generated/StitchTransfer").StitchTransfer[];
-  version: 23 | 22 | 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
+  version: 24 | 23 | 22 | 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const DOCUMENT_VERSION = 23;
+export const DOCUMENT_VERSION = 24;
 export const emptyDocument = (): Doc => ({ version: DOCUMENT_VERSION, shapes: [] });
 export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -284,6 +284,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       ...(s.strokeWidth !== undefined ? {strokeWidth:s.strokeWidth} : {}),
       ...(s.headSize !== undefined ? { headSize: s.headSize } : {}),
       ...(s.stitchOnly === true ? { stitchOnly: true } : {}),
+      ...(s.excludeFromDxf === true ? { excludeFromDxf: true } : {}),
       ...(s.contours ? { contours: structuredClone(s.contours) } : {}),
       points: s.points.map((p: Point) => ({ x: p.x, y: p.y })),
       ...(s.kind === "text" ? { text: s.text, fontSize: s.fontSize, fontFamily: s.fontFamily, bold: s.bold, italic: s.italic, underline: s.underline, strikethrough: s.strikethrough, textAlign: s.textAlign, lineSpacing: s.lineSpacing } : {}),

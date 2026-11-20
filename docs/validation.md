@@ -80,3 +80,9 @@ The staged-transfer candidate passed 45 Rust tests, 395 unit tests, TypeScript a
 Regression checks cover left-click placement and repositioning without document/history changes, explicit confirmation as one undo entry, rejection of queued pointer input after placement, rotation about the placed center, viewport zoom preserving the placement, and disabling Continue run for an Auto-filled rectangle section. A fixed-count predecessor can still create an Auto-count continuation. Invalid geometry displays its actual diagnostic instead of always blaming inset. No publishing or physical-device validation was performed.
 
 After the final empty-placement guidance and shortcut-help refinements, all 395 unit tests, the production build, all 49 manual screenshot scenarios and 12 focused stitching browser checks passed again. A partial screenshot capture was rejected by the complete-manual coverage guard; the subsequent complete capture passed.
+
+## Editable SVG import
+
+The editable SVG checks exercise review and cancellation, physical dimensions, grouped insertion, project round trips, default stitch detection and its opt-out, and downstream Offset and DXF export. The print checks cover the document format 24 migration and prevent visual-only layers from producing duplicate cuts. The three real-world SVG samples also imported successfully with their expected detected hole counts.
+
+The bundled manual documents the supported SVG subset, the image fallback, and the choice between native stitching and preserving original marks for DXF. The refreshed import review illustration shows the DXF guidance. Validation uses Linux browser engines. Physical print scale and native OS dialog behavior were outside this pass.
