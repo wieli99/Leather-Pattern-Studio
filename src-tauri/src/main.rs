@@ -220,6 +220,13 @@ async fn focus_editor(app: tauri::AppHandle) -> Result<(), String> {
 }
 #[tauri::command]
 fn desktop_ready(app: tauri::AppHandle) {
+    #[cfg(target_os = "linux")]
+    if std::env::var("LEATHER_FLATPAK_SMOKE_TEST").as_deref() == Ok("1") {
+        println!("Leather Pattern Studio desktop ready");
+        app.exit(0);
+        return;
+    }
+
     app.state::<QuitState>().arm();
 }
 #[tauri::command]
