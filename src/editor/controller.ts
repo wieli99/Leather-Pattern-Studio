@@ -17,6 +17,8 @@ import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
 import { resizeText } from "../model/text";
 import type { ImportedImage } from "./imageImport";
+import type { VectorImport } from "./vectorImport";
+import { truncateSvgName } from "./svgImportCompatibility";
 import { DOCUMENT_VERSION } from "../model/project";
 import { isIndicator } from "../model/indicators";
 import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
@@ -1935,6 +1937,49 @@ export class Controller {
     this.stitchDraft = null;
     this.notify();
   }
+  async insertVector(
+    result: VectorImport,
+    name: string,
+    source: { document: Doc; revision: number; epoch: number },
+  ) {
+    if (!this.ready || this.busy || this.pendingDocument || this.fileBusy || this.printLayoutActive) return false;
+    if (
+      this.document !== source.document ||
+      this.revision !== source.revision ||
+      this.projectEpoch !== source.epoch
+    ) {
+      this.fail(Error("Project changed during import; please try again"));
+      return false;
+    }
+    if (!result.shapes.length) return false;
+    this.cancel();
+    const x = (this.width / 2 - this.pan.x) / this.zoom - result.bounds.x - result.bounds.width / 2;
+    const y = (this.height / 2 - this.pan.y) / this.zoom - result.bounds.y - result.bounds.height / 2;
+    const move = (p: Point): Point => ({ x: p.x + x, y: p.y + y });
+    const shapes = result.shapes.map(shape => ({
+      ...shape,
+      points: shape.points.map(move),
+      contours: shape.contours?.map(contour =>
+        contour.map(cubic => cubic.map(move) as [Point, Point, Point, Point]),
+      ),
+    }));
+    const id = crypto.randomUUID();
+    if (!await this.commit({
+      ...this.document,
+      shapes: [...this.document.shapes, ...shapes],
+      ...(result.stitchGroups?.length ? { stitchGroups: [...(this.document.stitchGroups ?? []), ...result.stitchGroups] } : {}),
+      objectTree: [{
+        kind: "group", id,
+        name: truncateSvgName(name.trim()) || "Imported SVG",
+        children: result.tree,
+      }, ...this.tree],
+    })) return false;
+    this.setMode("select");
+    this.selectedGroups = [id];
+    this.selected = shapes.map(shape => shape.id);
+    this.notify();
+    return true;
+  }
   async insertImage(image: ImportedImage) {
     this.cancel();
     const scale = Math.min(this.width / image.width, this.height / image.height) / this.zoom / 2;
@@ -1955,7 +2000,9 @@ export class Controller {
       this.setMode("select");
       this.selected = [id];
       this.notify();
+      return true;
     }
+    return false;
   }
   normalizeTree(document: Doc): Doc {
     const objectTree = reconcileObjectTree(document.objectTree ?? objectTreeFromShapes(document.shapes), document.shapes);

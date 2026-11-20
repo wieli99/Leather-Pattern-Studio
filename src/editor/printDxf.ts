@@ -9,7 +9,7 @@ export function layoutDxf(doc: Doc, layout: PrintLayout) {
   let vertices = 0;
   for (const item of resolvedPrintItems(doc, layout)) {
     const s = item.shape;
-    if (item.hidden || s.stitchOnly || isIndicator(s.kind) || ["text", "image", "measurement"].includes(s.kind)) continue;
+    if (item.hidden || s.excludeFromDxf || s.stitchOnly || isIndicator(s.kind) || ["text", "image", "measurement"].includes(s.kind)) continue;
     for (const { points, closed } of flattenContours(s, 0.01)) {
       if (points.length < 2) continue;
       vertices += points.length;

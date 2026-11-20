@@ -26,7 +26,8 @@ function similarityScale(shape: Shape) {
 function primitive(source: Shape, kind: "circle" | "rectangle", points: Point[], radius: number): Shape {
   return { id: crypto.randomUUID(), name: `${source.name.slice(0, 193)} offset`, kind, points, radius,
     rotation: source.rotation, transform: source.transform, strokeColor: source.strokeColor,
-    strokeOpacity: source.strokeOpacity, strokeWidth: source.strokeWidth, fillOpacity: 0 };
+    strokeOpacity: source.strokeOpacity, strokeWidth: source.strokeWidth, fillOpacity: 0,
+    excludeFromDxf: source.excludeFromDxf };
 }
 
 function crossing(a: Point, b: Point, c: Point, d: Point) {

@@ -74,6 +74,13 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub stitch_only: Option<bool>,
+    #[serde(
+        default,
+        rename = "excludeFromDxf",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub exclude_from_dxf: Option<bool>,
     #[serde(default, rename = "fillColor", skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub fill_color: Option<String>,
@@ -851,10 +858,28 @@ impl Document {
         }
         if !matches!(
             self.version,
-            5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
+            5 | 6
+                | 7
+                | 8
+                | 9
+                | 10
+                | 11
+                | 12
+                | 13
+                | 14
+                | 15
+                | 16
+                | 17
+                | 18
+                | 19
+                | 20
+                | 21
+                | 22
+                | 23
+                | 24
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24). Reload the application.",
                 self.version
             ));
         }
@@ -1431,7 +1456,7 @@ impl Default for Editor {
                 stitch_presets: None,
                 stitch_transfers: None,
                 print_layouts: vec![],
-                version: 23,
+                version: 24,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -1451,7 +1476,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]})
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]})
             .to_string()
     }
     pub fn snapshot(&self) -> String {
@@ -1564,7 +1589,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 23;
+                next.version = 24;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -1715,7 +1740,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 23;
+        doc.version = 24;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1827,7 +1852,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1859,7 +1884,7 @@ mod tests {
     #[test]
     fn compound_contours_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 23;
+        doc.version = 24;
         let shape = &mut doc.shapes[0];
         shape.kind = Kind::Compound;
         let p = |x, y| Point { x, y };
@@ -1906,7 +1931,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 23;
+        d.version = 24;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -2065,7 +2090,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 23;
+        doc.version = 24;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -2187,12 +2212,26 @@ mod print_tests {
         }
     }
     #[test]
+    fn migrates_v23_and_preserves_dxf_exclusion() {
+        let json = r#"{"version":23,"shapes":[{"id":"a","kind":"rectangle","name":"Visual fill","excludeFromDxf":true,"points":[{"x":0,"y":0},{"x":10,"y":10}],"radius":0,"rotation":0}]}"#;
+        let mut editor = Editor::new();
+        editor.execute("load", json, 0).unwrap();
+        assert_eq!(editor.document.version, 24);
+        let persisted = serde_json::to_string(&editor.document).unwrap();
+        assert!(persisted.contains(r#""excludeFromDxf":true"#));
+        assert_eq!(
+            serde_json::from_str::<Document>(&persisted).unwrap(),
+            editor.document
+        );
+    }
+
+    #[test]
     fn old_projects_start_without_layouts_and_source_deletion_is_atomic() {
         let mut editor = Editor::new();
         editor
             .execute("load", r#"{"version":5,"shapes":[]}"#, 0)
             .unwrap();
-        assert_eq!(editor.document.version, 23);
+        assert_eq!(editor.document.version, 24);
         assert!(editor.document.print_layouts.is_empty());
         editor.execute("load", &project().to_string(), 1).unwrap();
         let original = editor.document.clone();
