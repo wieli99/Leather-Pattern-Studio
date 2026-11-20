@@ -438,3 +438,38 @@ test("declared SVG encoding preserves Latin-1 labels and rejects invalid byte se
     await expect(dialog).not.toBeVisible();
   }
 });
+
+test("SVG import keeps source markup and external resources out of the editor", async ({ page }) => {
+  await page.goto("/");
+  const resource = "https://example.invalid/svg-import-isolation";
+  const requests: string[] = [];
+  await page.route(resource + "**", async route => {
+    requests.push(route.request().url());
+    await route.abort();
+  });
+  const label = '<span data-svg-import-probe="">literal label</span>';
+  const buffer = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="20mm" viewBox="0 0 40 20" onload="window.svgImportProbe = true">
+    <script>window.svgImportProbe = true</script>
+    <image href="${resource}/image.png" width="10" height="10"/>
+    <foreignObject width="10" height="10">
+      <span xmlns="http://www.w3.org/1999/xhtml" data-svg-import-probe="">Source node</span>
+    </foreignObject>
+    <rect id='&lt;span data-svg-import-probe=""&gt;literal label&lt;/span&gt;' width="40" height="20" fill="url(${resource}/paint.svg#fill) red"/>
+  </svg>`);
+  const file = page.getByLabel("Image file", { exact: true });
+  const dialog = page.getByRole("dialog", { name: "Import SVG" });
+  const insert = dialog.getByRole("button", { name: "Import", exact: true });
+  await file.setInputFiles({ name: "isolation.svg", mimeType: "image/svg+xml", buffer });
+  await expect(dialog).toContainText("Artwork: 40.00 × 20.00 mm");
+  await expect(dialog.getByRole("list", { name: "Import warnings" })).toContainText("Omitted unsupported script");
+  await insert.click();
+  await expect(page.locator(".object-select").filter({ hasText: label })).toHaveCount(1);
+
+  await file.setInputFiles({ name: "isolation.svg", mimeType: "image/svg+xml", buffer });
+  await dialog.getByRole("radio", { name: "Import as image" }).check();
+  await insert.click();
+  await expect(page.locator(".object-select").filter({ hasText: "isolation.svg" })).toHaveCount(1);
+  await expect(page.locator("[data-svg-import-probe]")).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, "svgImportProbe"))).toBeUndefined();
+  expect(requests).toEqual([]);
+});
