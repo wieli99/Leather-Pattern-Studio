@@ -133,10 +133,13 @@ export function booleanShapes(
   operation: BooleanOperation,
   shapes: Shape[],
 ): Shape | null {
-  const contours = booleanOutlines(operation, shapes.map(booleanOutline));
+  const cuttableUnion = operation === "union" && shapes.some(shape => !shape.excludeFromDxf);
+  const mixedUnion = cuttableUnion && shapes.some(shape => shape.excludeFromDxf);
+  const contours = booleanOutlines(operation, shapes.map(booleanOutline), mixedUnion);
   if (!contours.length) return null;
   const result: Shape = {
     ...shapes[0],
+    ...(cuttableUnion ? { excludeFromDxf: undefined } : {}),
     kind: "compound",
     contours,
     points: [

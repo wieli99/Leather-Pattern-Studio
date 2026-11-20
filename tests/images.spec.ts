@@ -50,6 +50,9 @@ for (const mimeType of ["image/svg+xml", ""]) {
     await button.click();
     await (await chooser).setFiles({ name: "Reference.svg", mimeType,
       buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><rect width="120" height="60" fill="red"/></svg>') });
+    const review = page.getByRole("dialog", { name: "Import SVG" });
+    await review.getByRole("radio", { name: "Import as image" }).check();
+    await review.getByRole("button", { name: "Import", exact: true }).click();
     await expect(page.locator(".object-select")).toHaveCount(1);
     await expect(page.getByText("Image opacity (%)", { exact: true })).toBeVisible();
     if (mimeType) await manualScreenshot(page, "svg-import.png");
@@ -65,6 +68,9 @@ for (const aspect of ['width="120" height="60"', 'viewBox="0 0 120 60"', 'viewBo
     const chooser = page.waitForEvent("filechooser");
     await page.getByRole("button", {name:"Import image",exact:true}).click();
     await (await chooser).setFiles({name:"stretch.svg",mimeType:"image/svg+xml",buffer:Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" ${aspect}><rect width="120" height="60" fill="#ff0000"/></svg>`)});
+    const review = page.getByRole("dialog", { name: "Import SVG" });
+    await review.getByRole("radio", { name: "Import as image" }).check();
+    await review.getByRole("button", { name: "Import", exact: true }).click();
     await expect(page.locator(".object-select")).toHaveCount(1);
     const artwork = () => page.locator("canvas").first().evaluate((canvas: HTMLCanvasElement) => {
       const {data} = canvas.getContext("2d")!.getImageData(0,0,canvas.width,canvas.height);

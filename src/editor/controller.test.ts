@@ -2195,7 +2195,7 @@ test("initialization rejects a stale worker document version", async () => {
   vi.spyOn(e.core, "request").mockResolvedValue({document:{...emptyDocument(),version:15},revision:0,canUndo:false,canRedo:false});
   await e.initialize();
   expect(e.ready).toBe(false);
-  expect(e.message).toContain("expects document version 23, but geometry worker returned 15");
+  expect(e.message).toContain(`expects document version ${DOCUMENT_VERSION}, but geometry worker returned 15`);
 });
 
 test("unit preferences leave document, grid and history unchanged", () => {
@@ -3691,4 +3691,37 @@ test("cancelling radial center repositioning clears the discarded snap target", 
   expect(e.snapTarget).toBeNull();
   expect(e.snapKind).toBeNull();
   expect(e.smartGuides).toEqual([]);
+});
+
+test('vector import translates compound contours, preserves groups, and commits one history entry', async () => {
+  const e=editor();
+  e.width=800;e.height=600;e.zoom=2;e.pan={x:0,y:0};
+  const result: import('./vectorImport').VectorImport={width:100,height:100,warnings:[],bounds:{x:10,y:20,width:40,height:30},tree:[{kind:'group',id:'sub',name:'Source layer',children:[{kind:'object',id:'import'}]}],shapes:[{
+    id:'import',name:'Piece',kind:'compound',points:[{x:10,y:20},{x:50,y:50}],radius:0,rotation:0,
+    contours:[[[{x:10,y:20},{x:10,y:20},{x:50,y:20},{x:50,y:20}],[{x:50,y:20},{x:50,y:20},{x:50,y:50},{x:50,y:50}],[{x:50,y:50},{x:50,y:50},{x:10,y:20},{x:10,y:20}]]],
+  }]};
+  expect(await e.insertVector(result,'Wallet',{document:e.document,revision:e.revision,epoch:e.projectEpoch})).toBe(true);
+  expect(e.revision).toBe(1);
+  expect(e.document.shapes[0].points).toEqual([{x:180,y:135},{x:220,y:165}]);
+  expect(e.document.shapes[0].contours![0][0][0]).toEqual({x:180,y:135});
+  expect(e.tree[0]).toMatchObject({kind:'group',name:'Wallet',children:[{kind:'group',name:'Source layer'}]});
+  expect(e.selected).toEqual(['import']);
+  const saved=JSON.stringify(e.document);
+  await e.transact('undo');expect(e.document.shapes).toHaveLength(0);
+  await e.transact('redo');expect(JSON.stringify(e.document)).toBe(saved);
+});
+
+test('vector import rejects stale, empty, invalid, and non-model imports atomically',async()=>{
+  const e=editor();
+  const result:import('./vectorImport').VectorImport={shapes:[],tree:[],warnings:[],width:100,height:100,bounds:{x:0,y:0,width:100,height:100}};
+  const source={document:e.document,revision:e.revision,epoch:e.projectEpoch};
+  expect(await e.insertVector(result,'Empty',source)).toBe(false);
+  expect(await e.insertVector(result,'Stale',{...source,epoch:-1})).toBe(false);
+  e.printLayoutActive=true;
+  expect(await e.insertVector(result,'Layout',source)).toBe(false);
+  e.printLayoutActive=false;
+  result.shapes=[{id:'bad',name:'Bad',kind:'line',points:[{x:0,y:0},{x:NaN,y:10}],radius:0,rotation:0}];
+  result.tree=[{kind:'object',id:'bad'}];
+  expect(await e.insertVector(result,'Invalid',source)).toBe(false);
+  expect(e.revision).toBe(0);expect(e.document.shapes).toHaveLength(0);
 });

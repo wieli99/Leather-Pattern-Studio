@@ -13,6 +13,7 @@ const scope = new paper.PaperScope();
 export function booleanOutlines(
   operation: BooleanOperation,
   outlines: BooleanOutline[],
+  requireConnectedUnion = false,
 ): BooleanOutline {
   if (outlines.length < 2) throw Error("Select at least two closed outlines");
   scope.activate();
@@ -63,8 +64,11 @@ export function booleanOutlines(
       result instanceof scope.CompoundPath
         ? (result.children as paper.Path[])
         : [result as paper.Path];
-    return paths
-      .filter((path) => path.curves.length > 0 && Math.abs(path.area) > 1e-12)
+    const boundaries = paths.filter((path) => path.curves.length > 0 && Math.abs(path.area) > 1e-12);
+    // Paper's union orients outer boundaries clockwise and holes counterclockwise.
+    if (requireConnectedUnion && boundaries.filter(path => path.clockwise).length > 1)
+      throw Error("Join cannot combine visual-only fills and DXF cut outlines into disconnected pieces.");
+    return boundaries
       .map((path) =>
         path.curves
           .filter((curve) => curve.length > 1e-9)
