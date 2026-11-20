@@ -93,7 +93,7 @@ test("cached redirected manual supports normal navigation, Help, reload and offl
   await expect(page.getByRole("link", { name: "Help", exact: true })).toBeVisible();
 });
 
-test("accepting an update replaces a legacy worker with redirected cached pages", async ({ page, deployment }) => {
+test("accepting an update replaces a legacy worker with redirected cached pages", async ({ page, context, deployment }) => {
   // Install the previous cache-serving behavior before the editor registers sw.js.
   await page.goto(`${deployment.origin}/manual/`);
   await page.evaluate(async () => {
@@ -103,11 +103,12 @@ test("accepting an update replaces a legacy worker with redirected cached pages"
   await page.goto(deployment.origin);
   await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Reload", exact: true }).click();
-  // Activation may reload the page while these checks are being evaluated.
+  // Activation may reload the editor while these checks are being evaluated.
   await expect(async () => {
     expect(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL)).toBe(`${deployment.origin}/sw.js`);
     expect(await page.evaluate(async () => (await caches.keys()).some(key => key !== "leather-studio-legacy"))).toBe(true);
   }).toPass({ timeout: 10000 });
-  await page.goto(`${deployment.origin}/manual/index.html#drawing`);
-  await expect(page.getByRole("heading", { name: "Drawing tools", exact: true })).toBeVisible();
+  const manual = await context.newPage();
+  await manual.goto(`${deployment.origin}/manual/index.html#drawing`);
+  await expect(manual.getByRole("heading", { name: "Drawing tools", exact: true })).toBeVisible();
 });
