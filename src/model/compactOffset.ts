@@ -293,7 +293,11 @@ export function compactOffset(source: Shape, distance: number, join: OffsetJoin)
     handles[0].incoming={...handles.at(-1)!.incoming};
     handles.at(-1)!.outgoing={...handles[0].outgoing};
   }
+  const fillOnly = (source.fillOpacity ?? 0) > 0 &&
+    (source.strokeOpacity === 0 || source.strokeWidth === 0);
   return {id:crypto.randomUUID(),name:`${source.name.slice(0,193)} offset`,kind:"control-curve",points,handles,
-    radius:0,rotation:0,strokeColor:source.strokeColor,strokeOpacity:source.strokeOpacity,
-    strokeWidth:source.strokeWidth,fillOpacity:0};
+    radius:0,rotation:0,strokeColor:fillOnly ? source.fillColor : source.strokeColor,
+    strokeOpacity:fillOnly ? 1 : source.strokeOpacity,
+    strokeWidth:fillOnly ? undefined : source.strokeWidth,fillOpacity:0,
+    excludeFromDxf:source.excludeFromDxf};
 }

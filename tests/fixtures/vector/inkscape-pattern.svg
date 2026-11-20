@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="120mm" height="80mm" viewBox="0 0 120 80">
+  <g inkscape:label="Wallet" transform="translate(10 10)" fill="none" stroke="#123456" stroke-width="0.35">
+    <path id="body" d="M0 0h100v60h-100z M10 10v40h80v-40z" fill="#cc8844" fill-rule="evenodd"/>
+    <g inkscape:label="Construction"><path id="guide" d="M0 30Q50 20 100 30"/></g>
+  </g>
+</svg>

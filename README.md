@@ -15,6 +15,7 @@ Go from an idea to a paper pattern with precise dimensions, stitch-hole placemen
 ## From outline to finished pattern
 
 - **Draw to real dimensions.** Use numeric inputs, grid and object snapping, and measurements in millimetres or inches. Zoom in for detail without changing the size of your pattern.
+- **Continue an existing pattern.** Import editable SVG outlines at physical size, review unsupported content, then edit curves and add LPS stitching. [Supported SVG subset](docs/manual/files.md#editable-svg-import).
 - **Refine your pieces.** Edit curves, round corners, move, rotate, resize, mirror, trim, and merge geometry. Group related objects and add labels, measurements, and reference images.
 - **Plan for leatherwork.** Mark skiving, glueing, and cutout areas, and add stitching with spacing and inset matched to your tools.
 - **Keep paper layouts in sync.** Arrange linked copies of your pieces on print tabs. Source edits update the artwork while preserving its placement on the page.
