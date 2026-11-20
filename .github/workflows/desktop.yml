@@ -118,12 +118,21 @@ jobs:
           sudo podman run --rm --privileged -v "$PWD:/workspace" -v "$PWD/.cache/desktop-cargo/registry:/usr/local/cargo/registry" -v "$PWD/.cache/desktop-cargo/git:/usr/local/cargo/git" -w /workspace localhost/leather-desktop sh -ec '
             npm ci
             npm run check:fast
-            npx tauri build --config src-tauri/tauri.ci.conf.json --no-bundle --target ${{ matrix.target }}
             cargo test --release --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+            npx tauri build --config src-tauri/tauri.ci.conf.json --no-bundle --target ${{ matrix.target }}
             cp src-tauri/target/${{ matrix.target }}/release/leather-pattern-studio packaging/
             flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
             flatpak-builder --user --disable-rofiles-fuse --install-deps-from=flathub --repo=flatpak-repo flatpak-build packaging/studio.leather.pattern-designer.yml
-            flatpak build-bundle flatpak-repo Leather-Pattern-Studio-${{ matrix.arch }}.flatpak studio.leather.pattern-designer --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+            bundle=Leather-Pattern-Studio-${{ matrix.arch }}.flatpak
+            flatpak build-bundle flatpak-repo "$bundle" studio.leather.pattern-designer --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+            flatpak install --user --noninteractive --bundle "$bundle"
+            if timeout --kill-after=5s 60s dbus-run-session -- xvfb-run -a flatpak run --user --unshare=network --env=LEATHER_FLATPAK_SMOKE_TEST=1 studio.leather.pattern-designer >flatpak-smoke.log 2>&1; then
+              cat flatpak-smoke.log
+              grep -Fx "Leather Pattern Studio desktop ready" flatpak-smoke.log
+            else
+              cat flatpak-smoke.log >&2
+              exit 1
+            fi
           '
       - name: Restore cache ownership
         if: always()
