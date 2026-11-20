@@ -30,26 +30,14 @@ import PanelSection from "./PanelSection.vue";
 import Settings from "./Settings.vue";
 import StatusBar from "./StatusBar.vue";
 import BugReport from "./BugReport.vue";
+import ImageImport from "./ImageImport.vue";
 
-import { decodeImageFile } from "../editor/imageImport";
 import { tools } from "./tools";
 import { handleShortcut, handleClipboard } from "./shortcuts";
 const printActive = ref(false);
 const appVersion = __APP_VERSION__;
 const printWorkspace = ref<InstanceType<typeof PrintWorkspace>>();
-const imagePicker = ref<HTMLInputElement | null>(null);
-async function importImage(event: Event) {
-  const input = event.target as HTMLInputElement, file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-  const original = editor.document;
-  try {
-    const image = await decodeImageFile(file);
-    if (editor.document !== original)
-      throw Error("Project changed during image import; please try again");
-    await editor.insertImage(image);
-  } catch (error) { editor.message = String(error); editor.notify(); }
-}
+const importReviewOpen = ref(false);
 let allowDesktopClose = false;
 const desktopBridgeReady = ref(!isTauri());
 const nativeSaving = isTauri() || "showSaveFilePicker" in window;
@@ -209,10 +197,10 @@ onMounted(async () => {
 });
 onMounted(() => {
   const key = (event: KeyboardEvent) =>
-    !printActive.value && handleShortcut(event, () => {
+    !printActive.value && !importReviewOpen.value && handleShortcut(event, () => {
       void openHelp();
     });
-  const clipboard = (event: ClipboardEvent) => { if (!printActive.value) handleClipboard(event); };
+  const clipboard = (event: ClipboardEvent) => { if (!printActive.value && !importReviewOpen.value) handleClipboard(event); };
   const up = (e: KeyboardEvent) => {
     if (e.code === "Space") editor.space = false;
   };
@@ -350,8 +338,7 @@ onMounted(() => {
           <div v-if="tool.id === 'text'" class="rail-divider" role="separator" aria-label="Text and indicator tools" />
           <ToolButton :tool="tool" />
         </template>
-        <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importImage" />
-        <RailButton title="Import image" aria-label="Import image" :disabled="!e.ready" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></RailButton>
+        <ImageImport v-model:review-open="importReviewOpen" />
         <div class="rail-divider" />
         <RailButton
           title="Undo (Ctrl/⌘+Z)"

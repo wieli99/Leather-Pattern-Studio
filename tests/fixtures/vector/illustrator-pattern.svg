@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" width="288pt" height="144pt" viewBox="0 0 288 144">
+  <style>.unsupported { fill:red; }</style>
+  <g id="Layer_1"><rect id="rounded" x="10" y="10" width="100" height="60" rx="10" style="fill:#e3a355;stroke:#222;stroke-width:1"/><path id="flap" fill="none" stroke="black" d="M120 10 C150 0 180 0 200 10 S250 40 260 60 Q200 100 120 60Z"/><text x="10" y="100">Wallet</text></g>
+</svg>
