@@ -82,8 +82,6 @@ import {
   sourceShapeIds,
   findSource,
   importPrintNode,
-  printSyncConflicts,
-  syncedPrintMemberIds,
   unlinkPrintNode,
   resolvedPrintItems,
   printDescendants,
@@ -163,11 +161,6 @@ const sourceRows = computed(() => {
   visit(sourceNodes(e.value.document));
   return rows;
 });
-const sourceConflicts = computed(() =>
-  layout.value
-    ? printSyncConflicts(e.value.document, layout.value)
-    : new Map<string, string>(),
-);
 const collapsed = ref(new Set<string>());
 const visibleRows = computed(() => {
   let hideDepth = Infinity;
@@ -1280,19 +1273,6 @@ function duplicate() {
       if (selectedIds.has(node.id)) roots.push(copy(node));
       else if (node.kind === "group") visit(node.children);
     }
-  }
-  const members = syncedPrintMemberIds(l);
-  function blocked(nodes: PrintNode[]): boolean {
-    return nodes.some((node) =>
-      selectedIds.has(node.id)
-        ? members.has(node.id)
-        : node.kind === "group" && blocked(node.children),
-    );
-  }
-  if (blocked(printTree(l))) {
-    error.value =
-      "Items synced through an imported folder cannot be duplicated on their own. Duplicate the whole folder, or unlink the item first.";
-    return;
   }
   visit(printTree(l));
   void save({ ...l, instances, tree: [...printTree(l), ...roots] });
@@ -3471,7 +3451,6 @@ defineExpose({
             v-for="row in sourceRows"
             :key="row.node.id"
             :style="{ paddingLeft: `${row.depth * 14}px` }"
-            :title="sourceConflicts.get(row.node.id)"
             :draggable="false"
             @pointerenter="previewRow($event, row.node.id)"
             @pointerleave="hoverPreview.id = undefined"
@@ -3502,7 +3481,7 @@ defineExpose({
               }}</button
             ><button
               :aria-label="`Import ${row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name}`"
-              :disabled="busy || sourceConflicts.has(row.node.id)"
+              :disabled="busy"
               @click="importSource(row.node.id)"
             >
               Import

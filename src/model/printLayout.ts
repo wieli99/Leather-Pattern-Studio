@@ -323,106 +323,6 @@ export function sourceShapeIds(node: ObjectNode): string[] {
     ? [node.id]
     : node.children.flatMap(sourceShapeIds);
 }
-/** Live placements that are not managed by an enclosing synced folder. */
-export function linkedPrintRoots(
-  layout: PrintLayout,
-): { node: PrintNode; sourceId: string }[] {
-  const instances = new Map(layout.instances.map((i) => [i.id, i]));
-  const roots: { node: PrintNode; sourceId: string }[] = [];
-  function visit(nodes: PrintNode[]) {
-    for (const node of nodes) {
-      if (node.kind === "instance") {
-        const item = instances.get(node.id);
-        if (item && !item.snapshot)
-          roots.push({ node, sourceId: item.sourceId });
-      } else if (node.unlinked) continue;
-      else if (node.sourceId) roots.push({ node, sourceId: node.sourceId });
-      else visit(node.children);
-    }
-  }
-  visit(printTree(layout));
-  return roots;
-}
-
-/** Linked placements maintained by a synced folder rather than imported on their own. */
-export function syncedPrintMemberIds(layout: PrintLayout): Set<string> {
-  const instances = new Map(layout.instances.map((i) => [i.id, i]));
-  const members = new Set<string>();
-  function visit(nodes: PrintNode[]) {
-    for (const node of nodes) {
-      if (node.kind === "instance") {
-        if (!instances.get(node.id)?.snapshot) members.add(node.id);
-      } else if (!node.unlinked) {
-        members.add(node.id);
-        visit(node.children);
-      }
-    }
-  }
-  for (const root of linkedPrintRoots(layout))
-    if (root.node.kind === "group") visit(root.node.children);
-  return members;
-}
-
-/**
- * A Model folder is synced to a print tab either as a whole or through its
- * individual members, never both, so a source never has two competing links.
- * Returns an explanation for every Model object or folder that cannot be imported.
- */
-export function printSyncConflicts(
-  doc: Doc,
-  layout: PrintLayout,
-): Map<string, string> {
-  const conflicts = new Map<string, string>();
-  const roots = linkedPrintRoots(layout);
-  if (!roots.length) return conflicts;
-  type Folder = Extract<ObjectNode, { kind: "group" }>;
-  const ancestors = new Map<string, Folder[]>(),
-    names = new Map<string, string>(),
-    shapeNames = new Map(doc.shapes.map((shape) => [shape.id, shape.name]));
-  function index(nodes: ObjectNode[], path: Folder[]) {
-    for (const node of nodes) {
-      ancestors.set(node.id, path);
-      names.set(
-        node.id,
-        node.kind === "group"
-          ? node.name
-          : (shapeNames.get(node.id) ?? "Object"),
-      );
-      if (node.kind === "group") index(node.children, [...path, node]);
-    }
-  }
-  index(sourceNodes(doc), []);
-  const synced = new Map<string, string>(),
-    folderMembers = new Map<string, string>();
-  for (const root of roots) {
-    if (!ancestors.has(root.sourceId)) continue;
-    synced.set(root.sourceId, root.sourceId);
-    for (const folder of ancestors.get(root.sourceId)!)
-      if (!folderMembers.has(folder.id))
-        folderMembers.set(folder.id, root.sourceId);
-  }
-  for (const [id, path] of ancestors) {
-    const folder = path.find((node) => synced.has(node.id));
-    if (folder)
-      conflicts.set(
-        id,
-        `“${names.get(id)}” is already synced as part of folder “${folder.name}” on this print tab. Import the whole folder again, or delete or unlink that folder first.`,
-      );
-    else if (folderMembers.has(id))
-      conflicts.set(
-        id,
-        `Folder “${names.get(id)}” cannot be synced as a whole because its member “${names.get(folderMembers.get(id)!)}” is already synced individually on this print tab. Delete or unlink that copy first.`,
-      );
-  }
-  return conflicts;
-}
-
-export const printSyncConflict = (
-  doc: Doc,
-  layout: PrintLayout,
-  sourceId: string,
-) => printSyncConflicts(doc, layout).get(sourceId);
-
 export function importPrintNode(
   doc: Doc,
   layout: PrintLayout,
@@ -432,8 +332,6 @@ export function importPrintNode(
 ): PrintLayout {
   const source = findSource(sourceNodes(doc), sourceId);
   if (!source) throw Error("Source no longer exists");
-  const conflict = printSyncConflict(doc, layout, sourceId);
-  if (conflict) throw Error(conflict);
   const instances = [...layout.instances];
   const shapes = doc.shapes.filter((s) =>
     sourceShapeIds(source).includes(s.id),
