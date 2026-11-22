@@ -1878,3 +1878,33 @@ test("favorites return immediately when switching back to Model", async ({page})
  await page.getByRole("tab",{name:"Model",exact:true}).click();
  await expect(page.getByRole("button",{name:"Search tools",exact:true})).toBeVisible();
 });
+
+test("Tab focuses print measurement fields and Enter returns focus to the print canvas", async ({ page }) => {
+  await load(page);
+  await create(page);
+  const canvas = page.getByLabel("Print layout canvas");
+  const box = (await canvas.boundingBox())!;
+  await canvas.focus();
+  await page.keyboard.press("d");
+  await canvas.click({ position: { x: 170, y: 230 } });
+  await page.mouse.move(box.x + 250, box.y + 230);
+  await canvas.press("Tab");
+  const fields = page.locator(".print-canvas .construction-measurements input");
+  await expect(fields.first()).toBeFocused();
+  await fields.first().pressSequentially("50");
+  await fields.first().press("Enter");
+  await expect(canvas).toBeFocused();
+  await page.mouse.move(box.x + 250, box.y + 260);
+  await canvas.press("Tab");
+  const offset = page.getByRole("textbox", { name: "Offset", exact: true });
+  await expect(offset).toBeFocused();
+  await offset.pressSequentially("5");
+  await offset.press("Enter");
+  await expect(canvas).toBeFocused();
+  await expect.poll(async () => (await save(page)).printLayouts[0].instances.length).toBe(1);
+  const measurement = (await save(page)).printLayouts[0].instances[0].snapshot.shape;
+  expect(measurement.kind).toBe("measurement");
+  const [start, end] = measurement.points;
+  expect(Math.hypot(end.x - start.x, end.y - start.y)).toBeCloseTo(50, 6);
+  expect(Math.abs(measurement.measurementOffset)).toBeCloseTo(5, 6);
+});

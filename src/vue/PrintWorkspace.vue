@@ -2862,6 +2862,18 @@ function keyboard(event: KeyboardEvent) {
     return;
   }
   if (!target.closest(".print-workspace")) return;
+  if (key === "tab" && !event.shiftKey && !mod && !event.altKey && target === canvas.value) {
+    const field = target.parentElement?.querySelector<HTMLInputElement>(
+      tool.value !== "select"
+        ? ".print-transform .transform-inputs input"
+        : ".construction-measurements input",
+    );
+    if (field) {
+      event.preventDefault();
+      field.focus({ preventScroll: true });
+    }
+    return;
+  }
   if (drawing.mode === "measurement" && !mod && (key === "arrowup" || key === "arrowdown")) {
     event.preventDefault();
     drawing.adjustConstructionCount(key === "arrowup" ? 1 : -1);

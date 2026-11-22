@@ -13,6 +13,7 @@ const props = defineProps<{ controller?: Controller }>();
 const editor = props.controller ?? defaultEditor;
 const revision = useEditorSelector(editor, editor.snapshot);
 const active = ref<string>();
+const root = ref<HTMLElement>();
 const draft = ref("");
 const error = ref("");
 const pinned = ref({ x: 0, y: 0 });
@@ -183,7 +184,12 @@ async function confirm(item: (typeof items.value)[number]) {
 function cancel() {
   active.value = undefined;
   error.value = "";
-  document.querySelector<HTMLCanvasElement>("canvas")?.focus({ preventScroll: true });
+  // Return focus to the canvas this overlay edits; print views also contain hidden canvases.
+  const canvas = Array.from(
+    root.value?.parentElement?.querySelectorAll<HTMLCanvasElement>("canvas[tabindex]") ?? [],
+  ).find((el) => el.getClientRects().length) ??
+    document.querySelector<HTMLCanvasElement>("canvas");
+  canvas?.focus({ preventScroll: true });
 }
 function cycleField(event: KeyboardEvent) {
   if (
@@ -221,7 +227,7 @@ function style(item: (typeof items.value)[number]) {
 }
 </script>
 <template>
-  <div class="construction-measurements" data-hint-edit="measurement">
+  <div ref="root" class="construction-measurements" data-hint-edit="measurement">
     <label v-for="item in items" :key="item.id" :style="style(item)">
       <span v-if="item.key" class="measurement-name">{{
         item.key === "Angle" ? "Direction" : item.key
