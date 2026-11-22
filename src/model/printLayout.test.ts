@@ -47,7 +47,7 @@ import {
   printDescendants,
   validatePrintLayouts as validate,
 } from "./printLayout";
-import type { PrintLayout } from "./printLayout";
+import type { PrintLayout, PrintNode } from "./printLayout";
 import type { Doc, Shape } from "./project";
 const source: Shape = {
   id: "piece",
@@ -135,7 +135,7 @@ describe("linked print instances", () => {
       ]),
     ).toMatchObject({ width: 80 });
   });
-  it("tracks membership and source deletion atomically; locally removed members stay suppressed", () => {
+  it("tracks membership and source deletion atomically; removing a member keeps the rest individually linked", () => {
     const imported = importPrintNode(doc, empty, "folder", 95, 100);
     const added = { ...source, id: "second", name: "Second" };
     const updated: Doc = {
@@ -157,6 +157,7 @@ describe("linked print instances", () => {
     const synced = reconcilePrintLayouts(updated).printLayouts![0];
     expect(synced.instances).toHaveLength(2);
     const deleted = removePrintNodes(synced, [synced.instances[0].id]);
+    expect(deleted.tree![0]).not.toHaveProperty("sourceId");
     expect(
       reconcilePrintLayouts({ ...updated, printLayouts: [deleted] })
         .printLayouts![0].instances,
@@ -474,7 +475,7 @@ describe("unlinked print copies", () => {
   });
 });
 
-it("keeps a detached nested folder frozen while its live parent imports new siblings", () => {
+it("keeps a detached nested folder frozen and stops syncing its parent's membership", () => {
   const nested: Doc = { ...doc, objectTree: [{ kind: "group", id: "folder", name: "Pattern", children: [
     { kind: "group", id: "nested", name: "Nested", children: [{ kind: "object", id: source.id }] },
   ] }] };
@@ -492,7 +493,8 @@ it("keeps a detached nested folder frozen while its live parent imports new sibl
     ] },
   ], printLayouts: [detached] };
   const reconciled = reconcilePrintLayouts(changed).printLayouts![0];
-  expect(reconciled.instances.map((i) => i.sourceId).sort()).toEqual(["piece", "sibling"]);
+  expect(reconciled.instances.map((i) => i.sourceId).sort()).toEqual(["piece"]);
+  expect(reconciled.tree?.[0]).not.toHaveProperty("sourceId");
   expect(printRows(reconciled).find((r) => r.node.id === child.id)?.node)
     .toEqual(printRows(detached).find((r) => r.node.id === child.id)?.node);
 });
@@ -537,4 +539,93 @@ it.each([0, 45])("reselection reconciles folder pivots and placements at %s degr
   expect(retained.tree![0]).toEqual(previous.tree![0]);
   expect(retained.instances[0]).toEqual(previous.instances[0]);
   expect(retained.tree![1]).toEqual(candidate.tree![1]);
+});
+
+type GroupNode = Extract<PrintNode, { kind: "group" }>;
+describe("whole-folder print links", () => {
+  const shape = (id: string): Shape => ({ ...source, id, name: id });
+  const folder = (...ids: string[]): Doc => ({
+    ...doc,
+    shapes: ids.map(shape),
+    objectTree: [{ kind: "group", id: "folder", name: "Pattern", children: ids.map((id) => ({ kind: "object" as const, id })) }],
+  });
+  const sources = (l: PrintLayout) => l.instances.map((i) => i.sourceId).sort();
+
+  it("applies source additions, edits and deletions to every intact folder import", () => {
+    let l = importPrintNode(folder("a", "b"), empty, "folder", 80, 80);
+    l = importPrintNode(folder("a", "b"), l, "folder", 150, 80);
+    const added = reconcilePrintLayouts({ ...folder("a", "b", "c"), printLayouts: [l] }).printLayouts![0];
+    expect(sources(added)).toEqual(["a", "a", "b", "b", "c", "c"]);
+    const removed = reconcilePrintLayouts({ ...folder("a", "c"), printLayouts: [added] }).printLayouts![0];
+    expect(sources(removed)).toEqual(["a", "a", "c", "c"]);
+    const edited = { ...folder("a", "c"), shapes: [{ ...shape("a"), radius: 4 }, shape("c")], printLayouts: [removed] };
+    expect(resolvedPrintItems(edited, removed).filter((i) => i.instance.sourceId === "a").map((i) => i.shape.radius)).toEqual([4, 4]);
+  });
+
+  it("imports a folder member again individually as separate links", () => {
+    const d = folder("a", "b");
+    let l = importPrintNode(d, empty, "folder", 80, 80);
+    l = importPrintNode(d, l, "a", 120, 80);
+    l = importPrintNode(d, l, "a", 160, 80);
+    const synced = reconcilePrintLayouts({ ...folder("a", "b", "c"), printLayouts: [l] }).printLayouts![0];
+    expect(synced.tree).toHaveLength(3);
+    expect(synced.tree![0]).toMatchObject({ sourceId: "folder" });
+    expect(sources(synced)).toEqual(["a", "a", "a", "b", "c"]);
+    expect(new Set(synced.instances.map((i) => i.id)).size).toBe(5);
+    // Deleting an individual import does not touch the folder link.
+    const single = synced.tree![1].id;
+    const removed = removePrintNodes(synced, [single]);
+    expect(removed.tree![0]).toMatchObject({ sourceId: "folder" });
+    const gone = reconcilePrintLayouts({ ...folder("a", "b"), printLayouts: [removed] }).printLayouts![0];
+    expect(sources(gone)).toEqual(["a", "a", "b"]);
+  });
+
+  it("stops folder membership sync once one member is removed or unlinked, keeping members live", () => {
+    const d = folder("a", "b");
+    const l = importPrintNode(d, empty, "folder", 80, 80);
+    const b = l.instances.find((i) => i.sourceId === "b")!.id;
+    for (const next of [removePrintNodes(l, [b]), unlinkPrintNode(d, l, b)]) {
+      expect(next.tree![0]).not.toHaveProperty("sourceId");
+      const changed = { ...folder("a", "b", "c"), shapes: [{ ...shape("a"), radius: 2 }, shape("b"), shape("c")], printLayouts: [next] };
+      const synced = reconcilePrintLayouts(changed).printLayouts![0];
+      expect(sources(synced)).not.toContain("c");
+      expect(resolvedPrintItems(changed, synced).find((i) => i.instance.sourceId === "a")?.shape.radius).toBe(2);
+    }
+  });
+
+  it("keeps intact nested folders linked when their parent link breaks", () => {
+    const nested: Doc = { ...doc, shapes: [shape("a"), shape("b")], objectTree: [{ kind: "group", id: "outer", name: "Outer", children: [
+      { kind: "group", id: "inner", name: "Inner", children: [{ kind: "object", id: "a" }] },
+      { kind: "object", id: "b" },
+    ] }] };
+    const l = importPrintNode(nested, empty, "outer", 80, 80);
+    const b = l.instances.find((i) => i.sourceId === "b")!.id;
+    const next = removePrintNodes(l, [b]);
+    const changed: Doc = { ...nested, shapes: [shape("a"), shape("b"), shape("c")], objectTree: [{ kind: "group", id: "outer", name: "Outer", children: [
+      { kind: "group", id: "inner", name: "Inner", children: [{ kind: "object", id: "a" }, { kind: "object", id: "c" }] },
+      { kind: "object", id: "b" },
+    ] }], printLayouts: [next] };
+    const synced = reconcilePrintLayouts(changed).printLayouts![0];
+    expect(synced.tree![0]).not.toHaveProperty("sourceId");
+    expect(sources(synced)).toEqual(["a", "c"]);
+  });
+
+  it("converts legacy locally excluded members into individual links", () => {
+    const d = folder("a", "b");
+    const l = importPrintNode(d, empty, "folder", 80, 80);
+    const b = l.instances.find((i) => i.sourceId === "b")!.id;
+    const legacy: PrintLayout = {
+      ...l,
+      instances: l.instances.filter((i) => i.id !== b),
+      tree: [{ ...(l.tree![0] as GroupNode), excludedSourceIds: ["b"], children: [{ kind: "instance", id: l.instances.find((i) => i.sourceId === "a")!.id }] }],
+    };
+    const synced = reconcilePrintLayouts({ ...folder("a", "b", "c"), printLayouts: [legacy] }).printLayouts![0];
+    expect(sources(synced)).toEqual(["a"]);
+    expect(synced.tree![0]).not.toHaveProperty("sourceId");
+    expect(synced.tree![0]).not.toHaveProperty("excludedSourceIds");
+    const stale: PrintLayout = { ...l, tree: [{ ...(l.tree![0] as GroupNode), excludedSourceIds: ["b"] }] };
+    const kept = reconcilePrintLayouts({ ...folder("a", "b", "c"), printLayouts: [stale] }).printLayouts![0];
+    expect(kept.tree![0]).toMatchObject({ sourceId: "folder" });
+    expect(sources(kept)).toEqual(["a", "b", "c"]);
+  });
 });

@@ -1,8 +1,10 @@
 import {
+  breakPrintLinks,
+  isLinkedGroup,
+  linkedPrintAncestors,
   printTree,
   printRows,
   type PrintLayout,
-  type PrintNode,
 } from "./printLayout";
 import {
   reorderRoots,
@@ -27,36 +29,27 @@ export function movePrintTree(
     )
   )
     throw Error("Locked objects cannot move");
-  function owner(
-    nodes: PrintNode[],
-    id: string,
-    current = "",
-  ): string | undefined {
-    for (const n of nodes) {
-      if (n.id === id) return current;
-      if (n.kind === "group") {
-        const found = owner(n.children, id, n.sourceId ? n.id : current);
-        if (found !== undefined) return found;
-      }
-    }
-  }
+  // Moving across a live folder boundary changes that folder's membership, so
+  // the folders gained or lost keep only individual links to their members.
+  const origin = linkedPrintAncestors(tree, roots.map((n) => n.id));
   const parent = rows.find((r) => r.node.id === destination.parent)?.node;
-  const destinationOwner =
-    parent?.kind === "group" && parent.sourceId
-      ? parent.id
-      : destination.parent === null
-        ? ""
-        : owner(tree, destination.parent);
-  if (roots.some((n) => owner(tree, n.id) !== destinationOwner))
-    throw Error(
-      "Move linked children within their imported folder; duplicate to make a separate copy.",
-    );
+  const target =
+    destination.parent === null
+      ? new Set<string>()
+      : linkedPrintAncestors(tree, [destination.parent]);
+  if (parent && isLinkedGroup(parent)) target.add(parent.id);
+  const broken = new Set(
+    [...origin, ...target].filter((id) => !origin.has(id) || !target.has(id)),
+  );
   return {
     ...layout,
-    tree: reorderTree(
-      tree,
-      roots.map((n) => n.id),
-      destination,
+    tree: breakPrintLinks(
+      reorderTree(
+        tree,
+        roots.map((n) => n.id),
+        destination,
+      ),
+      broken,
     ),
   };
 }
