@@ -83,6 +83,7 @@ import {
   findSource,
   importPrintNode,
   unlinkPrintNode,
+  linkedPrintAncestors,
   resolvedPrintItems,
   printDescendants,
   editPrintTree,
@@ -1171,7 +1172,9 @@ function isUnlinked(node: PrintNode) {
 function unlinkHint(node: PrintNode) {
   return isUnlinked(node)
     ? "Unlinked. Cannot be re-linked; use Undo to restore the link."
-    : "Unlink from Model. Use Undo to restore the link.";
+    : layout.value && linkedPrintAncestors(printTree(layout.value), [node.id]).size
+      ? "Unlink from Model. Its imported folder stops following Model membership; other members stay linked individually. Use Undo to restore the link."
+      : "Unlink from Model. Use Undo to restore the link.";
 }
 function unlink(node: PrintNode) {
   if (!canManageObjects.value || !layout.value || isUnlinked(node)) return;

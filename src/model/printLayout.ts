@@ -428,8 +428,98 @@ export function unlinkPrintNode(
   return {
     ...layout,
     instances,
-    tree: editPrintTree(printTree(layout), id, (n) => detach([n])[0]),
+    tree: breakPrintLinks(
+      editPrintTree(printTree(layout), id, (n) => detach([n])[0]),
+      linkedPrintAncestors(printTree(layout), [id]),
+    ),
   };
+}
+
+export const isLinkedGroup = (node: PrintNode) =>
+  node.kind === "group" && !!node.sourceId && !node.unlinked;
+
+/** Live folders that contain any of the given nodes, excluding the nodes themselves. */
+export function linkedPrintAncestors(
+  nodes: PrintNode[],
+  ids: string[],
+): Set<string> {
+  const targets = new Set(ids),
+    result = new Set<string>();
+  function visit(items: PrintNode[], chain: string[]) {
+    for (const node of items) {
+      if (targets.has(node.id)) for (const id of chain) result.add(id);
+      if (node.kind === "group")
+        visit(node.children, isLinkedGroup(node) ? [...chain, node.id] : chain);
+    }
+  }
+  visit(nodes, []);
+  return result;
+}
+
+/**
+ * A live folder mirrors its whole source folder or nothing. Once one member is
+ * removed, unlinked or moved, the folder becomes an ordinary print group and its
+ * remaining members (and intact nested folders) stay linked individually.
+ */
+export function breakPrintLinks(
+  nodes: PrintNode[],
+  ids: Set<string>,
+): PrintNode[] {
+  if (!ids.size) return nodes;
+  return nodes.map((node) => {
+    if (node.kind === "instance") return node;
+    const children = breakPrintLinks(node.children, ids);
+    if (!ids.has(node.id) || !isLinkedGroup(node)) return { ...node, children };
+    const { sourceId: _source, excludedSourceIds: _excluded, ...plain } = node;
+    return { ...plain, children };
+  });
+}
+
+/** Normalize legacy partial folder links (excluded or detached members) into individual links. */
+function normalizePrintLinks(doc: Doc, layout: PrintLayout): PrintNode[] {
+  const items = new Map(layout.instances.map((i) => [i.id, i]));
+  const detached = (nodes: PrintNode[]): boolean =>
+    nodes.some((n) =>
+      n.kind === "instance"
+        ? !!items.get(n.id)?.snapshot
+        : !!n.unlinked || detached(n.children),
+    );
+  const represented = (nodes: PrintNode[], ids = new Set<string>()) => {
+    for (const n of nodes) {
+      if (n.kind === "group") {
+        if (n.sourceId) ids.add(n.sourceId);
+        represented(n.children, ids);
+      } else {
+        const item = items.get(n.id);
+        if (item) ids.add(item.sourceId);
+      }
+    }
+    return ids;
+  };
+  const members = (node: ObjectNode): string[] =>
+    node.kind === "object"
+      ? [node.id]
+      : [node.id, ...node.children.flatMap(members)];
+  function visit(nodes: PrintNode[]): PrintNode[] {
+    return nodes.map((node) => {
+      if (node.kind === "instance") return node;
+      const { excludedSourceIds, ...rest } = node;
+      const children = visit(node.children);
+      if (!isLinkedGroup(node)) return { ...rest, children };
+      const source = findSource(sourceNodes(doc), node.sourceId!);
+      const shown = represented(children);
+      const current = new Set(
+        source?.kind === "group" ? members(source).slice(1) : [],
+      );
+      const suppressed = (excludedSourceIds ?? []).some(
+        (id) => current.has(id) && !shown.has(id),
+      );
+      if (!detached(children) && !suppressed) return { ...rest, children };
+      const { sourceId: _source, ...plain } = rest;
+      return { ...plain, children };
+    });
+  }
+  return visit(printTree(layout));
 }
 
 /** Run once in the source transaction: no follow-up watcher commits or extra history entries. */
@@ -438,8 +528,9 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
   return {
     ...doc,
     printLayouts: doc.printLayouts.map((original) => {
-      let layout = {
+      let layout: PrintLayout = {
         ...original,
+        tree: normalizePrintLinks(doc, original),
         instances: original.instances.filter((i) =>
           !!i.snapshot || doc.shapes.some((s) => s.id === i.sourceId),
         ),
@@ -456,7 +547,6 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
         nodes: PrintNode[],
         inheritedPool?: Map<string, PrintPlacement>,
         allowedSources?: Set<string>,
-        inheritedExcluded?: Set<string>,
       ): PrintNode[] {
         return nodes.flatMap<PrintNode>((node) => {
           if (node.kind === "instance")
@@ -472,12 +562,7 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
             return [
               {
                 ...node,
-                children: sync(
-                  node.children,
-                  inheritedPool,
-                  allowedSources,
-                  inheritedExcluded,
-                ),
+                children: sync(node.children, inheritedPool, allowedSources),
               },
             ];
           const source = findSource(sourceNodes(doc), node.sourceId);
@@ -485,27 +570,6 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
             const children = detachedOnly(node.children);
             return children.length ? [{ ...node, sourceId: undefined, children }] : [];
           }
-          const excluded = new Set([
-            ...(inheritedExcluded ?? []),
-            ...(node.excludedSourceIds ?? []),
-          ]);
-          // Detached branches must never be reimported or moved by source membership changes.
-          function excludeDetached(nodes: PrintNode[]) {
-            for (const n of nodes) {
-              if (n.kind === "instance") {
-                const item = layout.instances.find((i) => i.id === n.id);
-                if (item?.snapshot) excluded.add(item.sourceId);
-              } else {
-                if (n.unlinked && n.sourceId) {
-                  excluded.add(n.sourceId);
-                  const current = findSource(sourceNodes(doc), n.sourceId);
-                  if (current) for (const id of sourceShapeIds(current)) excluded.add(id);
-                }
-                excludeDetached(n.children);
-              }
-            }
-          }
-          excludeDetached(node.children);
           const allowed = new Set(sourceShapeIds(source));
           const descendants = (items: PrintNode[]): string[] =>
             items.flatMap((n) =>
@@ -533,11 +597,11 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               child.kind === "group"
                 ? child.sourceId && !allowedGroups.has(child.sourceId)
                   ? detachedOnly([child])
-                  : child.unlinked ? [child] : [{ ...child, children: prune(child.children) }]
+                  : [{ ...child, children: prune(child.children) }]
                 : [child],
             );
           }
-          const children = sync(prune(node.children), pool, allowed, excluded);
+          const children = sync(prune(node.children), pool, allowed);
           // Import newly added source folders as nested live groups, not flattened copies.
           const representedGroups = new Set<string>();
           function collectGroups(nodes: PrintNode[]) {
@@ -553,11 +617,7 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
             ? bounds(sourceShapes)
             : { x: 0, y: 0, width: 0, height: 0 };
           for (const child of source.children) {
-            if (
-              child.kind !== "group" ||
-              representedGroups.has(child.id) ||
-              excluded.has(child.id)
-            )
+            if (child.kind !== "group" || representedGroups.has(child.id))
               continue;
             const members = doc.shapes.filter((s) =>
               sourceShapeIds(child).includes(s.id),
@@ -594,13 +654,7 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               node.rotation,
             );
             const replacements = new Map<string, string>();
-            const removedIds = new Set(
-              rotated.instances
-                .filter((i) => excluded.has(i.sourceId))
-                .map((i) => i.id),
-            );
             for (const item of rotated.instances) {
-              if (removedIds.has(item.id)) continue;
               const previous = pool.get(item.sourceId);
               if (previous) {
                 replacements.set(item.id, previous.id);
@@ -611,14 +665,10 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               } else layout.instances.push(item);
             }
             function replace(nodes: PrintNode[]): PrintNode[] {
-              return nodes.flatMap<PrintNode>((n) =>
-                removedIds.has(n.id)
-                  ? []
-                  : [
-                      n.kind === "instance"
-                        ? { ...n, id: replacements.get(n.id) ?? n.id }
-                        : { ...n, children: replace(n.children) },
-                    ],
+              return nodes.map<PrintNode>((n) =>
+                n.kind === "instance"
+                  ? { ...n, id: replacements.get(n.id) ?? n.id }
+                  : { ...n, children: replace(n.children) },
               );
             }
             children.push(...replace(printTree(rotated)));
@@ -629,9 +679,7 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               .filter((i) => presentIds.has(i.id))
               .map((i) => i.sourceId),
           );
-          const missing = [...allowed].filter(
-            (id) => !present.has(id) && !excluded.has(id),
-          );
+          const missing = [...allowed].filter((id) => !present.has(id));
           for (const sourceId of missing) {
             const previous = pool.get(sourceId);
             if (previous) {
@@ -728,39 +776,17 @@ export function removePrintNodes(
   ids: string[],
 ): PrintLayout {
   const removed = new Set(printDescendants(layout, ids));
-  const deletedSources = layout.instances
-    .filter((i) => removed.has(i.id))
-    .map((i) => i.sourceId);
-  for (const row of printRows(layout))
-    if (
-      ids.includes(row.node.id) &&
-      row.node.kind === "group" &&
-      row.node.sourceId
-    )
-      deletedSources.push(row.node.sourceId);
+  const broken = linkedPrintAncestors(printTree(layout), ids);
   function remove(nodes: PrintNode[]): PrintNode[] {
     return nodes.flatMap<PrintNode>((node) => {
       if (ids.includes(node.id)) return [];
       if (node.kind === "instance") return removed.has(node.id) ? [] : [node];
-      return [
-        {
-          ...node,
-          excludedSourceIds: node.sourceId
-            ? [
-                ...new Set([
-                  ...(node.excludedSourceIds ?? []),
-                  ...deletedSources,
-                ]),
-              ]
-            : node.excludedSourceIds,
-          children: remove(node.children),
-        },
-      ];
+      return [{ ...node, children: remove(node.children) }];
     });
   }
   return {
     ...layout,
-    tree: remove(printTree(layout)),
+    tree: breakPrintLinks(remove(printTree(layout)), broken),
     instances: layout.instances.filter((i) => !removed.has(i.id)),
   };
 }

@@ -1313,7 +1313,10 @@ test("unlink buttons freeze imported objects and folders with undo and persisten
   await expect(child).toBeEnabled();
   await page.locator(".print-workspace").getByRole("button", { name: "Redo", exact: true }).click();
   await expect(broken).toBeDisabled();
+  // Unlinking one child turns its folder into individual links, so it has no folder chain.
+  await expect(tree.getByRole("button", { name: "Unlink print Pattern", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await page.getByRole("button", { name: "Import Pattern", exact: true }).click();
   await tree.getByRole("button", { name: "Unlink print Pattern", exact: true }).click();
   await expect(tree.getByRole("button", { name: "Unlinked print Pattern", exact: true })).toBeDisabled();
   await manualScreenshot(page.locator(".print-workspace"), "print-unlink.png");
@@ -1322,13 +1325,14 @@ test("unlink buttons freeze imported objects and folders with undo and persisten
   await page.keyboard.press("Delete");
   await expect(page.locator(".object-select")).toHaveCount(0);
   const deleted = await save(page);
-  expect(deleted.printLayouts[0].instances).toHaveLength(1);
-  expect(deleted.printLayouts[0].instances[0].snapshot).toBeDefined();
+  expect(deleted.printLayouts[0].instances).toHaveLength(2);
+  expect(deleted.printLayouts[0].instances.every((i: { snapshot?: unknown }) => i.snapshot)).toBe(true);
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await (await chooser).setFiles({ name: "detached.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(deleted)) });
   await page.getByRole("tab", { name: "A4", exact: true }).click();
-  await expect(broken).toBeDisabled();
+  await expect(broken).toHaveCount(2);
+  for (const button of await broken.all()) await expect(button).toBeDisabled();
   expect((await save(page)).printLayouts[0].instances).toEqual(deleted.printLayouts[0].instances);
 });
 
