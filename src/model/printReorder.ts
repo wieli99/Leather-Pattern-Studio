@@ -49,7 +49,7 @@ export function movePrintTree(
         : owner(tree, destination.parent);
   if (roots.some((n) => owner(tree, n.id) !== destinationOwner))
     throw Error(
-      "Move linked children within their imported folder; duplicate to make a separate copy.",
+      "Move linked children within their imported folder; unlink them to arrange them separately.",
     );
   return {
     ...layout,

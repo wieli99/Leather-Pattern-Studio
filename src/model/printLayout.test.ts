@@ -538,3 +538,96 @@ it.each([0, 45])("reselection reconciles folder pivots and placements at %s degr
   expect(retained.instances[0]).toEqual(previous.instances[0]);
   expect(retained.tree![1]).toEqual(candidate.tree![1]);
 });
+
+describe("folder or member sync exclusivity", () => {
+  const nested: Doc = {
+    ...doc,
+    objectTree: [
+      { kind: "group", id: "outer", name: "Outer", children: doc.objectTree! },
+    ],
+  };
+  it("blocks importing members of a synced folder and folders with individually synced members", async () => {
+    const { printSyncConflict } = await import("./printLayout");
+    const whole = importPrintNode(nested, empty, "outer", 95, 100);
+    expect(printSyncConflict(nested, whole, "piece")).toContain("Outer");
+    expect(printSyncConflict(nested, whole, "folder")).toContain("Outer");
+    expect(() => importPrintNode(nested, whole, "piece", 95, 100)).toThrow("already synced");
+    expect(importPrintNode(nested, whole, "outer", 95, 100).tree).toHaveLength(2);
+    const single = importPrintNode(nested, empty, "piece", 95, 100);
+    expect(() => importPrintNode(nested, single, "outer", 95, 100)).toThrow("individually");
+    expect(() => importPrintNode(nested, single, "folder", 95, 100)).toThrow("individually");
+    expect(importPrintNode(nested, single, "piece", 95, 100).instances).toHaveLength(2);
+    expect(printSyncConflict(nested, empty, "outer")).toBeUndefined();
+  });
+  it("allows syncing again once the conflicting copy is unlinked", async () => {
+    const { printSyncConflict } = await import("./printLayout");
+    const single = importPrintNode(nested, empty, "piece", 95, 100);
+    const detached = unlinkPrintNode(nested, single, single.instances[0].id);
+    expect(printSyncConflict(nested, detached, "outer")).toBeUndefined();
+    const whole = importPrintNode(nested, empty, "outer", 95, 100);
+    const frozen = unlinkPrintNode(nested, whole, whole.tree![0].id);
+    expect(printSyncConflict(nested, frozen, "piece")).toBeUndefined();
+  });
+  it("reports managed folder members for duplication guards", async () => {
+    const { syncedPrintMemberIds } = await import("./printLayout");
+    const whole = importPrintNode(nested, empty, "outer", 95, 100);
+    const members = syncedPrintMemberIds(whole);
+    expect(members.has(whole.tree![0].id)).toBe(false);
+    expect(members.has(whole.instances[0].id)).toBe(true);
+    expect(syncedPrintMemberIds(importPrintNode(nested, empty, "piece", 0, 0)).size).toBe(0);
+  });
+  it("leaves individually synced copies untouched when Model moves their source into a synced folder", () => {
+    const extra = { ...source, id: "extra", name: "Extra" };
+    const flat: Doc = {
+      ...doc,
+      shapes: [source, extra],
+      objectTree: [...doc.objectTree!, { kind: "object", id: "extra" }],
+    };
+    let layout = importPrintNode(flat, empty, "folder", 95, 100);
+    layout = importPrintNode(flat, layout, "extra", 20, 30);
+    const placed = layout.instances.find((i) => i.sourceId === "extra")!;
+    const grouped: Doc = {
+      ...flat,
+      objectTree: [
+        {
+          kind: "group",
+          id: "folder",
+          name: "Pattern",
+          children: [
+            { kind: "object", id: "piece" },
+            { kind: "object", id: "extra" },
+          ],
+        },
+      ],
+    };
+    const inside = reconcilePrintLayouts({ ...grouped, printLayouts: [layout] }).printLayouts![0];
+    expect(inside.tree).toHaveLength(2);
+    expect(inside.tree![1]).toEqual({ kind: "instance", id: placed.id });
+    expect(inside.instances.filter((i) => i.sourceId === "extra")).toHaveLength(2);
+    expect(inside.instances).toContainEqual(placed);
+    const outside = reconcilePrintLayouts({ ...flat, printLayouts: [inside] }).printLayouts![0];
+    expect(outside.instances.filter((i) => i.sourceId === "extra")).toEqual([placed]);
+    expect(outside.tree![1]).toEqual({ kind: "instance", id: placed.id });
+  });
+  it("finds conflicts through local print groups and ignores flat projects", async () => {
+    const { printSyncConflict } = await import("./printLayout");
+    const single = importPrintNode(nested, empty, "piece", 95, 100);
+    const wrapped: PrintLayout = {
+      ...single,
+      tree: [{ kind: "group", id: "local", name: "Group", x: 0, y: 0, rotation: 0, children: single.tree! }],
+    };
+    expect(printSyncConflict(nested, wrapped, "outer")).toContain("Piece");
+    const flat = { ...doc, objectTree: undefined };
+    expect(printSyncConflict(flat, importPrintNode(flat, empty, "piece", 0, 0), "piece")).toBeUndefined();
+  });
+  it("treats nested live folders as members and unlinked ones as independent", async () => {
+    const { syncedPrintMemberIds } = await import("./printLayout");
+    const whole = importPrintNode(nested, empty, "outer", 95, 100);
+    const outer = whole.tree![0];
+    const inner = outer.kind === "group" ? outer.children[0] : outer;
+    expect(syncedPrintMemberIds(whole).has(inner.id)).toBe(true);
+    const detached = syncedPrintMemberIds(unlinkPrintNode(nested, whole, inner.id));
+    expect(detached.has(inner.id)).toBe(false);
+    expect(detached.has(whole.instances[0].id)).toBe(false);
+  });
+});

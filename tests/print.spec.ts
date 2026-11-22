@@ -1313,9 +1313,11 @@ test("unlink buttons freeze imported objects and folders with undo and persisten
   await expect(child).toBeEnabled();
   await page.locator(".print-workspace").getByRole("button", { name: "Redo", exact: true }).click();
   await expect(broken).toBeDisabled();
-  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Import Piece", exact: true })).toBeDisabled();
   await tree.getByRole("button", { name: "Unlink print Pattern", exact: true }).click();
   await expect(tree.getByRole("button", { name: "Unlinked print Pattern", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Import Piece", exact: true }).click();
+  await page.mouse.move(0, 0);
   await manualScreenshot(page.locator(".print-workspace"), "print-unlink.png");
   await page.getByRole("tab", { name: "Model", exact: true }).click();
   await page.getByRole("button", { name: "Piece", exact: true }).click();
@@ -1332,6 +1334,32 @@ test("unlink buttons freeze imported objects and folders with undo and persisten
   expect((await save(page)).printLayouts[0].instances).toEqual(deleted.printLayouts[0].instances);
 });
 
+
+test("a Model folder syncs either as a whole or through its members", async ({ page }) => {
+  await load(page);
+  await create(page);
+  const sources = page.getByLabel("Model source objects", { exact: true });
+  const importPattern = page.getByRole("button", { name: "Import Pattern", exact: true });
+  const importPiece = page.getByRole("button", { name: "Import Piece", exact: true });
+  await importPiece.click();
+  await expect(importPattern).toBeDisabled();
+  await expect(importPattern.locator("..")).toHaveAttribute("title", /member “Piece” is already synced individually/);
+  await expect(importPiece).toBeEnabled();
+  await page.locator(".print-workspace").getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(importPattern).toBeEnabled();
+  await importPattern.click();
+  await expect(importPiece).toBeDisabled();
+  await expect(sources.getByRole("button", { name: "Piece", exact: true }).locator("..")).toHaveAttribute("title", /already synced as part of folder “Pattern”/);
+  await expect(importPattern).toBeEnabled();
+  const tree = page.getByLabel("Print object tree");
+  await tree.getByRole("button", { name: "Piece", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "cannot be duplicated on their own" })).toBeVisible();
+  expect((await save(page)).printLayouts[0].instances).toHaveLength(1);
+  await tree.getByRole("button", { name: "Pattern", exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Duplicate", exact: true }).click();
+  await expect(tree.getByRole("button", { name: "Piece", exact: true })).toHaveCount(2);
+});
 
 test("detached print copies duplicate and paste after their Model source is deleted", async ({ page }) => {
   await load(page);
