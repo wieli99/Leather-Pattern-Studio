@@ -295,6 +295,26 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.filter(s => !editor.isHidden(s.id)).forEach((s) => shape(s));
+    const revealed = editor.panelHoverHidden;
+    if (revealed.length) {
+      // Hidden objects stay out of canvas hit tests; hovering their panel row shows where they are.
+      ctx.save();
+      ctx.strokeStyle = color("text");
+      ctx.lineWidth = 1 / z;
+      ctx.setLineDash([4 / z, 4 / z]);
+      for (const s of revealed) {
+        if (s.kind === "image" || s.kind === "text" || s.kind === "measurement" || isIndicator(s.kind)) {
+          const box = bounds([s], editor.units);
+          ctx.strokeRect(box.x, box.y, box.width, box.height);
+          continue;
+        }
+        const primitive = new Path2D(), path = new Path2D(), m = shapeMatrix(s);
+        shapePath(primitive, s);
+        path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
+        ctx.stroke(path);
+      }
+      ctx.restore();
+    }
     if (editor.array && editor.active.length && !editor.objectPicker) {
       const state = editor.array,
         box = bounds(editor.active),

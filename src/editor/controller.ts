@@ -609,6 +609,20 @@ export class Controller {
   propertySession: { original: Doc; next: Doc } | null = null;
   selected: string[] = [];
   hover = "";
+  /** Object-panel row under the pointer. Canvas hover ignores hidden objects, so the panel reveals them. */
+  panelHover = "";
+  setPanelHover(id = "") {
+    if (this.panelHover === id) return;
+    this.panelHover = id;
+    this.notifyPointer();
+  }
+  /** Hidden shapes outlined for the hovered object-panel row (an object or every member of a group). */
+  get panelHoverHidden(): Shape[] {
+    const node = this.panelHover ? findObjectNode(this.tree, this.panelHover) : undefined;
+    if (!node) return [];
+    const ids = new Set(node.kind === "group" ? flattenObjectTree(node.children) : [node.id]);
+    return this.document.shapes.filter(s => ids.has(s.id) && this.isHidden(s.id));
+  }
   pending: Point[] = [];
   cursor: Point = { x: 0, y: 0 };
   snapTarget: Point | null = null;
@@ -3351,7 +3365,7 @@ export class Controller {
       const result = smartSnap(
         p,
         this.document.shapes.filter(
-          (shape) => !excludedIds.includes(shape.id),
+          (shape) => !excludedIds.includes(shape.id) && !this.isHidden(shape.id),
         ),
         tolerance,
       );
