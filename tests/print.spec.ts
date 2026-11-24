@@ -170,12 +170,52 @@ test("panel edge tabs hide and restore print panels and share visibility with Mo
   await expect(page.getByRole("navigation", { name: "Print tools", exact: true })).toBeVisible();
 });
 
+test("the default A4 tab creates a print layout on first use", async ({
+  page,
+}) => {
+  await load(page);
+  await page.getByRole("tab", { name: "A4", exact: true }).click();
+  await expect(
+    page.getByRole("tab", { name: "A4", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(
+    page.getByRole("navigation", { name: "Print tools", exact: true }),
+  ).toBeVisible();
+  const [layout] = (await save(page)).printLayouts;
+  expect(layout).toMatchObject({
+    name: "A4",
+    width: 210,
+    height: 297,
+    margin: 10,
+    units: "mm",
+    pages: [{ column: 0, row: 0 }],
+    instances: [],
+  });
+  await page.getByRole("tab", { selected: true }).click({ button: "right" });
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("menuitem", { name: "Delete layout", exact: true })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Model", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("tab", { name: "A4", exact: true }),
+  ).toHaveAttribute("aria-selected", "false");
+});
+
 test("layouts are optional, import folders repeatedly, arrange copies, persist, and undo", async ({
   page,
 }) => {
   await load(page);
-  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(
+    page.getByRole("tab", { name: "A4", exact: true }),
+  ).toHaveAttribute("aria-selected", "false");
+  expect((await save(page)).printLayouts ?? []).toHaveLength(0);
   await create(page);
+  await expect(page.getByRole("tab")).toHaveCount(2);
   await expect(
     page.getByRole("button", { name: "Rectangle (R)", exact: true }),
   ).toBeHidden();

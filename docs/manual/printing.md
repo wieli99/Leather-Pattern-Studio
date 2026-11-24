@@ -1,8 +1,10 @@
 # Print layouts and export
 
-Print tabs arrange linked copies of Model objects and independent text, measurements, indicators, and images on physical sheets. They start empty, and new projects have only **Model**. Editing a source on Model updates its linked print copies without changing their print position or rotation.
+Print tabs arrange linked copies of Model objects and independent text, measurements, indicators, and images on physical sheets. They start empty. A project without print layouts shows an **A4** tab beside **Model**; select it to create an A4 layout with a 10 mm margin in the project units. The project is unchanged until you select it, and the tab returns after you delete every layout. Editing a source on Model updates its linked print copies without changing their print position or rotation.
 
 ## Create and configure a layout
+
+To use another paper format or several layouts:
 
 1. Press **+** beside the workspace tabs.
 2. Choose A5–A0, Letter, Legal, Tabloid, or **Custom**. Custom width, height, and margin entries use the selected units.
