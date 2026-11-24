@@ -453,7 +453,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
           class="group-row"
           :class="{
             'group-selected': selected(row.node.id),
-            'inherited-hidden': e.isHidden(row.node.id),
+            'inherited-hidden': e.isObjectHidden(row.node.id),
           }"
         >
           <button
@@ -540,7 +540,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
             :aria-label="`${row.node.hidden ? 'Show' : 'Hide'} ${row.node.name}`"
             :aria-pressed="!!row.node.hidden"
             :title="
-              e.isHidden(row.node.id) && !row.node.hidden
+              e.isObjectHidden(row.node.id) && !row.node.hidden
                 ? `Hidden by ${e.inheritedStateSource(row.node.id, 'hidden')}; toggles local visibility`
                 : 'Toggle group visibility (Alt+click: show only this)'
             "

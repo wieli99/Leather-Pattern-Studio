@@ -30,6 +30,7 @@ Copy/paste works between Model and print tabs and across browser tabs. Pasted ob
 | F | Search Model transform and outline tools |
 | Ctrl/⌘+Shift+F / Fit button | Fit Model objects or print pages |
 | Shift+F | Fit Model selection |
+| Shift+M | Hide or show all Model measurements (view only; see [persistent measurements](#measurements/persistent-measurements)) |
 
 ## Drawing and exact dimensions
 

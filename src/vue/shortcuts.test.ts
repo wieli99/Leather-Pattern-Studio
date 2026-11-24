@@ -37,6 +37,7 @@ const editor = vi.hoisted(() => ({
   canUseClipboard: true,
   copyObjects: vi.fn(() => "clipboard snapshot"),
   pasteObjects: vi.fn(),
+  toggleMeasurementObjects: vi.fn(),
 }));
 vi.mock("../editor/instance", () => ({ editor }));
 import { handleShortcut, handleClipboard } from "./shortcuts";
@@ -254,4 +255,15 @@ test("Select all respects the Objects selection phase",()=>{
   press("a",{ctrlKey:true});
   expect(editor.setToolSelection).toHaveBeenCalledWith(["a"]);
   expect(editor.cancel).not.toHaveBeenCalled();
+});
+
+test("Shift+M toggles measurement objects from the canvas only", () => {
+  press("M", { shiftKey: true });
+  expect(editor.toggleMeasurementObjects).toHaveBeenCalledOnce();
+  expect(editor.activateTransform).not.toHaveBeenCalled();
+  press("M", { shiftKey: true, target: new ElementStub("BUTTON") });
+  press("m", { shiftKey: true, ctrlKey: true });
+  expect(editor.toggleMeasurementObjects).toHaveBeenCalledOnce();
+  press("m");
+  expect(editor.activateTransform).toHaveBeenCalledWith("mirror");
 });

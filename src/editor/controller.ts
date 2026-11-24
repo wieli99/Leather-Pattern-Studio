@@ -751,6 +751,7 @@ export class Controller {
       !!this.guideDrag,
       this.gesture?.kind,
       this.gesture?.handleSide,
+      this.measurementObjectsHidden,
       this.grid,
       this.objects,
       this.units,
@@ -3392,7 +3393,16 @@ export class Controller {
   }
   get tree(): ObjectNode[] { return this.document.objectTree ?? objectTreeFromShapes(this.document.shapes); }
   inheritedStateSource(id: string, field: "hidden" | "locked") { return inheritedStateSource(this.tree, id, field); }
-  isHidden(id: string) { const shape=this.document.shapes.find(s=>s.id===id);return objectState(this.document,id).hidden || !!(shape?.stitchParentId && objectState(this.document,shape.stitchParentId).hidden); }
+  /** Visibility saved with the object (eye icon), including inherited group and stitch-parent state. */
+  isObjectHidden(id: string) { const shape=this.document.shapes.find(s=>s.id===id);return objectState(this.document,id).hidden || !!(shape?.stitchParentId && objectState(this.document,shape.stitchParentId).hidden); }
+  /** Canvas visibility: saved object state plus view-only filters such as hidden measurements. */
+  isHidden(id: string) { return this.isObjectHidden(id) || (this.measurementObjectsHidden && this.document.shapes.find(s=>s.id===id)?.kind === "measurement"); }
+  /** View-only: hides every measurement object on the Model canvas without changing the document. */
+  measurementObjectsHidden = false;
+  toggleMeasurementObjects() {
+    this.measurementObjectsHidden = !this.measurementObjectsHidden;
+    this.notify();
+  }
   isLocked(id: string) { const shape=this.document.shapes.find(s=>s.id===id);return objectState(this.document,id).locked || !!(shape?.stitchParentId && objectState(this.document,shape.stitchParentId).locked); }
   selectedGroups: string[] = [];
   collapsedGroups = new Set<string>();
@@ -3447,7 +3457,7 @@ export class Controller {
       }));
       for (const s of this.document.shapes)
         if (s.stitchParentId && keptShapes.has(s.stitchParentId)) keptShapes.add(s.id);
-      const isolated = this.document.shapes.every(s => this.isHidden(s.id) !== keptShapes.has(s.id));
+      const isolated = this.document.shapes.every(s => this.isObjectHidden(s.id) !== keptShapes.has(s.id));
       if (isolated) {
         // Already showing only these items: reveal everything again.
         next = { ...this.document, shapes: this.document.shapes.map(s => s.hidden ? { ...s, hidden: false } : s),
