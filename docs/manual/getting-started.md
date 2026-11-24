@@ -28,7 +28,7 @@ Choose **Save (Ctrl/⌘+S)** and keep the `.leather` file. Depending on your bro
 
 ## Prepare a print
 
-1. Press **+** beside Model and create a print layout matching your paper size and orientation.
+1. Select the **A4** tab beside Model, or press **+** to create a print layout matching another paper size or orientation.
 2. In the **Model objects** panel, press **Import** beside your rectangle. Move the imported placement onto the paper; see [import and arrange objects](#printing/import-and-arrange-objects).
 3. Place a **Square size guide** or **Ruler size guide** from the Measurement submenu on the print tab. Set the square side or ruler length to **20 mm**, so you can check it with a physical ruler.
 4. Choose Export, select PDF, inspect the preview, then Export to download it.

@@ -754,30 +754,50 @@ async function create() {
       let count = 2;
       while (layouts.value.some((l) => l.name === label))
         label = `${base} ${count++}`;
-      const value: PrintLayout = {
-        id,
-        name: label,
-        width: w,
-        height: h,
-        margin: m,
-        units: units.value,
-        pages: [{ column: 0, row: 0 }],
-        instances: [],
-        tree: [],
-      };
-      if (
-        !(await editor.commit({
-          ...editor.document,
-          printLayouts: [...layouts.value, value],
-        }))
-      )
-        return;
-      await switchTab(id);
+      if (!(await addLayout(id, label, w, h, m, units.value))) return;
     }
     creating.value = false;
   } catch (reason) {
     error.value = String(reason);
   }
+}
+async function addLayout(
+  id: string,
+  name: string,
+  width: number,
+  height: number,
+  margin: number,
+  units: UnitMode,
+) {
+  const value: PrintLayout = {
+    id,
+    name,
+    width,
+    height,
+    margin,
+    units,
+    pages: [{ column: 0, row: 0 }],
+    instances: [],
+    tree: [],
+  };
+  if (
+    !(await editor.commit({
+      ...editor.document,
+      printLayouts: [...layouts.value, value],
+    }))
+  )
+    return false;
+  await switchTab(id);
+  return true;
+}
+// Projects without print layouts offer an A4 tab, created on first use, so
+// the print workspace is discoverable without adding unused layouts to files.
+const defaultTab = computed(() => layouts.value.length === 0);
+async function openDefaultLayout() {
+  if (!defaultTab.value || busy.value || editor.busy || !e.value.ready) return;
+  error.value = "";
+  const [width, height] = paperFormats.A4;
+  await addLayout(crypto.randomUUID(), "A4", width, height, 10, editor.units);
 }
 async function deleteLayout(id = active.value) {
   const l = layouts.value.find((l) => l.id === id);
@@ -930,8 +950,10 @@ async function tabKey(event: KeyboardEvent) {
         ? tabs.length - 1
         : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
           tabs.length;
-  await switchTab(index === 0 ? "" : layouts.value[index - 1].id);
-  tabs[index].focus();
+  if (index === 0) await switchTab("");
+  else if (defaultTab.value) await openDefaultLayout();
+  else await switchTab(layouts.value[index - 1].id);
+  tabs[index]?.focus();
 }
 function toggleCollapse(id: string) {
   const next = new Set(collapsed.value);
@@ -3059,6 +3081,17 @@ defineExpose({
       @click="switchTab('')"
     >
       Model
+    </button>
+    <button
+      v-if="defaultTab"
+      key="default"
+      role="tab"
+      aria-selected="false"
+      title="Create an A4 print layout"
+      :disabled="!e.ready || busy"
+      @click="openDefaultLayout"
+    >
+      A4
     </button>
     <template v-for="entry in tabEntries" :key="entry.key">
       <ReorderSlot

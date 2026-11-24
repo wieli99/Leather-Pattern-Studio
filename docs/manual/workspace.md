@@ -1,6 +1,6 @@
 # Workspace
 
-Use **Model** to draw and edit your pattern. Optional print tabs arrange copies on physical paper; [create a print layout](#printing) when you are ready to export.
+Use **Model** to draw and edit your pattern. Optional print tabs arrange copies on physical paper; select the **A4** tab or [create a print layout](#printing) when you are ready to export.
 
 ![Drawing workspace with tools, objects, properties and tool help](/manual/images/workspace.png)
 
