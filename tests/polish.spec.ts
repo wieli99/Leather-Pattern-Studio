@@ -541,3 +541,31 @@ for (const staleAnchor of [false, true]) {
     await expect(page.locator(".objects .object-select.selected")).toHaveCount(3);
   });
 }
+
+test("outline style switches between solid, dashed, and dotted", async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+      writeText: async (text: string) => { (window as any).copiedStyle = text; },
+      readText: async () => (window as any).copiedStyle,
+    } });
+  });
+  await mode(page, "Rectangle", "Corner rectangle");
+  await points(page, p.slice(0, 2));
+  const rows = page.locator(".objects .object-select");
+  await rows.first().click();
+  const style = page.getByLabel("Outline style", { exact: true });
+  await expect(style).toHaveValue("solid");
+  await style.selectOption("dashed");
+  await expect(style).toHaveValue("dashed");
+  await rows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Copy Styling", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse((window as any).copiedStyle).strokeStyle)).toBe("dashed");
+  await style.selectOption("dotted");
+  await expect(style).toHaveValue("dotted");
+  await rows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Paste Styling", exact: true }).click();
+  await expect(style).toHaveValue("dashed");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(style).toHaveValue("dotted");
+});

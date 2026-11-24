@@ -21,6 +21,7 @@ import type { VectorImport } from "./vectorImport";
 import { truncateSvgName } from "./svgImportCompatibility";
 import { DOCUMENT_VERSION } from "../model/project";
 import { isIndicator } from "../model/indicators";
+import { hasStyledOutline, isOutlineStyle } from "../model/outlineStyle";
 import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
@@ -4649,7 +4650,7 @@ export class Controller {
     const ctx = document.createElement("canvas").getContext("2d")!;
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--shape").trim();
     const text = JSON.stringify({ format: "leather-pattern-designer-styling", version: 1,
-      fillMode: shape.fillMode ?? "solid", strokeColor: shape.strokeColor ?? ctx.fillStyle, strokeOpacity: shape.strokeOpacity ?? 1, fillColor: shape.fillColor ?? ctx.fillStyle, fillOpacity: shape.fillOpacity ?? 0.05 });
+      fillMode: shape.fillMode ?? "solid", strokeColor: shape.strokeColor ?? ctx.fillStyle, strokeOpacity: shape.strokeOpacity ?? 1, strokeStyle: shape.strokeStyle ?? "solid", fillColor: shape.fillColor ?? ctx.fillStyle, fillOpacity: shape.fillOpacity ?? 0.05 });
     this.copiedStyling = text;
     this.stylingClipboardFallback = false;
     this.notify();
@@ -4679,12 +4680,15 @@ export class Controller {
       if (payload.fillMode !== undefined && !["solid", "skiving", "glueing", "cutout"].includes(payload.fillMode)) throw Error("Invalid fill mode");
       if (payload.strokeColor !== undefined && (typeof payload.strokeColor !== "string" || !/^#[0-9a-f]{6}$/i.test(payload.strokeColor))) throw Error("Invalid outline color");
       if (payload.strokeOpacity !== undefined && (typeof payload.strokeOpacity !== "number" || !Number.isFinite(payload.strokeOpacity) || payload.strokeOpacity < 0 || payload.strokeOpacity > 1)) throw Error("Invalid outline opacity");
+      if (payload.strokeStyle !== undefined && !isOutlineStyle(payload.strokeStyle)) throw Error("Invalid outline style");
+      const strokeStyle = (s: Shape) => hasStyledOutline(s.kind) && payload.strokeStyle !== undefined
+        ? (payload.strokeStyle === "solid" ? undefined : payload.strokeStyle) : s.strokeStyle;
       let changed = false;
       const shapes = this.document.shapes.map(s => {
         if (!ids.includes(s.id) || shapeArea(s) === null ||
-            (s.fillColor === payload.fillColor && s.fillOpacity === payload.fillOpacity && s.fillMode === payload.fillMode && s.strokeColor === payload.strokeColor && s.strokeOpacity === payload.strokeOpacity)) return s;
+            (s.fillColor === payload.fillColor && s.fillOpacity === payload.fillOpacity && s.fillMode === payload.fillMode && s.strokeColor === payload.strokeColor && s.strokeOpacity === payload.strokeOpacity && s.strokeStyle === strokeStyle(s))) return s;
         changed = true;
-        return { ...s, fillColor: payload.fillColor, fillOpacity: payload.fillOpacity, fillMode: payload.fillMode, strokeColor: payload.strokeColor, strokeOpacity: payload.strokeOpacity };
+        return { ...s, fillColor: payload.fillColor, fillOpacity: payload.fillOpacity, fillMode: payload.fillMode, strokeColor: payload.strokeColor, strokeOpacity: payload.strokeOpacity, strokeStyle: strokeStyle(s) };
       });
       if (changed) await this.commit({ ...this.document, shapes });
     } catch (error) { this.fail(error); }
