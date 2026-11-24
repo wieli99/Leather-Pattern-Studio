@@ -164,10 +164,10 @@ function openMenu() {
         editor.isHidden(shape.id) && !shape.hidden
           ? `Hidden by ${editor.inheritedStateSource(shape.id, 'hidden')}; toggles local visibility`
           : shape.hidden
-            ? 'Show object'
-            : 'Hide object'
+            ? 'Show object (Alt+click: show only this)'
+            : 'Hide object (Alt+click: show only this)'
       "
-      @click="editor.toggleObjectState(shape.id, 'hidden')"
+      @click="editor.toggleObjectState(shape.id, 'hidden', $event.altKey)"
     >
       <svg
         viewBox="0 0 24 24"
