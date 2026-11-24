@@ -6,6 +6,7 @@ import { bounds, shapeMatrix } from "../model/geometry";
 import { isClosedShape } from "../model/closedShape";
 import { measurementSegments, measurementGeometry } from "../model/measurement";
 import { indicatorGeometry, isIndicator } from "../model/indicators";
+import { outlineDash } from "../model/outlineStyle";
 import { stitchGeometry } from "../model/stitchGeometry";
 import { stitchMarks } from "../model/stitch";
 import {
@@ -223,7 +224,9 @@ export function printShapeSvg(
         fill += `<defs><clipPath id="${id}"><path d="${path}" clip-rule="${shape.kind === "compound" ? "evenodd" : "nonzero"}"/></clipPath></defs><path clip-path="url(#${id})" d="${hatch.join(" ")}" ${style}/>`;
       }
     }
-    result = `<g transform="${matrix}">${fill}${shape.stitchOnly ? "" : `<path d="${path}" ${style}/>`}</g>`;
+    const dash = outlineDash(shape),
+      outline = dash.length ? `${style} stroke-dasharray="${dash.map(n).join(" ")}"` : style;
+    result = `<g transform="${matrix}">${fill}${shape.stitchOnly ? "" : `<path d="${path}" ${outline}/>`}</g>`;
   }
   for (const group of printStitchGroups(doc, layout, sourceId)) {
     const geometry = stitchGeometry(shape, group),
