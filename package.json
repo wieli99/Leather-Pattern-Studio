@@ -19,7 +19,7 @@
     "manual:screenshots:check": "MANUAL_SCREENSHOTS=1 playwright test -c playwright.manual.config.ts --update-snapshots=none"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-opener": "^2.7.3",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.2",
@@ -28,17 +28,17 @@
     "pdfjs-dist": "^6.5.438",
     "reka-ui": "^2.0.0",
     "svg2pdf.js": "^2.9.0",
-    "vue": "^3.5.45"
+    "vue": "^3.5.46"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
-    "@tauri-apps/cli": "^2.0.0",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.0.0",
     "@vitejs/plugin-vue": "^6.0.11",
     "typescript": "^6.0.3",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0",
+    "vitest": "^5.1.1",
     "vue-tsc": "^3.3.14"
   }
 }
