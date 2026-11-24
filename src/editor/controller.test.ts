@@ -3725,3 +3725,44 @@ test('vector import rejects stale, empty, invalid, and non-model imports atomica
   expect(await e.insertVector(result,'Invalid',source)).toBe(false);
   expect(e.revision).toBe(0);expect(e.document.shapes).toHaveLength(0);
 });
+test("hidden objects never become snap or alignment targets on the canvas", async () => {
+  const e = editor();
+  e.objects = true;
+  const shape = { id: "piece", name: "Piece", kind: "rectangle" as const,
+    points: [{x:0,y:0},{x:80,y:40}], radius:0, rotation:0 };
+  await e.commit({ ...emptyDocument(), shapes: [shape] });
+  // Near the top edge's alignment lines but outside the edge snap tolerance.
+  const near = { x: 40.5, y: -5 };
+  e.snap(near);
+  expect(e.smartGuides.map(g => g.objectId)).toContain("piece");
+  await e.commit({ ...e.document, shapes: [{ ...shape, hidden: true }] });
+  for (const point of [near, { x: 40, y: 0 }, { x: 0, y: 0 }]) {
+    expect(e.snap(point)).toEqual(point);
+    expect(e.smartGuides).toEqual([]);
+    expect(e.snapTarget).toBeNull();
+  }
+});
+test("hovering an object-panel row reveals only its hidden objects", async () => {
+  const e = editor();
+  const rect = (id: string, hidden = false) => ({ id, name: id, kind: "rectangle" as const,
+    points: [{x:0,y:0},{x:10,y:10}], radius:0, rotation:0, hidden });
+  await e.commit({ ...emptyDocument(), shapes: [rect("a", true), rect("b"), rect("c")],
+    objectTree: [
+      { kind: "group", id: "g", name: "Group", children: [{ kind: "object", id: "a" }, { kind: "object", id: "b" }] },
+      { kind: "group", id: "h", name: "Hidden", hidden: true, children: [{ kind: "object", id: "c" }] },
+    ] });
+  const ids = () => e.panelHoverHidden.map(s => s.id);
+  expect(ids()).toEqual([]);
+  e.setPanelHover("a");
+  expect(ids()).toEqual(["a"]);
+  e.setPanelHover("b");
+  expect(ids()).toEqual([]);
+  e.setPanelHover("g");
+  expect(ids()).toEqual(["a"]);
+  e.setPanelHover("h");
+  expect(ids()).toEqual(["c"]);
+  e.setPanelHover("c");
+  expect(ids()).toEqual(["c"]);
+  e.setPanelHover();
+  expect(ids()).toEqual([]);
+});

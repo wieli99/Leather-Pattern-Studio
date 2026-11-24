@@ -15,7 +15,7 @@ function previewRow(event: PointerEvent, id: string) {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   hoverPreview.value = { id, x: rect.left, y: rect.top };
 }
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import {
   ContextMenuRoot,
   ContextMenuTrigger,
@@ -42,6 +42,12 @@ watch(
     hoverPreview.value.id = undefined;
   },
 );
+// The hovered row reveals its hidden objects on the canvas.
+watch(
+  () => hoverPreview.value.id,
+  (id) => editor.setPanelHover(id),
+);
+onUnmounted(() => editor.setPanelHover());
 const naming = ref<string | null>(null),
   draft = ref("");
 const rows = computed(() => {
