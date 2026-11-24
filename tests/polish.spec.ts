@@ -472,6 +472,44 @@ test("object visibility and locks persist and protect edits", { tag: "@manual" }
   await expect(row).toHaveCount(0);
 });
 
+test("state buttons apply to the whole selection and Alt+click isolates visibility", async ({ page }) => {
+  await ready(page);
+  await mode(page, "Rectangle", "Corner rectangle");
+  await points(page, p.slice(0, 2));
+  await points(page, [{ x: 380, y: 220 }, { x: 480, y: 280 }]);
+  await points(page, [{ x: 380, y: 320 }, { x: 480, y: 380 }]);
+  const rows = page.locator(".objects .object-select");
+  await expect(rows).toHaveCount(3);
+  const button = (name: string) => page.getByRole("button", { name, exact: true });
+  await button("Rectangle 1").click();
+  await button("Rectangle 2").click({ modifiers: ["Control"] });
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(2);
+  await button("Hide Rectangle 1").click();
+  await expect(button("Show Rectangle 1")).toBeVisible();
+  await expect(button("Show Rectangle 2")).toBeVisible();
+  await expect(button("Hide Rectangle 3")).toBeVisible();
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(2);
+  await button("Show Rectangle 2").click();
+  await expect(button("Hide Rectangle 1")).toBeVisible();
+  await expect(button("Hide Rectangle 2")).toBeVisible();
+  await button("Lock Rectangle 2").click();
+  await expect(button("Unlock Rectangle 1")).toBeVisible();
+  await expect(button("Unlock Rectangle 2")).toBeVisible();
+  await expect(button("Lock Rectangle 3")).toBeVisible();
+  await button("Unlock Rectangle 1").click();
+  await button("Hide Rectangle 1").click({ modifiers: ["Alt"] });
+  await expect(button("Show Rectangle 3")).toBeVisible();
+  await expect(button("Hide Rectangle 1")).toBeVisible();
+  await expect(button("Hide Rectangle 2")).toBeVisible();
+  await expect(page.locator(".objects .object-select.selected")).toHaveCount(2);
+  await button("Hide Rectangle 2").click({ modifiers: ["Alt"] });
+  await expect(page.getByRole("button", { name: /^Show Rectangle/ })).toHaveCount(0);
+  await button("Hide Rectangle 3").click({ modifiers: ["Alt"] });
+  await expect(button("Show Rectangle 1")).toBeVisible();
+  await expect(button("Show Rectangle 2")).toBeVisible();
+  await expect(button("Hide Rectangle 3")).toBeVisible();
+});
+
 test("state buttons work on unselected rows and recover after editing", async ({ page }) => {
   await ready(page);
   await mode(page, "Rectangle", "Corner rectangle");
@@ -541,3 +579,31 @@ for (const staleAnchor of [false, true]) {
     await expect(page.locator(".objects .object-select.selected")).toHaveCount(3);
   });
 }
+
+test("outline style switches between solid, dashed, and dotted", async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+      writeText: async (text: string) => { (window as any).copiedStyle = text; },
+      readText: async () => (window as any).copiedStyle,
+    } });
+  });
+  await mode(page, "Rectangle", "Corner rectangle");
+  await points(page, p.slice(0, 2));
+  const rows = page.locator(".objects .object-select");
+  await rows.first().click();
+  const style = page.getByLabel("Outline style", { exact: true });
+  await expect(style).toHaveValue("solid");
+  await style.selectOption("dashed");
+  await expect(style).toHaveValue("dashed");
+  await rows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Copy Styling", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse((window as any).copiedStyle).strokeStyle)).toBe("dashed");
+  await style.selectOption("dotted");
+  await expect(style).toHaveValue("dotted");
+  await rows.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Paste Styling", exact: true }).click();
+  await expect(style).toHaveValue("dashed");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(style).toHaveValue("dotted");
+});

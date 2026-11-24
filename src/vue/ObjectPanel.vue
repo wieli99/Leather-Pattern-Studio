@@ -542,9 +542,9 @@ function keyboardMove(event: KeyboardEvent, id: string) {
             :title="
               e.isHidden(row.node.id) && !row.node.hidden
                 ? `Hidden by ${e.inheritedStateSource(row.node.id, 'hidden')}; toggles local visibility`
-                : 'Toggle group visibility'
+                : 'Toggle group visibility (Alt+click: show only this)'
             "
-            @click="editor.toggleGroupState(row.node.id, 'hidden')"
+            @click="editor.toggleGroupState(row.node.id, 'hidden', $event.altKey)"
           >
             <svg
               viewBox="0 0 24 24"
@@ -648,9 +648,14 @@ function keyboardMove(event: KeyboardEvent, id: string) {
   overflow: hidden;
 }
 .objects .group-disclosure {
-  flex: 0 0 22px;
-  width: 22px;
-  padding: 4px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 .objects .object-state {
   flex: 0 0 30px;

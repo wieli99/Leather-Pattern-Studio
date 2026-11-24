@@ -3766,3 +3766,56 @@ test("hovering an object-panel row reveals only its hidden objects", async () =>
   e.setPanelHover();
   expect(ids()).toEqual([]);
 });
+
+test("panel state toggles apply the clicked result to every selected item", async () => {
+  const e = editor();
+  await e.commit({ version: 13, shapes: ["a", "b", "c", "d"].map((id, i) => ({ id, name: id, kind: "rectangle", points: [{x: i * 20,y: 0}, {x: i * 20 + 10,y: 10}], radius: 0, rotation: 0 })) });
+  e.selected = ["c"];
+  const group = await e.newGroup(true);
+  await e.toggleObjectState("a", "locked");
+  e.selectedGroups = [group!]; e.selected = ["a", "b", "c"];
+  await e.toggleObjectState("b", "locked");
+  expect(["a", "b", "c"].map(id => e.isLocked(id))).toEqual([true, true, true]);
+  expect(e.document.shapes.find(s => s.id === "c")?.locked).toBeFalsy();
+  expect(e.isLocked("d")).toBe(false);
+  await e.toggleObjectState("a", "locked");
+  expect(["a", "b", "c"].map(id => e.isLocked(id))).toEqual([false, false, false]);
+  // Clicking an unselected item only affects that item.
+  await e.toggleObjectState("d", "hidden");
+  expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([false, false, false, true]);
+  expect(e.selected).toEqual(["a", "b", "c"]);
+  await e.toggleGroupState(group!, "hidden");
+  expect(["a", "b", "c"].map(id => e.isHidden(id))).toEqual([true, true, true]);
+  expect(e.selected).toEqual(["a", "b", "c"]);
+  expect(e.selectedGroups).toEqual([group]);
+  await e.toggleObjectState("a", "hidden");
+  expect(["a", "b", "c"].map(id => e.isHidden(id))).toEqual([false, false, false]);
+  await e.toggleObjectState("a", "hidden");
+  await e.transact("undo");
+  expect(e.isHidden("a")).toBe(false);
+});
+
+test("Alt eye clicks show only the selection or the clicked item", async () => {
+  const e = editor();
+  await e.commit({ version: 13, shapes: ["a", "b", "c", "d"].map((id, i) => ({ id, name: id, kind: "rectangle", points: [{x: i * 20,y: 0}, {x: i * 20 + 10,y: 10}], radius: 0, rotation: 0 })) });
+  e.selected = ["b", "c"];
+  const group = await e.newGroup(true);
+  await e.toggleGroupState(group!, "hidden");
+  e.selected = ["a", "b"]; e.selectedGroups = [];
+  await e.toggleObjectState("a", "hidden");
+  await e.toggleObjectState("a", "hidden", true);
+  expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([false, false, true, true]);
+  expect(e.selected).toEqual(["a", "b"]);
+  // Alt-clicking again while everything else is hidden reveals all objects.
+  await e.toggleObjectState("b", "hidden", true);
+  expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([false, false, false, false]);
+  expect(e.tree.some(n => n.kind === "group" && n.hidden)).toBe(false);
+  await e.toggleObjectState("d", "hidden", true);
+  expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([true, true, true, false]);
+  expect(e.selected).toEqual(["a", "b"]);
+  e.selected = [];
+  await e.toggleGroupState(group!, "hidden", true);
+  expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([true, false, false, true]);
+  await e.toggleGroupState(group!, "hidden", true);
+  expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([false, false, false, false]);
+});
