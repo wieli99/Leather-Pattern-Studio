@@ -66,6 +66,8 @@ After choosing B, press Tab to enter a signed **Offset** in the selected units. 
 
 With Select, select the annotation by its label or strokes. Properties provides **Offset**, read-only **Distance** (both in the selected units), and endpoint positions under **Vertex coordinates**. Move, rotate, mirror, resize, duplicate, hide, lock, or delete it like other objects. Undo removes a completed measurement in one step. Measurements are saved with the project and recovered after reload. Their endpoints stay where placed even if the objects used for snapping change. Measurements do not support stitching or path editing.
 
+To get measurements out of the way temporarily, press **Shift+M** with the canvas focused. All measurements disappear from the Model canvas and can't be selected there or snapped to until you press Shift+M again or click **Show** next to the **Measurements hidden** notice in the footer. This only changes the view: each measurement's eye icon stays as it is, nothing is added to undo history, the project isn't changed, and measurements show again after reload.
+
 ![Persistent measurement with arrowheads and offset properties](/manual/images/persistent-measurement.png)
 
 ## Area and appearance

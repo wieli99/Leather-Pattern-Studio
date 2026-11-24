@@ -441,6 +441,10 @@ onMounted(() => {
     </div>
     <footer v-if="bottom && !printActive">
       <StatusBar />
+      <span v-if="e.measurementObjectsHidden" class="measurements-hidden-notice" role="status">
+        Measurements hidden
+        <button type="button" title="Show all measurements (Shift+M on the canvas toggles them)" aria-keyshortcuts="Shift+M" @click="editor.toggleMeasurementObjects()">Show (Shift+M)</button>
+      </span>
       <div class="center-settings">
         <label>
           <input

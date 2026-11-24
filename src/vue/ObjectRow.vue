@@ -17,7 +17,7 @@ const props = defineProps<{ shape: Shape; selected: boolean }>();
 const inheritedState = useEditorSelector(
   editor,
   () =>
-    `${editor.isHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}|${editor.booleanOperation}|${editor.booleanCutters.join(",")}`,
+    `${editor.isObjectHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}|${editor.booleanOperation}|${editor.booleanCutters.join(",")}`,
 );
 const booleanRole = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.source === props.shape.id ? "target" : "other" : editor.booleanOperation ? editor.booleanTarget === props.shape.id ? "target" : "other" : null);
 const booleanOperand = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.path === props.shape.id : !!editor.booleanOperation && editor.booleanCutters.includes(props.shape.id));
@@ -100,7 +100,7 @@ function openMenu() {
   <div
     v-else
     class="object-row"
-    :class="{ hidden: editor.isHidden(shape.id) }"
+    :class="{ hidden: editor.isObjectHidden(shape.id) }"
     :data-state-revision="inheritedState"
   >
     <ContextMenuRoot>
@@ -161,7 +161,7 @@ function openMenu() {
       :aria-label="`${shape.hidden ? 'Show' : 'Hide'} ${shape.name}`"
       :aria-pressed="!!shape.hidden"
       :title="
-        editor.isHidden(shape.id) && !shape.hidden
+        editor.isObjectHidden(shape.id) && !shape.hidden
           ? `Hidden by ${editor.inheritedStateSource(shape.id, 'hidden')}; toggles local visibility`
           : shape.hidden
             ? 'Show object (Alt+click: show only this)'

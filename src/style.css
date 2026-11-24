@@ -744,6 +744,21 @@ footer {
 .cursor-coordinates {
   margin-left: auto;
 }
+.measurements-hidden-notice {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+/* Keep the notice clear of the centered snap settings; the status text yields. */
+footer:has(.measurements-hidden-notice) .status-message {
+  max-width: calc(50% - 134px - 270px);
+}
+.measurements-hidden-notice button {
+  padding: 2px 8px;
+  font-size: 11px;
+}
 .app-version {
   flex-shrink: 0;
   white-space: nowrap;
@@ -788,7 +803,8 @@ footer {
     width: 100%;
     justify-content: center;
   }
-  .status-message {
+  .status-message,
+  footer:has(.measurements-hidden-notice) .status-message {
     max-width: 55%;
   }
 }

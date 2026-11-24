@@ -961,6 +961,22 @@ test("measurement modifier changes do not create document history", () => {
   expect(e.document).toBe(document);
 });
 
+test("hiding measurement objects is view-only and leaves saved visibility alone", () => {
+  const e = new Controller();
+  const measure = { id: "m", kind: "measurement", name: "M", points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], radius: 0, rotation: 0, measurementOffset: 5 } as Doc["shapes"][number];
+  const line = { id: "l", kind: "line", name: "L", points: [{ x: 0, y: 5 }, { x: 10, y: 5 }], radius: 0, rotation: 0 } as Doc["shapes"][number];
+  e.document = { ...emptyDocument(), shapes: [measure, line] };
+  const document = e.document;
+  e.toggleMeasurementObjects();
+  expect(e.measurementObjectsHidden).toBe(true);
+  expect(e.isHidden("m")).toBe(true);
+  expect(e.isObjectHidden("m")).toBe(false);
+  expect(e.isHidden("l")).toBe(false);
+  expect(e.document).toBe(document);
+  e.toggleMeasurementObjects();
+  expect(e.isHidden("m")).toBe(false);
+});
+
 test("every grouped mode cycles both ways and remembers its last variant", async () => {
   const { variants } = await import("./construction");
   const e = editor();

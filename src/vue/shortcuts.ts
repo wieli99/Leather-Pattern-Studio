@@ -145,6 +145,11 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     openHelp();
     return;
   }
+  if (e.shiftKey && e.key.toLowerCase() === "m" && canvas) {
+    e.preventDefault();
+    editor.toggleMeasurementObjects();
+    return;
+  }
   if (e.key === "Tab" && !e.shiftKey && canvas) {
     const field = document.querySelector<HTMLInputElement>(
       editor.stitchMode ? ".stitch-options input, .stitch-options select" : editor.offsetActive
