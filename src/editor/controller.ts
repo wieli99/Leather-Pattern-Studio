@@ -21,6 +21,7 @@ import type { VectorImport } from "./vectorImport";
 import { truncateSvgName } from "./svgImportCompatibility";
 import { DOCUMENT_VERSION } from "../model/project";
 import { isIndicator } from "../model/indicators";
+import { hasStyledOutline, isOutlineStyle } from "../model/outlineStyle";
 import { inheritedStateSource, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
 import { mergeShapes } from "../model/merge";
@@ -3412,16 +3413,67 @@ export class Controller {
     if (this.collapsedGroups.has(id)) this.collapsedGroups.delete(id); else this.collapsedGroups.add(id);
     this.panelRevision++; this.scheduleRecovery(); this.notify();
   }
-  async toggleGroupState(id: string, field: "hidden" | "locked") {
+  toggleGroupState(id: string, field: "hidden" | "locked", isolate = false) {
+    return this.setPanelState(id, field, isolate);
+  }
+  /** Selected panel items, excluding objects already covered by a selected group. */
+  private panelSelectionRoots(): string[] {
+    const groups = this.selectedGroups.filter(id => findObjectNode(this.tree, id)?.kind === "group");
+    const covered = new Set(groups.flatMap(id => {
+      const node = findObjectNode(this.tree, id);
+      return node?.kind === "group" ? flattenObjectTree(node.children) : [];
+    }));
+    return [...groups, ...this.selected.filter(id => !covered.has(id))];
+  }
+  /**
+   * Toggles a panel item's local state. When the item belongs to a multi-item
+   * selection, its resulting state is applied to every selected item. With
+   * `isolate`, the clicked item (or the selection containing it) becomes the
+   * only visible content, or everything is shown again if it already was.
+   */
+  private async setPanelState(id: string, field: "hidden" | "locked", isolate: boolean) {
     if (!this.canToggleObjectState) return;
     const node = findObjectNode(this.tree, id);
-    if (!node || node.kind !== "group") return;
-    const tree = mapObjectTree(this.tree, n => n.id === id && n.kind === "group" ? { ...n, [field]: !n[field] } : n);
-    if (await this.commit({ ...this.document, objectTree: tree })) {
-      this.selected = this.selected.filter(x => !this.isHidden(x));
-      this.selectedGroups = this.selectedGroups.filter(x => !this.isHidden(x));
-      this.panelRevision++; this.notify();
+    const shape = this.document.shapes.find(s => s.id === id);
+    if (!node || (node.kind === "object" && !shape)) return;
+    const roots = this.panelSelectionRoots();
+    const targets = new Set(roots.includes(id) ? roots : [id]);
+    let next: Doc;
+    if (isolate && field === "hidden") {
+      const keptGroups = new Set([...targets].filter(x => findObjectNode(this.tree, x)?.kind === "group"));
+      const keptShapes = new Set([...targets].flatMap(x => {
+        const n = findObjectNode(this.tree, x);
+        return n?.kind === "group" ? flattenObjectTree(n.children) : [x];
+      }));
+      for (const s of this.document.shapes)
+        if (s.stitchParentId && keptShapes.has(s.stitchParentId)) keptShapes.add(s.id);
+      const isolated = this.document.shapes.every(s => this.isHidden(s.id) !== keptShapes.has(s.id));
+      if (isolated) {
+        // Already showing only these items: reveal everything again.
+        next = { ...this.document, shapes: this.document.shapes.map(s => s.hidden ? { ...s, hidden: false } : s),
+          objectTree: mapObjectTree(this.tree, n => n.kind === "group" && n.hidden ? { ...n, hidden: false } : n) };
+      } else {
+        const shapeHidden = new Map<string, boolean>();
+        const visit = (nodes: ObjectNode[], kept: boolean): ObjectNode[] => nodes.map(n => {
+          if (n.kind === "object") { shapeHidden.set(n.id, !(kept || keptShapes.has(n.id))); return n; }
+          const inside = kept || keptGroups.has(n.id);
+          const visible = inside || flattenObjectTree(n.children).some(x => keptShapes.has(x));
+          return { ...n, hidden: !visible, children: visible ? visit(n.children, inside) : n.children };
+        });
+        const objectTree = visit(this.tree, false);
+        next = { ...this.document, objectTree, shapes: this.document.shapes.map(s =>
+          shapeHidden.has(s.id) ? { ...s, hidden: shapeHidden.get(s.id) } : s) };
+      }
+    } else {
+      const value = !(node.kind === "group" ? node[field] : shape![field]);
+      next = { ...this.document, shapes: this.document.shapes.map(s =>
+        targets.has(s.id) ? { ...s, [field]: value } : s) };
+      if ([...targets].some(x => findObjectNode(this.tree, x)?.kind === "group"))
+        next.objectTree = mapObjectTree(this.tree, n => n.kind === "group" && targets.has(n.id) ? { ...n, [field]: value } : n);
     }
+    // The selection is kept, including items that become hidden.
+    if (await this.commit(next)) this.panelRevision++;
+    this.notify();
   }
   async renameGroup(id: string, name: string) {
     if (!this.canToggleObjectState || this.isLocked(id) || !name.trim() || name.trim().length > 200) return;
@@ -4622,21 +4674,8 @@ export class Controller {
       !this.drawingDown && !this.transformTool && !this.propertySession &&
       !this.array && !this.pathCopy && !this.offsetActive && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
-  async toggleObjectState(id: string, field: "hidden" | "locked") {
-    if (!this.canToggleObjectState) return;
-    const shape = this.document.shapes.find(s => s.id === id);
-    if (!shape) return;
-    const success = await this.commit({ ...this.document, shapes: this.document.shapes.map(s =>
-      s.id === id ? { ...s, [field]: !s[field] } : s) });
-    if (success && field === "hidden" && !shape.hidden) {
-      this.selected = this.selected.filter(x => x !== id);
-      this.selectedGroups = this.selectedGroups.filter(groupId => {
-        const node = findObjectNode(this.tree, groupId);
-        return node?.kind !== "group" || !flattenObjectTree(node.children).includes(id);
-      });
-      this.panelRevision++;
-    }
-    this.notify();
+  toggleObjectState(id: string, field: "hidden" | "locked", isolate = false) {
+    return this.setPanelState(id, field, isolate);
   }
   get canStyle() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
@@ -4649,7 +4688,7 @@ export class Controller {
     const ctx = document.createElement("canvas").getContext("2d")!;
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--shape").trim();
     const text = JSON.stringify({ format: "leather-pattern-designer-styling", version: 1,
-      fillMode: shape.fillMode ?? "solid", strokeColor: shape.strokeColor ?? ctx.fillStyle, strokeOpacity: shape.strokeOpacity ?? 1, fillColor: shape.fillColor ?? ctx.fillStyle, fillOpacity: shape.fillOpacity ?? 0.05 });
+      fillMode: shape.fillMode ?? "solid", strokeColor: shape.strokeColor ?? ctx.fillStyle, strokeOpacity: shape.strokeOpacity ?? 1, strokeStyle: shape.strokeStyle ?? "solid", fillColor: shape.fillColor ?? ctx.fillStyle, fillOpacity: shape.fillOpacity ?? 0.05 });
     this.copiedStyling = text;
     this.stylingClipboardFallback = false;
     this.notify();
@@ -4679,12 +4718,15 @@ export class Controller {
       if (payload.fillMode !== undefined && !["solid", "skiving", "glueing", "cutout"].includes(payload.fillMode)) throw Error("Invalid fill mode");
       if (payload.strokeColor !== undefined && (typeof payload.strokeColor !== "string" || !/^#[0-9a-f]{6}$/i.test(payload.strokeColor))) throw Error("Invalid outline color");
       if (payload.strokeOpacity !== undefined && (typeof payload.strokeOpacity !== "number" || !Number.isFinite(payload.strokeOpacity) || payload.strokeOpacity < 0 || payload.strokeOpacity > 1)) throw Error("Invalid outline opacity");
+      if (payload.strokeStyle !== undefined && !isOutlineStyle(payload.strokeStyle)) throw Error("Invalid outline style");
+      const strokeStyle = (s: Shape) => hasStyledOutline(s.kind) && payload.strokeStyle !== undefined
+        ? (payload.strokeStyle === "solid" ? undefined : payload.strokeStyle) : s.strokeStyle;
       let changed = false;
       const shapes = this.document.shapes.map(s => {
         if (!ids.includes(s.id) || shapeArea(s) === null ||
-            (s.fillColor === payload.fillColor && s.fillOpacity === payload.fillOpacity && s.fillMode === payload.fillMode && s.strokeColor === payload.strokeColor && s.strokeOpacity === payload.strokeOpacity)) return s;
+            (s.fillColor === payload.fillColor && s.fillOpacity === payload.fillOpacity && s.fillMode === payload.fillMode && s.strokeColor === payload.strokeColor && s.strokeOpacity === payload.strokeOpacity && s.strokeStyle === strokeStyle(s))) return s;
         changed = true;
-        return { ...s, fillColor: payload.fillColor, fillOpacity: payload.fillOpacity, fillMode: payload.fillMode, strokeColor: payload.strokeColor, strokeOpacity: payload.strokeOpacity };
+        return { ...s, fillColor: payload.fillColor, fillOpacity: payload.fillOpacity, fillMode: payload.fillMode, strokeColor: payload.strokeColor, strokeOpacity: payload.strokeOpacity, strokeStyle: strokeStyle(s) };
       });
       if (changed) await this.commit({ ...this.document, shapes });
     } catch (error) { this.fail(error); }

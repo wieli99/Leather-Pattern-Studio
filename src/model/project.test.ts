@@ -127,11 +127,11 @@ test("rejects links referencing missing stitch lines", () => {
 });
 
 test("fill overrides survive round trips and reject invalid values", () => {
-  const shape = { id: "fill", name: "Fill", kind: "rectangle", points: [{ x: 0, y: 0 }, { x: 20, y: 10 }], radius: 0, rotation: 0, fillColor: "#ab12EF", fillOpacity: 0, fillMode: "cutout", strokeColor: "#123456", strokeOpacity: 0.4 };
+  const shape = { id: "fill", name: "Fill", kind: "rectangle", points: [{ x: 0, y: 0 }, { x: 20, y: 10 }], radius: 0, rotation: 0, fillColor: "#ab12EF", fillOpacity: 0, fillMode: "cutout", strokeColor: "#123456", strokeOpacity: 0.4, strokeStyle: "dotted" };
   const encode = (changes = {}) => JSON.stringify({ version: 11, shapes: [{ ...shape, ...changes }] });
   const doc = parseProject(encode());
   expect(parseProject(JSON.stringify(doc)).shapes[0]).toMatchObject(shape);
-  for (const changes of [{ fillMode: "invalid" }, { strokeColor: "red" }, { strokeOpacity: -1 }, { strokeOpacity: 1.1 }, { fillOpacity: -1 }, { fillOpacity: 1.01 }, { fillColor: "red" }])
+  for (const changes of [{ fillMode: "invalid" }, { strokeStyle: "dash-dot" }, { strokeStyle: 1 }, { strokeColor: "red" }, { strokeOpacity: -1 }, { strokeOpacity: 1.1 }, { fillOpacity: -1 }, { fillOpacity: 1.01 }, { fillColor: "red" }])
     expect(() => parseProject(encode(changes))).toThrow("Invalid fill");
 });
 

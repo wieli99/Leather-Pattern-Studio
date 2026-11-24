@@ -222,3 +222,10 @@ it("closes curves after their final curved segment", () => {
   expect(svgShapePath(curve)).toMatch(/C[^Z]+Z$/);
   expect(svgShapePath({ ...curve, points: curve.points.slice(0, -1) })).not.toContain("Z");
 });
+it("prints dashed and dotted outlines without dashing fills or annotations", () => {
+  const dashed = pageSvg({ ...doc, shapes: [{ ...shape, strokeStyle: "dashed", fillMode: "skiving" }] }, layout, layout.pages[0]);
+  expect(dashed.match(/stroke-dasharray="3 1.5"/g)).toHaveLength(1);
+  const dotted = pageSvg({ ...doc, shapes: [{ ...shape, strokeStyle: "dotted" }] }, layout, layout.pages[0]);
+  expect(dotted).toContain('stroke-dasharray="0 1"');
+  expect(pageSvg(doc, layout, layout.pages[0])).not.toContain(`stroke-dasharray="3`);
+});

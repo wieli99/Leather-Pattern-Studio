@@ -76,6 +76,8 @@ Closed shapes also offer **Fill color** and **Fill opacity (%)** side by side in
 
 Closed shapes offer a **Fill mode** select: **Solid**, **Skiving** (full-length angled lines), **Glueing** (waves), and **Cutout** (crosshatched full-length diagonal lines). Markings overlay the fill and ignore fill opacity. **Outline color** and **Outline opacity (%)** control both outlines and markings. Pattern spacing is fixed in millimetres. Outline controls also apply to open paths, text, and measurements.
 
+Paths and shapes also offer an **Outline style** select under **Outline width (mm)**: **Solid** (default), **Dashed**, or **Dotted**. Dashes are 3 mm with 1.5 mm gaps and dots are spaced 1 mm apart; both scale up proportionally for outlines wider than 0.35 mm, and zoom does not change them. The style applies to the outline on the canvas and in print export; fill markings, stitches, and DXF cut lines stay solid. Text, images, measurements, and indicators do not offer this select.
+
 ### Equal measurement sections
 
 Measurement starts with one section. Shift+wheel or Up/Down changes the count from 1 to 100 during placement, including while choosing the third-click offset. Each equal span shows its own distance and arrows. The count is retained for subsequent placements; Properties offers Sections and Offset. All spans share the offset and form one annotation for undo, saving, and printing. Rotating or transforming a measurement keeps its equal sections aligned along the same dimension line. Tool help lists Up/Down and Shift+wheel as “Add / remove equal sections” throughout placement.

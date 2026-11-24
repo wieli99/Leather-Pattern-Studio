@@ -298,6 +298,7 @@ export function compactOffset(source: Shape, distance: number, join: OffsetJoin)
   return {id:crypto.randomUUID(),name:`${source.name.slice(0,193)} offset`,kind:"control-curve",points,handles,
     radius:0,rotation:0,strokeColor:fillOnly ? source.fillColor : source.strokeColor,
     strokeOpacity:fillOnly ? 1 : source.strokeOpacity,
-    strokeWidth:fillOnly ? undefined : source.strokeWidth,fillOpacity:0,
+    strokeWidth:fillOnly ? undefined : source.strokeWidth,
+    strokeStyle:fillOnly ? undefined : source.strokeStyle,fillOpacity:0,
     excludeFromDxf:source.excludeFromDxf};
 }

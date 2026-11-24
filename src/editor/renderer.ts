@@ -8,6 +8,7 @@ import {
   drawTransformReadout,
 } from "./transformUi";
 import { isIndicator } from "../model/indicators";
+import { outlineDash } from "../model/outlineStyle";
 import { isClosedShape } from "../model/closedShape";
 import { drawStitches } from "./stitchRenderer";
 import { isCurve, cubicSegments } from "../model/curves";
@@ -291,7 +292,14 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
             ctx.beginPath(); ctx.moveTo(x, y + offset); ctx.lineTo(x + w, y + offset); ctx.stroke();
           }
         });
-      } else if (!s.stitchOnly || selected || preview) ctx.stroke(path);
+      } else if (!s.stitchOnly || selected || preview) {
+        const dash = outlineDash(s);
+        if (dash.length) {
+          ctx.setLineDash(dash);
+          if (s.strokeStyle === "dotted") ctx.lineCap = "round";
+        }
+        ctx.stroke(path);
+      }
       ctx.restore();
     }
     (editor.preview ?? editor.document).shapes.filter(s => !editor.isHidden(s.id)).forEach((s) => shape(s));

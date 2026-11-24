@@ -1,5 +1,6 @@
 import { migrateDetachedGuides, transferMapping, makeTransfer, pieceFrame, stitchingOnPiece, validateStitchTransfers } from "./stitchLayers";
 import { validateStitchSettings } from "./stitch";
+import { isOutlineStyle } from "./outlineStyle";
 import { validatePrintLayouts, findSource } from "./printLayout";
 import { objectTreeFromShapes, validateObjectTree, treeInDrawingOrder, type ObjectNode } from "./objectTree";
 import { stitchClosed, validateStitchGroups } from "./stitchGeometry";
@@ -238,6 +239,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
     if (
       (s.fillMode !== undefined && !["solid", "skiving", "glueing", "cutout"].includes(s.fillMode)) ||
       (s.strokeColor !== undefined && (typeof s.strokeColor !== "string" || !/^#[0-9a-f]{6}$/i.test(s.strokeColor))) ||
+      (s.strokeStyle !== undefined && !isOutlineStyle(s.strokeStyle)) ||
       (s.strokeOpacity !== undefined && (typeof s.strokeOpacity !== "number" || !Number.isFinite(s.strokeOpacity) || s.strokeOpacity < 0 || s.strokeOpacity > 1)) ||
       (s.hidden !== undefined && typeof s.hidden !== "boolean") ||
       (s.locked !== undefined && typeof s.locked !== "boolean") ||
@@ -275,6 +277,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       ...(s.fillMode !== undefined ? { fillMode: s.fillMode } : {}),
       ...(s.strokeColor !== undefined ? { strokeColor: s.strokeColor } : {}),
       ...(s.strokeOpacity !== undefined ? { strokeOpacity: s.strokeOpacity } : {}),
+      ...(s.strokeStyle !== undefined ? { strokeStyle: s.strokeStyle } : {}),
       ...(s.hidden !== undefined ? { hidden: s.hidden } : {}),
       ...(s.locked !== undefined ? { locked: s.locked } : {}),
       ...(s.fillColor !== undefined ? { fillColor: s.fillColor } : {}),

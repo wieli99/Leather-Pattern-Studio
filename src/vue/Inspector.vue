@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatArea } from "../model/units";
 import { isIndicator, indicatorGeometry } from "../model/indicators";
+import { hasStyledOutline } from "../model/outlineStyle";
 import { measurementGeometry } from "../model/measurement";
 import { shapeArea } from "../model/area";
 import { computed, ref } from "vue";
@@ -360,6 +361,16 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         @commit="edit({ strokeOpacity: +$event / 100 })" />
     </div>
     <Field :controller="editor" dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
+    <label v-if="hasStyledOutline(s.kind)" class="field">
+      <span>Outline style</span>
+      <select aria-label="Outline style" :value="s.strokeStyle ?? 'solid'"
+        :disabled="!e.ready || !!e.transformTool || e.stitchMode"
+        @change="edit({ strokeStyle: ($event.target as HTMLSelectElement).value })">
+        <option value="solid">Solid</option>
+        <option value="dashed">Dashed</option>
+        <option value="dotted">Dotted</option>
+      </select>
+    </label>
     <template v-if="area !== null">
       <label class="field">
         <span>Fill mode</span>

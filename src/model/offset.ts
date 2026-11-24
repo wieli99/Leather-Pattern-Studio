@@ -26,7 +26,7 @@ function similarityScale(shape: Shape) {
 function primitive(source: Shape, kind: "circle" | "rectangle", points: Point[], radius: number): Shape {
   return { id: crypto.randomUUID(), name: `${source.name.slice(0, 193)} offset`, kind, points, radius,
     rotation: source.rotation, transform: source.transform, strokeColor: source.strokeColor,
-    strokeOpacity: source.strokeOpacity, strokeWidth: source.strokeWidth, fillOpacity: 0,
+    strokeOpacity: source.strokeOpacity, strokeStyle: source.strokeStyle, strokeWidth: source.strokeWidth, fillOpacity: 0,
     excludeFromDxf: source.excludeFromDxf };
 }
 
@@ -167,6 +167,6 @@ export function offsetShape(source: Shape, distance: number, join: OffsetJoin): 
   return {
     id: crypto.randomUUID(), name: `${source.name.slice(0, 193)} offset`, kind: points.length === 2 ? "line" : "polyline",
     points, radius: 0, rotation: 0, strokeColor: source.strokeColor, strokeOpacity: source.strokeOpacity,
-    strokeWidth: source.strokeWidth, fillOpacity: 0,
+    strokeStyle: source.strokeStyle, strokeWidth: source.strokeWidth, fillOpacity: 0,
   };
 }

@@ -542,9 +542,9 @@ function keyboardMove(event: KeyboardEvent, id: string) {
             :title="
               e.isHidden(row.node.id) && !row.node.hidden
                 ? `Hidden by ${e.inheritedStateSource(row.node.id, 'hidden')}; toggles local visibility`
-                : 'Toggle group visibility'
+                : 'Toggle group visibility (Alt+click: show only this)'
             "
-            @click="editor.toggleGroupState(row.node.id, 'hidden')"
+            @click="editor.toggleGroupState(row.node.id, 'hidden', $event.altKey)"
           >
             <svg
               viewBox="0 0 24 24"

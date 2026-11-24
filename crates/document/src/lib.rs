@@ -108,6 +108,13 @@ pub struct Shape {
     )]
     #[ts(optional)]
     pub stroke_opacity: Option<f64>,
+    #[serde(
+        default,
+        rename = "strokeStyle",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub stroke_style: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub image: Option<String>,
@@ -973,6 +980,9 @@ impl Document {
                 .is_some_and(|v| !matches!(v.as_str(), "solid" | "skiving" | "glueing" | "cutout"))
                 || s.stroke_opacity
                     .is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v))
+                || s.stroke_style
+                    .as_ref()
+                    .is_some_and(|v| !matches!(v.as_str(), "solid" | "dashed" | "dotted"))
                 || s.stroke_color.as_ref().is_some_and(|v| {
                     v.len() != 7
                         || !v.starts_with('#')
@@ -1633,6 +1643,18 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn outline_style_roundtrips_and_validates() {
+        let value = serde_json::json!({"version":21,"shapes":[
+            {"id":"piece","name":"Piece","kind":"rectangle","points":[{"x":0,"y":0},{"x":10,"y":10}],"rotation":0,"radius":0,"strokeStyle":"dashed"}]});
+        let doc: Document = serde_json::from_value(value).unwrap();
+        doc.validate().unwrap();
+        let text = serde_json::to_string(&doc).unwrap();
+        assert!(text.contains("\"strokeStyle\":\"dashed\""));
+        let mut bad = doc.clone();
+        bad.shapes[0].stroke_style = Some("dash-dot".into());
+        assert!(bad.validate().is_err());
+    }
     #[test]
     fn counted_runs_and_receiving_layers_roundtrip_and_validate() {
         let value = serde_json::json!({"version":20,"shapes":[
