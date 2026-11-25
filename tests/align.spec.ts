@@ -142,5 +142,5 @@ test('align panel combining a horizontal and a vertical arrangement @manual', as
   await panel.getByRole('button', { name: 'Equalize vertical gaps' }).click();
   await expect(panel.getByRole('button', { name: 'Apply', exact: true })).toBeEnabled();
   await page.mouse.move(5, 400);
-  await manualScreenshot(page, 'align-distribute.png');
+  await manualScreenshot(page, "align-distribute.png");
 });
