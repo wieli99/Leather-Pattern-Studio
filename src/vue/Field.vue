@@ -52,8 +52,15 @@ const unitTag = computed(() => {
   return props.binding && symbol !== e.value.unitSymbol ? symbol : "";
 });
 let focused = false,
+  pristine = false,
   initial = props.value,
   last = draft.value;
+/** What a focused field shows: the formula, editable precision, or the template. */
+function focusedDraft() {
+  if (props.binding) return props.binding.expression;
+  if (props.dimension && typeof props.value === "number") return editableLength(props.value, e.value.units);
+  return typeof props.value === "string" ? props.value : draft.value;
+}
 const missing = computed(() =>
   typeof props.value === "string" ? templateReferences(props.value).filter((name) => !values().has(name)) : [],
 );
@@ -63,6 +70,10 @@ watch(
     if (!focused) {
       draft.value = format(value);
       last = draft.value;
+    } else if (pristine) {
+      // A change from elsewhere (e.g. a variable rename) before the user types.
+      initial = value;
+      draft.value = last = focusedDraft();
     }
   },
 );
@@ -88,6 +99,7 @@ onBeforeUnmount(() => { if (inputElement) numericReaders.delete(inputElement); }
 function change(event: Event) {
   const input = event.target as HTMLInputElement;
   const text = input.value;
+  pristine = false;
   draft.value = text;
   if (numeric.value) variables.update(input);
   const n = numeric.value ? evaluate(text) ?? NaN : NaN;
@@ -111,10 +123,9 @@ function change(event: Event) {
 function focus(event: FocusEvent) {
   focused = true;
   editing.value = true;
+  pristine = true;
   initial = props.value;
-  if (props.binding) draft.value = props.binding.expression;
-  else if (props.dimension && typeof props.value === "number") draft.value = editableLength(props.value, e.value.units);
-  else if (typeof props.value === "string") draft.value = props.value;
+  draft.value = focusedDraft();
   last = draft.value;
   const input = event.target as HTMLInputElement;
   input.value = draft.value;

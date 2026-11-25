@@ -17,8 +17,6 @@ const errors = ref<Record<string, string>>({});
 const nameDrafts = ref<Record<string, string>>({});
 const valueDrafts = ref<Record<string, string>>({});
 const confirmDelete = ref<string | null>(null);
-/** Key of the always-present empty row that creates a variable. */
-const NEW = "new";
 
 const hasFormula = (v: Variable) => v.kind === "number" && formulaReferences(v.value).length > 0;
 function resolvedText(v: Variable) {
@@ -59,129 +57,152 @@ const replace = (id: string, patch: Partial<Variable>) => (doc: typeof e.value.d
 
 const nameInputs = new Map<string, HTMLInputElement>();
 const valueInputs = new Map<string, HTMLInputElement>();
+/**
+ * The last row is always empty. It becomes a variable as soon as it has a valid name and
+ * value; it keeps its id, so the inputs being typed in stay focused, and a new empty row
+ * appears below.
+ */
+const draftId = ref(crypto.randomUUID());
+const rows = computed(() => [
+  ...list.value.map((v) => ({ v, draft: false })),
+  { v: { id: draftId.value, name: "", kind: "text", value: "" } as Variable, draft: true },
+]);
 
-function nameInput(id: string, event: Event) {
-  const text = (event.target as HTMLInputElement).value;
-  nameDrafts.value = { ...nameDrafts.value, [id]: text };
-  setError(id, id === NEW && !text ? null : variableNameError(text, list.value, id === NEW ? undefined : id));
+/** Each row is edited in one property session: one undo step, Esc reverts the row. */
+function rowFocus() {
+  editor.beginProperty();
 }
-async function commitName(v: Variable) {
-  const text = nameDrafts.value[v.id];
-  clearDraft(nameDrafts, v.id);
-  if (text === undefined || text === v.name) return;
-  if (variableNameError(text, list.value, v.id)) return setError(v.id, null);
-  await apply(v.id, (doc) => renameVariable(doc, v.id, text));
+async function rowLeave(id: string, event: FocusEvent) {
+  const row = event.currentTarget as HTMLElement;
+  if (row.contains(event.relatedTarget as Node | null)) return;
+  suggestions.close();
+  if (id !== draftId.value) {
+    await commitName(id);
+    clearDraft(valueDrafts, id);
+    setError(id, null);
+  }
+  // Leaving keeps the last valid values; invalid drafts are discarded.
+  await editor.finishProperty();
 }
-function cancelName(id: string, event: KeyboardEvent) {
+function rowEscape(id: string, event: KeyboardEvent) {
   event.stopPropagation();
   clearDraft(nameDrafts, id);
+  clearDraft(valueDrafts, id);
   setError(id, null);
+  void editor.finishProperty(true);
   (event.target as HTMLInputElement).blur();
 }
 
-/** Create a variable from the empty row once focus leaves it or Enter confirms it. */
-let creating = false, queued = false;
-async function commitNew(): Promise<void> {
-  if (creating) {
-    queued = true;
-    return;
-  }
-  const typedName = nameDrafts.value[NEW], typedValue = valueDrafts.value[NEW];
-  const name = typedName?.trim() || "", value = typedValue ?? "";
-  if (!name && !value.trim()) return;
-  const finalName = name || nextVariableName(list.value);
-  const nameError = variableNameError(finalName, list.value);
+let creating = false, creation: Promise<void> = Promise.resolve();
+function tryCreate() {
+  creation = creation.then(createDraft);
+  return creation;
+}
+async function createDraft() {
+  const id = draftId.value;
+  const name = nameDrafts.value[id]?.trim() ?? "", value = valueDrafts.value[id] ?? "";
+  if (creating || !name || !value.trim()) return;
   const kind = detectKind(value, list.value);
-  const error = nameError ?? (kind === "number" ? formulaError({ name: finalName }, value) : null);
-  if (error) return setError(NEW, error);
+  const error = variableNameError(name, list.value) ?? (kind === "number" ? formulaError({ name }, value) : null);
+  if (error) return setError(id, error);
   creating = true;
   try {
-    const id = crypto.randomUUID();
+    editor.beginProperty();
     const message = await editor.updateVariables((doc) => ({
       ...doc,
-      variables: [...(doc.variables ?? []), { id, name: finalName, kind, value: value.trim() }],
+      variables: [...(doc.variables ?? []), { id, name, kind, value: kind === "number" ? value.trim() : value }],
     }));
-    if (message) return setError(NEW, message);
-    // Keep anything typed into the empty row while this one was being saved.
-    if (nameDrafts.value[NEW] === typedName) clearDraft(nameDrafts, NEW);
-    if (valueDrafts.value[NEW] === typedValue) clearDraft(valueDrafts, NEW);
-    setError(NEW, null);
+    setError(id, message);
+    if (message) return;
+    draftId.value = crypto.randomUUID();
   } finally {
     creating = false;
   }
-  if (queued) {
-    queued = false;
-    return commitNew();
+  // Apply anything typed while the variable was being created.
+  const created = list.value.find((v) => v.id === id);
+  if (created) {
+    if (nameDrafts.value[id] !== undefined && nameDrafts.value[id].trim() !== created.name) await applyName(created, nameDrafts.value[id]);
+    if (valueDrafts.value[id] !== undefined && valueDrafts.value[id] !== created.value) await applyValue(created, valueDrafts.value[id]);
   }
-  await nextTick();
-  if (!nameDrafts.value[NEW] && !valueDrafts.value[NEW]) nameInputs.get(NEW)?.focus();
-}
-function leaveNewRow(event: FocusEvent) {
-  const row = event.currentTarget as HTMLElement;
-  if (!row.contains(event.relatedTarget as Node | null)) void commitNew();
-}
-function newKey(event: KeyboardEvent, field: "name" | "value") {
-  if (event.isComposing || (field === "value" && suggestions.key(event))) return;
-  if (event.key === "Enter") {
-    event.preventDefault();
-    if (field === "name" && !valueDrafts.value[NEW]) valueInputs.get(NEW)?.focus();
-    else void commitNew();
-  } else if (event.key === "Escape") {
-    event.stopPropagation();
-    clearDraft(nameDrafts, NEW);
-    clearDraft(valueDrafts, NEW);
-    setError(NEW, null);
-  }
-}
-function newValueInput(event: Event) {
-  const input = event.target as HTMLInputElement;
-  valueDrafts.value = { ...valueDrafts.value, [NEW]: input.value };
-  suggestions.update(input);
-  setError(NEW, null);
 }
 
-function valueFocus(v: Variable, event: FocusEvent) {
-  const input = event.target as HTMLInputElement;
-  valueDrafts.value = { ...valueDrafts.value, [v.id]: v.value };
-  input.value = v.value;
-  if (v.kind === "number") input.select();
-  editor.beginProperty();
+async function applyName(v: Variable, text: string) {
+  const error = variableNameError(text.trim(), list.value, v.id);
+  if (error) return setError(v.id, error);
+  await apply(v.id, (doc) => renameVariable(doc, v.id, text.trim()));
 }
-async function valueInput(v: Variable, event: Event) {
-  const input = event.target as HTMLInputElement;
-  const text = input.value;
-  valueDrafts.value = { ...valueDrafts.value, [v.id]: text };
-  suggestions.update(input);
+async function applyValue(v: Variable, text: string) {
   const kind = detectKind(text, list.value, v.name);
   const error = kind === "number" ? formulaError(v, text) : null;
   if (error) return setError(v.id, error);
   await apply(v.id, replace(v.id, { kind, value: kind === "number" ? text.trim() : text }));
 }
-async function valueBlur(v: Variable) {
-  suggestions.close();
-  clearDraft(valueDrafts, v.id);
-  setError(v.id, null);
-  // Leaving keeps the last valid value; an invalid draft is discarded.
-  await editor.finishProperty();
-}
-function valueKey(v: Variable, event: KeyboardEvent) {
-  if (event.isComposing || suggestions.key(event)) return;
-  if (event.key === "Enter") (event.target as HTMLInputElement).blur();
-  if (event.key === "Escape") {
-    event.stopPropagation();
-    clearDraft(valueDrafts, v.id);
-    setError(v.id, null);
-    void editor.finishProperty(true);
-    (event.target as HTMLInputElement).blur();
+
+function nameInput(row: { v: Variable; draft: boolean }, event: Event) {
+  const text = (event.target as HTMLInputElement).value;
+  nameDrafts.value = { ...nameDrafts.value, [row.v.id]: text };
+  if (row.draft) {
+    setError(row.v.id, text.trim() ? variableNameError(text.trim(), list.value) : null);
+    return tryCreate();
   }
+  // Renames apply on Enter or when leaving the row, so lists never show a half-typed name.
+  setError(row.v.id, variableNameError(text.trim(), list.value, row.v.id));
+}
+async function commitName(id: string) {
+  const v = list.value.find((item) => item.id === id), text = nameDrafts.value[id];
+  if (!v || text === undefined) return;
+  clearDraft(nameDrafts, id);
+  if (text.trim() === v.name || variableNameError(text.trim(), list.value, id)) return setError(id, null);
+  // A rename is its own committed step, so every list shows the new name at once.
+  await editor.finishProperty();
+  await applyName(v, text);
+  editor.beginProperty();
+}
+function valueInput(row: { v: Variable; draft: boolean }, event: Event) {
+  const input = event.target as HTMLInputElement;
+  valueDrafts.value = { ...valueDrafts.value, [row.v.id]: input.value };
+  suggestions.update(input);
+  if (row.draft) {
+    setError(row.v.id, null);
+    return tryCreate();
+  }
+  if (!creating) return applyValue(row.v, input.value);
+}
+function valueFocus(row: { v: Variable; draft: boolean }, event: FocusEvent) {
+  activeSuggestions.value = row.v.id;
+  rowFocus();
+  if (!row.draft && row.v.kind === "number") (event.target as HTMLInputElement).select();
+}
+/** Enter moves on like a table: name → value → next row's name. */
+async function enter(row: { v: Variable }, field: "name" | "value", event: KeyboardEvent) {
+  event.preventDefault();
+  const input = event.target as HTMLInputElement;
+  // Only move focus if it did not go elsewhere while a change was being applied.
+  const stillHere = () => document.activeElement === input;
+  if (field === "name") {
+    if (row.v.id !== draftId.value) await commitName(row.v.id);
+    if (stillHere()) valueInputs.get(row.v.id)?.focus();
+    return;
+  }
+  await creation;
+  const index = rows.value.findIndex((r) => r.v.id === row.v.id);
+  await nextTick();
+  if (!stillHere()) return;
+  const next = rows.value[index + 1]?.v.id;
+  if (next) nameInputs.get(next)?.focus();
+  else input.blur();
+}
+function valueKey(row: { v: Variable }, event: KeyboardEvent) {
+  if (event.isComposing || suggestions.key(event)) return;
+  if (event.key === "Enter") void enter(row, "value", event);
+  else if (event.key === "Escape") rowEscape(row.v.id, event);
 }
 const suggestions = useVariableSuggestions(values, ["number"]);
 const activeSuggestions = ref<string | null>(null);
 function registerValue(id: string, el: unknown) {
   if (!(el instanceof HTMLInputElement)) return;
   valueInputs.set(id, el);
-  const name = id === NEW ? "" : list.value.find((v) => v.id === id)?.name ?? "";
-  numericReaders.set(el, (text) => evaluate({ name }, text));
+  numericReaders.set(el, (text) => evaluate({ name: list.value.find((v) => v.id === id)?.name ?? "" }, text));
 }
 /** Text values are not stepped by arrows or Alt+wheel. */
 const wheelMode = (id: string) => {
@@ -211,119 +232,72 @@ async function remove(v: Variable) {
         <tr><th scope="col">Name</th><th scope="col">Value</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
       </thead>
       <tbody>
-        <template v-for="v in list" :key="v.id">
-          <tr>
+        <template v-for="row in rows" :key="row.v.id">
+          <tr :class="{ 'variable-new': row.draft }" @focusin="rowFocus" @focusout="rowLeave(row.v.id, $event)">
             <td>
               <input
-                :ref="(el) => el && nameInputs.set(v.id, el as HTMLInputElement)"
+                :ref="(el) => el && nameInputs.set(row.v.id, el as HTMLInputElement)"
                 class="variable-name"
                 type="text"
                 maxlength="64"
                 spellcheck="false"
-                :aria-label="`Name of ${v.name}`"
-                :aria-invalid="v.id in nameDrafts && v.id in errors"
-                :value="nameDrafts[v.id] ?? v.name"
-                @input="nameInput(v.id, $event)"
-                @blur="commitName(v)"
-                @keydown.enter="($event.target as HTMLInputElement).blur()"
-                @keydown.esc="cancelName(v.id, $event)"
+                :placeholder="row.draft ? 'New name' : undefined"
+                :aria-label="row.draft ? 'New variable name' : `Name of ${row.v.name}`"
+                :aria-invalid="row.v.id in nameDrafts && row.v.id in errors && !!variableNameError((nameDrafts[row.v.id] ?? '').trim(), list, row.draft ? undefined : row.v.id)"
+                :disabled="row.draft && (!e.ready || list.length >= 500)"
+                :value="nameDrafts[row.v.id] ?? row.v.name"
+                @input="nameInput(row, $event)"
+                @keydown.enter="enter(row, 'name', $event)"
+                @keydown.esc="rowEscape(row.v.id, $event)"
               />
             </td>
             <td>
               <span class="variable-value">
                 <input
-                  :ref="(el) => registerValue(v.id, el)"
-                  v-numeric-wheel="wheelMode(v.id)"
+                  :ref="(el) => registerValue(row.v.id, el)"
+                  v-numeric-wheel="wheelMode(row.v.id)"
                   type="text"
                   step="0.1"
                   :maxlength="2000"
                   spellcheck="false"
-                  :aria-label="`Value of ${v.name}`"
-                  :aria-invalid="v.id in valueDrafts && v.id in errors"
+                  :placeholder="row.draft ? 'Value' : undefined"
+                  :aria-label="row.draft ? 'New variable value' : `Value of ${row.v.name}`"
+                  :aria-invalid="row.v.id in valueDrafts && row.v.id in errors"
                   aria-autocomplete="list"
-                  :value="valueDrafts[v.id] ?? v.value"
-                  @focus="activeSuggestions = v.id; valueFocus(v, $event)"
-                  @input="valueInput(v, $event)"
-                  @blur="valueBlur(v)"
-                  @keydown="valueKey(v, $event)"
+                  :disabled="row.draft && (!e.ready || list.length >= 500)"
+                  :value="valueDrafts[row.v.id] ?? row.v.value"
+                  @focus="valueFocus(row, $event)"
+                  @input="valueInput(row, $event)"
+                  @keydown="valueKey(row, $event)"
                 />
-                <small v-if="v.kind === 'text' && v.value && !(v.id in valueDrafts)" class="value-kind" title="Detected as text: fills {name} placeholders">text</small>
+                <small v-if="!row.draft && row.v.kind === 'text' && row.v.value" class="value-kind" title="Detected as text: fills {name} placeholders">text</small>
                 <VariableSuggestions
-                  v-if="activeSuggestions === v.id"
-                  :id="`variable-suggestions-${v.id}`"
-                  :suggestions="suggestions.suggestions.value.filter((name) => name !== v.name)"
+                  v-if="activeSuggestions === row.v.id"
+                  :id="`variable-suggestions-${row.v.id}`"
+                  :suggestions="suggestions.suggestions.value.filter((name) => name !== row.v.name)"
                   :highlight="suggestions.highlight.value"
                   @choose="suggestions.choose"
                 />
               </span>
-              <small v-if="hasFormula(v) && !(v.id in valueDrafts)" class="variable-resolved">= {{ resolvedText(v) }}</small>
+              <small v-if="hasFormula(row.v)" class="variable-resolved">= {{ resolvedText(row.v) }}</small>
             </td>
             <td>
-              <button type="button" class="variable-delete" :aria-label="`Delete ${v.name}`" title="Delete variable" @click="remove(v)">×</button>
+              <button v-if="!row.draft" type="button" class="variable-delete" :aria-label="`Delete ${row.v.name}`" title="Delete variable" @click="remove(row.v)">×</button>
             </td>
           </tr>
-          <tr v-if="confirmDelete === v.id" class="variable-message">
+          <tr v-if="confirmDelete === row.v.id" class="variable-message">
             <td colspan="3">
-              <span role="alert">{{ v.name }} is used {{ variableUses(e.variableDocument, v.name) }}×. Delete it and keep the current values?</span>
+              <span role="alert">{{ row.v.name }} is used {{ variableUses(e.variableDocument, row.v.name) }}×. Delete it and keep the current values?</span>
               <span class="variable-confirm">
-                <button type="button" @click="remove(v)">Delete and keep values</button>
+                <button type="button" @click="remove(row.v)">Delete and keep values</button>
                 <button type="button" @click="confirmDelete = null">Cancel</button>
               </span>
             </td>
           </tr>
-          <tr v-else-if="errors[v.id]" class="variable-message">
-            <td colspan="3"><small role="alert">{{ errors[v.id] }}</small></td>
+          <tr v-else-if="errors[row.v.id]" class="variable-message">
+            <td colspan="3"><small role="alert">{{ errors[row.v.id] }}</small></td>
           </tr>
         </template>
-        <tr class="variable-new" @focusout="leaveNewRow">
-          <td>
-            <input
-              :ref="(el) => el && nameInputs.set(NEW, el as HTMLInputElement)"
-              class="variable-name"
-              type="text"
-              maxlength="64"
-              spellcheck="false"
-              placeholder="New name"
-              aria-label="New variable name"
-              :aria-invalid="NEW in errors"
-              :disabled="!e.ready || list.length >= 500"
-              :value="nameDrafts[NEW] ?? ''"
-              @input="nameInput(NEW, $event)"
-              @keydown="newKey($event, 'name')"
-            />
-          </td>
-          <td>
-            <span class="variable-value">
-              <input
-                :ref="(el) => registerValue(NEW, el)"
-                v-numeric-wheel="wheelMode(NEW)"
-                type="text"
-                step="0.1"
-                :maxlength="2000"
-                spellcheck="false"
-                placeholder="Value"
-                aria-label="New variable value"
-                aria-autocomplete="list"
-                :disabled="!e.ready || list.length >= 500"
-                :value="valueDrafts[NEW] ?? ''"
-                @focus="activeSuggestions = NEW"
-                @input="newValueInput"
-                @keydown="newKey($event, 'value')"
-              />
-              <VariableSuggestions
-                v-if="activeSuggestions === NEW"
-                id="variable-suggestions-new"
-                :suggestions="suggestions.suggestions.value"
-                :highlight="suggestions.highlight.value"
-                @choose="suggestions.choose"
-              />
-            </span>
-          </td>
-          <td></td>
-        </tr>
-        <tr v-if="errors[NEW]" class="variable-message">
-          <td colspan="3"><small role="alert">{{ errors[NEW] }}</small></td>
-        </tr>
       </tbody>
     </table>
   </PinnablePopover>

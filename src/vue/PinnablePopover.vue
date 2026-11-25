@@ -19,14 +19,25 @@ watch(pinned, (value) => {
   try { localStorage.setItem(key, String(value)); }
   catch { /* Pinning still works for this session. */ }
 });
-/** A pinned popover closes only through its trigger or close button. */
-function keepWhenPinned(event: Event) {
-  if (pinned.value) event.preventDefault();
+/**
+ * A pinned popover closes only through its trigger. Outside clicks, focus changes and Esc
+ * are not blocked (blocking them would also hold focus in the popover); their close
+ * requests are ignored instead.
+ */
+let fromTrigger = false;
+function markTrigger() {
+  fromTrigger = true;
+  setTimeout(() => (fromTrigger = false));
+}
+function openChange(value: boolean) {
+  if (!value && pinned.value && !fromTrigger) return;
+  fromTrigger = false;
+  open.value = value;
 }
 </script>
 <template>
-  <PopoverRoot v-model:open="open" :modal="false">
-    <div class="settings">
+  <PopoverRoot :open="open" :modal="false" @update:open="openChange">
+    <div class="settings" @click.capture="markTrigger" @keydown.capture="markTrigger">
       <PopoverTrigger class="settings-trigger" :class="{ open }">
         <slot name="trigger">{{ label }}</slot>
       </PopoverTrigger>
@@ -40,17 +51,14 @@ function keepWhenPinned(event: Event) {
         :side-offset="10"
         :collision-padding="12"
         :aria-label="label"
-        @pointer-down-outside="keepWhenPinned"
-        @focus-outside="keepWhenPinned"
-        @interact-outside="keepWhenPinned"
-        @escape-key-down="keepWhenPinned"
+        data-nonblocking
       >
         <div class="popover-actions">
           <button
             type="button"
             class="popover-pin"
             :aria-label="`Keep ${label} open`"
-            :title="pinned ? 'Unpin: close when clicking elsewhere' : 'Pin: keep open while you work'"
+            :title="pinned ? 'Unpin: close when clicking elsewhere' : `Pin: keep open while you work (click ${label} to close)`"
             :aria-pressed="pinned"
             @click="pinned = !pinned"
           >
@@ -60,7 +68,6 @@ function keepWhenPinned(event: Event) {
               <path d="M12 13v7" />
             </svg>
           </button>
-          <button type="button" class="popover-close" :aria-label="`Close ${label}`" title="Close" @click="open = false">×</button>
         </div>
         <slot />
       </PopoverContent>
@@ -68,7 +75,7 @@ function keepWhenPinned(event: Event) {
   </PopoverRoot>
 </template>
 <style scoped>
-.popover-actions { display: flex; justify-content: flex-end; gap: 4px; margin: -8px -8px 6px 0; }
+.popover-actions { display: flex; justify-content: flex-end; margin: -8px -8px 2px 0; }
 .popover-actions button {
   display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
   background: transparent; color: var(--muted); border-radius: 4px; font-size: 16px; line-height: 1;

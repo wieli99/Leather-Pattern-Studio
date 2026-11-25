@@ -2840,7 +2840,7 @@ function printClipboard(event: ClipboardEvent) {
     sourcePointer ||
     event.defaultPrevented ||
     target.closest?.("input,textarea,select,[contenteditable=true]") ||
-    document.querySelector("[role=dialog]")
+    document.querySelector("[role=dialog]:not([data-nonblocking])")
   )
     return;
   syncDrawing();
@@ -2867,7 +2867,7 @@ function keyboard(event: KeyboardEvent) {
     !layout.value ||
     event.defaultPrevented ||
     event.isComposing ||
-    document.querySelector("[role=dialog]")
+    document.querySelector("[role=dialog]:not([data-nonblocking])")
   )
     return;
   const target = event.target as HTMLElement;

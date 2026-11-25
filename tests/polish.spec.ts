@@ -399,7 +399,7 @@ test("pinned Settings stays open while working until closed explicitly", async (
   await page.getByLabel("Pattern drawing canvas").click({ position: { x: 300, y: 300 } });
   await page.keyboard.press("Escape");
   await expect(settings).toHaveAttribute("aria-expanded", "true");
-  await page.getByRole("button", { name: "Close Settings", exact: true }).click();
+  await settings.click();
   await expect(settings).not.toHaveAttribute("aria-expanded", "true");
   await page.reload();
   await ready(page);

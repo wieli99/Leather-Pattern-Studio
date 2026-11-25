@@ -29,8 +29,10 @@ async function addVariable(page: Page, name: string, value: string) {
   const newValue = dialog.getByRole("textbox", { name: "New variable value", exact: true });
   await expect(newValue).toBeFocused();
   await newValue.fill(value);
-  await newValue.press("Enter");
+  // The row is now the variable; Enter moves on to the next empty row.
   const valueInput = dialog.getByRole("textbox", { name: `Value of ${name}`, exact: true });
+  await expect(valueInput).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect(valueInput).toHaveValue(value);
   await expect(nameInput).toBeFocused();
   return valueInput;
@@ -90,23 +92,27 @@ test("variables reject invalid names, formulas and values a linked object cannot
   await name.press("Escape");
   await expect(name).toHaveValue("");
 
-  // A value alone creates var1; a typo in a formula is reported instead of becoming text.
+  // The row becomes a variable once name and value are valid; a typo is reported, not text.
+  await name.fill("double");
   const value = dialog.getByRole("textbox", { name: "New variable value", exact: true });
   await value.fill("ww*2");
-  await value.press("Enter");
   await expect(dialog.getByText("Unknown variable ww")).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "Value of double" })).toHaveCount(0);
   await value.fill("w*2");
-  await value.press("Enter");
-  const self = dialog.getByRole("textbox", { name: "Value of var1", exact: true });
+  const self = dialog.getByRole("textbox", { name: "Value of double", exact: true });
+  await expect(self).toBeFocused();
   await expect(self).toHaveValue("w*2");
+  await expect(dialog.getByRole("textbox", { name: "New variable name", exact: true })).toHaveValue("");
+  await self.press("Enter");
+  await expect(dialog.getByRole("textbox", { name: "New variable name", exact: true })).toBeFocused();
   await expect(dialog.getByText("= 60", { exact: true })).toBeVisible();
-  await self.fill("var1 + 1");
-  await expect(dialog.getByText("var1 cannot refer to itself")).toBeVisible();
+  await self.fill("double + 1");
+  await expect(dialog.getByText("double cannot refer to itself")).toBeVisible();
   await self.press("Escape");
   await expect(self).toHaveValue("w*2");
 
   const width = page.getByLabel("Width", { exact: true });
-  await width.fill("var1");
+  await width.fill("double");
   await width.press("Enter");
   await expect(width).toHaveValue("60");
   await w.fill("-1");
@@ -210,6 +216,7 @@ test("text variables fill name and label placeholders", async ({ page }) => {
   const dialog = await openVariables(page);
   const rename = dialog.getByRole("textbox", { name: "Name of brand", exact: true });
   await rename.fill("maker");
+  await expect(row).toHaveText("Studio card {draft}");
   await rename.press("Enter");
   await expect(row).toHaveText("Studio card {draft}");
   await name.focus();
@@ -303,4 +310,26 @@ test("variables illustration", { tag: "@manual" }, async ({ page }) => {
   await expect(width).toHaveValue("89");
   await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
   await manualScreenshot(page, "variables.png");
+});
+
+test("construction fields accept variables while drawing", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Rectangle (R)", exact: true })).toBeEnabled();
+  await addVariable(page, "card_w", "40");
+  await addVariable(page, "t", "1.5");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.hover({ position: { x: 300, y: 300 } });
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Width", { exact: true })).toBeFocused();
+  await page.keyboard.type("card_w");
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("10*t");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  await expect(page.getByLabel("Width", { exact: true })).toHaveValue("40");
+  await expect(page.getByLabel("Height", { exact: true })).toHaveValue("15");
+  // Construction values are not linked.
+  await expect(page.getByLabel("Width", { exact: true })).not.toHaveAttribute("title", /Linked/);
 });
