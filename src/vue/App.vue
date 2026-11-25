@@ -28,6 +28,7 @@ import ObjectPanel from "./ObjectPanel.vue";
 import Inspector from "./Inspector.vue";
 import PanelSection from "./PanelSection.vue";
 import Settings from "./Settings.vue";
+import Variables from "./Variables.vue";
 import StatusBar from "./StatusBar.vue";
 import BugReport from "./BugReport.vue";
 import ImageImport from "./ImageImport.vue";
@@ -468,6 +469,7 @@ onMounted(() => {
           />
           Object snap
         </label>
+        <Variables />
         <Settings />
       </div>
       <StatusBar coordinates />

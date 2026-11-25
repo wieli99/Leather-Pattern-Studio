@@ -15,7 +15,10 @@ import { hitsTransformShaft } from "./transformUi";
 import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
-import { resizeText } from "../model/text";
+import { pruneBindings, recompute, withBinding } from "../model/bindings";
+import { propertyChanges, clampFillets, applyChanges, type PropertyId } from "../model/propertySetters";
+import { bindingUnit, resolveVariables, type VariableScope } from "../model/variables";
+import { formulaReferences } from "../model/expression";
 import type { ImportedImage } from "./imageImport";
 import type { VectorImport } from "./vectorImport";
 import { truncateSvgName } from "./svgImportCompatibility";
@@ -207,6 +210,17 @@ export class Controller {
   }
   projectEpoch = 0;
   document = emptyDocument();
+  /** Document whose variables apply to fields right now, including uncommitted edits. */
+  get variableDocument(): Doc {
+    return this.propertySession?.next ?? this.pendingDocument ?? this.document;
+  }
+  private scopeCache: { variables: Doc["variables"]; scope: VariableScope } | null = null;
+  get variableScope(): VariableScope {
+    const variables = this.variableDocument.variables;
+    if (!this.scopeCache || this.scopeCache.variables !== variables)
+      this.scopeCache = { variables, scope: resolveVariables(variables) };
+    return this.scopeCache.scope;
+  }
   preview: Doc | null = null;
   revision = 0;
   canUndo = false;
@@ -2062,12 +2076,18 @@ export class Controller {
       }
     }
     try {
+      // Direct edits that change a linked property end that link; undo restores it.
+      const { doc: unlinked, removed } = pruneBindings(document);
       const validated = parseProject(
-        JSON.stringify(this.normalizeTree(reconcileStitches(document, this.document))),
+        JSON.stringify(this.normalizeTree(reconcileStitches(unlinked, this.document))),
       );
       this.pendingDocument = validated;
       await this.transact("commit", validated);
       if (this.pendingDocument === validated) this.pendingDocument = null;
+      if (removed.length) {
+        this.message = removed.length === 1 ? removed[0].message : `Unlinked ${removed.length} values from their variables`;
+        this.notify();
+      }
       return true;
     } catch (e) {
       this.pendingDocument = null;
@@ -4847,25 +4867,67 @@ export class Controller {
     if (next !== shape) await this.edit(id, shape.kind === "compound" ? {contours:next.contours} : { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
-    if (this.booleanOperation || this.pathCopy || this.array) return;
-    if (this.selectionLocked) return;
-    if (this.stitchMode) return;
-    const source =
-      this.propertySession?.next ?? this.pendingDocument ?? this.document;
+    if (!this.canEditProperties) return;
+    const source = this.variableDocument;
+    await this.applyPropertyDocument(() => ({
+      ...source,
+      shapes: source.shapes.map((s) => (s.id === id ? applyChanges(s, changes) : s)),
+    }));
+  }
+  private get canEditProperties() {
+    return !(this.booleanOperation || this.pathCopy || this.array || this.selectionLocked || this.stitchMode);
+  }
+  /**
+   * Set a derived property from a field. A formula that uses variables links the property;
+   * a plain value removes an existing link. `unit` is the unit the formula was typed in.
+   */
+  async editProperty(
+    id: string,
+    property: PropertyId,
+    value: number,
+    formula: string | null,
+    unit: UnitMode,
+    options: { aspectLocked?: boolean } = {},
+  ) {
+    if (!this.canEditProperties) return;
+    const source = this.variableDocument;
+    const shape = source.shapes.find((s) => s.id === id);
+    if (!shape) return;
+    const changes = propertyChanges(shape, property, value, options);
+    if (!changes) return;
+    const linked = withBinding(
+      applyChanges(shape, clampFillets(shape, changes)),
+      property,
+      formula && formulaReferences(formula).length ? { property, expression: formula.trim(), unit: bindingUnit(unit) } : null,
+    );
+    await this.applyPropertyDocument(() => ({
+      ...source,
+      shapes: source.shapes.map((s) => (s.id === id ? linked : s)),
+    }));
+  }
+  /**
+   * Change project variables and update every linked property in one history step.
+   * Returns a message instead of applying a change that a linked object cannot take.
+   */
+  async updateVariables(change: (doc: Doc) => Doc): Promise<string | null> {
+    const changed = change(this.variableDocument);
+    const { errors } = resolveVariables(changed.variables);
+    if (errors.size) {
+      const [id, message] = [...errors][0];
+      return `${changed.variables?.find((v) => v.id === id)?.name ?? "Variable"}: ${message}`;
+    }
+    const { doc, problems } = recompute(changed, (id) => this.isLocked(id));
+    if (problems.length) return problems[0].message;
+    let failed: string | null = null;
+    await this.applyPropertyDocument(() => doc, (error) => {
+      failed = error instanceof Error ? error.message : String(error);
+    });
+    return failed;
+  }
+  /** Preview inside a property session, otherwise commit as one history step. */
+  private async applyPropertyDocument(build: () => Doc, onError?: (error: unknown) => void) {
     try {
-      const next = parseProject(
-        JSON.stringify({
-          ...source,
-          shapes: source.shapes.map((s) => {
-            if (s.id !== id) return s;
-            const updated = { ...s, ...changes };
-            return s.kind === "text" &&
-              (changes.fontSize !== undefined || changes.text !== undefined || changes.fontFamily !== undefined || changes.bold !== undefined || changes.italic !== undefined || changes.underline !== undefined || changes.strikethrough !== undefined || changes.textAlign !== undefined || changes.lineSpacing !== undefined)
-              ? resizeText(updated)
-              : updated;
-          }),
-        }),
-      );
+      const next = parseProject(JSON.stringify(build()));
       if (this.propertySession) {
         this.propertySession.next = next;
         this.preview = next;
@@ -4893,7 +4955,8 @@ export class Controller {
         }
       } else await this.commit(next);
     } catch (e) {
-      this.fail(e);
+      if (onError) onError(e);
+      else this.fail(e);
     }
   }
   delete() {

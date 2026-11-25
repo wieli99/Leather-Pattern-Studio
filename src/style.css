@@ -1198,3 +1198,8 @@ select:disabled { opacity: .5; }
 
 /* Shared spacing for inline select labels; stronger stacked layouts retain their display. */
 label:has(> select) { display:flex; align-items:center; column-gap:8px !important; row-gap:6px; }
+.variables-content {
+  width: 440px;
+  max-height: min(70vh, 560px);
+  overflow: auto;
+}

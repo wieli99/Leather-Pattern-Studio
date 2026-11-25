@@ -374,7 +374,7 @@ test("Settings closes on outside clicks without consuming the click", async ({
   page,
 }) => {
   await ready(page);
-  const settings = page.locator(".settings-trigger");
+  const settings = page.locator(".settings-trigger", { hasText: "Settings" });
   await page.getByText("Settings", { exact: true }).click();
   await expect(settings).toHaveAttribute("aria-expanded", "true");
   await page.getByLabel("Theme", { exact: true }).selectOption("light");
@@ -390,7 +390,7 @@ test("Settings closes on outside clicks without consuming the click", async ({
 
 test("pinned Settings stays open while working until closed explicitly", async ({ page }) => {
   await ready(page);
-  const settings = page.locator(".settings-trigger");
+  const settings = page.locator(".settings-trigger", { hasText: "Settings" });
   await page.getByText("Settings", { exact: true }).click();
   const pin = page.getByRole("button", { name: "Keep Settings open", exact: true });
   await expect(pin).toHaveAttribute("aria-pressed", "false");

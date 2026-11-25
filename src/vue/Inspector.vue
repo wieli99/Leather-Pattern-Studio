@@ -17,7 +17,9 @@ import {
   rotatePoint,
 } from "../model/geometry";
 import type { Shape } from "../model/project";
-import { clampFillets, propertyChanges, type PropertyId } from "../model/propertySetters";
+import { clampFillets, type PropertyId } from "../model/propertySetters";
+import { bindingFor } from "../model/bindings";
+import type { UnitMode } from "../model/units";
 import { editor as defaultEditor } from "../editor/instance";
 import type { Controller } from "../editor/controller";
 import { useEditor } from "./useEditor";
@@ -81,10 +83,11 @@ const edit = (changes: Partial<Shape>) => {
 };
 const imageAspectLocked = ref(true);
 /** Shared with variable-driven updates so both paths change geometry identically. */
-function property(id: PropertyId, v: string) {
-  const changes = propertyChanges(s.value!, id, +v, { aspectLocked: imageAspectLocked.value });
-  if (changes) edit(changes);
+function property(id: PropertyId, v: string, formula: string | null = null, unit: UnitMode = e.value.units) {
+  if (s.value)
+    void editor.editProperty(s.value.id, id, +v, formula, unit, { aspectLocked: imageAspectLocked.value });
 }
+const link = (id: PropertyId) => bindingFor(s.value, id);
 function vertex(i: number, axis: "x" | "y", v: string) {
   const original = s.value!,
     point = { ...vertices.value[i], [axis]: +v };
@@ -157,11 +160,11 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         </div>
       </div>
       <label class="field"><span>Alignment</span><select aria-label="Alignment" :value="s.textAlign ?? 'left'" @change="edit({ textAlign: ($event.target as HTMLSelectElement).value })"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
-      <Field :controller="editor" label="Line spacing" :value="s.lineSpacing ?? 1.2" @commit="edit({ lineSpacing: +$event })" />
+      <Field :controller="editor" label="Line spacing" :value="s.lineSpacing ?? 1.2" :binding="link('lineSpacing')" @commit="(v, f, u) => property('lineSpacing', v, f, u)" />
       <Field :controller="editor" dimension
         label="Font size"
         :value="s.fontSize ?? 5"
-        @commit="edit({ fontSize: +$event })"
+        :binding="link('fontSize')" @commit="(v, f, u) => property('fontSize', v, f, u)"
       />
     </template>
     </PanelSection>
@@ -171,12 +174,12 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       <Field :controller="editor" dimension
         label="Position X"
         :value="c.x"
-        @commit="property('x', $event)"
+        :binding="link('x')" @commit="(v, f, u) => property('x', v, f, u)"
       />
       <Field :controller="editor" dimension
         label="Position Y"
         :value="c.y"
-        @commit="property('y', $event)"
+        :binding="link('y')" @commit="(v, f, u) => property('y', v, f, u)"
       />
     </div>
     <div
@@ -187,7 +190,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         label="Width"
         :value="width"
         :min="0.001"
-        @commit="property('width', $event)"
+        :binding="link('width')" @commit="(v, f, u) => property('width', v, f, u)"
       />
       <button v-if="s.kind === 'image'" type="button" class="aspect-ratio-lock"
         aria-label="Lock aspect ratio" :aria-pressed="imageAspectLocked"
@@ -209,7 +212,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         label="Height"
         :value="height"
         :min="0.001"
-        @commit="property('height', $event)"
+        :binding="link('height')" @commit="(v, f, u) => property('height', v, f, u)"
       />
     </div>
     <Field :controller="editor" dimension
@@ -217,7 +220,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       :label="s.transform ? 'Radius (local)' : 'Radius'"
       :value="distance(a, b)"
       :min="0.001"
-      @commit="property('radius', $event)"
+      :binding="link('radius')" @commit="(v, f, u) => property('radius', v, f, u)"
     />
     <Field
         :controller="editor"
@@ -226,27 +229,27 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       :value="s.sweep ?? 0"
       :min="-360"
       :max="360"
-      @commit="edit({ sweep: +$event })"
+      :binding="link('sweep')" @commit="(v, f, u) => property('sweep', v, f, u)"
     />
     <Field
         :controller="editor"
       label="Rotation (degrees)"
       :value="+angle.toFixed(1)"
-      @commit="property('rotation', $event)"
+      :binding="link('rotation')" @commit="(v, f, u) => property('rotation', v, f, u)"
     />
     <template v-if="isIndicator(s.kind)">
       <Field :controller="editor" dimension :label="s.kind === 'size-square' ? 'Side length (mm)' : s.kind === 'crosshair' ? 'Overall size (mm)' : s.kind === 'arrow-head' ? 'Head size (mm)' : 'Length (mm)'"
-        :value="indicatorGeometry(s).size" :min="0.001" @commit="property('indicatorSize', $event)" />
+        :value="indicatorGeometry(s).size" :min="0.001" :binding="link('indicatorSize')" @commit="(v, f, u) => property('indicatorSize', v, f, u)" />
       <Field :controller="editor" dimension v-if="s.kind === 'arrow'" label="Head size (local mm)"
-        :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
+        :value="s.headSize ?? 3" :min="0.001" :binding="link('headSize')" @commit="(v, f, u) => property('headSize', v, f, u)" />
     </template>
     <Field :controller="editor" v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
-      <Field :controller="editor" label="Sections" :value="s.measurementSections ?? 1" :min="1" :max="100" @commit="edit({ measurementSections: Math.round(+$event) })" />
+      <Field :controller="editor" label="Sections" :value="s.measurementSections ?? 1" :min="1" :max="100" :binding="link('measurementSections')" @commit="(v, f, u) => property('measurementSections', v, f, u)" />
       <Field :controller="editor" dimension
         label="Offset (mm)"
         :value="measurementGeometry(s).offset"
-        @commit="edit({ measurementOffset: +$event / measurementGeometry(s).offsetScale })"
+        :binding="link('measurementOffset')" @commit="(v, f, u) => property('measurementOffset', v, f, u)"
       />
       <div class="field">
         <span>Distance ({{ e.unitSymbol }})</span>
@@ -274,7 +277,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         :min="0" :max="100" :step="1"
         @commit="edit({ strokeOpacity: +$event / 100 })" />
     </div>
-    <Field :controller="editor" dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
+    <Field :controller="editor" dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" :binding="link('strokeWidth')" @commit="(v, f, u) => property('strokeWidth', v, f, u)" />
     <label v-if="hasStyledOutline(s.kind)" class="field">
       <span>Outline style</span>
       <select aria-label="Outline style" :value="s.strokeStyle ?? 'solid'"

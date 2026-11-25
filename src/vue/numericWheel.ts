@@ -18,6 +18,16 @@ export function adjustedNumber(
 }
 
 type Mode = UnitMode | "number" | false | undefined;
+/**
+ * Optional per-input parser for formulas with variables. It returns millimetres for length
+ * modes and plain numbers otherwise; stepping still writes a plain number.
+ */
+export const numericReaders = new WeakMap<HTMLInputElement, (text: string) => number | null>();
+function readValue(el: HTMLInputElement, mode: UnitMode | "number") {
+  const reader = numericReaders.get(el);
+  if (reader) return reader(el.value);
+  return mode === "number" ? parseExpression(el.value) : parseLength(el.value, mode);
+}
 const handlers = new WeakMap<HTMLInputElement, { wheel: EventListener; key: EventListener }>();
 export const numericWheel: ObjectDirective<HTMLInputElement, Mode> = {
   mounted(el, binding) {
@@ -26,11 +36,10 @@ export const numericWheel: ObjectDirective<HTMLInputElement, Mode> = {
       const event = raw as WheelEvent;
       const mode = el.dataset.wheelMode as UnitMode | "number" | "false";
       if (!event.altKey || !event.deltaY || mode === "false" || el.disabled || el.readOnly) return;
-      const read = () => mode === "number" ? parseExpression(el.value) : parseLength(el.value, mode);
       // Focus initializes editable precision and starts the existing edit transaction.
       if (!el.value.trim() || el.getAttribute("aria-invalid") === "true") return;
       el.focus({ preventScroll: true });
-      const parsed = read();
+      const parsed = readValue(el, mode);
       if (parsed === null || !Number.isFinite(parsed)) return;
       const scale = mode === "number" || mode === "mm" ? 1 : 25.4;
       const current = mode === "number" ? parsed : fromMillimetres(parsed, mode);
@@ -49,7 +58,7 @@ export const numericWheel: ObjectDirective<HTMLInputElement, Mode> = {
       if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey ||
         !["ArrowUp", "ArrowDown"].includes(event.key) || mode === "false" ||
         el.disabled || el.readOnly || el.step === "any") return;
-      const parsed = mode === "number" ? parseExpression(el.value) : parseLength(el.value, mode);
+      const parsed = readValue(el, mode);
       if (parsed === null || el.getAttribute("aria-invalid") === "true") return;
       const scale = mode === "number" || mode === "mm" ? 1 : 25.4;
       const step = Number(el.step || 1);
