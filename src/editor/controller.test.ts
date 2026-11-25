@@ -4073,3 +4073,162 @@ describe("segment selection", () => {
     expect(e.segmentSelection).toEqual([]);
   });
 });
+describe("Align and distribute", () => {
+  const rect = (id: string, x: number, y: number, w: number, h: number) =>
+    ({ id, name: id, kind: "rectangle" as const, points: [{ x, y }, { x: x + w, y: y + h }], radius: 0, rotation: 0 });
+  const edge = (doc: { shapes: { id: string }[] }, id: string, axis: "x" | "y") =>
+    Math.min(...worldPoints(doc.shapes.find(s => s.id === id) as never).map(p => p[axis]));
+  const lefts = (doc: { shapes: { id: string }[] }, ids: string[]) => ids.map(id => edge(doc, id, "x"));
+  const tops = (doc: { shapes: { id: string }[] }, ids: string[]) => ids.map(id => edge(doc, id, "y"));
+
+  test("choices preview from the original until Apply commits one undo step", async () => {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [rect("a", 10, 0, 10, 10), rect("b", 40, 20, 20, 30), rect("c", 0, 60, 5, 5)] });
+    const original = e.document, revision = e.revision, ids = ["a", "b", "c"];
+    e.selected = ids;
+    e.activateAlign();
+    expect(e.alignActive).toBe(true);
+    e.toggleAlign({ kind: "align", edge: "left" });
+    e.toggleAlign({ kind: "align", edge: "top" });
+    expect(e.document).toBe(original);
+    expect(lefts(e.alignDraft!, ids)).toEqual([0, 0, 0]);
+    expect(tops(e.alignDraft!, ids)).toEqual([0, 0, 0]);
+    // Changing the reference recomputes from the original positions, not the preview.
+    e.setAlignReference("largest");
+    expect(lefts(e.alignDraft!, ids)).toEqual([40, 40, 40]);
+    expect(tops(e.alignDraft!, ids)).toEqual([20, 20, 20]);
+    // A second choice on the same axis replaces the first; choosing it again clears the axis.
+    e.toggleAlign({ kind: "align", edge: "right" });
+    expect(lefts(e.alignDraft!, ids)).toEqual([50, 40, 55]);
+    e.toggleAlign({ kind: "align", edge: "right" });
+    expect(e.alignX).toBeNull();
+    expect(lefts(e.alignDraft!, ids)).toEqual([10, 40, 0]);
+    expect(e.revision).toBe(revision);
+    expect(await e.applyAlign()).toBe(true);
+    expect(e.alignActive).toBe(false);
+    expect(e.selected).toEqual(ids);
+    expect(tops(e.document, ids)).toEqual([20, 20, 20]);
+    expect(e.revision).toBe(revision + 1);
+    await e.transact("undo");
+    expect(tops(e.document, ids)).toEqual([0, 20, 60]);
+  });
+
+  test("Cancel discards the preview and canvas clicks keep the targets", async () => {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [rect("a", 10, 0, 10, 10), rect("b", 40, 20, 20, 10)] });
+    const original = e.document, revision = e.revision;
+    e.selected = ["b", "a"];
+    e.activateAlign();
+    e.pointerDown({ x: 1, y: 1 }, 0, false, false);
+    expect(e.selected).toEqual(["b", "a"]);
+    e.setAlignReference("first");
+    e.toggleAlign({ kind: "align", edge: "right" });
+    expect(lefts(e.alignDraft!, ["b", "a"])).toEqual([40, 50]);
+    expect(e.preview).toBe(e.alignDraft);
+    e.cancel();
+    expect(e.alignActive).toBe(false);
+    expect(e.preview).toBeNull();
+    expect(e.document).toBe(original);
+    expect(e.revision).toBe(revision);
+  });
+
+  test("already arranged choices cannot be applied and unusable choices are dropped", async () => {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [rect("a", 0, 0, 10, 10), rect("b", 0, 20, 20, 10)] });
+    e.selected = ["a", "b"];
+    e.activateAlign();
+    e.toggleAlign({ kind: "align", edge: "left" });
+    expect(e.alignX).not.toBeNull();
+    expect(e.alignDraft).toBeNull();
+    expect(e.canApplyAlign).toBe(false);
+    expect(e.alignAvailable({ kind: "distribute", mode: "gaps-x" })).toBe(false);
+    e.toggleAlign({ kind: "distribute", mode: "gaps-y" });
+    expect(e.alignY).toBeNull();
+  });
+
+  test("selected groups move as one object when distributing", async () => {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [
+      rect("g1", 0, 0, 10, 10), rect("g2", 20, 0, 10, 10), rect("m", 31, 0, 10, 10), rect("z", 100, 0, 10, 10),
+    ] });
+    e.selected = ["g1", "g2"];
+    const group = (await e.newGroup())!;
+    e.selectGroup(group);
+    e.selected = [...e.selected, "m"];
+    e.activateAlign();
+    expect(e.alignUnits.map(u => [...u.ids].sort())).toEqual([["g1", "g2"], ["m"]]);
+    expect(e.alignAvailable({ kind: "distribute", mode: "gaps-x" })).toBe(false);
+    e.cancel();
+    e.selected = [...e.selected, "z"];
+    e.activateAlign();
+    e.toggleAlign({ kind: "distribute", mode: "gaps-x" });
+    await e.applyAlign();
+    // Group 0–30 and z 100–110 stay; m sits in the middle of the 70 mm free space.
+    expect(lefts(e.document, ["g1", "g2", "m", "z"])).toEqual([0, 20, 60, 100]);
+  });
+
+  test("undo and redo end the session so Apply cannot restore an outdated draft", async () => {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [rect("a", 10, 0, 10, 10), rect("b", 40, 20, 20, 10), rect("x", 0, 90, 5, 5)] });
+    await e.commit({ ...e.document, shapes: e.document.shapes.map(s => s.id === "x" ? { ...s, name: "Moved" } : s) });
+    e.selected = ["a", "b"];
+    e.activateAlign();
+    e.toggleAlign({ kind: "align", edge: "left" });
+    expect(e.canApplyAlign).toBe(true);
+    await e.transact("undo");
+    expect(e.alignActive).toBe(false);
+    expect(e.alignDraft).toBeNull();
+    expect(await e.applyAlign()).toBe(false);
+    expect(e.document.shapes.find(s => s.id === "x")!.name).toBe("x");
+    e.activateAlign();
+    await e.transact("redo");
+    expect(e.alignActive).toBe(false);
+  });
+
+  test("busy state disables controls without dropping chosen arrangements", async () => {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [rect("a", 10, 0, 10, 10), rect("b", 40, 20, 20, 10)] });
+    e.selected = ["a", "b"];
+    e.activateAlign();
+    e.toggleAlign({ kind: "align", edge: "left" });
+    e.toggleAlign({ kind: "align", edge: "top" });
+    e.busy = true;
+    expect(e.alignAvailable({ kind: "align", edge: "left" })).toBe(false);
+    expect(e.canApplyAlign).toBe(false);
+    e.setAlignReference("largest");
+    expect(e.alignX).toEqual({ kind: "align", edge: "left" });
+    expect(e.alignY).toEqual({ kind: "align", edge: "top" });
+    e.busy = false;
+    expect(e.canApplyAlign).toBe(true);
+  });
+
+  test("the preview moves unselected attached stitching exactly as Apply does", async () => {
+    const e = editor();
+    const piece = rect("piece", 40, 0, 80, 40);
+    const seam = { ...rect("seam", 45, 5, 70, 30), stitchOnly: true, stitchParentId: piece.id };
+    expect(await e.commit({ ...emptyDocument(), shapes: [piece, seam, rect("other", 0, 60, 10, 10)] })).toBe(true);
+    const seamLeft = (doc: typeof e.document) => edge(doc, "seam", "x");
+    e.selected = ["piece", "other"];
+    e.activateAlign();
+    e.toggleAlign({ kind: "align", edge: "left" });
+    // The piece moves 40 mm left; its unselected seam follows in the preview, not only after Apply.
+    expect(seamLeft(e.alignDraft!)).toBeCloseTo(5);
+    const previewed = e.alignDraft!.shapes.find(s => s.id === "seam");
+    await e.applyAlign();
+    expect(e.document.shapes.find(s => s.id === "seam")).toEqual(previewed);
+  });
+
+  test("locked targets cannot be aligned and a competing commit ends the session", async () => {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [rect("a", 0, 0, 10, 10), { ...rect("b", 20, 5, 10, 10), locked: true }] });
+    e.selected = ["a", "b"];
+    expect(e.canAlign).toBe(false);
+    e.activateAlign();
+    expect(e.alignActive).toBe(false);
+    e.selected = ["a"];
+    e.activateAlign();
+    e.setAlignReference("selection");
+    await e.commit({ ...e.document, shapes: e.document.shapes.map(s => s.id === "a" ? { ...s, name: "Renamed" } : s) });
+    expect(e.alignActive).toBe(false);
+  });
+});

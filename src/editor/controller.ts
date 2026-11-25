@@ -2,6 +2,7 @@ import { arrayPlacements, type ArrayKind, type ArraySettings } from "../model/ar
 import { objectSelection } from "../model/objectSelection";
 import { automaticPivot, type PivotMode } from "../model/pivot";
 import { pathPlacements } from "../model/pathPlacements";
+import { alignAxis, alignShapes, gapsFit, requiredUnits, unitBoxes, type AlignAction, type AlignReference, type AlignUnit } from "../model/align";
 import { transformShape } from "../model/geometry";
 import { stitchRunClosed } from "../model/stitchGeometry";
 import { booleanShapes } from "../model/booleanShapes";
@@ -311,6 +312,112 @@ export class Controller {
     this.beginToolSelection();
     this.offsetActive = true;
     this.refreshOffset();
+  }
+  alignActive = false;
+  alignReference: AlignReference = "selection";
+  /** One horizontal and one vertical choice, previewed together from the unchanged document. */
+  alignX: AlignAction | null = null;
+  alignY: AlignAction | null = null;
+  alignDraft: Doc | null = null;
+  get canAlign() {
+    return this.canStartTransform("move");
+  }
+  activateAlign() {
+    if (this.deferUntilSettled(() => this.activateAlign())) return;
+    if (!this.canAlign) return;
+    this.cancel();
+    this.tool = "select";
+    this.mode = "select";
+    this.beginToolSelection();
+    this.alignActive = true;
+    this.alignX = null;
+    this.alignY = null;
+    this.refreshAlign();
+  }
+  setAlignReference(reference: AlignReference) {
+    this.alignReference = reference;
+    this.refreshAlign();
+  }
+  /** Choose an action for its axis; choosing the selected action again clears that axis. */
+  toggleAlign(action: AlignAction) {
+    if (!this.alignActive) return;
+    const key = alignAxis(action) === "x" ? "alignX" : "alignY";
+    this[key] = JSON.stringify(this[key]) === JSON.stringify(action) ? null : action;
+    this.refreshAlign();
+  }
+  isAlignChosen(action: AlignAction) {
+    return JSON.stringify(alignAxis(action) === "x" ? this.alignX : this.alignY) === JSON.stringify(action);
+  }
+  /** Whether the current targets and reference support an action; busy state only disables controls. */
+  private alignSupported(action: AlignAction) {
+    return this.alignUnits.length >= requiredUnits(action, this.alignReference) &&
+      (action.kind !== "distribute" || !action.mode.startsWith("gaps") || this.alignGapsFit[alignAxis(action)]);
+  }
+  alignAvailable(action: AlignAction) {
+    return this.alignActive && !this.busy && this.alignSupported(action);
+  }
+  refreshAlign() {
+    if (!this.alignActive) return;
+    this.alignDraft = null;
+    this.preview = null;
+    // Targets only change through Select Objects, which refreshes here; undo and redo end the session.
+    this.alignUnits = this.computeAlignUnits();
+    const boxes = unitBoxes(this.document.shapes, this.alignUnits, this.units);
+    this.alignGapsFit = { x: gapsFit(boxes, "x"), y: gapsFit(boxes, "y") };
+    // Choices the current targets or reference cannot use are dropped rather than kept hidden.
+    if (this.alignX && !this.alignSupported(this.alignX)) this.alignX = null;
+    if (this.alignY && !this.alignSupported(this.alignY)) this.alignY = null;
+    const actions = [this.alignX, this.alignY].filter((a): a is AlignAction => !!a);
+    const shapes = actions.length && !this.toolSelectionError
+      ? alignShapes(this.document.shapes, this.alignUnits, actions, this.alignReference, this.units) : null;
+    if (shapes) {
+      // Unselected stitching follows its piece in the preview exactly as it will on Apply.
+      this.alignDraft = this.normalizeTree(reconcileStitches({ ...this.document, shapes }, this.document));
+      this.preview = this.alignDraft;
+    }
+    this.notify();
+  }
+  /**
+   * Independent objects for alignment, in selection order. A selected group moves as one
+   * unit with its nested groups, and selected stitching moves with its selected parent.
+   */
+  alignUnits: AlignUnit[] = [];
+  alignGapsFit = { x: true, y: true };
+  private computeAlignUnits(): AlignUnit[] {
+    const selected = new Set(this.selected);
+    const groups = this.selectedGroups.flatMap(id => {
+      const node = findObjectNode(this.tree, id);
+      return node?.kind === "group" ? [{ node, ids: flattenObjectTree(node.children).filter(x => selected.has(x)) }] : [];
+    });
+    const outer = groups.filter(g => !groups.some(o => o !== g && o.node.kind === "group" && !!findObjectNode(o.node.children, g.node.id)));
+    const covered = new Set(outer.flatMap(g => g.ids));
+    const shapes = new Map(this.document.shapes.map(s => [s.id, s]));
+    const free = this.selected.filter(id => !covered.has(id) && shapes.has(id));
+    const parent = (id: string) => {
+      const owner = shapes.get(id)?.stitchParentId;
+      return owner && selected.has(owner) ? owner : undefined;
+    };
+    const units = [
+      ...outer.map(g => g.ids),
+      ...free.filter(id => !parent(id)).map(id => [id, ...free.filter(child => parent(child) === id)]),
+    ];
+    // Units that only contain stitching follow their parent's unit instead.
+    for (const id of free.filter(id => parent(id) && covered.has(parent(id)!)))
+      units.find(unit => unit.includes(parent(id)!))?.push(id);
+    const order = new Map(this.selected.map((id, index) => [id, index]));
+    const first = (ids: string[]) => Math.min(...ids.map(id => order.get(id) ?? Infinity));
+    return units.filter(ids => ids.length).sort((a, b) => first(a) - first(b)).map(ids => ({ ids }));
+  }
+  get canApplyAlign() {
+    return this.alignActive && !this.objectPicker && !this.toolSelectionError && !this.busy && !!this.alignDraft;
+  }
+  /** Commit the previewed alignment as one undo step and keep the aligned objects selected. */
+  async applyAlign() {
+    if (!this.canApplyAlign) return false;
+    const next = this.alignDraft!;
+    this.toolSelection = null;
+    this.cancel();
+    return this.commit(next);
   }
   setOffsetDistance(value: number) {
     this.offsetDistance = value;
@@ -770,6 +877,10 @@ export class Controller {
       this.transformTool ? this.version : 0,
       this.offsetActive,
       this.offsetActive ? this.version : 0,
+      this.alignActive,
+      this.alignReference,
+      JSON.stringify([this.alignX, this.alignY]),
+      this.alignDraft ? this.version : 0,
       this.revision,
       this.ready,
       this.message,
@@ -945,7 +1056,9 @@ export class Controller {
     if ((operation === "commit" || operation === "preview") && document && !this.canCommitFromView(document)) {
       throw Error("Edit source geometry on Model");
     }
-    if (this.transformTool || this.stitchMode || this.booleanOperation || this.array && operation !== "commit" && operation !== "preview") this.cancel();
+    // Undo, redo and load replace the document a tool session previews from, so they end it.
+    if (this.transformTool || this.stitchMode || this.booleanOperation ||
+        (this.array || this.offsetActive || this.alignActive) && operation !== "commit" && operation !== "preview") this.cancel();
     const run = async () => {
       if (!this.ready) return;
       this.busy = true;
@@ -1414,6 +1527,7 @@ export class Controller {
     this.bulkCornerStyleOverride = null;
     if (this.array) { this.refreshArray(); }
     else if (this.offsetActive) this.refreshOffset();
+    else if (this.alignActive) this.refreshAlign();
     else if (this.transformTool && this.transformTool !== "corner") {
       if (!oldIds.size) this.centerAutomaticPivot();
       const values = { ...this.transformValues };
@@ -2077,7 +2191,7 @@ export class Controller {
   }
   async commit(document: Doc) {
     if ((this.pathCopy || this.array) && document !== this.preview) this.cancel();
-    if (this.offsetActive) this.cancel();
+    if (this.offsetActive || this.alignActive && document !== this.alignDraft) this.cancel();
     try {
       if (!this.canCommitFromView(document)) return false;
       document = reconcilePrintLayouts(this.normalizeTree(reconcileStitches(document,this.document)));
@@ -2226,7 +2340,7 @@ export class Controller {
   cycle(group: keyof typeof variants, direction = 1) {
     // Inside a select-based tool session (Trim, transforms, …), V first leaves it for plain Select.
     if (group === "select" && this.mode === "select" && (this.trimMode || this.mergeMode || this.transformTool ||
-        this.offsetActive || this.stitchMode || this.booleanOperation || this.array || this.pathCopy)) {
+        this.offsetActive || this.alignActive || this.stitchMode || this.booleanOperation || this.array || this.pathCopy)) {
       this.setMode("select");
       return;
     }
@@ -2548,12 +2662,12 @@ export class Controller {
   }
   /**
    * Variables are project data: editing them ignores object selection locks, but a tool
-   * session (transform, stitching, boolean, array, path copy, offset) must be applied or
+   * session (transform, stitching, boolean, array, path copy, offset, align) must be applied or
    * cancelled first so the tool never works from a document that changes underneath it.
    */
   get canEditVariables() {
     return this.ready && !(this.transformTool || this.stitchMode || this.booleanOperation ||
-      this.array || this.pathCopy || this.offsetActive);
+      this.array || this.pathCopy || this.offsetActive || this.alignActive);
   }
   beginVariableEdit() {
     if (this.canEditVariables) this.openPropertySession();
@@ -3383,6 +3497,11 @@ export class Controller {
     this.arrayInvalidDistances.clear();
     this.offsetDrag = null;
     this.offsetActive = false;
+    this.alignActive = false;
+    this.alignX = null;
+    this.alignY = null;
+    this.alignDraft = null;
+    this.alignUnits = [];
     this.offsetDraft = null;
     this.offsetIds = [];
     this.offsetError = "";
@@ -4099,6 +4218,9 @@ export class Controller {
       return;
     }
     if (this.offsetActive && button === 2) { void this.applyOffset(); return; }
+    if (this.alignActive && button === 2) { void this.applyAlign(); return; }
+    // Align changes its targets through Select Objects; plain canvas clicks keep them.
+    if (this.alignActive && button === 0 && !this.space) return;
     if (this.offsetActive && button === 0 && !this.space) {
       const raw = this.world(pixel), normal = this.offsetDragAt(raw);
       if (normal) this.offsetDrag = { start: raw, distance: this.offsetDistance, normal };
@@ -5170,7 +5292,7 @@ export class Controller {
   get canToggleObjectState() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
       !this.drawingDown && !this.transformTool && !this.propertySession &&
-      !this.array && !this.pathCopy && !this.offsetActive && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.array && !this.pathCopy && !this.offsetActive && !this.alignActive && !this.stitchMode && !this.trimMode && !this.mergeMode;
   }
   toggleObjectState(id: string, field: "hidden" | "locked", isolate = false) {
     return this.setPanelState(id, field, isolate);

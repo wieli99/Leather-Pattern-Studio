@@ -9,6 +9,7 @@ import { stitchGeometry } from "../model/stitchGeometry";
 import { computed, watch } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
+import ToolPopover from "./ToolPopover.vue";
 import {
   stitchSpacingPresets,
   stitchInsetPresets,
@@ -128,16 +129,19 @@ const warnings = computed(() =>
 </script>
 <template>
   <div id="stitch-panel-anchor" class="stitch-panel-anchor">
-  <section
+  <ToolPopover
     v-if="e.stitchMode && e.stitchTool"
     :key="`${e.stitchTool}:${selected?.id ?? 'defaults'}`"
-    class="transform-options stitch-options"
+    class="stitch-options"
+    :heading="e.stitchToolInfo?.label ?? ''"
+    :apply-disabled="!e.canApplyStitchTool"
+    @apply="editor.applyStitch()"
+    @cancel="cancelDraft()"
     aria-label="Stitch line settings"
     data-hint-edit="stitch"
     @keydown.esc.stop.prevent="cancelDraft()"
     @keydown.enter="applyFromKeyboard"
   >
-    <strong>{{ e.stitchToolInfo?.label }}</strong>
     <div v-if="e.stitchTransferPlacement" class="transfer-guide">
       <strong>{{ e.stitchTransferPlacement.phase==='placed' ? 'Review transferred stitching' : 'Place transferred stitching' }}</strong>
       <small>{{ e.stitchTransferPlacement.phase==='placed' ? 'Review the placement, then Apply to confirm. You can reposition it before applying.' : 'Move the master preview over receiving pieces and place it before applying.' }}</small>
@@ -252,16 +256,7 @@ const warnings = computed(() =>
     <p v-for="warning in warnings" :key="warning.key" role="alert">
       {{ editor.displayName(warning.name) }}: {{ warning.message }}
     </p>
-
-    <div class="actions tool-popup-footer">
-      <button
-        :disabled="!e.canApplyStitchTool"
-        @click="editor.applyStitch()"
-      >
-        Apply</button
-      ><button @click="cancelDraft()">Cancel</button>
-    </div>
-  </section>
+  </ToolPopover>
   </div>
 </template>
 <style scoped>
@@ -295,7 +290,7 @@ select {
 p {
   font-size: 12px;
 }
-.actions {
+.stitch-options :deep(.actions) {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;

@@ -11,6 +11,7 @@ export const toolCatalog: [
   ["corner", "Corners", "B", "round fillet chamfer bevel"],
   ["trim", "Trim", "K", "cut snip"],
   ["offset", "Offset", "O", "inset outset"],
+  ["align", "Align and distribute", "", "arrange line up center distribute spacing equal gaps"],
   [
     "rectangular-array",
     "Rectangular Array",

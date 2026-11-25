@@ -106,6 +106,7 @@ watch(
     () => e.value.array?.kind,
     () => e.value.transformTool,
     () => e.value.offsetActive,
+    () => e.value.alignActive,
     () => e.value.stitchTool,
     () => e.value.mode,
     () => e.value.revision,
