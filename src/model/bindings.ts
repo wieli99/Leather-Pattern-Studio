@@ -6,10 +6,10 @@ import { formulaReferences } from "./expression";
 import { getProperty, isPropertyId, keepLinkedCenter, propertyValueError, setProperty, PROPERTIES, type PropertyId } from "./propertySetters";
 import { resizeText } from "./text";
 import {
-  evaluateFormula, interpolate, renameInFormula, renameInTemplate, resolveVariables,
+  bakeText, evaluateFormula, interpolate, renameInFormula, renameInTemplate, resolveVariables,
   type Variable, type VariableValue,
 } from "./variables";
-import { REFERENCE_TOKENS } from "./expression";
+import { onceReferences, REFERENCE_TOKENS } from "./expression";
 import { editableNumber } from "./expression";
 
 export type { Binding };
@@ -188,7 +188,7 @@ export function renameVariable(doc: Doc, id: string, name: string): Doc {
   return {
     ...renamed,
     variables: doc.variables!.map((v) =>
-      v.id === id ? { ...v, name } : v.kind === "text" ? v : { ...v, value: formula(v.value) },
+      v.id === id ? { ...v, name } : { ...v, value: v.kind === "text" ? template(v.value) : formula(v.value) },
     ),
     ...(doc.objectTree ? { objectTree: mapTree(doc.objectTree, template) } : {}),
   };
@@ -198,7 +198,7 @@ export function renameVariable(doc: Doc, id: string, name: string): Doc {
 export function variableUses(doc: Doc, name: string): number {
   const uses = (text: string | null | undefined) => (text ? formulaReferences(text).filter((n) => n === name).length : 0);
   let count = 0;
-  for (const v of doc.variables ?? []) if (v.kind !== "text" && uses(v.value)) count++;
+  for (const v of doc.variables ?? []) if (uses(v.value)) count++;
   const shapes = [...doc.shapes, ...(doc.printLayouts ?? []).flatMap((l) => l.instances.flatMap((i) => (i.snapshot ? [i.snapshot.shape] : [])))];
   for (const s of shapes) {
     count += (s.bindings ?? []).filter((b) => uses(b.expression)).length;
@@ -227,7 +227,8 @@ export function deleteVariable(doc: Doc, id: string): Doc {
   const resolved = values.get(target.name);
   const remaining = doc.variables!.filter((v) => v.id !== id);
   const bake = (v: Variable): Variable => {
-    if (v.kind === "text" || !formulaReferences(v.value).includes(target.name)) return v;
+    if (!formulaReferences(v.value).includes(target.name)) return v;
+    if (v.kind === "text") return { ...v, value: template(v.value) };
     const value = values.get(v.name);
     if (!value || value.kind === "text") return v;
     return { ...v, value: editableNumber(value.value) };
@@ -236,11 +237,11 @@ export function deleteVariable(doc: Doc, id: string): Doc {
   const shown = !resolved ? null
     : (resolved.kind === "text" ? resolved.value : editableNumber(resolved.value)).replace(/[{}]/g, (b) => b + b);
   const template = (text: string) =>
-    text.replace(REFERENCE_TOKENS, (match, name?: string) => (name === target.name && shown !== null ? shown : match));
+    text.replace(REFERENCE_TOKENS, (match, _once?: string, name?: string) => (name === target.name && shown !== null ? shown : match));
   // Names and labels must keep visible text; for a blank value keep the name as literal text.
   const label = (text: string) => {
     const baked = template(text);
-    return baked.trim() ? baked : text.replace(REFERENCE_TOKENS, (match, name?: string) => (name === target.name ? `{{${name}}}` : match));
+    return baked.trim() ? baked : text.replace(REFERENCE_TOKENS, (match, _once?: string, name?: string) => (name === target.name ? `{{${name}}}` : match));
   };
   const baked = mapShapes(doc, (s) => {
     const bindings = s.bindings?.filter((b) => !formulaReferences(b.expression).includes(target.name));
@@ -256,4 +257,21 @@ export function deleteVariable(doc: Doc, id: string): Doc {
     variables: remaining.map(bake),
     ...(doc.objectTree ? { objectTree: mapTree(doc.objectTree, label) } : {}),
   };
+}
+
+/**
+ * Write one-time `{=name}` values into names, labels, group and print-copy names as
+ * literal text. Returns the same document when there is nothing to write.
+ */
+export function bakeOnceText(doc: Doc): Doc {
+  const has = (t: string | null | undefined) => !!t && onceReferences(t).length > 0;
+  const treeHas = (nodes: ObjectNode[] | undefined): boolean =>
+    !!nodes?.some((n) => n.kind === "group" && (has(n.name) || treeHas(n.children)));
+  const printHas = (doc.printLayouts ?? []).some((l) => l.instances.some((i) =>
+    has(i.name) || has(i.snapshot?.shape.name) || has(i.snapshot?.shape.text)));
+  if (!doc.shapes.some((s) => has(s.name) || has(s.text)) && !treeHas(doc.objectTree) && !printHas) return doc;
+  const { values } = resolveVariables(doc.variables);
+  const text = (t: string) => bakeText(t, values);
+  const baked = mapShapes(doc, (s) => ({ ...s, name: text(s.name), ...(s.text !== undefined ? { text: text(s.text) } : {}) }), text);
+  return { ...baked, ...(doc.objectTree ? { objectTree: mapTree(doc.objectTree, text) } : {}) };
 }

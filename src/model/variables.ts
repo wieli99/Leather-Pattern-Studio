@@ -1,4 +1,4 @@
-import { editableNumber, formulaReferences, parseExpression, REFERENCE_TOKENS } from "./expression";
+import { bakeOnce, editableNumber, formulaReferences, parseExpression, REFERENCE_TOKENS } from "./expression";
 import { toMillimetres, type UnitMode } from "./units";
 import type { Variable } from "../generated/Variable";
 import type { BindingUnit } from "../generated/BindingUnit";
@@ -59,10 +59,6 @@ export function resolveVariables(variables: readonly Variable[] | undefined): Va
   function resolve(v: Variable): boolean {
     if (values.has(v.name)) return true;
     if (errors.has(v.id)) return false;
-    if (v.kind === "text") {
-      values.set(v.name, { kind: "text", value: v.value });
-      return true;
-    }
     if (visiting.has(v.name)) {
       errors.set(v.id, `${v.name} refers to itself`);
       return false;
@@ -71,12 +67,17 @@ export function resolveVariables(variables: readonly Variable[] | undefined): Va
     for (const name of formulaReferences(v.value)) {
       const dependency = byName.get(name);
       if (!dependency) errors.set(v.id, `Unknown variable ${name}`);
-      else if (dependency.kind === "text") errors.set(v.id, `${name} is text`);
+      // Text may use any variable; numbers only use numbers.
+      else if (v.kind === "number" && dependency.kind === "text") errors.set(v.id, `${name} is text`);
       else if (!resolve(dependency)) errors.set(v.id, errors.get(v.id) ?? `${name} is invalid`);
       if (errors.has(v.id)) break;
     }
     visiting.delete(v.name);
     if (errors.has(v.id)) return false;
+    if (v.kind === "text") {
+      values.set(v.name, { kind: "text", value: interpolate(v.value, values).text });
+      return true;
+    }
     const value = parseExpression(v.value, true, numberOf(values));
     if (value === null) {
       errors.set(v.id, "Enter a valid formula");
@@ -95,7 +96,7 @@ export function interpolate(
   values: Map<string, VariableValue>,
 ): { text: string; missing: string[] } {
   const missing: string[] = [];
-  const text = template.replace(REFERENCE_TOKENS, (match, name?: string) => {
+  const text = template.replace(REFERENCE_TOKENS, (match, _once?: string, name?: string) => {
     if (!name) return match[0];
     const v = values.get(name);
     if (!v) {
@@ -115,7 +116,7 @@ export const renameInFormula = (text: string, from: string, to: string) => renam
 
 /** Rewrite `{from}` placeholders, leaving escaped braces untouched. */
 export function renameInTemplate(text: string, from: string, to: string): string {
-  return text.replace(REFERENCE_TOKENS, (match, name?: string) => (name === from ? `{${to}}` : match));
+  return text.replace(REFERENCE_TOKENS, (match, once?: string, name?: string) => (name === from ? `{${once ?? ""}${to}}` : match));
 }
 
 /** First unused name such as `var1`, `var2`. */
@@ -159,3 +160,32 @@ export function variableScopeOf(variables: readonly Variable[] | undefined): Var
 /** Shown form of a name or text template. */
 export const displayTemplate = (template: string, variables: readonly Variable[] | undefined) =>
   hasPlaceholders(template) || /\{\{|\}\}/.test(template) ? interpolate(template, variableScopeOf(variables).values).text : template;
+
+/** Shown text of a resolved value. */
+const shownValue = (v: VariableValue) => (v.kind === "text" ? v.value : editableNumber(v.value));
+/**
+ * Write `{=name}` values into a name or label as literal text (braces escaped), so they
+ * no longer follow the variable.
+ */
+export function bakeText(text: string, values: Map<string, VariableValue>): string {
+  return bakeOnce(text, (name) => {
+    const v = values.get(name);
+    return v ? shownValue(v).replace(/[{}]/g, (b) => b + b) : null;
+  });
+}
+/** Write `{=name}` number values into a formula as `(number)`. */
+export function bakeFormula(text: string, values: Map<string, VariableValue>): string {
+  return bakeOnce(text, (name) => {
+    const v = values.get(name);
+    return v && v.kind === "number" ? `(${editableNumber(v.value)})` : null;
+  });
+}
+
+/**
+ * Fields that cannot stay linked accept only one-time `{=name}` values. Returns the
+ * message for a linked `{name}` typed there, or null.
+ */
+export function unlinkableError(text: string): string | null {
+  const name = formulaReferences(text)[0];
+  return name ? `Use {=${name}} here: this field does not stay linked` : null;
+}

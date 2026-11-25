@@ -15,9 +15,9 @@ import { hitsTransformShaft } from "./transformUi";
 import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
-import { evaluateBinding, mapShapes, pruneBindings, recompute, withBinding } from "../model/bindings";
+import { bakeOnceText, evaluateBinding, mapShapes, pruneBindings, recompute, withBinding } from "../model/bindings";
 import { propertyChanges, clampFillets, applyChanges, getProperty, keepLinkedCenter, PROPERTIES, type PropertyId } from "../model/propertySetters";
-import { bindingUnit, displayTemplate, hasPlaceholders, resolveVariables, type VariableScope } from "../model/variables";
+import { bakeFormula, bindingUnit, displayTemplate, hasPlaceholders, resolveVariables, type VariableScope } from "../model/variables";
 import { resizeText } from "../model/text";
 import { formulaReferences } from "../model/expression";
 import type { ImportedImage } from "./imageImport";
@@ -223,6 +223,8 @@ export class Controller {
   }
   /** Text boxes follow the shown text, so placeholder values size them. */
   private syncTextBoxes(doc: Doc): Doc {
+    // One-time `{=name}` values become literal text before boxes are measured.
+    doc = bakeOnceText(doc);
     let changed = false;
     const fit = (s: Shape) => {
       if (s.kind !== "text" || !s.text || !(hasPlaceholders(s.text) || /\{\{|\}\}/.test(s.text))) return s;
@@ -2278,12 +2280,17 @@ export class Controller {
   measurementFormulas: Record<string, string> = {};
   /** Formulas confirmed for earlier points of the shape being drawn. */
   private constructionFormulas: { key: string; formula: string; unit: UnitMode }[] = [];
-  /** Report a variable that was used once in a field that cannot stay linked. */
-  noteUsedOnce(formulas: string[], fields: string[]) {
-    const names = [...new Set(formulas.flatMap((f) => formulaReferences(f)))].map((n) => `{${n}}`).join(", ");
-    if (!names) return;
-    this.message = `Used ${names} once: ${fields.join(", ")} does not stay linked to variables`;
-    this.notify();
+  /**
+   * Construction fields that link to a property of the new object. Others (path segment
+   * Length and Direction, three-point heights) only accept one-time `{=name}` values.
+   */
+  constructionFieldLinkable(key: string) {
+    const linkable: Record<string, string[]> = {
+      rectangle: ["Width", "Height"], "rectangle-center": ["Width", "Height"], ellipse: ["Width", "Height"],
+      "size-square": ["Width", "Height"], circle: ["Radius"], "circle-two": ["Diameter"],
+      arc: ["Radius", "Sweep"], measurement: ["Offset"],
+    };
+    return this.linksEnabled && (linkable[this.mode] ?? []).includes(key);
   }
   get measurementFields() {
     if (!this.pending.length || this.mode === "select" || this.mode === "text")
@@ -3356,7 +3363,7 @@ export class Controller {
   }
   cancel() {
     this.settleProperty();
-    this.usedOnce = null;
+    this.notLinked = null;
     const segmentReturn = this.segmentTransform;
     this.segmentTransform = null;
     if (this.toolSelection) {
@@ -4928,10 +4935,9 @@ export class Controller {
         if (!success) return;
         if (this.document.shapes.some((s) => s.id === shape.id))
           this.selected = [shape.id];
-        const once = this.usedOnce;
-        this.usedOnce = null;
-        this.message = "Ready";
-        if (once) this.noteUsedOnce(once.formulas, once.fields);
+        const failed = this.notLinked;
+        this.notLinked = null;
+        this.message = failed ? `Could not link ${failed.join(", ")} to variables: the value was used once` : "Ready";
         this.notify();
       });
     } catch (e) {
@@ -4943,11 +4949,16 @@ export class Controller {
    * shape. A link is kept only when it reproduces the drawn value; other fields used the
    * value once and are reported.
    */
-  private usedOnce: { formulas: string[]; fields: string[] } | null = null;
+  private notLinked: string[] | null = null;
+  /**
+   * Link construction fields typed with `{variables}` to the matching property of the new
+   * shape; `{=name}` values are written in as numbers. A link is kept only when it
+   * reproduces the drawn value; otherwise the status bar says the value was used once.
+   */
   private linkConstruction(shape: Shape): Shape {
     const formulas = this.constructionFormulas;
     this.constructionFormulas = [];
-    this.usedOnce = null;
+    this.notLinked = null;
     if (!formulas.length) return shape;
     const target: Record<string, PropertyId> = {
       Width: this.mode === "size-square" ? "indicatorSize" : "width",
@@ -4956,10 +4967,12 @@ export class Controller {
     };
     const { values } = resolveVariables(this.document.variables);
     let next = shape;
-    const once: typeof formulas = [];
+    const failed: string[] = [];
     for (const item of formulas) {
+      const formula = bakeFormula(item.formula, values);
+      if (!formulaReferences(formula).length) continue;
       const property = target[item.key];
-      const expression = item.key === "Diameter" ? `(${item.formula})/2` : item.formula;
+      const expression = item.key === "Diameter" ? `(${formula})/2` : formula;
       const binding = property && { property, expression, unit: bindingUnit(item.unit) };
       const value = binding ? evaluateBinding(binding, values) : null;
       const current = property ? getProperty(next, property) : null;
@@ -4967,9 +4980,9 @@ export class Controller {
         !next.bindings?.some((b) => b.property === property) &&
         Math.abs(current - value) <= 1e-6 * Math.max(1, Math.abs(value));
       if (kept) next = withBinding(next, property, binding);
-      else once.push(item);
+      else failed.push(item.key);
     }
-    this.usedOnce = once.length ? { formulas: once.map((i) => i.formula), fields: [...new Set(once.map((i) => i.key))] } : null;
+    this.notLinked = failed.length ? [...new Set(failed)] : null;
     return next;
   }
   async toggleAnchorSmooth(id: string, index: number) {
@@ -5019,7 +5032,9 @@ export class Controller {
     // An image size link remembers whether the aspect ratio was locked when it was made.
     const keepAspect = shape.kind === "image" && (property === "width" || property === "height") &&
       (options.aspectLocked ?? true) ? { keepAspect: true } : {};
-    if (linking && !this.linksEnabled) this.noteUsedOnce([formula!], [PROPERTIES[property].label]);
+    // `{=name}` values are written in as numbers; only `{name}` links remain.
+    if (formula) formula = bakeFormula(formula, this.variableScope.values);
+    if (linking) linking = this.linksEnabled && formulaReferences(formula!).length > 0;
     // A curve's width and height are world bounding-box sizes: resizing a rotated curve
     // also changes its angle, so size and rotation links on one curve cannot both hold.
     const sizes = ["width", "height"], curve = shape.kind === "curve" || shape.kind === "control-curve";

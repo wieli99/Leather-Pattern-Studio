@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { editableNumber, formulaReferences } from "../model/expression";
 import { editableLength } from "../model/units";
-import { parseFieldValue } from "../model/variables";
+import { parseFieldValue, unlinkableError } from "../model/variables";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
 import { editor as defaultEditor } from "../editor/instance";
@@ -145,8 +145,15 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   // Set the selection without select() asking Firefox to scroll the field.
   if (document.activeElement === field) field.setSelectionRange(0, field.value.length);
 }
+/** Only fields that link to the new object accept `{name}`; others take `{=name}`. */
+const linkable = (item: (typeof items.value)[number]) => !!item.key && editor.constructionFieldLinkable(item.key);
+function linkError(item: (typeof items.value)[number]) {
+  return linkable(item) ? null : unlinkableError(draft.value);
+}
 function input(item: (typeof items.value)[number], event: Event) {
   draft.value = (event.target as HTMLInputElement).value;
+  const refused = linkError(item);
+  error.value = refused ?? "";
   if (item.key) {
     if (!draft.value.trim()) {
       delete editor.measurementLocks[item.key];
@@ -163,14 +170,19 @@ function input(item: (typeof items.value)[number], event: Event) {
         editor.measurementLocks[signKey] ??=
           Math.sign(editor.cursor[axis] - editor.pending.at(-1)![axis]) || 1;
       }
-      if (formulaReferences(draft.value).length) editor.measurementFormulas[item.key] = draft.value.trim();
+      if (linkable(item) && formulaReferences(draft.value).length) editor.measurementFormulas[item.key] = draft.value.trim();
       else delete editor.measurementFormulas[item.key];
-      editor.measurementLocks[item.key] = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
+      editor.measurementLocks[item.key] = refused ? NaN : (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
     }
     editor.notify();
   }
 }
 async function confirm(item: (typeof items.value)[number]) {
+  const refused = linkError(item);
+  if (refused) {
+    error.value = refused;
+    return;
+  }
   const value = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
   const signedHeight = item.key === "Height" &&
     ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
@@ -209,11 +221,10 @@ async function confirm(item: (typeof items.value)[number]) {
       e: center.x * (1 - factor),
       f: center.y * (1 - factor),
     });
-    const formula = draft.value;
-    if (await editor.commit({
+    await editor.commit({
       ...editor.document,
       shapes: editor.document.shapes.map((s) => (s.id === shape.id ? next : s)),
-    })) editor.noteUsedOnce([formula], ["Edge length"]);
+    });
   }
   cancel();
 }
@@ -270,7 +281,7 @@ function style(item: (typeof items.value)[number]) {
       }}</span>
       <input
         v-numeric-wheel="['Angle', 'Sweep'].includes(item.key) ? 'number' : editor.units"
-        v-variable-hints="'number'"
+        v-variable-hints="linkable(item) ? 'number' : { kinds: 'number', once: true }"
         :readonly="!!editor.gesture || (!item.key && !item.shape)"
         type="text"
         step="any"

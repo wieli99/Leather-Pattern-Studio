@@ -343,16 +343,26 @@ test("construction fields link sizes and report fields used once", async ({ page
   await page.keyboard.press("Enter");
   await expect(width).toHaveValue("50");
 
-  // A path segment has no lasting property: the value is used once, with a note.
+  // A path segment cannot stay linked: {name} is refused, {=name} copies the value once.
   await page.getByRole("button", { name: "Polyline (P)", exact: true }).click();
   await canvas.click({ position: { x: 200, y: 450 } });
   await canvas.hover({ position: { x: 300, y: 500 } });
   await page.keyboard.press("Tab");
+  const length = page.locator(".construction-measurements input").first();
   await page.keyboard.type("{card_w}");
+  await expect(page.getByRole("alert").filter({ hasText: "Use {=card_w} here: this field does not stay linked" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(length).toBeFocused();
+  // Typing { here suggests the one-time form.
+  await length.fill("");
+  await page.keyboard.type("{car");
+  await expect(page.getByRole("option", { name: "{=card_w}", exact: true })).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(length).toHaveValue("{=card_w}");
   await page.keyboard.press("Enter");
   await canvas.click({ position: { x: 320, y: 560 } });
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Used {card_w} once: Length does not stay linked to variables")).toBeVisible();
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
 
 test("names, labels and one-off fields suggest variables", async ({ page }) => {
@@ -377,12 +387,17 @@ test("names, labels and one-off fields suggest variables", async ({ page }) => {
   await width.press("Escape");
   await expect(width).toBeFocused();
   await width.press("Escape");
-  // Unlinkable fields use the value once and say so.
+  // Unlinkable fields refuse {name} and take {=name} once.
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const grid = page.getByLabel("Grid spacing (mm)", { exact: true });
   await grid.fill("{w}/4");
+  await expect(grid).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Use {=w} here: this field does not stay linked")).toBeVisible();
+  await grid.fill("{=w}/4");
   await grid.press("Enter");
-  await expect(page.getByText("Used {w} once: Grid spacing (mm) does not stay linked to variables")).toBeVisible();
+  await expect(grid).toHaveAttribute("aria-invalid", "false");
+  await grid.press("Tab");
+  await expect(grid).toHaveValue("5");
 });
 
 test("choosing a tool right after editing a variable keeps the edited model", async ({ page }) => {
@@ -471,4 +486,43 @@ test("renaming then editing the next row keeps one undoable edit per row", async
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(dialog.getByRole("textbox", { name: "Name of a", exact: true })).toBeVisible();
   await expect(b).toHaveValue("20");
+});
+
+test("text variables combine others and {=name} copies a value once", async ({ page }) => {
+  await rectangle(page);
+  const brand = await addVariable(page, "brand", "Acme");
+  await addVariable(page, "model", "Slim");
+  const dialog = await openVariables(page);
+  await addVariable(page, "full", "{brand} {model}");
+  await expect(dialog.getByRole("textbox", { name: "Value of full", exact: true })).toHaveValue("{brand} {model}");
+  const name = page.getByLabel("Name", { exact: true });
+  await name.fill("{full} / {=brand}");
+  await name.press("Enter");
+  const row = page.locator(".objects .object-select");
+  await expect(row).toHaveText("Acme Slim / Acme");
+  await brand.fill("Nova");
+  await page.keyboard.press("Enter");
+  // The linked part follows; the one-time part was written in as text.
+  await expect(row).toHaveText("Nova Slim / Acme");
+  await name.focus();
+  await expect(name).toHaveValue("{full} / Acme");
+  await name.press("Tab");
+  // A linked width written with a one-time part keeps only the linked variable.
+  await addVariable(page, "w", "40");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("{w} + {=w}");
+  await width.press("Enter");
+  await expect(width).toHaveValue("80");
+  await expect(width).toHaveAttribute("title", "Linked to {w} + (40)");
+  const vertexLike = page.getByLabel("Outline opacity (%)", { exact: true });
+  await vertexLike.fill("{w}");
+  await expect(vertexLike).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Use {=w} here: this field does not stay linked.")).toBeVisible();
+  await vertexLike.press("Escape");
+  // A loop between text variables is refused.
+  const brandValue = dialog.getByRole("textbox", { name: "Value of brand", exact: true });
+  await brandValue.fill("{full}");
+  await expect(dialog.getByText(/refers to itself/)).toBeVisible();
+  await brandValue.press("Escape");
+  await expect(brandValue).toHaveValue("Nova");
 });

@@ -1,6 +1,7 @@
 /** Looks up a `{name}` variable; null rejects the formula. */
 export type ExpressionResolver = (name: string) => number | null;
-const REFERENCE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}/;
+/** `{name}` (linked) and `{=name}` (value used once) both evaluate in a formula. */
+const REFERENCE = /^\{=?([A-Za-z_][A-Za-z0-9_]*)\}/;
 /** Small arithmetic grammar: never executes user text as JavaScript. */
 export function parseExpression(
   text: string,
@@ -87,11 +88,21 @@ export function editableNumber(value: number): string {
 }
 
 /**
- * The one tokenizer for `{name}` references and `{{`/`}}` escapes, read left to right.
- * The document core uses the same rules.
+ * The one tokenizer for `{name}` (linked), `{=name}` (value used once) and the `{{`/`}}`
+ * escapes, read left to right. Groups: 1 is `=` for a one-time value, 2 is the name.
+ * The document core uses the same rules for linked references.
  */
-export const REFERENCE_TOKENS = /\{\{|\}\}|\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
-/** Variable names written as `{name}` in a formula or template. */
+export const REFERENCE_TOKENS = /\{\{|\}\}|\{(=?)([A-Za-z_][A-Za-z0-9_]*)\}/g;
+/** Names written as linked `{name}` references. */
 export function formulaReferences(text: string): string[] {
-  return [...text.matchAll(REFERENCE_TOKENS)].flatMap((m) => (m[1] ? [m[1]] : []));
+  return [...text.matchAll(REFERENCE_TOKENS)].flatMap((m) => (m[2] && !m[1] ? [m[2]] : []));
+}
+/** Names written as one-time `{=name}` references. */
+export function onceReferences(text: string): string[] {
+  return [...text.matchAll(REFERENCE_TOKENS)].flatMap((m) => (m[2] && m[1] ? [m[2]] : []));
+}
+/** Replace `{=name}` with the text `value` gives; unknown names stay as typed. */
+export function bakeOnce(text: string, value: (name: string) => string | null): string {
+  return text.replace(REFERENCE_TOKENS, (match, once?: string, name?: string) =>
+    once && name ? value(name) ?? match : match);
 }

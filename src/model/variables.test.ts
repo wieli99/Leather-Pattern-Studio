@@ -76,3 +76,27 @@ describe("evaluate-only fields", () => {
     expect(parseFieldValue("1 1/2", "number", values)).toBeNull();
   });
 });
+
+describe("composed text and one-time values", () => {
+  it("text variables combine other variables and reject loops", () => {
+    const { values, errors } = resolveVariables([
+      v("full", "text", "{brand} No. {n} {{x}}"), v("brand", "text", "Acme"), v("n", "number", "2"),
+      v("a", "text", "{b}"), v("b", "text", "x {a}"), v("c", "text", "{missing}"),
+    ]);
+    expect(values.get("full")).toEqual({ kind: "text", value: "Acme No. 2 {x}" });
+    expect([...errors.keys()].sort()).toEqual(["a", "b", "c"]);
+  });
+  it("one-time values evaluate, bake and are told apart from links", async () => {
+    const { formulaReferences, onceReferences } = await import("./expression");
+    const { bakeFormula, bakeText, unlinkableError } = await import("./variables");
+    const { values } = resolveVariables([v("w", "number", "20"), v("brand", "text", "A{{c}}")]);
+    expect(evaluateFormula("{w} + {=w}", "length", "mm", values)).toBe(40);
+    expect(formulaReferences("{w} + {=w}")).toEqual(["w"]);
+    expect(onceReferences("{w} + {=w}")).toEqual(["w"]);
+    expect(bakeFormula("{w} + {=w}", values)).toBe("{w} + (20)");
+    expect(bakeText("{=brand} {brand} {=nope}", values)).toBe("A{{c}} {brand} {=nope}");
+    expect(unlinkableError("{=w}*2")).toBeNull();
+    expect(unlinkableError("{w}*2")).toBe("Use {=w} here: this field does not stay linked");
+    expect(renameInTemplate("{w} {=w}", "w", "x")).toBe("{x} {=x}");
+  });
+});

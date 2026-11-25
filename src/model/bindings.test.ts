@@ -101,7 +101,8 @@ describe("review fixes", () => {
     const baked = deleteVariable(blank, "s");
     expect(baked.shapes[0].name).toBe("{{suffix}}");
     expect(baked.shapes[0].text).toBe("{{suffix}}");
-    const braces = doc([{ id: "s", name: "suffix", kind: "text", value: "{x}" }], [label]);
+    // Literal braces in a text value are written as {{ and }}.
+    const braces = doc([{ id: "s", name: "suffix", kind: "text", value: "{{x}}" }], [label]);
     expect(deleteVariable(braces, "s").shapes[0].name).toBe("{{x}}");
   });
   it("scales an image's other side only when the link kept the aspect ratio", () => {
