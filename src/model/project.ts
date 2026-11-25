@@ -13,23 +13,24 @@ export type Shape = CoreShape;
 export type Tool = "select" | Shape["kind"];
 export type Guide = { id: string; axis: "x" | "y"; coordinate: number };
 export type Doc = {
+  variables?: import("../generated/Variable").Variable[];
   printLayouts?: import("./printLayout").PrintLayout[];
   stitchPresets?: import("../generated/StitchPreset").StitchPreset[];
   stitchTransfers?: import("../generated/StitchTransfer").StitchTransfer[];
-  version: 24 | 23 | 22 | 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
+  version: 25 | 24 | 23 | 22 | 21 | 20 | 19 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18;
   shapes: Shape[];
   objectTree?: ObjectNode[];
   guides?: Guide[];
   stitchGroups?: StitchGroup[];
   stitchLinks?: StitchLink[];
 };
-export const DOCUMENT_VERSION = 24;
+export const DOCUMENT_VERSION = 25;
 export const emptyDocument = (): Doc => ({ version: DOCUMENT_VERSION, shapes: [] });
 export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc {
   if (new TextEncoder().encode(text).length > 10_000_000)
     throw Error("Project exceeds 10 MB");
   const input = JSON.parse(text);
-  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(input.version))
+  if (!input || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].includes(input.version))
     throw Error("Unsupported project version");
   let shapes = input.shapes;
   if (input.version === 1) {
@@ -273,6 +274,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
     result.push({
       ...(s.stitchParentId != null ? { stitchParentId:s.stitchParentId } : {}),
       id: s.id,
+      ...(s.bindings != null ? { bindings: parseBindings(s.bindings) } : {}),
       name: s.name,
       ...(s.fillMode !== undefined ? { fillMode: s.fillMode } : {}),
       ...(s.strokeColor !== undefined ? { strokeColor: s.strokeColor } : {}),
@@ -380,7 +382,9 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       validateStitchSettings(preset.settings);
     }
   }
+  const variables = input.variables != null ? parseVariables(input.variables) : undefined;
   return {
+    ...(variables ? { variables } : {}),
     ...(input.stitchTransfers != null ? { stitchTransfers } : {}),
     ...(input.stitchPresets ? { stitchPresets: input.stitchPresets } : {}),
     printLayouts,
@@ -395,4 +399,27 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
       coordinate: g.coordinate,
     })),
   };
+}
+
+const unitOf = (unit: unknown) => {
+  if (unit !== "mm" && unit !== "in") throw Error("Invalid formula unit");
+  return unit;
+};
+/** Shape checks only; the document core validates names, references and cycles. */
+function parseVariables(input: unknown): NonNullable<Doc["variables"]> {
+  if (!Array.isArray(input) || input.length > 500) throw Error("Invalid variables");
+  return input.map((v: any) => {
+    if (!v || typeof v.id !== "string" || typeof v.name !== "string" || typeof v.value !== "string" ||
+      !["length", "number", "text"].includes(v.kind) || v.value.length > 2000)
+      throw Error("Invalid variable");
+    return { id: v.id, name: v.name, kind: v.kind, value: v.value, ...(v.unit != null ? { unit: unitOf(v.unit) } : {}) };
+  });
+}
+function parseBindings(input: unknown): NonNullable<Shape["bindings"]> {
+  if (!Array.isArray(input) || input.length > 50) throw Error("Invalid property links");
+  return input.map((b: any) => {
+    if (!b || typeof b.property !== "string" || typeof b.expression !== "string" || b.expression.length > 2000)
+      throw Error("Invalid property link");
+    return { property: b.property, expression: b.expression, unit: unitOf(b.unit) };
+  });
 }
