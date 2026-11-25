@@ -20,13 +20,50 @@ In inch mode, guide and corner adjustments use 1/16 inch normally, 1/4 inch with
 
 Every numeric field accepts `+`, `-`, `*`, `/`, parentheses, negative numbers, and scientific notation, such as `(10+5)*2` or `1e-3`. Multiplication and division take precedence over addition and subtraction. Values update live as the expression becomes valid; the expression stays visible while you type. Enter or leaving the field uses the result, following the field’s normal confirmation behavior. Tab still cycles construction fields; Enter confirms a construction measurement or selected edge edit.
 
-Length formulas use the field’s current unit: `(2+1)/2` means 1.5 mm in millimetre mode and 1.5 inches in inch mode. Mixed inch fractions remain supported: `(1 1/2)*2` gives 3 inches. Unit suffixes, variables, and functions are unsupported. Counts still require whole numbers, and each field retains its limits.
+Length formulas use the field’s current unit: `(2+1)/2` means 1.5 mm in millimetre mode and 1.5 inches in inch mode. Mixed inch fractions remain supported: `(1 1/2)*2` gives 3 inches. Formulas can also use [project variables](#measurements/reuse-values-with-variables) written as `{name}`. Unit suffixes and functions are unsupported. Counts still require whole numbers, and each field retains its limits.
 
 Incomplete formulas, division by zero, and out-of-range results do not change the last valid geometry. Invalid tool inputs block confirmation until repaired or discarded. Leaving a property or settings field discards an invalid draft. Esc keeps the field’s normal cancellation behavior. Alt+wheel adjusts the evaluated result and replaces the formula with a number; it ignores invalid drafts.
 
-Displayed and editable values hide floating-point noise. Display rounding never changes saved geometry, and focusing a field without editing preserves its stored precision. Only evaluated numbers are saved; formulas are temporary input.
+Displayed and editable values hide floating-point noise. Display rounding never changes saved geometry, and focusing a field without editing preserves its stored precision. Formulas with only numbers are temporary input: the evaluated number is saved.
 
 ![A formula entered in grid spacing](/manual/images/numeric-formula.png)
+
+## Reuse values with variables
+
+Variables are named values saved with the project, such as a card width or leather thickness. Click **Variables** in the footer to create and edit them. Type a name and a value in the empty row at the bottom: as soon as both are valid, the row becomes a variable and a new empty row appears below it. Enter moves from a name to its value and from a value to the next row. Names use letters, digits, and underscores, start with a letter or underscore, and are case-sensitive. A rename applies when you press Enter or leave the row, and updates everything that uses the variable. The footer shows how many variables the project has.
+
+Always refer to a variable as `{name}`, for example `{card_w} + 2*{t}` in Width or `{brand} card slot` as an object name. Typing `{` lists matching variables under the field: number fields list number variables, while names and labels list all of them. Keep typing to narrow the list, press Down or Up to highlight a variable, and press Enter or Tab to insert it, or click it. Tab also inserts the only remaining match. Esc closes the list. Enter without a highlighted variable confirms the field as usual.
+
+The value decides what kind of variable it is:
+
+- A number or formula, such as `86`, `3 1/2`, or `{card_w} - 2*{t}`, is a **number**. A formula shows its result below it. It cannot refer to itself, directly or through other variables. A formula with an unknown name, such as `{card_ww} + 2`, is reported as an error.
+- Anything else, such as `Acme` or `Card 2`, is **text** and is marked *text*. Text variables fill `{name}` in object names, group names, and text labels.
+
+Number variables are plain numbers without a unit. A field reads them in its own unit: `{card_w}` with the value `86` means 86 mm in millimetre mode and 86 inches in inch mode. Switching units does not convert variables; the status bar warns when the project has number variables. Fields already linked to a variable keep their size, because each link remembers the unit it was typed in. Focusing such a field shows its formula with that unit beside it, such as `in`.
+
+Changes apply while you type. An invalid value is marked and does not change the project; leaving the row keeps the last valid value. Edits within one row form one undo step, and Esc restores the row as it was before you started editing it. Arrow keys and Alt+wheel step number values; text values are not stepped.
+
+### Linked values
+
+Entering a variable **links** the value, and changing the variable later updates it:
+
+- **Properties:** a link icon appears next to the field's label; hovering the field shows the formula, and focusing it lets you edit the formula. Linking is available for position, size, radius, sweep, rotation, outline width, arrow and indicator sizes, font size, line spacing, and measurement sections and offset.
+- **Construction fields:** width and height of rectangles and ellipses, size guide sides, radius, diameter, arc sweep, and measurement offset link to the new object.
+- **Names and labels:** `{name}` always shows the current value. Lists, the canvas, previews, and print output show the value; editing shows `{name}` again. Write `{{` and `}}` for literal braces. An unknown `{name}` stays as typed, and the name field lists it. Label boxes fit the shown text.
+
+When you change a variable, every linked value updates; the change and all updated objects form one undo step. A linked image size keeps the aspect ratio only if the aspect lock was on when you linked it. A curve can link its width or height, or its rotation, but not both. Labels keep a linked position when their text or size changes. If a new value does not fit a linked field, for example a width below 0.001 mm, the change is refused and the message names the object and field. Linked objects must be unlocked before a variable change can update them.
+
+A link ends when you type a plain number, use Alt+wheel or arrow keys on the field, or change that property directly, for example by dragging, scaling or moving the object. The status bar reports which field was unlinked. Undo restores the link.
+
+Some fields cannot stay linked: path segment Length and Direction while drawing, edge lengths, vertex coordinates, opacity, tool amounts such as move, rotate, scale, offset and array values, stitching fields, grid spacing, and print move and rotation. They accept `{name}` but use its current value once; the status bar says so when the value is applied. Print page size and margin fields do not accept variables.
+
+Delete a variable with the × at the end of its row. Deleting a variable that is in use asks for confirmation: **Delete and keep values** keeps every linked field at its current value, replaces formulas in other variables with their results, and writes the current text into names and labels.
+
+Use the pin button to keep Variables open while you work in Properties or on the canvas; keyboard shortcuts and Tab into construction fields keep working. Click **Variables** again to close it. While a tool such as Move, stitching, or an array is active, Variables is paused: apply or cancel the tool first. A variable edit is saved as soon as you leave its row, so a tool chosen next starts from the new values.
+
+Print layout copies are placements: their labels show current variable values, but their geometry does not follow variables. A formula typed in a print layout field uses the value once.
+
+![Variables open beside a linked Width field](/manual/images/variables.png)
 
 ## Align objects with snapping
 

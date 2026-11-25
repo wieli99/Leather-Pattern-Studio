@@ -22,6 +22,8 @@ Click section headers to collapse or expand them; Enter and Space work when a he
 
 Open **Settings** to choose millimetres, fractional inches, or decimal inches, plus grid spacing, grid style, theme, and Axis rulers. Switching units preserves physical dimensions. Unit preferences apply across projects and are remembered in this browser.
 
+Settings closes when you click elsewhere or press Esc. Use the pin button at its top to keep it open while you work; click **Settings** again to close it. The pin is remembered in this browser. [Variables](#measurements/reuse-values-with-variables), next to Settings, works the same way.
+
 Type custom grid spacing or choose a preset from its dropdown arrow. Choosing a preset applies it immediately. Grid visibility and snapping are separate: use the footer's Grid snap and Object snap controls to decide what the pointer snaps to.
 
 ![Unit choices and grid spacing settings](/manual/images/inch-settings.png)

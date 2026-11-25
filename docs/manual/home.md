@@ -4,7 +4,7 @@ Draw accurate leather patterns, add stitching, and print them at actual size. Pr
 
 Start with [your first pattern](#getting-started), from an exact rectangle to a checked print.
 
-- **Draw accurately:** [drawing tools](#drawing), [numeric dimensions and snapping](#measurements).
+- **Draw accurately:** [drawing tools](#drawing), [numeric dimensions and snapping](#measurements), [reusable variables](#measurements/reuse-values-with-variables).
 - **Change a pattern:** [selection and curve editing](#selection), [transforms, corners, outline operations and arrays](#transforms).
 - **Mark leather work:** [skiving, glueing, cutout patterns and outline appearance](#measurements/area-and-appearance).
 - **Prepare stitching:** [placement, spacing, continuous lines and matching hole counts](#stitching).

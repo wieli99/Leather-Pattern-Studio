@@ -16,4 +16,6 @@ Properties controls font size and formatting. Double-click the label on the canv
 
 Rename through double-click or F2 in the Model objects list. Enter or leaving the name field applies; Esc cancels.
 
+Names, group names, and labels can contain [variables](#measurements/reuse-values-with-variables) written as `{name}`, such as `{brand} card slot`; type `{` to choose one. The current value is always shown, and label boxes fit the shown text.
+
 Text cannot be trimmed or stitched. Use compatible outlines for these operations.

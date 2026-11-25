@@ -145,7 +145,9 @@ Hover over an editable numeric field and use **Alt+wheel** to increase (up) or d
 
 Wheel adjustments stop at minimum and maximum values even when a larger step overshoots. Stitch hole counts stop at the count that fits the current path, spacing and clearances.
 
-See [numeric formulas](#measurements/calculate-values-in-numeric-fields), [stitch sessions](#stitching), and [tool selection and previews](#transforms) for operation-specific behavior.
+Type `{` in a number field, name, or label to list [variables](#measurements/reuse-values-with-variables). While the list is shown, Down and Up highlight a variable, Enter or Tab inserts it, and Esc closes the list. Alt+wheel and arrow keys replace a linked formula with a number and end the link.
+
+See [numeric formulas](#measurements/calculate-values-in-numeric-fields), [variables](#measurements/reuse-values-with-variables), [stitch sessions](#stitching), and [tool selection and previews](#transforms) for operation-specific behavior.
 
 ## Arrays
 
