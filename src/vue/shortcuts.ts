@@ -129,7 +129,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       editor.setToolSelection(editor.document.shapes.filter(s=>!editor.isHidden(s.id) && !editor.isLocked(s.id)).map(s=>s.id));
       return;
     }
-    if (editor.array || editor.transformTool || editor.offsetActive || editor.trimMode && !editor.booleanOperation) {
+    if (editor.array || editor.transformTool || editor.offsetActive || editor.alignActive || editor.trimMode && !editor.booleanOperation) {
       e.preventDefault();
       return;
     }
@@ -257,6 +257,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if (e.key === "Enter") {
     if (editor.trimMode) void editor.applyTrim();
     else if (editor.offsetActive) void editor.applyOffset();
+    else if (editor.alignActive) void editor.applyAlign();
     else if (editor.transformTool) void editor.applyTransform();
     else editor.finish();
   }

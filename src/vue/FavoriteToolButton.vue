@@ -167,6 +167,35 @@ const e = useEditor();
     >
   </button>
   <button
+    v-if="id === 'align'"
+    :disabled="!e.canAlign"
+    aria-label="Align and distribute"
+    title="Align and distribute"
+    :aria-pressed="e.alignActive"
+    @click="
+      emit('activated');
+      editor.activateAlign();
+    "
+  >
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.7"
+      aria-hidden="true"
+    >
+      <path d="M3 2v20" />
+      <rect x="6" y="5" width="14" height="5" rx="1" />
+      <rect x="6" y="14" width="8" height="5" rx="1" />
+    </svg>
+    <template v-if="label"
+      ><span>{{ label }}</span
+      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
+    >
+  </button>
+  <button
     v-if="id === 'join'"
     aria-label="Join"
     aria-keyshortcuts="j"

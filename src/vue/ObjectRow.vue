@@ -39,7 +39,7 @@ const renaming = ref(false),
 let settled = false;
 async function rename() {
   if (
-    editor.transformTool || editor.offsetActive || editor.trimMode ||
+    editor.transformTool || editor.offsetActive || editor.alignActive || editor.trimMode ||
     editor.booleanOperation ||
     editor.pathCopy || editor.array ||
     editor.stitchMode ||
@@ -65,7 +65,7 @@ function select(event: MouseEvent) {
   if (editor.objectPicker) { editor.pickToolObject(props.shape.id, event.shiftKey); return; }
   if (editor.pathCopy) { editor.pickPathCopy(props.shape.id); return; }
   if (editor.booleanOperation) { editor.pickBoolean(props.shape.id); return; }
-  if (editor.array || editor.transformTool || editor.offsetActive || editor.trimMode || editor.stitchMode) return;
+  if (editor.array || editor.transformTool || editor.offsetActive || editor.alignActive || editor.trimMode || editor.stitchMode) return;
   editor.selectedGroups = [];
   editor.panelRevision++;
   (event.currentTarget as HTMLButtonElement).focus();

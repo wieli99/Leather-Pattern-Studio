@@ -7,6 +7,7 @@ import ToolObjectPicker from "./ToolObjectPicker.vue";
 import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
+import AlignToolbox from "./AlignToolbox.vue";
 import ToolPopover from "./ToolPopover.vue";
 import { computed } from "vue";
 import { polygonFillets } from "../model/geometry";
@@ -242,6 +243,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <small v-else>{{ e.mergeMode ? "Apply to join the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
     </ToolPopover>
+    <AlignToolbox v-if="e.alignActive" />
     <ToolPopover v-if="e.offsetActive" heading="Offset" aria-label="Offset settings"
       :apply-disabled="e.objectPicker || !!e.toolSelectionError || !e.offsetDraft || !!e.offsetError || e.busy"
       @keydown.enter="handleToolEnter($event, () => editor.applyOffset())" @keydown.esc.stop.prevent="editor.cancel()"

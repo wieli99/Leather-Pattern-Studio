@@ -219,6 +219,7 @@ const helpContexts: Partial<HintState>[] = [
   { transformTool: "move", objectPicker:true },
   { booleanOperation:"subtract",booleanPicker:"target" },
   { offsetActive: true },
+  { alignActive: true },
   { array: { kind: "radial" }, arrayStage: "center" },
   { pathCopy: { picker: null } },
   { booleanOperation: "subtract", booleanPicker: "cutters" },

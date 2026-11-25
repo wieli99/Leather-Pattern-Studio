@@ -15,6 +15,7 @@ export interface HintState {
   segmentSelection?: readonly unknown[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   offsetActive?: boolean;
+  alignActive?: boolean;
   trimMode?: boolean;
   objectPicker?: boolean;
   array?: { kind: string } | null;
@@ -56,6 +57,7 @@ function canvasHelp(s: HintState, hint: EditorHint): EditorHint {
     s.booleanOperation ||
     s.transformTool ||
     s.offsetActive ||
+    s.alignActive ||
     s.stitchMode ||
     s.objectPicker ||
     s.trimMode
@@ -414,6 +416,10 @@ function buildHint(
     action = "Click to place the pivot.";
     add("snap", "Alt", "Bypass snapping");
     add("cancel", "Esc", "Restore previous pivot");
+  } else if (s.alignActive) {
+    action = "Choose a horizontal and/or vertical arrangement.";
+    add("apply", "Enter / Right-click", "Apply alignment");
+    add("cancel", "Esc", "Discard alignment preview");
   } else if (s.offsetActive) {
     action = "Enter a signed distance and choose Sharp or Rounded corners.";
     add("apply", "Enter / Right-click", "Create offset outlines");
