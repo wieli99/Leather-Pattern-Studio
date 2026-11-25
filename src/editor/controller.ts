@@ -458,9 +458,12 @@ export class Controller {
     }
     this.notify();
   }
+  get canApplyOffset() {
+    return this.offsetActive && !this.objectPicker && !this.toolSelectionError && !!this.offsetDraft && !this.offsetError && !this.busy;
+  }
   async applyOffset() {
-    if (this.objectPicker || this.toolSelectionError || !this.offsetActive || !this.offsetDraft || this.offsetError || this.busy) return;
-    const next = this.offsetDraft, ids = this.offsetIds;
+    if (!this.canApplyOffset) return;
+    const next = this.offsetDraft!, ids = this.offsetIds;
     this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
@@ -2789,8 +2792,11 @@ export class Controller {
     if (tool === "mirror") { this.mirrorAxis = null; this.mirrorLine = null; this.mirrorHover = null; }
     this.notify();
   }
+  get canApplyTransform() {
+    return !!this.transformTool && !this.busy && this.transformValid;
+  }
   async applyTransform() {
-    if (!this.transformValid || !this.transformTool || this.busy) return;
+    if (!this.canApplyTransform) return;
     const next = this.transformDraft ?? this.preview;
     if (this.segmentTransform) {
       const v = this.transformValues;
@@ -3201,12 +3207,16 @@ export class Controller {
     }
     this.notify();
   }
+  get canApplyArray() {
+    return !!this.array && !this.busy && !this.objectPicker && this.arrayStage === "review" && !!this.preview && !this.array.error;
+  }
+  /** Confirms a point being picked; otherwise commits the reviewed array. */
   async applyArray() {
     if (!this.array || this.busy || this.objectPicker) return;
     if (this.confirmArrayPoint()) return;
     this.refreshArray();
-    if (!this.preview || this.array.error) return;
-    const next = this.preview;
+    if (!this.canApplyArray) return;
+    const next = this.preview!;
     const ids = next.shapes
       .filter(
         (s) =>
@@ -3266,11 +3276,14 @@ export class Controller {
     } catch (error) { state.error = error instanceof Error ? error.message : String(error); }
     this.notify();
   }
+  get canApplyPathCopy() {
+    return !!this.pathCopy && !this.busy && !!this.preview && !this.pathCopy.error;
+  }
   async applyPathCopy() {
     if (!this.pathCopy || this.busy) return;
     this.refreshPathCopy();
-    if (!this.preview || this.pathCopy.error) return;
-    const next = this.preview;
+    if (!this.canApplyPathCopy) return;
+    const next = this.preview!;
     const ids = next.shapes.filter(s => !s.stitchParentId && !this.document.shapes.some(original => original.id === s.id)).map(s => s.id);
     if (await this.commit(next)) { this.cancel(); this.selected = ids; this.notify(); }
     else if (this.pathCopy) { this.pathCopy.error = "Could not apply copies. Review the document and try again."; this.notify(); }
@@ -3440,10 +3453,13 @@ export class Controller {
   trimHighlight: Point[] | null = null;
   trimMode = false;
   trimDraft: Doc | null = null;
+  get canApplyTrim() {
+    return this.trimMode && !this.selectionLocked && !this.objectPicker && (!!this.booleanOperation || !this.toolSelectionError) &&
+      !!this.trimDraft && !this.transformError && !this.booleanError && !this.busy;
+  }
   async applyTrim() {
-    if (this.selectionLocked) return;
-    if (this.objectPicker || (!this.booleanOperation && this.toolSelectionError) || !this.trimDraft || this.transformError || this.booleanError || this.busy) return;
-    const next = this.trimDraft;
+    if (!this.canApplyTrim) return;
+    const next = this.trimDraft!;
     const mergedId = this.mergeMode
       ? next.shapes.find((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id))?.id
       : undefined;
