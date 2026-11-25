@@ -11,20 +11,23 @@ export function rectanglePath(shape: Shape): Shape {
   return { ...shape, kind: "polyline", points: [...points, { ...points[0] }] };
 }
 
-export function sharpAnchor(shape: Shape, index: number): Shape {
-  if (shape.kind === "compound") {
-    let offset = 0;
-    for (let i=0;i<shape.contours!.length;i++) {
-      const contour = shape.contours![i];
-      if (index < offset + contour.length) {
-        const part = {...contourShape(shape,contour),rotation:0,transform:undefined};
-        const next = sharpAnchor(part,index-offset);
-        return {...shape,contours:shape.contours!.map((c,j)=>j===i?cubicSegments(next):c)};
-      }
-      offset += contour.length;
+/** Apply an anchor edit to the compound contour holding the anchor at a compound-wide index. */
+function editContourAnchor(shape: Shape, index: number, edit: (part: Shape, index: number) => Shape): Shape {
+  let offset = 0;
+  for (let i = 0; i < shape.contours!.length; i++) {
+    const contour = shape.contours![i];
+    if (index < offset + contour.length) {
+      const part = { ...contourShape(shape, contour), rotation: 0, transform: undefined };
+      const next = edit(part, index - offset);
+      return { ...shape, contours: shape.contours!.map((c, j) => j === i ? cubicSegments(next) : c) };
     }
-    return shape;
+    offset += contour.length;
   }
+  return shape;
+}
+
+export function sharpAnchor(shape: Shape, index: number): Shape {
+  if (shape.kind === "compound") return editContourAnchor(shape, index, sharpAnchor);
   if (shape.kind !== "control-curve" || !shape.handles || !shape.points[index])
     return shape;
   const last = shape.points.length - 1;
@@ -50,19 +53,7 @@ export function sharpAnchor(shape: Shape, index: number): Shape {
 
 /** Toggle sharp anchors to mirrored tangents derived from their neighbours. */
 export function toggleAnchor(shape: Shape, index: number): Shape {
-  if (shape.kind === "compound") {
-    let offset = 0;
-    for (let i=0;i<shape.contours!.length;i++) {
-      const contour = shape.contours![i];
-      if (index < offset + contour.length) {
-        const part = {...contourShape(shape,contour),rotation:0,transform:undefined};
-        const next = toggleAnchor(part,index-offset);
-        return {...shape,contours:shape.contours!.map((c,j)=>j===i?cubicSegments(next):c)};
-      }
-      offset += contour.length;
-    }
-    return shape;
-  }
+  if (shape.kind === "compound") return editContourAnchor(shape, index, toggleAnchor);
   if (shape.kind === "rectangle") return toggleAnchor(rectanglePath(shape), index);
   if (shape.kind === "polyline" && shape.points[index]) {
     const radii = cornerRadii(shape);

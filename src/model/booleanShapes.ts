@@ -1,4 +1,4 @@
-import { shapePath } from "../editor/renderer";
+import { shapePath, traceRoundRect } from "../editor/renderer";
 import { applyMatrix, shapeMatrix, bounds } from "./geometry";
 import { isClosedShape } from "./closedShape";
 import {
@@ -114,16 +114,7 @@ export function booleanOutline(shape: Shape): BooleanOutline {
       this.ellipse(cx, cy, r, r, 0, a, b, ccw);
     },
     roundRect(x: number, y: number, w: number, h: number, r: number) {
-      this.moveTo(x + r, y);
-      this.lineTo(x + w - r, y);
-      if (r) this.arc(x + w - r, y + r, r, -Math.PI / 2, 0);
-      this.lineTo(x + w, y + h - r);
-      if (r) this.arc(x + w - r, y + h - r, r, 0, Math.PI / 2);
-      this.lineTo(x + r, y + h);
-      if (r) this.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
-      this.lineTo(x, y + r);
-      if (r) this.arc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
-      this.closePath();
+      traceRoundRect(this, x, y, w, h, r);
     },
   };
   shapePath(sink as unknown as Path2D, shape);

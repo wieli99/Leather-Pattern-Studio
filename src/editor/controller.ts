@@ -25,7 +25,7 @@ import type { ImportedImage } from "./imageImport";
 import type { VectorImport } from "./vectorImport";
 import { truncateSvgName } from "./svgImportCompatibility";
 import { DOCUMENT_VERSION } from "../model/project";
-import { isIndicator } from "../model/indicators";
+import { isIndicator, isOutlineKind } from "../model/indicators";
 import { hasStyledOutline, isOutlineStyle } from "../model/outlineStyle";
 import { inheritedStateSource, placeBesideSources, objectTreeFromShapes, reconcileObjectTree, treeInDrawingOrder, flattenObjectTree, findObjectNode, mapObjectTree, moveObjectNodes, objectState, filterObjectTree, type ObjectNode } from "../model/objectTree";
 import { shapeArea } from "../model/area";
@@ -939,7 +939,7 @@ export class Controller {
     const raw = this.anchorPointer;
     const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
       .reverse()
-      .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom, this.units));
+      .find((s) => isOutlineKind(s.kind) && hitTest(s, raw, 8 / this.zoom, this.units));
     let point: Point | null = null;
     if (hit)
       insertAnchor(hit, raw, 8 / this.zoom, (p) => {
@@ -1515,7 +1515,7 @@ export class Controller {
     if (!this.selected.length) return "Choose at least one object.";
     if (this.selected.some(id => this.isHidden(id) || this.isLocked(id))) return "Choose visible, unlocked objects.";
     if (this.transformTool === "corner" && this.active.some(s => !cornerPoints(s).length)) return "Choose objects with editable corners.";
-    if (this.trimMode && !this.booleanOperation && this.active.some(s => isIndicator(s.kind) || s.kind === "text" || s.kind === "measurement")) return "Choose trimmable outlines.";
+    if (this.trimMode && !this.booleanOperation && this.active.some(s => !isOutlineKind(s.kind))) return "Choose trimmable outlines.";
     return "";
   }
   pickToolObject(id: string, shift = false) {
@@ -3508,7 +3508,7 @@ export class Controller {
     return (
       !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !this.selectionLocked &&
       (!!this.selected.length &&
-        this.active.every((shape) => !isIndicator(shape.kind) && shape.kind !== "text" && shape.kind !== "measurement"))
+        this.active.every((shape) => isOutlineKind(shape.kind)))
     );
   }
   activateTrim() {
@@ -4420,7 +4420,7 @@ export class Controller {
       if (alt) {
         // Alt-click inserts an anchor, as in object selection.
         const shape = this.segmentTargets().slice().reverse()
-          .find(s => this.segmentEditable(s) && !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom, this.units));
+          .find(s => this.segmentEditable(s) && isOutlineKind(s.kind) && hitTest(s, raw, 8 / this.zoom, this.units));
         const next = shape && insertAnchor(shape, raw, 8 / this.zoom);
         if (shape && next)
           void this.commit({ ...base, shapes: base.shapes.map(s => s.id === shape.id ? next : s) });
@@ -4442,7 +4442,7 @@ export class Controller {
     if (alt && !this.transformTool && !handle) {
       const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
         .reverse()
-        .find((s) => !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom, this.units));
+        .find((s) => isOutlineKind(s.kind) && hitTest(s, raw, 8 / this.zoom, this.units));
       if (hit) {
         const shape = insertAnchor(hit, raw, 8 / this.zoom);
         if (shape) {

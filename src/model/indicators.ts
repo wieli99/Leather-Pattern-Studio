@@ -6,6 +6,10 @@ export const indicatorKinds = ["arrow", "arrow-head", "crosshair", "size-square"
 export function isIndicator(kind: string): kind is (typeof indicatorKinds)[number] {
   return (indicatorKinds as readonly string[]).includes(kind);
 }
+/** Kinds with a cuttable outline: not indicators, text or measurements. */
+export function isOutlineKind(kind: string) {
+  return !isIndicator(kind) && kind !== "text" && kind !== "measurement";
+}
 export function dimension(value: number): string {
   const rounded = +value.toFixed(2);
   return `${Math.abs(rounded-value) > 1e-10 ? "≈" : ""}${rounded}`;
