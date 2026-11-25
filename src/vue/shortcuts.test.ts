@@ -2,7 +2,13 @@ import { beforeEach, expect, test, vi } from "vitest";
 const editor = vi.hoisted(() => ({
   space: false,
   booleanOperation: null as string | null,
-  applyTrim: vi.fn(),
+  applyToolSession: vi.fn(),
+  backToolSession: vi.fn(() => false),
+  toggleObjectPicker: vi.fn(),
+  finish: vi.fn(),
+  get toolSession() {
+    return this.booleanOperation ? "boolean" : this.trimMode ? "trim" : this.offsetActive ? "offset" : this.transformTool ? "transform" : null;
+  },
   pending: [] as unknown[],
   drawingDown: false,
   busy: false,
@@ -250,7 +256,7 @@ test("boolean buttons retain native Enter/Space and Escape cancels from the pane
   editor.booleanOperation = "subtract";
   expect(press("Enter",{target:new ElementStub("BUTTON")}).preventDefault).not.toHaveBeenCalled();
   expect(press(" ",{code:"Space",target:new ElementStub("BUTTON")}).preventDefault).not.toHaveBeenCalled();
-  expect(editor.applyTrim).not.toHaveBeenCalled();
+  expect(editor.applyToolSession).not.toHaveBeenCalled();
   press("Escape",{target:new ElementStub("BUTTON")});
   expect(editor.cancel).toHaveBeenCalledOnce();
 });
@@ -258,7 +264,7 @@ test("boolean buttons retain native Enter/Space and Escape cancels from the pane
 test("Enter on the canvas applies a boolean preview", () => {
   editor.booleanOperation = "union";
   press("Enter");
-  expect(editor.applyTrim).toHaveBeenCalledOnce();
+  expect(editor.applyToolSession).toHaveBeenCalledOnce();
 });
 
 test("Select all respects the Objects selection phase",()=>{
@@ -269,6 +275,31 @@ test("Select all respects the Objects selection phase",()=>{
   press("a",{ctrlKey:true});
   expect(editor.setToolSelection).toHaveBeenCalledWith(["a"]);
   expect(editor.cancel).not.toHaveBeenCalled();
+});
+
+test("every tool session shares Escape, Enter and Select all", () => {
+  for (const setup of [() => { editor.offsetActive = true; }, () => { editor.trimMode = true; }, () => { editor.booleanOperation = "union"; }, () => { editor.transformTool = "move"; }]) {
+    vi.clearAllMocks();
+    editor.offsetActive = false; editor.trimMode = false; editor.booleanOperation = null; editor.transformTool = null;
+    setup();
+    // Escape first leaves a sub-step such as pivot placement, then cancels.
+    editor.backToolSession.mockReturnValueOnce(true);
+    press("Escape");
+    expect(editor.cancel).not.toHaveBeenCalled();
+    press("Escape", { target: new ElementStub("BUTTON") });
+    expect(editor.cancel).toHaveBeenCalledOnce();
+    // Enter confirms Select Objects before applying.
+    editor.objectPicker = true;
+    press("Enter");
+    expect(editor.toggleObjectPicker).toHaveBeenCalledOnce();
+    expect(editor.applyToolSession).not.toHaveBeenCalled();
+    editor.objectPicker = false;
+    press("Enter");
+    expect(editor.applyToolSession).toHaveBeenCalledOnce();
+    expect(editor.finish).not.toHaveBeenCalled();
+    expect(press("a", { ctrlKey: true }).preventDefault).toHaveBeenCalled();
+    expect(editor.cancel).toHaveBeenCalledOnce();
+  }
 });
 
 test("Shift+M toggles measurement objects from the canvas only", () => {

@@ -110,6 +110,7 @@ const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
   return JSON.stringify(parseProject(JSON.stringify({ ...doc, objectTree: tree, shapes: treeInDrawingOrder(tree, doc.shapes) })));
 };
+export type ToolSession = "stitch" | "array" | "path-copy" | "boolean" | "trim" | "offset" | "align" | "transform";
 /** Transforms that apply to detached segments; Corners needs whole objects. */
 export type SegmentTransformTool = "move" | "rotate" | "scale" | "mirror";
 export type Gesture = {
@@ -2342,8 +2343,7 @@ export class Controller {
   }
   cycle(group: keyof typeof variants, direction = 1) {
     // Inside a select-based tool session (Trim, transforms, …), V first leaves it for plain Select.
-    if (group === "select" && this.mode === "select" && (this.trimMode || this.mergeMode || this.transformTool ||
-        this.offsetActive || this.alignActive || this.stitchMode || this.booleanOperation || this.array || this.pathCopy)) {
+    if (group === "select" && this.mode === "select" && this.toolSession) {
       this.setMode("select");
       return;
     }
@@ -2665,12 +2665,42 @@ export class Controller {
   }
   /**
    * Variables are project data: editing them ignores object selection locks, but a tool
-   * session (transform, stitching, boolean, array, path copy, offset, align) must be applied or
-   * cancelled first so the tool never works from a document that changes underneath it.
+   * session must be applied or cancelled first so the tool never works from a document
+   * that changes underneath it.
    */
   get canEditVariables() {
-    return this.ready && !(this.transformTool || this.stitchMode || this.booleanOperation ||
-      this.array || this.pathCopy || this.offsetActive || this.alignActive);
+    return this.ready && !this.toolSession;
+  }
+  /**
+   * The tool whose preview is open. It must be applied or cancelled before other edits.
+   * Stitching may open a transform for its holes, so it is checked first.
+   */
+  get toolSession(): ToolSession | null {
+    if (this.stitchMode) return "stitch";
+    if (this.array) return "array";
+    if (this.pathCopy) return "path-copy";
+    if (this.booleanOperation) return "boolean";
+    if (this.trimMode) return "trim";
+    if (this.offsetActive) return "offset";
+    if (this.alignActive) return "align";
+    if (this.transformTool) return "transform";
+    return null;
+  }
+  /** Apply the open tool session, as Enter or its Apply button does. */
+  applyToolSession() {
+    switch (this.toolSession) {
+      case "stitch": return this.applyStitch();
+      case "array": return this.applyArray();
+      case "path-copy": return this.applyPathCopy();
+      case "boolean": case "trim": return this.applyTrim();
+      case "offset": return this.applyOffset();
+      case "align": return this.applyAlign();
+      case "transform": return this.applyTransform();
+    }
+  }
+  /** Escape first leaves a pending array point or custom pivot placement; true when it did. */
+  backToolSession() {
+    return this.cancelArrayPoint() || this.cancelPivotPlacement();
   }
   beginVariableEdit() {
     if (this.canEditVariables) this.openPropertySession();
@@ -5307,8 +5337,7 @@ export class Controller {
   stylingClipboardFallback = false;
   get canToggleObjectState() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
-      !this.drawingDown && !this.transformTool && !this.propertySession &&
-      !this.array && !this.pathCopy && !this.offsetActive && !this.alignActive && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.drawingDown && !this.toolSession && !this.propertySession;
   }
   toggleObjectState(id: string, field: "hidden" | "locked", isolate = false) {
     return this.setPanelState(id, field, isolate);

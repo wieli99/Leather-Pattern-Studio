@@ -46,33 +46,23 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       editor.pickArrayPoint("center");
       return;
     }
+  }
+  // Stitching keeps its own Enter and Escape steps below.
+  const session = editor.toolSession;
+  if (session && session !== "stitch" && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (e.key === "Escape") {
       e.preventDefault();
-      if (!editor.cancelArrayPoint()) editor.cancel();
-      focusModelCanvas();
+      if (!editor.backToolSession()) {
+        editor.cancel();
+        focusModelCanvas();
+      }
       return;
     }
+    // Enter confirms Select Objects first, as right-click does, then applies.
     if (e.key === "Enter" && target.tagName === "CANVAS") {
       e.preventDefault();
       if (editor.objectPicker) editor.toggleObjectPicker();
-      else void editor.applyArray();
-      return;
-    }
-  }
-  if (editor.pathCopy && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    if (e.key === 'Escape') { e.preventDefault(); editor.cancel(); focusModelCanvas(); return; }
-    if (e.key === 'Enter' && target.tagName === 'CANVAS') { e.preventDefault(); void editor.applyPathCopy(); return; }
-  }
-  if (editor.booleanOperation && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      editor.cancel();
-      focusModelCanvas();
-      return;
-    }
-    if (e.key === "Enter" && target.tagName === "CANVAS") {
-      e.preventDefault();
-      void editor.applyTrim();
+      else void editor.applyToolSession();
       return;
     }
   }
@@ -129,7 +119,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       editor.setToolSelection(editor.document.shapes.filter(s=>!editor.isHidden(s.id) && !editor.isLocked(s.id)).map(s=>s.id));
       return;
     }
-    if (editor.array || editor.transformTool || editor.offsetActive || editor.alignActive || editor.trimMode && !editor.booleanOperation) {
+    if (editor.toolSession) {
       e.preventDefault();
       return;
     }
@@ -160,10 +150,8 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   }
   if (e.key === "Tab" && !e.shiftKey && canvas) {
     const field = document.querySelector<HTMLInputElement>(
-      editor.stitchMode ? ".stitch-options input, .stitch-options select" : editor.offsetActive
-        ? ".transform-inputs input"
-        : editor.transformTool
-        ? ".transform-inputs input"
+      editor.stitchMode ? ".stitch-options input, .stitch-options select"
+        : editor.toolSession ? ".transform-inputs input"
         : ".construction-measurements input",
     );
     if (field) {
@@ -254,13 +242,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if (e.key === "Escape") {
     editor.setMode("select");
   }
-  if (e.key === "Enter") {
-    if (editor.trimMode) void editor.applyTrim();
-    else if (editor.offsetActive) void editor.applyOffset();
-    else if (editor.alignActive) void editor.applyAlign();
-    else if (editor.transformTool) void editor.applyTransform();
-    else editor.finish();
-  }
+  if (e.key === "Enter") editor.finish();
   if (e.key === "Backspace" && editor.pending.length) {
     e.preventDefault();
     editor.pending = editor.pending.slice(0, -1);
