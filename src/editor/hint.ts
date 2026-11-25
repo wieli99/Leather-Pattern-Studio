@@ -451,15 +451,18 @@ function buildHint(
   } else if (s.mode === "segment-select") {
     const count = s.segmentSelection?.length ?? 0;
     action = count
-      ? "Drag a segment, or press G to move or E to rotate."
+      ? "Press G to move, E to rotate, S to resize or M to mirror."
       : "Click a segment between crossings or corners.";
     add("toggle", "Shift+click", "Add or remove segments");
     add("add", "Shift+drag", "Add segments in a box");
     add("crossing", "Ctrl+drag", "Select crossing segments");
     add("all", "Ctrl/⌘+A", "Select all segments");
+    add("insert", "Alt+click edge", "Add anchor");
     if (count) {
-      add("move", "Drag / G", "Move (detaches)");
+      add("move", "G", "Move (detaches)");
       add("rotate", "E", "Rotate (detaches)");
+      add("scale", "S", "Resize (detaches)");
+      add("mirror", "M", "Mirror (detaches)");
       add("delete", "Delete / Backspace", "Delete segments");
       add("separate", "Ctrl/⌘+Shift+D", "Separate into objects");
       add("duplicate", "Ctrl/⌘+D", "Duplicate");
