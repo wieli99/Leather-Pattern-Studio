@@ -8,7 +8,7 @@ While constructing a shape, Tab enters available dimension fields and selects th
 
 ![Entering exact width and height during rectangle construction](/manual/images/construction-dimensions.png)
 
-Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Enter applies the edit; Esc leaves the field.
+Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. The sides of a plain rectangle stand for its width and height: if that value is [linked to a variable](#measurements/reuse-values-with-variables), the field opens with its formula, and entering `{name}` there links it. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Enter applies the edit; Esc leaves the field.
 
 ![Canvas panned to reveal an off-screen dimension field](/manual/images/offscreen-measurement-focus.png)
 
@@ -54,13 +54,14 @@ Entering a variable **links** the value, and changing the variable later updates
 
 - **Properties:** a link icon appears next to the field's label; hovering the field shows the formula, and focusing it lets you edit the formula. Linking is available for position, size, radius, sweep, rotation, outline width, arrow and indicator sizes, font size, line spacing, and measurement sections and offset.
 - **Construction fields:** width and height of rectangles and ellipses, size guide sides, radius, diameter, arc sweep, and measurement offset link to the new object.
+- **Edge lengths (Ctrl):** the sides of a plain rectangle link its width or height and show the formula when you edit them.
 - **Names and labels:** `{name}` always shows the current value. Lists, the canvas, previews, and print output show the value; editing shows `{name}` again. Write `{{` and `}}` for literal braces. An unknown `{name}` stays as typed, and the name field lists it. Label boxes fit the shown text.
 
 When you change a variable, every linked value updates; the change and all updated objects form one undo step. A linked image size keeps the aspect ratio only if the aspect lock was on when you linked it. A curve can link its width or height, or its rotation, but not both. Labels keep a linked position when their text or size changes. If a new value does not fit a linked field, for example a width below 0.001 mm, the change is refused and the message names the object and field. Linked objects must be unlocked before a variable change can update them.
 
 A link ends when you type a plain number, use Alt+wheel or arrow keys on the field, or change that property directly, for example by dragging, scaling or moving the object. The status bar reports which field was unlinked. Undo restores the link.
 
-Some fields cannot stay linked: path segment Length and Direction and three-point heights while drawing, edge lengths, vertex coordinates, opacity, tool amounts such as move, rotate, scale, offset and array values, stitching fields, grid spacing, and print move and rotation. Use `{=name}` there; a linked `{name}` is refused with a message suggesting `{=name}`. Fields in print layouts work the same way. Print page size and margin fields do not accept variables.
+Some fields cannot stay linked: path segment Length and Direction and three-point heights while drawing, edge lengths other than the sides of a plain rectangle, vertex coordinates, opacity, tool amounts such as move, rotate, scale, offset and array values, stitching fields, grid spacing, and print move and rotation. Use `{=name}` there; a linked `{name}` is refused with a message suggesting `{=name}`. Fields in print layouts work the same way. Print page size and margin fields do not accept variables.
 
 Delete a variable with the × at the end of its row. Deleting a variable that is in use asks for confirmation: **Delete and keep values** keeps every linked field at its current value, replaces formulas in other variables with their results, and writes the current text into names and labels.
 

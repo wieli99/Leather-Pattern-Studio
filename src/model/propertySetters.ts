@@ -15,6 +15,7 @@ import {
 import { indicatorGeometry, isIndicator } from "./indicators";
 import { measurementGeometry } from "./measurement";
 import { resizeText } from "./text";
+import { edgeMeasurements } from "./edgeMeasurements";
 import type { Shape } from "./project";
 
 /** Derived Inspector properties that can be set numerically and linked to variables. */
@@ -195,4 +196,19 @@ export function applyChanges(s: Shape, changes: Partial<Shape>): Shape {
 export function setProperty(s: Shape, id: PropertyId, v: number, options: { aspectLocked?: boolean } = {}): Shape | null {
   const changes = propertyChanges(s, id, v, options);
   return changes ? applyChanges(s, clampFillets(s, changes)) : null;
+}
+
+/**
+ * The property an edge length label stands for, so it can show and edit a linked formula:
+ * the full sides of a plain rectangle are its width and height. Other edges have none.
+ */
+export function edgeProperty(s: Shape, index: number): "width" | "height" | null {
+  if (s.kind !== "rectangle" || s.radius > 0 || s.cornerRadii?.some((r) => r > 0) || s.cornerChamfers?.some((c) => c > 0))
+    return null;
+  const edge = edgeMeasurements(s)[index];
+  if (!edge) return null;
+  const m = shapeMatrix(s), turn = edge.angle - Math.atan2(m.b, m.a);
+  const property = Math.abs(Math.sin(turn)) < 1e-6 ? "width" : Math.abs(Math.cos(turn)) < 1e-6 ? "height" : null;
+  const value = property && getProperty(s, property);
+  return property && value !== null && Math.abs(value - edge.length) <= 1e-6 * Math.max(1, value) ? property : null;
 }

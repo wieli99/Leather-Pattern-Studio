@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { editableNumber, formulaReferences } from "../model/expression";
+import { editableNumber, formulaReferences, onceReferences } from "../model/expression";
+import { edgeProperty } from "../model/propertySetters";
+import { bindingFor } from "../model/bindings";
+import type { UnitMode } from "../model/units";
 import { editableLength } from "../model/units";
 import { parseFieldValue, unlinkableError } from "../model/variables";
 import { segmentLabelPoint } from "../editor/constructionLabels";
@@ -116,7 +119,10 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   active.value = item.id;
   pinned.value = item.point;
   pinnedAngle.value = item.angle;
-  draft.value = ["Angle", "Sweep"].includes(item.key) ? editableNumber(item.value) : editableLength(item.value, editor.units);
+  // A linked side opens with its formula, so it can be seen and edited.
+  const linked = edgeLink(item)?.binding;
+  draft.value = linked ? linked.expression
+    : ["Angle", "Sweep"].includes(item.key) ? editableNumber(item.value) : editableLength(item.value, editor.units);
   // Wheel handlers read immediately after focus, before Vue renders the draft.
   field.value = draft.value;
   error.value = "";
@@ -145,8 +151,22 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   // Set the selection without select() asking Firefox to scroll the field.
   if (document.activeElement === field) field.setSelectionRange(0, field.value.length);
 }
-/** Only fields that link to the new object accept `{name}`; others take `{=name}`. */
-const linkable = (item: (typeof items.value)[number]) => !!item.key && editor.constructionFieldLinkable(item.key);
+/** A rectangle side stands for its width or height, so it shows and edits that link. */
+const edgeLink = (item: (typeof items.value)[number]) => {
+  const property = !item.key && item.shape ? edgeProperty(item.shape, item.index) : null;
+  return property ? { property, binding: bindingFor(item.shape, property) } : null;
+};
+/** Only fields that link to an object accept `{name}`; others take `{=name}`. */
+const linkable = (item: (typeof items.value)[number]) =>
+  item.key ? editor.constructionFieldLinkable(item.key) : !!edgeLink(item) && editor.linksEnabled;
+/** A linked formula keeps the unit it was typed in; plain numbers use the display unit. */
+function unitsFor(item: (typeof items.value)[number], text: string): UnitMode {
+  const binding = edgeLink(item)?.binding;
+  if (!binding || !formulaReferences(text).length) return editor.units;
+  return binding.unit === "mm" ? "mm" : editor.units === "mm" ? "in-decimal" : editor.units;
+}
+const valueOf = (item: (typeof items.value)[number], text: string) =>
+  parseFieldValue(text, ["Angle", "Sweep"].includes(item.key) ? "number" : unitsFor(item, text), editor.variableScope.values) ?? NaN;
 function linkError(item: (typeof items.value)[number]) {
   return linkable(item) ? null : unlinkableError(draft.value);
 }
@@ -183,7 +203,7 @@ async function confirm(item: (typeof items.value)[number]) {
     error.value = refused;
     return;
   }
-  const value = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
+  const value = valueOf(item, draft.value);
   const signedHeight = item.key === "Height" &&
     ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
     editor.pending.length === 2;
@@ -200,8 +220,14 @@ async function confirm(item: (typeof items.value)[number]) {
         : "Enter a positive finite measurement";
     return;
   }
+  const link = edgeLink(item);
   if (item.key) editor.confirmMeasurement();
-  else if (item.shape) {
+  else if (item.shape && link) {
+    // Same path as the Properties field: {name} links, a plain number unlinks.
+    const text = draft.value.trim();
+    const formula = formulaReferences(text).length || onceReferences(text).length ? text : null;
+    await editor.editProperty(item.shape.id, link.property, value, formula, unitsFor(item, text));
+  } else if (item.shape) {
     const shape = item.shape;
     const box = bounds([shape]);
     const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -286,6 +312,7 @@ function style(item: (typeof items.value)[number]) {
         type="text"
         step="any"
         :aria-label="item.key || 'Edge length'"
+        :title="edgeLink(item)?.binding ? `Linked to ${edgeLink(item)!.binding!.expression}` : undefined"
         :value="active === item.id ? draft : (['Angle', 'Sweep'].includes(item.key) ? Number(item.value.toFixed(2)) : editor.formatLength(item.value))"
         @focus="focus(item, $event)"
         @input="input(item, $event)"

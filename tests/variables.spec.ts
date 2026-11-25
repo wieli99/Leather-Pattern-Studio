@@ -526,3 +526,38 @@ test("text variables combine others and {=name} copies a value once", async ({ p
   await brandValue.press("Escape");
   await expect(brandValue).toHaveValue("Nova");
 });
+
+test("Ctrl edge labels show and edit a linked side's formula", async ({ page }) => {
+  await rectangle(page);
+  const w = await addVariable(page, "w", "50");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("{w}");
+  await width.press("Enter");
+  // Hold Ctrl over the canvas to show edge lengths, then open the width side.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const edges = page.getByRole("textbox", { name: "Edge length", exact: true });
+  await expect(edges).toHaveCount(4);
+  const side = edges.and(page.locator('[title="Linked to {w}"]')).first();
+  await side.focus();
+  await page.keyboard.up("Control");
+  await expect(side).toHaveValue("{w}");
+  await side.fill("{w}*2");
+  await side.press("Enter");
+  await expect(width).toHaveValue("100");
+  await expect(width).toHaveAttribute("title", "Linked to {w}*2");
+  await w.fill("30");
+  await page.keyboard.press("Enter");
+  await expect(width).toHaveValue("60");
+  // Sides without a linked property still take plain lengths; a number unlinks.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const linked = edges.and(page.locator('[title="Linked to {w}*2"]')).first();
+  await linked.focus();
+  await page.keyboard.up("Control");
+  await expect(linked).toHaveValue("{w}*2");
+  await linked.fill("40");
+  await linked.press("Enter");
+  await expect(width).toHaveValue("40");
+  await expect(width).not.toHaveAttribute("title", /Linked/);
+});
