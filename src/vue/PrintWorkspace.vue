@@ -198,6 +198,8 @@ const drawing: Controller = new Controller({
     revision, canUndo: false, canRedo: false,
   }),
 });
+// Print copies are placements: variables fill text but never link their geometry.
+drawing.linksEnabled = false;
 const drawingState = useEditor(drawing);
 const textViewport = ref<InstanceType<typeof Viewport>>();
 const imagePicker = ref<HTMLInputElement>();
@@ -1178,9 +1180,9 @@ async function sourceUp(event: PointerEvent) {
   }
 }
 function nodeName(node: PrintNode) {
-  if (node.kind === "group") return node.name;
+  if (node.kind === "group") return editor.displayName(node.name);
   const item = layout.value?.instances.find((i) => i.id === node.id);
-  return (
+  return editor.displayName(
     item?.name ??
     item?.snapshot?.shape.name ??
     editor.document.shapes.find((s) => s.id === item?.sourceId)?.name ??
@@ -2840,7 +2842,7 @@ function printClipboard(event: ClipboardEvent) {
     sourcePointer ||
     event.defaultPrevented ||
     target.closest?.("input,textarea,select,[contenteditable=true]") ||
-    document.querySelector("[role=dialog]")
+    document.querySelector("[role=dialog]:not([data-nonblocking])")
   )
     return;
   syncDrawing();
@@ -2867,7 +2869,7 @@ function keyboard(event: KeyboardEvent) {
     !layout.value ||
     event.defaultPrevented ||
     event.isComposing ||
-    document.querySelector("[role=dialog]")
+    document.querySelector("[role=dialog]:not([data-nonblocking])")
   )
     return;
   const target = event.target as HTMLElement;
@@ -3511,12 +3513,12 @@ defineExpose({
               @click="!suppressSourceClick && selectSource(row.node.id, $event)"
             >
               {{
-                row.node.kind === "group"
+                editor.displayName(row.node.kind === "group"
                   ? row.node.name
-                  : e.document.shapes.find((s) => s.id === row.node.id)?.name
+                  : e.document.shapes.find((s) => s.id === row.node.id)?.name ?? "")
               }}</button
             ><button
-              :aria-label="`Import ${row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name}`"
+              :aria-label="`Import ${editor.displayName(row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name ?? '')}`"
               :disabled="busy"
               @click="importSource(row.node.id)"
             >

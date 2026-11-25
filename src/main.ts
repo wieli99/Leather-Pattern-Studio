@@ -12,6 +12,8 @@ async function start() {
   const app = createApp(App);
   const { numericWheel } = await import("./vue/numericWheel");
   app.directive("numeric-wheel", numericWheel);
+  const { variableHints } = await import("./vue/variableHints");
+  app.directive("variable-hints", variableHints);
   app.mount("#root");
 }
 void start().catch((error) => {

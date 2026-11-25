@@ -58,7 +58,7 @@ Presentation attributes, inline paint styles, and embedded rules with simple cla
 
 Editable import reads UTF-8, UTF-16, ISO-8859-1 and Windows-1252 SVG files. Unsupported encodings and invalid byte sequences prevent editable import. Files are limited to 10 MiB, 100 levels of SVG traversal, 10,000 imported objects and 100,000 total converted segments. An editable import can retain up to 61 nested groups because the saved project adds a filename group. If the conversion exceeds this depth, reduce the group nesting or choose **Import as image**. Each outline is limited to 10,000 points or segments. Fill-boundary normalization is limited to 5,000 input segments per normalized outline. Invalid geometry or a project change during import prevents insertion. If no supported geometry remains, Import is disabled.
 
-Saved projects use format 24 to preserve which outlines are excluded from DXF cutting. Format 23 projects can still be opened. Use a build that supports format 24 to reopen projects saved in this version.
+Saved projects use format 25 to preserve [project variables](#measurements/reuse-values-with-variables) and linked fields. Format 24 and earlier projects can still be opened. Use a build that supports format 25 to reopen projects saved in this version.
 
 ## Desktop application
 

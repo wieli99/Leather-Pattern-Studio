@@ -15,7 +15,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     target.closest(
       "input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=menu]",
     ) ||
-    document.querySelector("[role=dialog]")
+    document.querySelector("[role=dialog]:not([data-nonblocking])")
   )
     return;
   if (!editor.stitchMode && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
@@ -300,7 +300,7 @@ export function handleClipboard(event: ClipboardEvent) {
   const target = event.target instanceof HTMLElement ? event.target : null;
   if (event.defaultPrevented || !target || target.closest(
     "input,textarea,select,[contenteditable]:not([contenteditable=false]),[role=menu]",
-  ) || document.querySelector("[role=dialog]") || !event.clipboardData) return;
+  ) || document.querySelector("[role=dialog]:not([data-nonblocking])") || !event.clipboardData) return;
   if (event.type === "paste" && (target.tagName === "CANVAS" || target.closest(".objects button"))) {
     const text = event.clipboardData.getData("text/plain");
     if (text.includes('"leather-pattern-designer-styling"')) {

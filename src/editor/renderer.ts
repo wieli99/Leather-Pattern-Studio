@@ -1,3 +1,4 @@
+import { displayTemplate } from "../model/variables";
 import { flattenOutline } from "../model/flattenOutline";
 import type { Point } from "../model/project";
 import { textFont, measureText } from "../model/text";
@@ -281,8 +282,9 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.textBaseline = "top";
         ctx.fillStyle = ctx.strokeStyle;
         const size = s.fontSize ?? 5;
-        const width = measureText(s.text ?? "", size, s).width;
-        (s.text ?? "").split("\n").forEach((line, i) => {
+        const shown = displayTemplate(s.text ?? "", editor.variableDocument.variables);
+        const width = measureText(shown, size, s).width;
+        shown.split("\n").forEach((line, i) => {
           const w = ctx.measureText(line).width;
           const x = s.points[0].x + (s.textAlign === "right" ? width - w : s.textAlign === "center" ? (width - w) / 2 : 0);
           const y = s.points[0].y + i * size * (s.lineSpacing ?? 1.2);

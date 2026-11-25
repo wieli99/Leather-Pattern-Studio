@@ -6,24 +6,20 @@ import { measurementGeometry } from "../model/measurement";
 import { shapeArea } from "../model/area";
 import { computed, ref } from "vue";
 import {
-  isPolygon,
-  polygonFillets,
   center,
   bounds,
-  stretchShape,
   distance,
-  moveShape,
-  rotateShape,
   shapeMatrix,
-  multiply,
   inverse,
-  transformShape,
   worldPoints,
   applyMatrix,
   localCenter,
   rotatePoint,
 } from "../model/geometry";
 import type { Shape } from "../model/project";
+import { clampFillets, type PropertyId } from "../model/propertySetters";
+import { bindingFor } from "../model/bindings";
+import type { UnitMode } from "../model/units";
 import { editor as defaultEditor } from "../editor/instance";
 import type { Controller } from "../editor/controller";
 import { useEditor } from "./useEditor";
@@ -83,101 +79,15 @@ function fill(changes: Partial<Shape>) {
 }
 const area = computed(() => (s.value ? shapeArea(s.value) : null));
 const edit = (changes: Partial<Shape>) => {
-  if (s.value) {
-    const next = { ...s.value, ...changes };
-    if (isPolygon(next))
-      changes.radius = Math.min(next.radius, polygonFillets(next).max);
-    void editor.edit(s.value.id, changes);
-  }
+  if (s.value) void editor.edit(s.value.id, clampFillets(s.value, changes));
 };
-function position(axis: "x" | "y", v: string) {
-  edit(
-    moveShape(
-      s.value!,
-      axis === "x" ? +v - c.value.x : 0,
-      axis === "y" ? +v - c.value.y : 0,
-    ),
-  );
-}
-function indicatorSize(value: string) {
-  const shape = s.value!;
-  const current = indicatorGeometry(shape).size;
-  if (+value > 0 && current > 0) {
-    if (shape.kind === "arrow-head") { const local = distance(shape.points[0],shape.points[1]); const world = indicatorGeometry(shape).length; edit({headSize:+value * local/world}); }
-    else edit(stretchShape(shape,+value/current,+value/current,c.value));
-  }
-}
 const imageAspectLocked = ref(true);
-function size(axis: "x" | "y", v: string) {
-  if (s.value!.kind === "image" && imageAspectLocked.value) {
-    const factor = +v / (axis === "x" ? width.value : height.value);
-    edit(stretchShape(s.value!, factor, factor, c.value));
-    return;
-  }
-  if (["curve", "control-curve"].includes(s.value!.kind)) {
-    const length = axis === "x" ? width.value : height.value;
-    if (length > 0)
-      edit(
-        stretchShape(
-          s.value!,
-          axis === "x" ? +v / length : 1,
-          axis === "y" ? +v / length : 1,
-          c.value,
-        ),
-      );
-    return;
-  }
-  if (s.value!.transform) {
-    const f = +v / (axis === "x" ? width.value : height.value),
-      m = matrix.value,
-      local = {
-        a: axis === "x" ? f : 1,
-        b: 0,
-        c: 0,
-        d: axis === "y" ? f : 1,
-        e: 0,
-        f: 0,
-      };
-    const origin = {
-      x: (a.value.x + b.value.x) / 2,
-      y: (a.value.y + b.value.y) / 2,
-    };
-    local.e = origin.x * (1 - local.a);
-    local.f = origin.y * (1 - local.d);
-    edit(transformShape(s.value!, multiply(multiply(m, local), inverse(m))));
-    return;
-  }
-  const length = Math.abs(b.value[axis] - a.value[axis]);
-  if (!length) return;
-  const factor = +v / length,
-    points = s.value!.points.map((p) => ({
-      ...p,
-      [axis]: c.value[axis] + (p[axis] - c.value[axis]) * factor,
-    }));
-  edit({
-    points,
-    radius:
-      s.value!.kind === "rectangle"
-        ? Math.min(
-            s.value!.radius,
-            Math.abs(points[1].x - points[0].x) / 2,
-            Math.abs(points[1].y - points[0].y) / 2,
-          )
-        : s.value!.radius,
-  });
+/** Shared with variable-driven updates so both paths change geometry identically. */
+function property(id: PropertyId, v: string, formula: string | null = null, unit: UnitMode = e.value.units) {
+  if (s.value)
+    void editor.editProperty(s.value.id, id, +v, formula, unit, { aspectLocked: imageAspectLocked.value });
 }
-function radius(v: string) {
-  const f = +v / distance(a.value, b.value);
-  edit({
-    points: [
-      a.value,
-      {
-        x: a.value.x + (b.value.x - a.value.x) * f,
-        y: a.value.y + (b.value.y - a.value.y) * f,
-      },
-    ],
-  });
-}
+const link = (id: PropertyId) => bindingFor(s.value, id);
 function vertex(i: number, axis: "x" | "y", v: string) {
   const original = s.value!,
     point = { ...vertices.value[i], [axis]: +v };
@@ -250,11 +160,11 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         </div>
       </div>
       <label class="field"><span>Alignment</span><select aria-label="Alignment" :value="s.textAlign ?? 'left'" @change="edit({ textAlign: ($event.target as HTMLSelectElement).value })"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select></label>
-      <Field :controller="editor" label="Line spacing" :value="s.lineSpacing ?? 1.2" @commit="edit({ lineSpacing: +$event })" />
+      <Field :controller="editor" label="Line spacing" :value="s.lineSpacing ?? 1.2" linkable :binding="link('lineSpacing')" @commit="(v, f, u) => property('lineSpacing', v, f, u)" />
       <Field :controller="editor" dimension
         label="Font size"
         :value="s.fontSize ?? 5"
-        @commit="edit({ fontSize: +$event })"
+        linkable :binding="link('fontSize')" @commit="(v, f, u) => property('fontSize', v, f, u)"
       />
     </template>
     </PanelSection>
@@ -264,12 +174,12 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       <Field :controller="editor" dimension
         label="Position X"
         :value="c.x"
-        @commit="position('x', $event)"
+        linkable :binding="link('x')" @commit="(v, f, u) => property('x', v, f, u)"
       />
       <Field :controller="editor" dimension
         label="Position Y"
         :value="c.y"
-        @commit="position('y', $event)"
+        linkable :binding="link('y')" @commit="(v, f, u) => property('y', v, f, u)"
       />
     </div>
     <div
@@ -280,7 +190,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         label="Width"
         :value="width"
         :min="0.001"
-        @commit="size('x', $event)"
+        linkable :binding="link('width')" @commit="(v, f, u) => property('width', v, f, u)"
       />
       <button v-if="s.kind === 'image'" type="button" class="aspect-ratio-lock"
         aria-label="Lock aspect ratio" :aria-pressed="imageAspectLocked"
@@ -302,7 +212,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         label="Height"
         :value="height"
         :min="0.001"
-        @commit="size('y', $event)"
+        linkable :binding="link('height')" @commit="(v, f, u) => property('height', v, f, u)"
       />
     </div>
     <Field :controller="editor" dimension
@@ -310,7 +220,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       :label="s.transform ? 'Radius (local)' : 'Radius'"
       :value="distance(a, b)"
       :min="0.001"
-      @commit="radius"
+      linkable :binding="link('radius')" @commit="(v, f, u) => property('radius', v, f, u)"
     />
     <Field
         :controller="editor"
@@ -319,27 +229,27 @@ function vertex(i: number, axis: "x" | "y", v: string) {
       :value="s.sweep ?? 0"
       :min="-360"
       :max="360"
-      @commit="edit({ sweep: +$event })"
+      linkable :binding="link('sweep')" @commit="(v, f, u) => property('sweep', v, f, u)"
     />
     <Field
         :controller="editor"
       label="Rotation (degrees)"
       :value="+angle.toFixed(1)"
-      @commit="edit(rotateShape(s, +$event - angle, c))"
+      linkable :binding="link('rotation')" @commit="(v, f, u) => property('rotation', v, f, u)"
     />
     <template v-if="isIndicator(s.kind)">
       <Field :controller="editor" dimension :label="s.kind === 'size-square' ? 'Side length (mm)' : s.kind === 'crosshair' ? 'Overall size (mm)' : s.kind === 'arrow-head' ? 'Head size (mm)' : 'Length (mm)'"
-        :value="indicatorGeometry(s).size" :min="0.001" @commit="indicatorSize" />
+        :value="indicatorGeometry(s).size" :min="0.001" linkable :binding="link('indicatorSize')" @commit="(v, f, u) => property('indicatorSize', v, f, u)" />
       <Field :controller="editor" dimension v-if="s.kind === 'arrow'" label="Head size (local mm)"
-        :value="s.headSize ?? 3" :min="0.001" @commit="edit({headSize:+$event})" />
+        :value="s.headSize ?? 3" :min="0.001" linkable :binding="link('headSize')" @commit="(v, f, u) => property('headSize', v, f, u)" />
     </template>
     <Field :controller="editor" v-if="s.kind === 'image'" label="Image opacity (%)" :value="(s.fillOpacity ?? 1) * 100" :min="0" :max="100" @commit="edit({ fillOpacity: +$event / 100 })" />
     <template v-if="s.kind === 'measurement'">
-      <Field :controller="editor" label="Sections" :value="s.measurementSections ?? 1" :min="1" :max="100" @commit="edit({ measurementSections: Math.round(+$event) })" />
+      <Field :controller="editor" label="Sections" :value="s.measurementSections ?? 1" :min="1" :max="100" linkable :binding="link('measurementSections')" @commit="(v, f, u) => property('measurementSections', v, f, u)" />
       <Field :controller="editor" dimension
         label="Offset (mm)"
         :value="measurementGeometry(s).offset"
-        @commit="edit({ measurementOffset: +$event / measurementGeometry(s).offsetScale })"
+        linkable :binding="link('measurementOffset')" @commit="(v, f, u) => property('measurementOffset', v, f, u)"
       />
       <div class="field">
         <span>Distance ({{ e.unitSymbol }})</span>
@@ -367,7 +277,7 @@ function vertex(i: number, axis: "x" | "y", v: string) {
         :min="0" :max="100" :step="1"
         @commit="edit({ strokeOpacity: +$event / 100 })" />
     </div>
-    <Field :controller="editor" dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" @commit="edit({strokeWidth:+$event})" />
+    <Field :controller="editor" dimension v-if="s.kind !== 'text'" label="Outline width (mm)" :value="s.strokeWidth ?? 0.35" :min="0.001" linkable :binding="link('strokeWidth')" @commit="(v, f, u) => property('strokeWidth', v, f, u)" />
     <label v-if="hasStyledOutline(s.kind)" class="field">
       <span>Outline style</span>
       <select aria-label="Outline style" :value="s.strokeStyle ?? 'solid'"

@@ -7,5 +7,6 @@ import type { StitchGroup } from "./StitchGroup";
 import type { StitchLink } from "./StitchLink";
 import type { StitchPreset } from "./StitchPreset";
 import type { StitchTransfer } from "./StitchTransfer";
+import type { Variable } from "./Variable";
 
-export type Document = { stitchTransfers?: Array<StitchTransfer>, stitchPresets?: Array<StitchPreset>, printLayouts: Array<PrintLayout>, stitchLinks: Array<StitchLink>, version: number, shapes: Array<Shape>, objectTree?: Array<ObjectNode>, guides: Array<Guide>, stitchGroups: Array<StitchGroup>, };
+export type Document = { variables?: Array<Variable>, stitchTransfers?: Array<StitchTransfer>, stitchPresets?: Array<StitchPreset>, printLayouts: Array<PrintLayout>, stitchLinks: Array<StitchLink>, version: number, shapes: Array<Shape>, objectTree?: Array<ObjectNode>, guides: Array<Guide>, stitchGroups: Array<StitchGroup>, };

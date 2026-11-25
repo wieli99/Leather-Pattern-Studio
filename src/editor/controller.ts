@@ -15,7 +15,11 @@ import { hitsTransformShaft } from "./transformUi";
 import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
+import { evaluateBinding, mapShapes, pruneBindings, recompute, withBinding } from "../model/bindings";
+import { propertyChanges, clampFillets, applyChanges, getProperty, keepLinkedCenter, PROPERTIES, type PropertyId } from "../model/propertySetters";
+import { bindingUnit, displayTemplate, hasPlaceholders, resolveVariables, type VariableScope } from "../model/variables";
 import { resizeText } from "../model/text";
+import { formulaReferences } from "../model/expression";
 import type { ImportedImage } from "./imageImport";
 import type { VectorImport } from "./vectorImport";
 import { truncateSvgName } from "./svgImportCompatibility";
@@ -207,6 +211,37 @@ export class Controller {
   }
   projectEpoch = 0;
   document = emptyDocument();
+  /** Document whose variables apply to fields right now, including uncommitted edits. */
+  get variableDocument(): Doc {
+    return this.propertySession?.next ?? this.pendingDocument ?? this.document;
+  }
+  /** False for scenes such as print layouts, where formulas are used once instead. */
+  linksEnabled = true;
+  /** Object, group or text name with `{name}` placeholders resolved. */
+  displayName(template: string) {
+    return displayTemplate(template, this.variableDocument.variables);
+  }
+  /** Text boxes follow the shown text, so placeholder values size them. */
+  private syncTextBoxes(doc: Doc): Doc {
+    let changed = false;
+    const fit = (s: Shape) => {
+      if (s.kind !== "text" || !s.text || !(hasPlaceholders(s.text) || /\{\{|\}\}/.test(s.text))) return s;
+      const next = keepLinkedCenter(s, resizeText(s, displayTemplate(s.text, doc.variables)));
+      if (next.points.every((p, i) => Math.abs(p.x - s.points[i].x) < 1e-9 && Math.abs(p.y - s.points[i].y) < 1e-9)) return s;
+      changed = true;
+      return next;
+    };
+    // Print snapshots hold their own labels; their boxes drive page tiling.
+    const next = mapShapes(doc, fit);
+    return changed ? next : doc;
+  }
+  private scopeCache: { variables: Doc["variables"]; scope: VariableScope } | null = null;
+  get variableScope(): VariableScope {
+    const variables = this.variableDocument.variables;
+    if (!this.scopeCache || this.scopeCache.variables !== variables)
+      this.scopeCache = { variables, scope: resolveVariables(variables) };
+    return this.scopeCache.scope;
+  }
   preview: Doc | null = null;
   revision = 0;
   canUndo = false;
@@ -261,11 +296,12 @@ export class Controller {
     return normal;
   }
   get canOffset() {
-    return !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
+    return !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
         ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc", "compound"].includes(s.kind) &&
         !s.stitchOnly && !this.isHidden(s.id));
   }
   activateOffset() {
+    if (this.deferUntilSettled(() => this.activateOffset())) return;
     if (!this.canOffset) return;
     this.cancel();
     this.tool = "select";
@@ -609,7 +645,7 @@ export class Controller {
   arcSweep = 0;
   arcRawSweep = 0;
   arcLast: number | undefined;
-  propertySession: { original: Doc; next: Doc } | null = null;
+  propertySession: { original: Doc; next: Doc; epoch: number } | null = null;
   selected: string[] = [];
   hover = "";
   /** Object-panel row under the pointer. Canvas hover ignores hidden objects, so the panel reveals them. */
@@ -1416,13 +1452,14 @@ export class Controller {
   }
   get canStitch() {
     return (
-      !this.segmentTransform && this.ready && !this.busy && !this.fileBusy && !this.selectionLocked &&
+      !this.segmentTransform && this.ready && this.toolIdle && !this.fileBusy && !this.selectionLocked &&
       (!this.selected.length ||
         this.active.some((shape) => stitchEdges(shape).length > 0))
     );
   }
   activateStitch() {
     if (this.stitchMode) {if(!this.stitchTool)void this.activateStitchTool("line");return;}
+    if (this.deferUntilSettled(() => this.activateStitch())) return;
     if (!this.canStitch) return;
     this.cancel();
     this.tool = "select";
@@ -2061,12 +2098,18 @@ export class Controller {
       }
     }
     try {
+      // Direct edits that change a linked property end that link; undo restores it.
+      const { doc: unlinked, removed } = pruneBindings(this.syncTextBoxes(document));
       const validated = parseProject(
-        JSON.stringify(this.normalizeTree(reconcileStitches(document, this.document))),
+        JSON.stringify(this.normalizeTree(reconcileStitches(unlinked, this.document))),
       );
       this.pendingDocument = validated;
       await this.transact("commit", validated);
       if (this.pendingDocument === validated) this.pendingDocument = null;
+      if (removed.length) {
+        this.message = removed.length === 1 ? removed[0].message : `Unlinked ${removed.length} values from their variables`;
+        this.notify();
+      }
       return true;
     } catch (e) {
       this.pendingDocument = null;
@@ -2132,17 +2175,21 @@ export class Controller {
   }
   setMode(mode: Mode) {
     if (this.printLayoutActive && mode !== "select") return;
+    // The edit's commit starts synchronously and sets pendingDocument, so the new tool
+    // starts from the edited document rather than the one before it.
+    this.settleProperty();
+    const base = this.pendingDocument ?? this.document;
     const previous = this.mode;
     const returning = !!this.segmentTransform;
     this.cancel();
     if (mode === "segment-select") {
-      if (!returning && previous !== "segment-select") this.segmentState = { document: this.document, refs: [] };
+      if (!returning && previous !== "segment-select") this.segmentState = { document: base, refs: [] };
       if (previous !== "segment-select") {
         this.selected = [];
         this.selectedGroups = [];
         this.panelRevision++;
       }
-    } else this.segmentState = { document: this.document, refs: [] };
+    } else this.segmentState = { document: base, refs: [] };
     this.segmentHover = null;
     this.mode = mode;
     this.tool =
@@ -2227,6 +2274,17 @@ export class Controller {
     this.finish([...this.pending, this.pending[0]]);
   }
   measurementLocks: Record<string, number> = {};
+  /** Construction field text that uses `{variables}`, by field key. */
+  measurementFormulas: Record<string, string> = {};
+  /** Formulas confirmed for earlier points of the shape being drawn. */
+  private constructionFormulas: { key: string; formula: string; unit: UnitMode }[] = [];
+  /** Report a variable that was used once in a field that cannot stay linked. */
+  noteUsedOnce(formulas: string[], fields: string[]) {
+    const names = [...new Set(formulas.flatMap((f) => formulaReferences(f)))].map((n) => `{${n}}`).join(", ");
+    if (!names) return;
+    this.message = `Used ${names} once: ${fields.join(", ")} does not stay linked to variables`;
+    this.notify();
+  }
   get measurementFields() {
     if (!this.pending.length || this.mode === "select" || this.mode === "text")
       return [];
@@ -2410,7 +2468,10 @@ export class Controller {
       this.notify();
       return;
     }
+    for (const [key, formula] of Object.entries(this.measurementFormulas))
+      if (key in this.measurementLocks) this.constructionFormulas.push({ key, formula, unit: this.units });
     this.measurementLocks = {};
+    this.measurementFormulas = {};
     if (isCurveMode(this.mode)) {
       if (!this.pending.length || distance(p, this.pending.at(-1)!) > 1e-9) {
         this.pending.push(p);
@@ -2471,11 +2532,27 @@ export class Controller {
   beginProperty() {
     if (this.selectionLocked) return;
     if (this.transformTool || this.stitchMode || this.booleanOperation) return;
+    this.openPropertySession();
+  }
+  private openPropertySession() {
     if (!this.propertySession)
       this.propertySession = {
         original: this.pendingDocument ?? this.document,
         next: this.pendingDocument ?? this.document,
+        epoch: this.projectEpoch,
       };
+  }
+  /**
+   * Variables are project data: editing them ignores object selection locks, but a tool
+   * session (transform, stitching, boolean, array, path copy, offset) must be applied or
+   * cancelled first so the tool never works from a document that changes underneath it.
+   */
+  get canEditVariables() {
+    return this.ready && !(this.transformTool || this.stitchMode || this.booleanOperation ||
+      this.array || this.pathCopy || this.offsetActive);
+  }
+  beginVariableEdit() {
+    if (this.canEditVariables) this.openPropertySession();
   }
   async finishProperty(cancel = false) {
     const session = this.propertySession;
@@ -2483,8 +2560,45 @@ export class Controller {
     this.propertySession = null;
     this.previewId++;
     this.preview = null;
-    if (!cancel) await this.commit(session.next);
-    else this.notify();
+    // A project replaced during the edit (new, open, restored) must not be overwritten.
+    if (!cancel && session.epoch === this.projectEpoch) {
+      const commit = this.commit(session.next);
+      this.settling = commit;
+      this.settlingEdit = true;
+      try { await commit; }
+      finally { if (this.settling === commit) this.settlingEdit = false; }
+    } else this.notify();
+  }
+  private settling: Promise<unknown> = Promise.resolve();
+  private settlingEdit = false;
+  /**
+   * Tools can be chosen while a just-finished edit commits: their start waits for it.
+   * Without this, the click that ends an edit would find its tool disabled.
+   */
+  get toolIdle() {
+    return !this.busy || this.settlingEdit;
+  }
+  /**
+   * Tools snapshot the document when they start. While an edit is open or committing,
+   * start the tool once it has settled instead. Returns true when deferred.
+   */
+  private deferUntilSettled(start: () => void) {
+    if (!this.unsettled) return false;
+    void this.settled().then(start);
+    return true;
+  }
+  /** True while an edit is open or its commit is still running. */
+  get unsettled() {
+    return !!this.propertySession || this.settlingEdit;
+  }
+  /** Finish any property or variable edit, including a commit already in flight. */
+  async settled() {
+    if (this.propertySession) await this.finishProperty();
+    await this.settling;
+  }
+  /** Close an open property or variable edit before the tool state changes. */
+  private settleProperty() {
+    if (this.propertySession) void this.finishProperty();
   }
 
   get canEditCorners() {
@@ -2538,13 +2652,13 @@ export class Controller {
     });
   }
   canStartTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
-    return !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length &&
+    return !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length &&
       !this.selectionLocked && this.selected.every(id=>!this.isHidden(id)) &&
       (tool !== "corner" || this.active.every(shape=>cornerPoints(shape).length > 0));
   }
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+    if (this.unsettled) await this.settled();
     if (!this.canStartTransform(tool)) return;
-    if (this.propertySession) await this.finishProperty();
     this.cancel();
     this.tool = "select";
     this.mode = "select";
@@ -2908,8 +3022,8 @@ export class Controller {
   }
   array: ArraySettings | null = null;
   async activateArray(kind: ArrayKind) {
+    if (this.unsettled) await this.settled();
     if (!this.canStartTransform("move")) return;
-    if (this.propertySession) await this.finishProperty();
     this.cancel();
     this.beginToolSelection();
     const box = bounds(this.active);
@@ -2995,8 +3109,9 @@ export class Controller {
   }
   pathCopy: { source: string; path: string; picker: 'source' | 'path' | null; mode: 'spacing' | 'count'; spacing: number; count: number; rotate: boolean; error: string } | null = null;
   private pathCopySelection: string[] = [];
-  get canCopyAlongPath() { return !this.segmentTransform && this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && !this.busy; }
+  get canCopyAlongPath() { return !this.segmentTransform && this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && this.toolIdle; }
   activatePathCopy() {
+    if (this.deferUntilSettled(() => this.activatePathCopy())) return;
     if (!this.canCopyAlongPath) return;
     const source = this.active[0]?.id ?? "";
     this.cancel();
@@ -3082,12 +3197,12 @@ export class Controller {
   }
   get canBoolean() {
     return (
-      !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
+      !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
     );
   }
   get canJoin() {
     return (
-      !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
+      !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
     );
   }
   setBooleanPicker(picker: "target" | "cutters") {
@@ -3101,6 +3216,7 @@ export class Controller {
     this.refreshBoolean();
   }
   activateBoolean(operation: BooleanOperation) {
+    if (this.deferUntilSettled(() => this.activateBoolean(operation))) return;
     if (!(operation === "union" ? this.canJoin : this.canBoolean) || this.busy)
       return;
     const ids = this.document.shapes
@@ -3239,6 +3355,8 @@ export class Controller {
     this.notify();
   }
   cancel() {
+    this.settleProperty();
+    this.usedOnce = null;
     const segmentReturn = this.segmentTransform;
     this.segmentTransform = null;
     if (this.toolSelection) {
@@ -3292,6 +3410,8 @@ export class Controller {
     this.stitchError = "";
     this.guideDrag = null;
     this.measurementLocks = {};
+    this.measurementFormulas = {};
+    this.constructionFormulas = [];
     this.transformGeneration++;
     this.transformDraft = null;
     this.transformError = "";
@@ -3936,6 +4056,8 @@ export class Controller {
     if (this.smartGuides.length) this.snapTarget = this.cursor;
     this.notify();
   }
+  // Gestures start from a commit still in flight (such as an edit just left by clicking
+  // the canvas), so they never overwrite it with an older document.
   pointerDown(
     pixel: Point,
     button: number,
@@ -4073,7 +4195,7 @@ export class Controller {
         kind: "pan",
         start: pixel,
         end: pixel,
-        original: this.document,
+        original: this.pendingDocument ?? this.document,
         selection: [],
         pivot: raw,
         pan: { ...this.pan },
@@ -4122,14 +4244,15 @@ export class Controller {
     if (this.segmentMode && !this.transformTool) {
       const hit = this.segmentAtPoint(raw);
       const current = this.segmentSelection;
-      const gesture = { start: raw, end: raw, original: this.document, selection: [], pivot: raw };
+      const base = this.pendingDocument ?? this.document;
+      const gesture = { start: raw, end: raw, original: base, selection: [], pivot: raw };
       if (alt) {
         // Alt-click inserts an anchor, as in object selection.
         const shape = this.segmentTargets().slice().reverse()
           .find(s => this.segmentEditable(s) && !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom, this.units));
         const next = shape && insertAnchor(shape, raw, 8 / this.zoom);
         if (shape && next)
-          void this.commit({ ...this.document, shapes: this.document.shapes.map(s => s.id === shape.id ? next : s) });
+          void this.commit({ ...base, shapes: base.shapes.map(s => s.id === shape.id ? next : s) });
         return;
       }
       if (hit) {
@@ -4177,7 +4300,7 @@ export class Controller {
         shapeId: handle.shapeId,
         start: raw,
         end: raw,
-        original: this.preview ?? this.document,
+        original: this.preview ?? this.pendingDocument ?? this.document,
         selection: [...this.selected],
         pivot: { ...this.transformPivot },
         axis: handle.axis ?? this.transformAxis,
@@ -4210,7 +4333,7 @@ export class Controller {
           kind: "move",
           start: raw,
           end: raw,
-          original: this.preview ?? this.document,
+          original: this.preview ?? this.pendingDocument ?? this.document,
           selection: [...this.selected],
           pivot: raw,
           axis: this.transformAxis,
@@ -4224,7 +4347,7 @@ export class Controller {
         kind: "marquee",
         start: raw,
         end: raw,
-        original: this.document,
+        original: this.pendingDocument ?? this.document,
         selection,
         pivot: raw,
         crossing: ctrl,
@@ -4787,9 +4910,10 @@ export class Controller {
         shape.handles = this.pendingHandles.slice(0, points.length);
       shape.id = crypto.randomUUID();
       shape.name = `${isCurveMode(this.mode) || isIndicator(this.mode) ? labels[this.mode] : shape.kind[0].toUpperCase() + shape.kind.slice(1)} ${this.document.shapes.length + 1}`;
+      const linked = this.linkConstruction(shape);
       const next = {
         ...this.document,
-        shapes: [...this.document.shapes, shape],
+        shapes: [...this.document.shapes, linked],
       };
       parseProject(JSON.stringify(this.normalizeTree(next)));
       this.pending = [];
@@ -4804,12 +4928,49 @@ export class Controller {
         if (!success) return;
         if (this.document.shapes.some((s) => s.id === shape.id))
           this.selected = [shape.id];
+        const once = this.usedOnce;
+        this.usedOnce = null;
         this.message = "Ready";
+        if (once) this.noteUsedOnce(once.formulas, once.fields);
         this.notify();
       });
     } catch (e) {
       this.fail(e);
     }
+  }
+  /**
+   * Link construction fields typed with `{variables}` to the matching property of the new
+   * shape. A link is kept only when it reproduces the drawn value; other fields used the
+   * value once and are reported.
+   */
+  private usedOnce: { formulas: string[]; fields: string[] } | null = null;
+  private linkConstruction(shape: Shape): Shape {
+    const formulas = this.constructionFormulas;
+    this.constructionFormulas = [];
+    this.usedOnce = null;
+    if (!formulas.length) return shape;
+    const target: Record<string, PropertyId> = {
+      Width: this.mode === "size-square" ? "indicatorSize" : "width",
+      Height: this.mode === "size-square" ? "indicatorSize" : "height",
+      Radius: "radius", Diameter: "radius", Sweep: "sweep", Offset: "measurementOffset",
+    };
+    const { values } = resolveVariables(this.document.variables);
+    let next = shape;
+    const once: typeof formulas = [];
+    for (const item of formulas) {
+      const property = target[item.key];
+      const expression = item.key === "Diameter" ? `(${item.formula})/2` : item.formula;
+      const binding = property && { property, expression, unit: bindingUnit(item.unit) };
+      const value = binding ? evaluateBinding(binding, values) : null;
+      const current = property ? getProperty(next, property) : null;
+      const kept = binding && value !== null && current !== null &&
+        !next.bindings?.some((b) => b.property === property) &&
+        Math.abs(current - value) <= 1e-6 * Math.max(1, Math.abs(value));
+      if (kept) next = withBinding(next, property, binding);
+      else once.push(item);
+    }
+    this.usedOnce = once.length ? { formulas: once.map((i) => i.formula), fields: [...new Set(once.map((i) => i.key))] } : null;
+    return next;
   }
   async toggleAnchorSmooth(id: string, index: number) {
     if (this.gesture || this.transformTool || this.busy) return;
@@ -4826,31 +4987,115 @@ export class Controller {
     if (next !== shape) await this.edit(id, shape.kind === "compound" ? {contours:next.contours} : { handles: next.handles });
   }
   async edit(id: string, changes: Partial<Shape>) {
-    if (this.booleanOperation || this.pathCopy || this.array) return;
-    if (this.selectionLocked) return;
-    if (this.stitchMode) return;
-    const source =
-      this.propertySession?.next ?? this.pendingDocument ?? this.document;
+    if (!this.canEditProperties) return;
+    const source = this.variableDocument;
+    await this.applyPropertyDocument(() => ({
+      ...source,
+      shapes: source.shapes.map((s) => (s.id === id ? applyChanges(s, changes) : s)),
+    }));
+  }
+  private get canEditProperties() {
+    return !(this.booleanOperation || this.pathCopy || this.array || this.selectionLocked || this.stitchMode);
+  }
+  /**
+   * Set a derived property from a field. A formula that uses variables links the property;
+   * a plain value removes an existing link. `unit` is the unit the formula was typed in.
+   */
+  async editProperty(
+    id: string,
+    property: PropertyId,
+    value: number,
+    formula: string | null,
+    unit: UnitMode,
+    options: { aspectLocked?: boolean } = {},
+  ) {
+    if (!this.canEditProperties) return;
+    const source = this.variableDocument;
+    const shape = source.shapes.find((s) => s.id === id);
+    if (!shape) return;
+    const changes = propertyChanges(shape, property, value, options);
+    if (!changes) return;
+    let linking = !!formula && formulaReferences(formula).length > 0;
+    // An image size link remembers whether the aspect ratio was locked when it was made.
+    const keepAspect = shape.kind === "image" && (property === "width" || property === "height") &&
+      (options.aspectLocked ?? true) ? { keepAspect: true } : {};
+    if (linking && !this.linksEnabled) this.noteUsedOnce([formula!], [PROPERTIES[property].label]);
+    // A curve's width and height are world bounding-box sizes: resizing a rotated curve
+    // also changes its angle, so size and rotation links on one curve cannot both hold.
+    const sizes = ["width", "height"], curve = shape.kind === "curve" || shape.kind === "control-curve";
+    const conflict = curve && (shape.bindings ?? []).some((b) =>
+      property === "rotation" ? sizes.includes(b.property) : sizes.includes(property) && b.property === "rotation");
+    if (linking && this.linksEnabled && conflict) {
+      linking = false;
+      this.message = `A curve cannot link both its ${property === "rotation" ? "size" : property} and rotation: used ${formulaReferences(formula!).map((n) => `{${n}}`).join(", ")} once`;
+      this.notify();
+    }
+    const linked = withBinding(
+      applyChanges(shape, clampFillets(shape, changes)),
+      property,
+      linking && this.linksEnabled
+        ? { property, expression: formula!.trim(), unit: bindingUnit(unit), ...keepAspect }
+        : null,
+    );
+    await this.applyPropertyDocument(() => ({
+      ...source,
+      shapes: source.shapes.map((s) => (s.id === id ? linked : s)),
+    }));
+  }
+  /**
+   * Change project variables and update every linked property in one history step.
+   * Returns a message instead of applying a change that a linked object cannot take.
+   */
+  async updateVariables(change: (doc: Doc) => Doc): Promise<string | null> {
+    if (!this.canEditVariables) return "Apply or cancel the active tool to edit variables";
+    const changed = change(this.variableDocument);
+    const { errors } = resolveVariables(changed.variables);
+    if (errors.size) {
+      const [id, message] = [...errors][0];
+      return `${changed.variables?.find((v) => v.id === id)?.name ?? "Variable"}: ${message}`;
+    }
+    const { doc, problems } = recompute(changed, (id) => this.isLocked(id));
+    if (problems.length) return problems[0].message;
+    let failed: string | null = null;
+    await this.applyPropertyDocument(() => doc, (error) => {
+      failed = error instanceof Error ? error.message : String(error);
+    });
+    return failed;
+  }
+  /**
+   * Apply a variable change to the open edit immediately, without a preview round trip.
+   * Used when an edit is about to be committed, such as a rename on leaving a row; the
+   * commit validates it.
+   */
+  stageVariables(change: (doc: Doc) => Doc): string | null {
+    const session = this.propertySession;
+    if (!session || !this.canEditVariables) return "Apply or cancel the active tool to edit variables";
+    const changed = change(session.next);
+    const { errors } = resolveVariables(changed.variables);
+    if (errors.size) {
+      const [id, message] = [...errors][0];
+      return `${changed.variables?.find((v) => v.id === id)?.name ?? "Variable"}: ${message}`;
+    }
+    const { doc, problems } = recompute(changed, (id) => this.isLocked(id));
+    if (problems.length) return problems[0].message;
     try {
-      const next = parseProject(
-        JSON.stringify({
-          ...source,
-          shapes: source.shapes.map((s) => {
-            if (s.id !== id) return s;
-            const updated = { ...s, ...changes };
-            return s.kind === "text" &&
-              (changes.fontSize !== undefined || changes.text !== undefined || changes.fontFamily !== undefined || changes.bold !== undefined || changes.italic !== undefined || changes.underline !== undefined || changes.strikethrough !== undefined || changes.textAlign !== undefined || changes.lineSpacing !== undefined)
-              ? resizeText(updated)
-              : updated;
-          }),
-        }),
-      );
+      session.next = parseProject(JSON.stringify(this.syncTextBoxes(doc)));
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    return null;
+  }
+  /** Preview inside a property session, otherwise commit as one history step. */
+  private async applyPropertyDocument(build: () => Doc, onError?: (error: unknown) => void) {
+    try {
+      const next = parseProject(JSON.stringify(this.syncTextBoxes(build())));
       if (this.propertySession) {
-        this.propertySession.next = next;
+        const session = this.propertySession,
+          previous = { next: session.next, preview: this.preview };
+        session.next = next;
         this.preview = next;
         this.notify();
-        const session = this.propertySession,
-          revision = this.revision,
+        const revision = this.revision,
           token = ++this.previewId;
         const result = await this.core.request(
           "preview",
@@ -4859,6 +5104,12 @@ export class Controller {
         ).catch((error) => {
           // A committed or superseded field can invalidate an in-flight preview.
           if (this.propertySession !== session || token !== this.previewId || this.revision !== revision) return null;
+          // The core rejected this state: keep the session on its last valid document.
+          if (session.next === next) {
+            session.next = previous.next;
+            this.preview = previous.preview;
+            this.notify();
+          }
           throw error;
         });
         if (
@@ -4870,9 +5121,13 @@ export class Controller {
           this.preview = result.document;
           this.notify();
         }
-      } else await this.commit(next);
+      } else if (!(await this.commit(next))) {
+        // commit() reports its own failure in the status bar; callers still need to know.
+        onError?.(new Error(this.message));
+      }
     } catch (e) {
-      this.fail(e);
+      if (onError) onError(e);
+      else this.fail(e);
     }
   }
   delete() {

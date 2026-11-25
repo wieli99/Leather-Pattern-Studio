@@ -18,12 +18,16 @@ export function measureText(text: string, size: number, shape: Partial<Shape> = 
   };
 }
 
-export function resizeText(shape: Shape): Shape {
-  const layout = measureText(shape.text ?? "", shape.fontSize ?? 5, shape);
+/**
+ * Fit the box to the shown text. `shown` resolves `{name}` placeholders; the stored text
+ * keeps the template.
+ */
+export function resizeText(shape: Shape, shown = shape.text ?? ""): Shape {
+  const layout = measureText(shown, shape.fontSize ?? 5, shape);
   const anchor = shape.points[0];
   return {
     ...shape,
-    text: layout.text,
+    text: (shape.text ?? "").replace(/\r\n?/g, "\n"),
     transform: shapeMatrix(shape),
     rotation: 0,
     points: [anchor, { x: anchor.x + layout.width, y: anchor.y + layout.height }],

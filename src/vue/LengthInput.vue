@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { editableNumber, parseExpression } from "../model/expression";
-import { computed, ref, watch } from "vue";
+import { editableNumber, formulaReferences } from "../model/expression";
+import { editor } from "../editor/instance";
+import { computed, onBeforeUnmount, ref, useAttrs, watch } from "vue";
 import { useEditor } from "./useEditor";
-import { editableLength, formatLength, parseLength } from "../model/units";
+import { editableLength, formatLength } from "../model/units";
+import { parseFieldValue } from "../model/variables";
+import { numericReaders } from "./numericWheel";
 defineOptions({ inheritAttrs: false });
 const props = withDefaults(defineProps<{
   scalar?: boolean;
@@ -19,6 +22,7 @@ const props = withDefaults(defineProps<{
   clamp?: boolean;
   step?: number;
 }>(), { wheel: true });
+const attrs = useAttrs();
 const emit = defineEmits<{ commit: [number]; invalid: [] }>();
 const e = useEditor();
 const inputUnits = computed(() => props.units ?? e.value.units);
@@ -28,6 +32,17 @@ const focused = ref(false),
 let initial = "";
 let lastValid = props.value;
 watch(() => props.value, value => { if (Number.isFinite(value)) lastValid = value; });
+/** Variables evaluate here too; these fields keep only the resulting number. */
+function evaluate(text: string): number | null {
+  return parseFieldValue(text, props.scalar ? "number" : inputUnits.value, e.value.variableScope.values);
+}
+let inputElement: HTMLInputElement | null = null;
+function register(el: unknown) {
+  if (inputElement) numericReaders.delete(inputElement);
+  inputElement = el as HTMLInputElement | null;
+  if (inputElement) numericReaders.set(inputElement, evaluate);
+}
+onBeforeUnmount(() => { if (inputElement) numericReaders.delete(inputElement); });
 const editable = (value: number) => props.scalar ? editableNumber(value) : editableLength(value, inputUnits.value);
 watch(
   () => inputUnits.value,
@@ -50,6 +65,7 @@ function focus(event: FocusEvent) {
 }
 function confirm() {
   commit();
+  noteVariables();
   if (props.clamp && !invalid.value) {
     initial = draft.value =
       inputUnits.value === "mm"
@@ -59,7 +75,7 @@ function confirm() {
 }
 function commit() {
   if (!focused.value || (draft.value === initial && !invalid.value)) return;
-  const value = props.scalar ? parseExpression(draft.value) : parseLength(draft.value, inputUnits.value);
+  const value = evaluate(draft.value);
   invalid.value =
     value === null ||
     (props.integer && !Number.isInteger(value)) ||
@@ -76,15 +92,23 @@ function restoreInvalid() {
   if (invalid.value && Number.isFinite(lastValid)) emit("commit", lastValid);
   invalid.value = false;
 }
+/** These fields keep only the number, so a variable is reported as used once. */
+function noteVariables() {
+  if (!invalid.value && formulaReferences(draft.value).length)
+    editor.noteUsedOnce([draft.value], [String(attrs["aria-label"] ?? "This field")]);
+}
 function blur() {
   commit();
+  noteVariables();
   restoreInvalid();
   focused.value = false;
 }
 </script>
 <template>
   <input
+    :ref="register"
     v-numeric-wheel="wheel === false ? false : scalar ? 'number' : inputUnits"
+    v-variable-hints="'number'"
     :data-wheel-nonzero="nonZero ? 'true' : undefined"
     v-bind="$attrs"
     type="text"

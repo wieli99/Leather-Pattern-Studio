@@ -1,5 +1,14 @@
+/** Looks up a `{name}` variable; null rejects the formula. */
+export type ExpressionResolver = (name: string) => number | null;
+const REFERENCE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}/;
 /** Small arithmetic grammar: never executes user text as JavaScript. */
-export function parseExpression(text: string, mixedFractions = false): number | null {
+export function parseExpression(
+  text: string,
+  mixedFractions = false,
+  resolve?: ExpressionResolver,
+  /** False checks syntax only: values may divide by zero or overflow. */
+  checkValues = true,
+): number | null {
   if (text.length > 2000) return null;
   let pos = 0, depth = 0;
   const space = () => { while (/\s/.test(text[pos] ?? '') && pos < text.length) pos++; };
@@ -17,6 +26,15 @@ export function parseExpression(text: string, mixedFractions = false): number | 
       if (text[pos++] !== ')') throw Error();
     } else {
       const rest = text.slice(pos);
+      const name = resolve && REFERENCE.exec(rest);
+      if (name) {
+        const value = resolve(name[1]);
+        if (value === null) throw Error();
+        pos += name[0].length;
+        depth--;
+        if (checkValues && !Number.isFinite(value)) throw Error();
+        return value;
+      }
       const mixed = mixedFractions && /^(\d+)\s+(\d+)\s*\/\s*(\d+)/.exec(rest);
       const literal = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest);
       if (mixed) {
@@ -30,7 +48,7 @@ export function parseExpression(text: string, mixedFractions = false): number | 
       }
     }
     depth--;
-    if (!Number.isFinite(result)) throw Error();
+    if (checkValues && !Number.isFinite(result)) throw Error();
     return result;
   }
   function product(): number {
@@ -38,9 +56,9 @@ export function parseExpression(text: string, mixedFractions = false): number | 
     space();
     while (text[pos] === '*' || text[pos] === '/') {
       const op = text[pos++], right = primary();
-      if (op === '/' && right === 0) throw Error();
+      if (checkValues && op === '/' && right === 0) throw Error();
       value = op === '*' ? value * right : value / right;
-      if (!Number.isFinite(value)) throw Error();
+      if (checkValues && !Number.isFinite(value)) throw Error();
       space();
     }
     return value;
@@ -51,7 +69,7 @@ export function parseExpression(text: string, mixedFractions = false): number | 
     while (text[pos] === '+' || text[pos] === '-') {
       const op = text[pos++], right = product();
       value = op === '+' ? value + right : value - right;
-      if (!Number.isFinite(value)) throw Error();
+      if (checkValues && !Number.isFinite(value)) throw Error();
       space();
     }
     return value;
@@ -66,4 +84,14 @@ export function parseExpression(text: string, mixedFractions = false): number | 
 export function editableNumber(value: number): string {
   const integer = Math.round(value);
   return String(Math.abs(value - integer) < 1e-10 ? integer : Number(value.toPrecision(15)));
+}
+
+/**
+ * The one tokenizer for `{name}` references and `{{`/`}}` escapes, read left to right.
+ * The document core uses the same rules.
+ */
+export const REFERENCE_TOKENS = /\{\{|\}\}|\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+/** Variable names written as `{name}` in a formula or template. */
+export function formulaReferences(text: string): string[] {
+  return [...text.matchAll(REFERENCE_TOKENS)].flatMap((m) => (m[1] ? [m[1]] : []));
 }

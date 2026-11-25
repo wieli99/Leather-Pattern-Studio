@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { editableNumber, parseExpression } from "../model/expression";
-import { editableLength, parseLength } from "../model/units";
+import { editableNumber, formulaReferences } from "../model/expression";
+import { editableLength } from "../model/units";
+import { parseFieldValue } from "../model/variables";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
 import { editor as defaultEditor } from "../editor/instance";
@@ -149,6 +150,7 @@ function input(item: (typeof items.value)[number], event: Event) {
   if (item.key) {
     if (!draft.value.trim()) {
       delete editor.measurementLocks[item.key];
+      delete editor.measurementFormulas[item.key];
       if (item.key === "Width") delete editor.measurementLocks._x;
       if (item.key === "Height") delete editor.measurementLocks._y;
     } else {
@@ -161,13 +163,15 @@ function input(item: (typeof items.value)[number], event: Event) {
         editor.measurementLocks[signKey] ??=
           Math.sign(editor.cursor[axis] - editor.pending.at(-1)![axis]) || 1;
       }
-      editor.measurementLocks[item.key] = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
+      if (formulaReferences(draft.value).length) editor.measurementFormulas[item.key] = draft.value.trim();
+      else delete editor.measurementFormulas[item.key];
+      editor.measurementLocks[item.key] = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
     }
     editor.notify();
   }
 }
 async function confirm(item: (typeof items.value)[number]) {
-  const value = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
+  const value = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
   const signedHeight = item.key === "Height" &&
     ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
     editor.pending.length === 2;
@@ -205,10 +209,11 @@ async function confirm(item: (typeof items.value)[number]) {
       e: center.x * (1 - factor),
       f: center.y * (1 - factor),
     });
-    await editor.commit({
+    const formula = draft.value;
+    if (await editor.commit({
       ...editor.document,
       shapes: editor.document.shapes.map((s) => (s.id === shape.id ? next : s)),
-    });
+    })) editor.noteUsedOnce([formula], ["Edge length"]);
   }
   cancel();
 }
@@ -265,6 +270,7 @@ function style(item: (typeof items.value)[number]) {
       }}</span>
       <input
         v-numeric-wheel="['Angle', 'Sweep'].includes(item.key) ? 'number' : editor.units"
+        v-variable-hints="'number'"
         :readonly="!!editor.gesture || (!item.key && !item.shape)"
         type="text"
         step="any"

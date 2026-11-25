@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { parseProject } from "./project";
 test("empty project round-trips", () =>
   expect(parseProject('{"version":3,"shapes":[]}')).toEqual({
-    version: 24,
+    version: 25,
     printLayouts: [],
     objectTree: [],
     stitchGroups: [],
@@ -45,7 +45,7 @@ const line = {
 };
 test("migrates v2 without changing coordinates", () => {
   const d = parseProject(JSON.stringify({ version: 2, shapes: [line] }));
-  expect(d.version).toBe(24);
+  expect(d.version).toBe(25);
   expect(d.shapes[0].points).toEqual(line.points);
 });
 test.each([
@@ -81,7 +81,7 @@ test("v3 migration retains precision, rotation, and inactive stitch metadata", (
     legacyStitch: { offset: 3, spacing: 2 },
   };
   const project = parseProject(JSON.stringify({ version: 3, shapes: [shape] }));
-  expect(project.version).toBe(24);
+  expect(project.version).toBe(25);
   expect(project.shapes[0].points).toEqual(shape.points);
   expect(project.shapes[0].rotation).toBeCloseTo(shape.rotation);
   expect(project.shapes[0].legacyStitch).toEqual(shape.legacyStitch);
@@ -117,7 +117,7 @@ test("v5 retains exact matrices and metadata, rejects singular and nonfinite tra
     ).toThrow();
   expect(
     parseProject(JSON.stringify({ version: 4, shapes: [line] })).version,
-  ).toBe(24);
+  ).toBe(25);
 });
 
 test("rejects links referencing missing stitch lines", () => {
@@ -146,7 +146,21 @@ test("SVG image data survives project migration and round trips", () => {
   const image = "data:image/svg+xml;base64,PHN2Zy8+";
   const input = {version:16,shapes:[{id:"svg",name:"SVG",kind:"image",image,points:[{x:0,y:0},{x:20,y:10}],radius:0,rotation:0}]};
   const migrated = parseProject(JSON.stringify(input));
-  expect(migrated.version).toBe(24);
+  expect(migrated.version).toBe(25);
   expect(migrated.shapes[0].image).toBe(image);
   expect(parseProject(JSON.stringify(migrated))).toEqual(migrated);
+});
+test("format 25 keeps variables and property links; format 24 needs neither", () => {
+  const shape = { id: "a", kind: "rectangle", name: "{brand} card", points: [{ x: 0, y: 0 }, { x: 86, y: 54 }], radius: 0, rotation: 0,
+    bindings: [{ property: "width", expression: "{card_w}", unit: "mm" }] };
+  const variables = [{ id: "1", name: "card_w", kind: "number", value: "86" }, { id: "2", name: "brand", kind: "text", value: "Acme" }];
+  const doc = parseProject(JSON.stringify({ version: 25, variables, shapes: [shape] }));
+  expect(doc.variables).toEqual(variables);
+  expect(doc.shapes[0].bindings).toEqual(shape.bindings);
+  expect(parseProject(JSON.stringify(doc))).toEqual(doc);
+  const old = parseProject(JSON.stringify({ version: 24, shapes: [{ ...shape, bindings: undefined }] }));
+  expect(old.variables).toBeUndefined();
+  expect(old.shapes[0].bindings).toBeUndefined();
+  expect(() => parseProject(JSON.stringify({ version: 25, variables: [{ ...variables[0], kind: "color" }], shapes: [] }))).toThrow();
+  expect(() => parseProject(JSON.stringify({ version: 25, shapes: [{ ...shape, bindings: [{ property: "width", expression: "a", unit: "cm" }] }] }))).toThrow();
 });

@@ -61,6 +61,10 @@ pub struct Shape {
     #[ts(optional)]
     pub stitch_parent_id: Option<String>,
     pub id: String,
+    /// Live links from derived properties to project-variable formulas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub bindings: Option<Vec<Binding>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub hidden: Option<bool>,
@@ -548,7 +552,179 @@ impl PrintLayout {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "lowercase")]
+pub enum VariableKind {
+    Number,
+    Text,
+}
+/// Named project value. Number values are unitless formulas; each property link records the
+/// unit it reads them in. Text values are literal strings used by `{name}` placeholders.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+pub struct Variable {
+    pub id: String,
+    pub name: String,
+    pub kind: VariableKind,
+    pub value: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+#[serde(rename_all = "lowercase")]
+pub enum BindingUnit {
+    Mm,
+    In,
+}
+/// A derived shape property kept equal to a formula over project variables.
+/// `unit` is the display unit the formula was typed in; literals use that unit.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
+pub struct Binding {
+    pub property: String,
+    pub expression: String,
+    pub unit: BindingUnit,
+    /// Image width/height links that also scale the other side, as when linked.
+    #[serde(
+        default,
+        rename = "keepAspect",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub keep_aspect: Option<bool>,
+}
+pub const BINDABLE_PROPERTIES: &[&str] = &[
+    "x",
+    "y",
+    "width",
+    "height",
+    "radius",
+    "sweep",
+    "rotation",
+    "strokeWidth",
+    "headSize",
+    "indicatorSize",
+    "fontSize",
+    "lineSpacing",
+    "measurementSections",
+    "measurementOffset",
+];
+const MAX_VARIABLES: usize = 500;
+const MAX_FORMULA: usize = 2000;
+fn valid_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    name.len() <= 64
+        && chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+/// Variable names written as `{name}` in a formula; `{{` and `}}` are literal braces.
+pub fn formula_references(text: &str) -> Vec<&str> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Same left-to-right rules as the editor: `{{` and `}}` are escapes.
+        if (bytes[i] == b'{' || bytes[i] == b'}') && bytes.get(i + 1) == Some(&bytes[i]) {
+            i += 2;
+            continue;
+        }
+        if bytes[i] == b'{' {
+            let start = i + 1;
+            let mut j = start;
+            while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'}' && valid_identifier(&text[start..j]) {
+                out.push(&text[start..j]);
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+fn validate_variables(doc: &Document) -> Result<(), String> {
+    let variables = doc.variables.as_deref().unwrap_or(&[]);
+    if variables.len() > MAX_VARIABLES {
+        return Err("Too many variables".into());
+    }
+    let mut ids = HashSet::new();
+    let mut numeric: HashMap<&str, &Variable> = HashMap::new();
+    let mut names = HashSet::new();
+    for v in variables {
+        if v.id.is_empty() || !ids.insert(v.id.as_str()) {
+            return Err("Duplicate variable".into());
+        }
+        if !valid_identifier(&v.name) {
+            return Err(format!("Invalid variable name {}", v.name));
+        }
+        if !names.insert(v.name.as_str()) {
+            return Err(format!("Duplicate variable name {}", v.name));
+        }
+        if v.value.len() > MAX_FORMULA {
+            return Err("Variable value is too long".into());
+        }
+        if v.kind != VariableKind::Text {
+            numeric.insert(v.name.as_str(), v);
+        }
+    }
+    let numeric_refs = |text: &str| -> Result<(), String> {
+        for name in formula_references(text) {
+            if !numeric.contains_key(name) {
+                return Err(format!("Unknown numeric variable {name}"));
+            }
+        }
+        Ok(())
+    };
+    for v in numeric.values() {
+        numeric_refs(&v.value)?;
+    }
+    // Reject reference cycles with a depth-first walk over numeric variables.
+    fn visit<'a>(
+        name: &'a str,
+        numeric: &HashMap<&'a str, &'a Variable>,
+        state: &mut HashMap<&'a str, u8>,
+    ) -> Result<(), String> {
+        match state.get(name) {
+            Some(2) => return Ok(()),
+            Some(1) => return Err(format!("Variable {name} refers to itself")),
+            _ => {}
+        }
+        state.insert(name, 1);
+        for next in formula_references(&numeric[name].value) {
+            visit(next, numeric, state)?;
+        }
+        state.insert(name, 2);
+        Ok(())
+    }
+    let mut state = HashMap::new();
+    for name in numeric.keys() {
+        visit(name, &numeric, &mut state)?;
+    }
+    for shape in &doc.shapes {
+        let mut seen = HashSet::new();
+        for b in shape.bindings.iter().flatten() {
+            if !BINDABLE_PROPERTIES.contains(&b.property.as_str()) {
+                return Err(format!("Property {} cannot be linked", b.property));
+            }
+            if !seen.insert(b.property.as_str()) {
+                return Err("Duplicate property link".into());
+            }
+            if b.expression.len() > MAX_FORMULA || formula_references(&b.expression).is_empty() {
+                return Err("Invalid property link".into());
+            }
+            numeric_refs(&b.expression)?;
+        }
+    }
+    Ok(())
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
+#[ts(export, export_to = "../../../src/generated/")]
 pub struct Document {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub variables: Option<Vec<Variable>>,
     #[serde(
         default,
         rename = "stitchTransfers",
@@ -824,6 +1000,7 @@ impl Document {
                     }
                     // Reuse all normal geometry, image and stitching validation in isolation.
                     Document {
+                        variables: self.variables.clone(),
                         stitch_presets: None,
                         stitch_transfers: None,
                         version: self.version,
@@ -884,12 +1061,14 @@ impl Document {
                 | 22
                 | 23
                 | 24
+                | 25
         ) {
             return Err(format!(
-                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24). Reload the application.",
+                "Unsupported document version {} (supported: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25). Reload the application.",
                 self.version
             ));
         }
+        validate_variables(self)?;
         if let Some(tree) = &self.object_tree {
             fn visit(
                 nodes: &[ObjectNode],
@@ -1463,10 +1642,11 @@ impl Default for Editor {
     fn default() -> Self {
         Self {
             document: Document {
+                variables: None,
                 stitch_presets: None,
                 stitch_transfers: None,
                 print_layouts: vec![],
-                version: 24,
+                version: 25,
                 shapes: vec![],
                 object_tree: Some(vec![]),
                 guides: vec![],
@@ -1486,7 +1666,7 @@ impl Editor {
         Self::default()
     }
     pub fn capabilities(&self) -> String {
-        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]})
+        serde_json::json!({"documentVersions":[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]})
             .to_string()
     }
     pub fn snapshot(&self) -> String {
@@ -1599,7 +1779,7 @@ impl Editor {
                     }
                 }
 
-                next.version = 24;
+                next.version = 25;
                 if op == "preview" {
                     return Ok(
                         serde_json::json!({"revision":self.revision,"document":next}).to_string(),
@@ -1762,7 +1942,7 @@ mod tests {
     #[test]
     fn stitch_history_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 24;
+        doc.version = 25;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -1874,7 +2054,7 @@ mod tests {
         let editor = Editor::default();
         assert!(editor
             .capabilities()
-            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]"));
+            .contains("[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]"));
         let mut doc = editor.document.clone();
         doc.version = 99;
         assert!(doc
@@ -1906,7 +2086,7 @@ mod tests {
     #[test]
     fn compound_contours_roundtrip_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 24;
+        doc.version = 25;
         let shape = &mut doc.shapes[0];
         shape.kind = Kind::Compound;
         let p = |x, y| Point { x, y };
@@ -1953,7 +2133,7 @@ mod tests {
     #[test]
     fn curves_roundtrip_validation_and_history() {
         let mut d: Document = serde_json::from_str(&sample()).unwrap();
-        d.version = 24;
+        d.version = 25;
         d.object_tree = Some(
             d.shapes
                 .iter()
@@ -2112,7 +2292,7 @@ mod tests {
     #[test]
     fn affine_roundtrip_history_and_validation() {
         let mut doc: Document = serde_json::from_str(&sample()).unwrap();
-        doc.version = 24;
+        doc.version = 25;
         doc.object_tree = Some(
             doc.shapes
                 .iter()
@@ -2238,7 +2418,7 @@ mod print_tests {
         let json = r#"{"version":23,"shapes":[{"id":"a","kind":"rectangle","name":"Visual fill","excludeFromDxf":true,"points":[{"x":0,"y":0},{"x":10,"y":10}],"radius":0,"rotation":0}]}"#;
         let mut editor = Editor::new();
         editor.execute("load", json, 0).unwrap();
-        assert_eq!(editor.document.version, 24);
+        assert_eq!(editor.document.version, 25);
         let persisted = serde_json::to_string(&editor.document).unwrap();
         assert!(persisted.contains(r#""excludeFromDxf":true"#));
         assert_eq!(
@@ -2247,13 +2427,130 @@ mod print_tests {
         );
     }
 
+    fn variable_doc(variables: serde_json::Value, bindings: serde_json::Value) -> Document {
+        serde_json::from_value(serde_json::json!({
+            "version": 25,
+            "variables": variables,
+            "shapes": [{"id":"a","kind":"rectangle","name":"{brand} card","points":[{"x":0,"y":0},{"x":10,"y":10}],"radius":0,"rotation":0,"bindings":bindings}]
+        }))
+        .unwrap()
+    }
+    #[test]
+    fn formula_references_read_braced_names() {
+        assert_eq!(
+            formula_references("1e-3 + {card_w}*2.5E+2 - ({t2}) + card"),
+            vec!["card_w", "t2"]
+        );
+        assert!(formula_references("(10+5)*2 {{x}} {1a}").is_empty());
+        assert_eq!(formula_references("{a}} }}{b}"), vec!["a", "b"]);
+    }
+    #[test]
+    fn validates_variables_and_links() {
+        let ok = variable_doc(
+            serde_json::json!([
+                {"id":"1","name":"card_w","kind":"number","value":"86"},
+                {"id":"2","name":"slot","kind":"number","value":"{card_w} + 2*{t}"},
+                {"id":"3","name":"t","kind":"number","value":"1.5"},
+                {"id":"4","name":"brand","kind":"text","value":"Acme (1+1)"}
+            ]),
+            serde_json::json!([{"property":"width","expression":"{slot}","unit":"mm"}]),
+        );
+        ok.validate().unwrap();
+        let cases = [
+            (
+                serde_json::json!([{"id":"1","name":"1bad","kind":"number","value":"1"}]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"},{"id":"2","name":"a","kind":"number","value":"1"}]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"},{"id":"1","name":"b","kind":"number","value":"1"}]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"{b}"},{"id":"2","name":"b","kind":"number","value":"{a}+1"}]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"{a}"}]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"{missing}"}]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"text","value":"x"},{"id":"2","name":"b","kind":"number","value":"{a}"}]),
+                serde_json::json!([]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
+                serde_json::json!([{"property":"points","expression":"{a}","unit":"mm"}]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
+                serde_json::json!([{"property":"width","expression":"2","unit":"mm"}]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
+                serde_json::json!([{"property":"width","expression":"{b}","unit":"mm"}]),
+            ),
+            (
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
+                serde_json::json!([{"property":"width","expression":"{a}","unit":"mm"},{"property":"width","expression":"{a}","unit":"in"}]),
+            ),
+        ];
+        for (variables, bindings) in cases {
+            assert!(
+                variable_doc(variables.clone(), bindings.clone())
+                    .validate()
+                    .is_err(),
+                "{variables} {bindings}"
+            );
+        }
+    }
+    #[test]
+    fn migrates_v24_and_records_variable_changes_in_one_step() {
+        let json = r#"{"version":24,"shapes":[{"id":"a","kind":"rectangle","name":"Card","points":[{"x":0,"y":0},{"x":10,"y":10}],"radius":0,"rotation":0}]}"#;
+        let mut editor = Editor::new();
+        editor.execute("load", json, 0).unwrap();
+        assert_eq!(editor.document.version, 25);
+        let original = editor.document.clone();
+        let mut next = original.clone();
+        next.variables = Some(vec![Variable {
+            id: "v".into(),
+            name: "w".into(),
+            kind: VariableKind::Number,
+            value: "20".into(),
+        }]);
+        next.shapes[0].points[1].x = 20.0;
+        next.shapes[0].bindings = Some(vec![Binding {
+            property: "width".into(),
+            expression: "{w}".into(),
+            unit: BindingUnit::Mm,
+            keep_aspect: None,
+        }]);
+        editor
+            .execute("commit", &serde_json::to_string(&next).unwrap(), 1)
+            .unwrap();
+        let persisted = serde_json::to_string(&editor.document).unwrap();
+        assert_eq!(serde_json::from_str::<Document>(&persisted).unwrap(), next);
+        editor.execute("undo", "null", 2).unwrap();
+        assert_eq!(editor.document, original);
+        assert!(!serde_json::to_string(&editor.document)
+            .unwrap()
+            .contains("variables"));
+    }
+
     #[test]
     fn old_projects_start_without_layouts_and_source_deletion_is_atomic() {
         let mut editor = Editor::new();
         editor
             .execute("load", r#"{"version":5,"shapes":[]}"#, 0)
             .unwrap();
-        assert_eq!(editor.document.version, 24);
+        assert_eq!(editor.document.version, 25);
         assert!(editor.document.print_layouts.is_empty());
         editor.execute("load", &project().to_string(), 1).unwrap();
         let original = editor.document.clone();

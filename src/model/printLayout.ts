@@ -413,7 +413,8 @@ export function unlinkPrintNode(
     return {
       ...item,
       snapshot: structuredClone({
-        shape:{...shape,stitchParentId:undefined},
+        // An unlinked print copy no longer follows variables.
+        shape:{...shape,stitchParentId:undefined,bindings:undefined},
         stitchGroups: stitchingOnPiece(doc,shape.id),
       }),
     };

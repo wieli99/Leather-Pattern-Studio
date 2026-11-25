@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { editableNumber, parseExpression } from './expression';
+import { editableNumber, formulaReferences, parseExpression } from './expression';
 
 describe('numeric formulas', () => {
   it.each([
@@ -21,5 +21,34 @@ describe('numeric formulas', () => {
     expect(editableNumber(5.00000000007)).toBe('5');
     expect(editableNumber(.1+.2)).toBe('0.3');
     expect(editableNumber(3.141592653589793)).toBe('3.14159265358979');
+  });
+});
+
+describe('formula variables', () => {
+  const resolve = (name: string) => ({ w: 10, t: 1.5 } as Record<string, number>)[name] ?? null;
+  it('resolves identifiers only when a resolver is given', () => {
+    expect(parseExpression('{w} + 2*{t}', false, resolve)).toBe(13);
+    expect(parseExpression('{w}')).toBeNull();
+    expect(parseExpression('w + 1', false, resolve)).toBeNull();
+    expect(parseExpression('{missing} + 1', false, resolve)).toBeNull();
+    expect(parseExpression('{w} {t}', false, resolve)).toBeNull();
+    expect(parseExpression('2{w}', false, resolve)).toBeNull();
+    expect(parseExpression('Math.PI', false, resolve)).toBeNull();
+    expect(parseExpression('1e-3*{w}', false, resolve)).toBe(.01);
+  });
+  it('lists references without exponents', () => {
+    expect(formulaReferences('1e-3 + {card_w}*2.5E+2 - ({t2}) + x')).toEqual(['card_w', 't2']);
+    expect(formulaReferences('(10+5)*2')).toEqual([]);
+  });
+});
+
+describe('reference tokens', () => {
+  it('reads references left to right like the document core', () => {
+    expect(formulaReferences('{a}} }}{b} {{c}}')).toEqual(['a', 'b']);
+  });
+  it('checks syntax without judging values', () => {
+    expect(parseExpression('{l}/({n}-1)', false, () => 1)).toBeNull();
+    expect(parseExpression('{l}/({n}-1)', false, () => 1, false)).not.toBeNull();
+    expect(parseExpression('{l}/(', false, () => 1, false)).toBeNull();
   });
 });
