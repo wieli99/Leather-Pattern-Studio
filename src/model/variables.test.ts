@@ -1,21 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
-  evaluateFormula, interpolate, nextVariableName, renameInFormula, renameInTemplate,
+  detectKind, evaluateFormula, interpolate, nextVariableName, parseFieldValue, renameInFormula, renameInTemplate,
   resolveVariables, templateReferences, variableNameError, type Variable,
 } from "./variables";
 
-const v = (name: string, kind: Variable["kind"], value: string, unit?: "mm" | "in"): Variable =>
-  ({ id: name, name, kind, value, ...(unit ? { unit } : {}) });
+const v = (name: string, kind: Variable["kind"], value: string): Variable => ({ id: name, name, kind, value });
 
 describe("project variables", () => {
-  it("resolves dependencies in any order and converts units", () => {
+  it("resolves dependencies in any order as plain numbers", () => {
     const { values, errors } = resolveVariables([
-      v("slot", "length", "card + 2*t"), v("card", "length", "3 1/2", "in"), v("t", "number", "1.5"),
+      v("slot", "number", "card + 2*t"), v("card", "number", "3 1/2"), v("t", "number", "1.5"),
       v("brand", "text", "Acme"),
     ]);
     expect(errors.size).toBe(0);
-    expect(values.get("card")?.value).toBeCloseTo(88.9, 10);
-    expect(values.get("slot")?.value).toBeCloseTo(91.9);
+    expect(values.get("card")).toEqual({ kind: "number", value: 3.5 });
+    expect(values.get("slot")).toEqual({ kind: "number", value: 6.5 });
     expect(values.get("brand")).toEqual({ kind: "text", value: "Acme" });
   });
   it("reports cycles, unknown names, text in formulas and bad formulas", () => {
@@ -25,17 +24,29 @@ describe("project variables", () => {
     ]);
     expect([...errors.keys()].sort()).toEqual(["a", "b", "c", "d", "e"]);
   });
-  it("evaluates formulas in the unit they were typed in", () => {
-    const { values } = resolveVariables([v("w", "length", "25.4"), v("n", "number", "2")]);
-    expect(evaluateFormula("w + 1", "length", "in", values)).toBeCloseTo(50.8);
-    expect(evaluateFormula("w + 1", "length", "mm", values)).toBeCloseTo(26.4);
-    expect(evaluateFormula("w / n", "number", "in", values)).toBeCloseTo(0.5);
+  it("reads variables in the unit a formula was typed in", () => {
+    const { values } = resolveVariables([v("w", "number", "2"), v("n", "number", "3")]);
+    expect(evaluateFormula("w + 1", "length", "in", values)).toBeCloseTo(76.2);
+    expect(evaluateFormula("w + 1", "length", "mm", values)).toBe(3);
+    expect(evaluateFormula("w * n", "number", "in", values)).toBe(6);
     expect(evaluateFormula("w + brand", "length", "mm", values)).toBeNull();
   });
+  it("detects numbers and text from the value", () => {
+    const list = [v("card_w", "number", "86"), v("brand", "text", "Acme")];
+    expect(detectKind("86", list)).toBe("number");
+    expect(detectKind("3 1/2", list)).toBe("number");
+    expect(detectKind("card_w*2", list)).toBe("number");
+    expect(detectKind("card_w", list)).toBe("number");
+    expect(detectKind("card_ww + 2", list)).toBe("number");
+    expect(detectKind("Acme", list)).toBe("text");
+    expect(detectKind("brand", list)).toBe("text");
+    expect(detectKind("Card 2", list)).toBe("text");
+    expect(detectKind("", list)).toBe("text");
+    expect(detectKind("card_w", list, "card_w")).toBe("text");
+  });
   it("interpolates placeholders with escapes", () => {
-    const { values } = resolveVariables([v("brand", "text", "Acme"), v("w", "length", "25.4"), v("n", "number", "3")]);
+    const { values } = resolveVariables([v("brand", "text", "Acme"), v("n", "number", "3")]);
     expect(interpolate("{brand} slot {{x}} n={n}", values)).toEqual({ text: "Acme slot {x} n=3", missing: [] });
-    expect(interpolate("{w}", values, "in-decimal").text).toBe("1 in");
     expect(interpolate("{nope} {brand}", values)).toEqual({ text: "{nope} Acme", missing: ["nope"] });
     expect(templateReferences("{{brand}} {n}")).toEqual(["n"]);
   });
@@ -54,14 +65,12 @@ describe("project variables", () => {
 });
 
 describe("evaluate-only fields", () => {
-  it("matches plain parsing and adds variables", async () => {
-    const { parseFieldValue } = await import("./variables");
-    const { values } = resolveVariables([v("w", "length", "25.4"), v("n", "number", "2")]);
+  it("matches plain parsing and adds variables in the field's unit", () => {
+    const { values } = resolveVariables([v("w", "number", "2"), v("n", "number", "3")]);
     expect(parseFieldValue("1 1/2", "in-fractional", values)).toBeCloseTo(38.1);
-    expect(parseFieldValue("w*n", "mm", values)).toBeCloseTo(50.8);
-    expect(parseFieldValue("w*n", "in-decimal", values)).toBeCloseTo(50.8);
-    expect(parseFieldValue("n*45", "number", values)).toBe(90);
-    expect(parseFieldValue("w", "number", values, "in-decimal")).toBe(1);
+    expect(parseFieldValue("w*n", "mm", values)).toBe(6);
+    expect(parseFieldValue("w*n", "in-decimal", values)).toBeCloseTo(152.4);
+    expect(parseFieldValue("n*45", "number", values)).toBe(135);
     expect(parseFieldValue("1 1/2", "number", values)).toBeNull();
   });
 });

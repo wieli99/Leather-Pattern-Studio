@@ -182,8 +182,7 @@ export function deleteVariable(doc: Doc, id: string): Doc {
     if (v.kind === "text" || !formulaReferences(v.value).includes(target.name)) return v;
     const value = values.get(v.name);
     if (!value || value.kind === "text") return v;
-    const inches = v.unit === "in" && v.kind === "length";
-    return { ...v, value: editableNumber(inches ? value.value / 25.4 : value.value) };
+    return { ...v, value: editableNumber(value.value) };
   };
   const only = new Map<string, VariableValue>(resolved ? [[target.name, resolved]] : []);
   const template = (text: string) => {

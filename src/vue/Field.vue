@@ -43,7 +43,7 @@ function unitsFor(text: string): UnitMode {
 const format = (v: string | number) =>
   typeof v === "number"
     ? props.dimension ? formatLength(v, e.value.units, props.precision) : String(+v.toFixed(props.precision))
-    : interpolate(v, values(), e.value.units).text;
+    : interpolate(v, values()).text;
 const draft = ref(format(props.value)),
   invalid = ref(false),
   editing = ref(false);
@@ -71,13 +71,12 @@ function evaluate(text: string): number | null {
   const mode = unitsFor(text);
   const result = parseExpression(text, !!props.dimension && mode !== "mm", (name) => {
     const v = values().get(name);
-    if (!v || v.kind === "text") return null;
-    return v.kind === "length" ? (mode === "mm" ? v.value : v.value / 25.4) : v.value;
+    return v && v.kind === "number" ? v.value : null;
   });
   if (result === null) return null;
   return props.dimension ? toMillimetres(result, mode) : result;
 }
-const variables = useVariableSuggestions(values, ["length", "number"]);
+const variables = useVariableSuggestions(values, ["number"]);
 const listId = `field-variables-${useId()}`;
 let inputElement: HTMLInputElement | null = null;
 function register(el: unknown) {

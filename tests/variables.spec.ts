@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { test, expect, type Page } from "@playwright/test";
+import { manualScreenshot } from "./manual-capture";
 
 async function rectangle(page: Page) {
   await page.goto("/");
@@ -19,17 +20,19 @@ async function openVariables(page: Page) {
   if ((await pin.getAttribute("aria-pressed")) !== "true") await pin.click();
   return dialog;
 }
-async function addVariable(page: Page, name: string, value: string, kind?: "Length" | "Number" | "Text") {
+/** Fill the always-present empty row; Enter in the name moves to the value. */
+async function addVariable(page: Page, name: string, value: string) {
   const dialog = await openVariables(page);
-  await dialog.getByRole("button", { name: "+ Add variable", exact: true }).click();
-  const nameInput = dialog.getByRole("textbox", { name: /^Name of var\d+$/ });
-  await expect(nameInput).toBeFocused();
+  const nameInput = dialog.getByRole("textbox", { name: "New variable name", exact: true });
   await nameInput.fill(name);
   await nameInput.press("Enter");
-  if (kind) await dialog.getByLabel(`Type of ${name}`, { exact: true }).selectOption({ label: kind });
-  const valueInput = dialog.getByRole("textbox", { name: new RegExp(`^Value of ${name}`) });
-  await valueInput.fill(value);
-  await valueInput.press("Enter");
+  const newValue = dialog.getByRole("textbox", { name: "New variable value", exact: true });
+  await expect(newValue).toBeFocused();
+  await newValue.fill(value);
+  await newValue.press("Enter");
+  const valueInput = dialog.getByRole("textbox", { name: `Value of ${name}`, exact: true });
+  await expect(valueInput).toHaveValue(value);
+  await expect(nameInput).toBeFocused();
   return valueInput;
 }
 async function savedProject(page: Page) {
@@ -42,7 +45,7 @@ async function savedProject(page: Page) {
 test("linked fields follow variable changes in one undo step", async ({ page }) => {
   await rectangle(page);
   const cardWidth = await addVariable(page, "card_w", "50");
-  await addVariable(page, "t", "1.5", "Number");
+  await addVariable(page, "t", "1.5");
   const width = page.getByLabel("Width", { exact: true });
   await width.fill("card_w + 2*t");
   await width.press("Enter");
@@ -79,22 +82,28 @@ test("variables reject invalid names, formulas and values a linked object cannot
   await rectangle(page);
   const w = await addVariable(page, "w", "30");
   const dialog = await openVariables(page);
-  await dialog.getByRole("button", { name: "+ Add variable", exact: true }).click();
-  const name = dialog.getByRole("textbox", { name: "Name of var1", exact: true });
-  await expect(name).toBeFocused();
+  const name = dialog.getByRole("textbox", { name: "New variable name", exact: true });
   await name.fill("2bad");
   await expect(name).toHaveAttribute("aria-invalid", "true");
   await name.fill("w");
   await expect(dialog.getByText("w already exists")).toBeVisible();
   await name.press("Escape");
-  await expect(name).toHaveValue("var1");
+  await expect(name).toHaveValue("");
 
-  const self = dialog.getByRole("textbox", { name: /^Value of var1/ });
+  // A value alone creates var1; a typo in a formula is reported instead of becoming text.
+  const value = dialog.getByRole("textbox", { name: "New variable value", exact: true });
+  await value.fill("ww*2");
+  await value.press("Enter");
+  await expect(dialog.getByText("Unknown variable ww")).toBeVisible();
+  await value.fill("w*2");
+  await value.press("Enter");
+  const self = dialog.getByRole("textbox", { name: "Value of var1", exact: true });
+  await expect(self).toHaveValue("w*2");
+  await expect(dialog.getByText("= 60", { exact: true })).toBeVisible();
   await self.fill("var1 + 1");
-  await expect(self).toHaveAttribute("aria-invalid", "true");
-  await self.fill("w*2");
-  await self.press("Enter");
-  await expect(dialog.getByText("= 60 mm")).toBeVisible();
+  await expect(dialog.getByText("var1 cannot refer to itself")).toBeVisible();
+  await self.press("Escape");
+  await expect(self).toHaveValue("w*2");
 
   const width = page.getByLabel("Width", { exact: true });
   await width.fill("var1");
@@ -132,24 +141,34 @@ test("suggestions insert names and Alt+wheel replaces a formula with its value",
   await expect(width).not.toHaveAttribute("title", /Linked/);
 });
 
-test("formulas keep their unit after switching display units", async ({ page }) => {
+test("variables stay plain numbers and links keep their unit when units change", async ({ page }) => {
   await rectangle(page);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByLabel("Units", { exact: true }).selectOption("in-decimal");
-  await page.keyboard.press("Escape");
-  await addVariable(page, "w", "2");
+  async function units(value: string) {
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByLabel("Units", { exact: true }).selectOption(value);
+    await page.keyboard.press("Escape");
+  }
+  await units("in-decimal");
+  const w = await addVariable(page, "w", "2");
   const width = page.getByLabel("Width", { exact: true });
   await width.fill("w + 1/2");
   await width.press("Enter");
   await expect(width).toHaveValue("2.5");
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByLabel("Units", { exact: true }).selectOption("mm");
-  await page.keyboard.press("Escape");
+  await units("mm");
+  const warning = page.getByText(/^Variables did not convert/);
+  await expect(warning).toBeVisible();
+  await expect(w).toHaveValue("2");
   await expect(width).toHaveValue("63.5");
   await width.focus();
   await expect(width).toHaveValue("w + 1/2");
   await expect(page.locator(".formula-unit", { hasText: "in" })).toBeVisible();
   await width.press("Tab");
+  const height = page.getByLabel("Height", { exact: true });
+  await height.fill("w*10");
+  await height.press("Enter");
+  await expect(height).toHaveValue("20");
+  await units("in-fractional");
+  await expect(warning).toContainText("inches");
 });
 
 test("deleting a used variable keeps current values after confirmation", async ({ page }) => {
@@ -164,7 +183,7 @@ test("deleting a used variable keeps current values after confirmation", async (
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await dialog.getByRole("button", { name: "Delete w", exact: true }).click();
   await dialog.getByRole("button", { name: "Delete and keep values", exact: true }).click();
-  await expect(dialog.getByText("No variables yet.")).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "Value of w", exact: true })).toHaveCount(0);
   await expect(width).toHaveValue("45");
   await expect(width).not.toHaveAttribute("title", /Linked/);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
@@ -173,7 +192,8 @@ test("deleting a used variable keeps current values after confirmation", async (
 
 test("text variables fill name and label placeholders", async ({ page }) => {
   await rectangle(page);
-  const brand = await addVariable(page, "brand", "Acme", "Text");
+  const brand = await addVariable(page, "brand", "Acme");
+  await expect(page.getByRole("dialog", { name: "Variables" }).getByText("text", { exact: true })).toBeVisible();
   const name = page.getByLabel("Name", { exact: true });
   await name.fill("{brand} card {{draft}}");
   await name.press("Enter");
@@ -223,4 +243,64 @@ test("text variables fill name and label placeholders", async ({ page }) => {
   expect(baked.variables).toBeUndefined();
   expect(baked.shapes.map((s: { name: string }) => s.name)).toContain("A much longer studio name card {{draft}}");
   expect(baked.shapes.find((s: { kind: string }) => s.kind === "text").text).toBe("A much longer studio name");
+});
+
+test("variable values step with arrows and Alt+wheel and update links live", async ({ page }) => {
+  await rectangle(page);
+  const w = await addVariable(page, "w", "20");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("w");
+  await width.press("Enter");
+  await w.focus();
+  await w.press("ArrowUp");
+  await expect(w).toHaveValue("20.1");
+  await expect(width).toHaveValue("20.1");
+  await w.press("ArrowDown");
+  await w.press("ArrowDown");
+  await expect(w).toHaveValue("19.9");
+  await w.hover();
+  await page.keyboard.down("Alt");
+  await page.keyboard.down("Shift");
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up("Shift");
+  await page.mouse.wheel(0, 100);
+  await page.keyboard.up("Alt");
+  await expect(w).toHaveValue("23.9");
+  await w.press("Enter");
+  await expect(width).toHaveValue("23.9");
+  // One undo step for the whole edit session.
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(width).toHaveValue("20");
+  // A formula steps from its evaluated value and becomes a number.
+  const dialog = await openVariables(page);
+  const twice = await addVariable(page, "twice", "w*2");
+  await expect(dialog.getByText("= 40", { exact: true })).toBeVisible();
+  await twice.focus();
+  await twice.press("ArrowUp");
+  await expect(twice).toHaveValue("40.1");
+  await twice.press("Enter");
+  await expect(dialog.getByText("= 40", { exact: true })).toHaveCount(0);
+  await expect(twice).toHaveValue("40.1");
+  // Text values are not stepped.
+  const label = await addVariable(page, "label", "Acme");
+  await label.focus();
+  await label.press("ArrowUp");
+  await expect(label).toHaveValue("Acme");
+});
+
+test("variables illustration", { tag: "@manual" }, async ({ page }) => {
+  await rectangle(page);
+  await addVariable(page, "card_w", "86");
+  await addVariable(page, "t", "1.5");
+  await addVariable(page, "slot_w", "card_w + 2*t");
+  await addVariable(page, "brand", "Acme");
+  const name = page.getByLabel("Name", { exact: true });
+  await name.fill("{brand} card slot");
+  await name.press("Enter");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("slot_w");
+  await width.press("Enter");
+  await expect(width).toHaveValue("89");
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await manualScreenshot(page, "variables.png");
 });

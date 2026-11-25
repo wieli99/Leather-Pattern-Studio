@@ -1,12 +1,11 @@
 import { editableNumber, formulaReferences, parseExpression } from "./expression";
-import { formatLength, fromMillimetres, unitSymbol, type UnitMode } from "./units";
+import { toMillimetres, type UnitMode } from "./units";
 import type { Variable } from "../generated/Variable";
 import type { BindingUnit } from "../generated/BindingUnit";
 export type { Variable, BindingUnit };
 
-/** Resolved values: lengths in millimetres, numbers unitless, text verbatim. */
+/** Resolved values: numbers are plain (unitless), text verbatim. */
 export type VariableValue =
-  | { kind: "length"; value: number }
   | { kind: "number"; value: number }
   | { kind: "text"; value: string };
 export type VariableScope = {
@@ -17,11 +16,16 @@ export type VariableScope = {
 
 export const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const bindingUnit = (mode: UnitMode): BindingUnit => (mode === "mm" ? "mm" : "in");
-const unitMode = (unit: BindingUnit | undefined): UnitMode => (unit === "in" ? "in-decimal" : "mm");
+
+/** Number variables are plain values; text variables cannot be used in formulas. */
+const numberOf = (values: Map<string, VariableValue>) => (name: string) => {
+  const v = values.get(name);
+  return v && v.kind === "number" ? v.value : null;
+};
 
 /**
- * Evaluate a formula typed in `unit`. Length variables convert to that unit; numbers and
- * literals are taken as-is. A length result converts back to millimetres.
+ * Evaluate a formula typed in `unit`. Variables and literals are taken in that unit; a
+ * length result converts to millimetres.
  */
 export function evaluateFormula(
   text: string,
@@ -29,15 +33,24 @@ export function evaluateFormula(
   unit: BindingUnit,
   values: Map<string, VariableValue>,
 ): number | null {
-  const mode = unitMode(unit);
-  const result = parseExpression(text, unit === "in", (name) => {
-    const v = values.get(name);
-    if (!v || v.kind === "text") return null;
-    return v.kind === "length" ? fromMillimetres(v.value, mode) : v.value;
-  });
+  const result = parseExpression(text, unit === "in", numberOf(values));
   if (result === null) return null;
   const converted = kind === "length" && unit === "in" ? result * 25.4 : result;
   return Number.isFinite(converted) ? converted : null;
+}
+
+/**
+ * Number when the value is a formula; text otherwise. A lone unknown word such as `Acme`
+ * is text, while `card_ww + 2` stays a (broken) number so typos are reported.
+ */
+export function detectKind(value: string, variables: readonly Variable[] | undefined, self?: string): Variable["kind"] {
+  const text = value.trim();
+  if (!text) return "text";
+  if (parseExpression(text, true, () => 1) === null) return "text";
+  const names = formulaReferences(text);
+  const known = (name: string) => (variables ?? []).some((v) => v.name === name && v.name !== self && v.kind === "number");
+  if (names.length === 1 && VARIABLE_NAME.test(text) && !known(text)) return "text";
+  return "number";
 }
 
 export function resolveVariables(variables: readonly Variable[] | undefined): VariableScope {
@@ -66,12 +79,12 @@ export function resolveVariables(variables: readonly Variable[] | undefined): Va
     }
     visiting.delete(v.name);
     if (errors.has(v.id)) return false;
-    const value = evaluateFormula(v.value, v.kind, v.unit ?? "mm", values);
+    const value = parseExpression(v.value, true, numberOf(values));
     if (value === null) {
       errors.set(v.id, "Enter a valid formula");
       return false;
     }
-    values.set(v.name, { kind: v.kind, value });
+    values.set(v.name, { kind: "number", value });
     return true;
   }
   for (const v of variables ?? []) resolve(v);
@@ -82,7 +95,6 @@ export function resolveVariables(variables: readonly Variable[] | undefined): Va
 export function interpolate(
   template: string,
   values: Map<string, VariableValue>,
-  units: UnitMode = "mm",
 ): { text: string; missing: string[] } {
   const missing: string[] = [];
   const text = template.replace(/\{\{|\}\}|\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name?: string) => {
@@ -92,9 +104,7 @@ export function interpolate(
       missing.push(name);
       return match;
     }
-    if (v.kind === "text") return v.value;
-    if (v.kind === "number") return editableNumber(v.value);
-    return `${formatLength(v.value, units)} ${unitSymbol(units)}`;
+    return v.kind === "text" ? v.value : editableNumber(v.value);
   });
   return { text, missing };
 }
@@ -140,16 +150,10 @@ export function parseFieldValue(
   text: string,
   mode: UnitMode | "number",
   values: Map<string, VariableValue>,
-  displayUnits: UnitMode = "mm",
 ): number | null {
-  const units = mode === "number" ? displayUnits : mode;
-  const result = parseExpression(text, mode !== "number" && mode !== "mm", (name) => {
-    const v = values.get(name);
-    if (!v || v.kind === "text") return null;
-    return v.kind === "length" ? fromMillimetres(v.value, units) : v.value;
-  });
+  const result = parseExpression(text, mode !== "number" && mode !== "mm", numberOf(values));
   if (result === null || mode === "number") return result;
-  const mm = mode === "mm" ? result : result * 25.4;
+  const mm = toMillimetres(result, mode);
   return Number.isFinite(mm) ? mm : null;
 }
 
@@ -163,5 +167,5 @@ export function variableScopeOf(variables: readonly Variable[] | undefined): Var
   return scope;
 }
 /** Shown form of a name or text template. */
-export const displayTemplate = (template: string, variables: readonly Variable[] | undefined, units: UnitMode = "mm") =>
-  hasPlaceholders(template) || /\{\{|\}\}/.test(template) ? interpolate(template, variableScopeOf(variables).values, units).text : template;
+export const displayTemplate = (template: string, variables: readonly Variable[] | undefined) =>
+  hasPlaceholders(template) || /\{\{|\}\}/.test(template) ? interpolate(template, variableScopeOf(variables).values).text : template;

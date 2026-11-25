@@ -32,7 +32,7 @@ let lastValid = props.value;
 watch(() => props.value, value => { if (Number.isFinite(value)) lastValid = value; });
 /** Variables evaluate here too; these fields keep only the resulting number. */
 function evaluate(text: string): number | null {
-  return parseFieldValue(text, props.scalar ? "number" : inputUnits.value, e.value.variableScope.values, inputUnits.value);
+  return parseFieldValue(text, props.scalar ? "number" : inputUnits.value, e.value.variableScope.values);
 }
 let inputElement: HTMLInputElement | null = null;
 function register(el: unknown) {

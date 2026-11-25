@@ -410,9 +410,9 @@ function parseVariables(input: unknown): NonNullable<Doc["variables"]> {
   if (!Array.isArray(input) || input.length > 500) throw Error("Invalid variables");
   return input.map((v: any) => {
     if (!v || typeof v.id !== "string" || typeof v.name !== "string" || typeof v.value !== "string" ||
-      !["length", "number", "text"].includes(v.kind) || v.value.length > 2000)
+      !["number", "text"].includes(v.kind) || v.value.length > 2000)
       throw Error("Invalid variable");
-    return { id: v.id, name: v.name, kind: v.kind, value: v.value, ...(v.unit != null ? { unit: unitOf(v.unit) } : {}) };
+    return { id: v.id, name: v.name, kind: v.kind, value: v.value };
   });
 }
 function parseBindings(input: unknown): NonNullable<Shape["bindings"]> {

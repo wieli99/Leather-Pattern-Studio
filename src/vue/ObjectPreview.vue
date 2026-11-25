@@ -62,7 +62,7 @@ watch(
           `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220" viewBox="${box.x - padding} ${box.y - padding} ${box.width + 2 * padding} ${box.height + 2 * padding}"><defs></defs>${shapes.map((s) => printShapeSvg(doc, s, s.id, layout)).join("")}</svg>`,
         );
         if (token !== generation) return;
-        title.value = displayTemplate(node.kind === "group" ? node.name : shapes[0].name, doc.variables, layout.units);
+        title.value = displayTemplate(node.kind === "group" ? node.name : shapes[0].name, doc.variables);
         url.value = URL.createObjectURL(
           new Blob([svg], { type: "image/svg+xml" }),
         );

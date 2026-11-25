@@ -153,7 +153,7 @@ test("SVG image data survives project migration and round trips", () => {
 test("format 25 keeps variables and property links; format 24 needs neither", () => {
   const shape = { id: "a", kind: "rectangle", name: "{brand} card", points: [{ x: 0, y: 0 }, { x: 86, y: 54 }], radius: 0, rotation: 0,
     bindings: [{ property: "width", expression: "card_w", unit: "mm" }] };
-  const variables = [{ id: "1", name: "card_w", kind: "length", value: "86" }, { id: "2", name: "brand", kind: "text", value: "Acme", unit: "in" }];
+  const variables = [{ id: "1", name: "card_w", kind: "number", value: "86" }, { id: "2", name: "brand", kind: "text", value: "Acme" }];
   const doc = parseProject(JSON.stringify({ version: 25, variables, shapes: [shape] }));
   expect(doc.variables).toEqual(variables);
   expect(doc.shapes[0].bindings).toEqual(shape.bindings);

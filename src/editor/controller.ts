@@ -217,14 +217,14 @@ export class Controller {
   }
   /** Object, group or text name with `{name}` placeholders resolved. */
   displayName(template: string) {
-    return displayTemplate(template, this.variableDocument.variables, this.units);
+    return displayTemplate(template, this.variableDocument.variables);
   }
   /** Text boxes follow the shown text, so placeholder values size them. */
   private syncTextBoxes(doc: Doc): Doc {
     let changed = false;
     const shapes = doc.shapes.map((s) => {
       if (s.kind !== "text" || !s.text || !(hasPlaceholders(s.text) || /\{\{|\}\}/.test(s.text))) return s;
-      const next = resizeText(s, displayTemplate(s.text, doc.variables, this.units));
+      const next = resizeText(s, displayTemplate(s.text, doc.variables));
       if (next.points.every((p, i) => Math.abs(p.x - s.points[i].x) < 1e-9 && Math.abs(p.y - s.points[i].y) < 1e-9)) return s;
       changed = true;
       return next;

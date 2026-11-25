@@ -5,9 +5,21 @@ import StitchPresets from "./StitchPresets.vue";
 import LengthInput from "./LengthInput.vue";
 import type { UnitMode } from "../model/units";
 import PinnablePopover from "./PinnablePopover.vue";
+import { computed } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 const e = useEditor();
+const hasNumberVariables = computed(() => (e.value.variableDocument.variables ?? []).some((v) => v.kind === "number"));
+/** Number variables never convert, so a unit switch changes how new formulas read them. */
+function setUnits(units: UnitMode) {
+  const changed = (units === "mm") !== (editor.units === "mm");
+  editor.units = units;
+  editor.preferences();
+  if (changed && hasNumberVariables.value) {
+    editor.message = `Variables did not convert: new formulas read them in ${units === "mm" ? "millimetres" : "inches"}. Existing links keep their size.`;
+    editor.notify();
+  }
+}
 </script>
 <template>
   <PinnablePopover label="Settings" storage-key="settings">
@@ -39,7 +51,7 @@ const e = useEditor();
       </select>
     </label>
     <label>Units
-      <select aria-label="Units" :value="e.units" @change="editor.units = ($event.target as HTMLSelectElement).value as UnitMode; editor.preferences()">
+      <select aria-label="Units" :value="e.units" @change="setUnits(($event.target as HTMLSelectElement).value as UnitMode)">
         <option value="mm">Millimetres</option><option value="in-fractional">Inches (fractional)</option><option value="in-decimal">Inches (decimal)</option>
       </select>
     </label>

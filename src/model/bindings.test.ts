@@ -12,7 +12,7 @@ const doc = (variables: Variable[], shapes: Shape[]): Doc => ({
   objectTree: [{ kind: "group", id: "g", name: "{brand} set", children: shapes.map((s) => ({ kind: "object", id: s.id })) }],
 });
 const vars = (w = "86"): Variable[] => [
-  { id: "w", name: "card_w", kind: "length", value: w },
+  { id: "w", name: "card_w", kind: "number", value: w },
   { id: "t", name: "t", kind: "number", value: "1.5" },
   { id: "b", name: "brand", kind: "text", value: "Acme" },
 ];
@@ -27,10 +27,10 @@ describe("property links", () => {
     expect(getProperty(next.shapes[0], "height")).toBeCloseTo(54);
     expect(getProperty(next.shapes[0], "x")).toBeCloseTo(100);
   });
-  it("evaluates formulas in their own unit", () => {
+  it("reads plain variables in the unit the link was typed in", () => {
     const shape = withBinding(card(), "width", { property: "width", expression: "card_w + 1", unit: "in" });
-    const { doc: next } = recompute(doc(vars("25.4"), [shape]));
-    expect(getProperty(next.shapes[0], "width")).toBeCloseTo(50.8);
+    const { doc: next } = recompute(doc(vars("2"), [shape]));
+    expect(getProperty(next.shapes[0], "width")).toBeCloseTo(76.2);
   });
   it("reports out-of-range values and locked objects instead of applying them", () => {
     const shape = withBinding(card(), "width", { property: "width", expression: "card_w", unit: "mm" });
@@ -62,11 +62,11 @@ describe("property links", () => {
     expect(renamed.objectTree?.[0].kind === "group" && renamed.objectTree[0].name).toBe("{maker} set");
   });
   it("counts uses and deletes by keeping current values", () => {
-    const start = recompute(doc([...vars(), { id: "s", name: "slot", kind: "length", value: "card_w + 1", unit: "in" }], [linked()])).doc;
+    const start = recompute(doc([...vars(), { id: "s", name: "slot", kind: "number", value: "card_w + 1" }], [linked()])).doc;
     expect(variableUses(start, "card_w")).toBe(3);
     expect(variableUses(start, "brand")).toBe(2);
     const deleted = deleteVariable(deleteVariable(start, "w"), "b");
-    expect(deleted.variables?.map((v) => [v.name, v.value])).toEqual([["t", "1.5"], ["slot", "4.38582677165354"]]);
+    expect(deleted.variables?.map((v) => [v.name, v.value])).toEqual([["t", "1.5"], ["slot", "87"]]);
     expect(deleted.shapes[0].bindings).toBeUndefined();
     expect(getProperty(deleted.shapes[0], "width")).toBeCloseTo(89);
     expect(deleted.shapes[0].name).toBe("Acme card");

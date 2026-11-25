@@ -165,7 +165,7 @@ export function printShapeSvg(
     result = `<path d="${lines(g.lines)}" ${style}/><g fill="${color}" fill-opacity="${opacity}">${g.arrowheads.map((p) => `<path d="M${p.map(xy).join(" L")}Z"/>`).join("")}${label(g.label, g.middle, g.angle, g.fontSize)}</g>`;
   } else if (shape.kind === "text") {
     const size = shape.fontSize ?? 5;
-    const shown = displayTemplate(shape.text ?? "", doc.variables, layout.units);
+    const shown = displayTemplate(shape.text ?? "", doc.variables);
     result = `<g transform="${matrix}" fill="${color}" fill-opacity="${opacity}">${(
       shown
     )

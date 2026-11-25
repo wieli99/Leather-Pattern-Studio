@@ -554,12 +554,11 @@ impl PrintLayout {
 #[ts(export, export_to = "../../../src/generated/")]
 #[serde(rename_all = "lowercase")]
 pub enum VariableKind {
-    Length,
     Number,
     Text,
 }
-/// Named project value. Length and number values are formulas evaluated in `unit`; text values
-/// are literal strings used by `{name}` placeholders.
+/// Named project value. Number values are unitless formulas; each property link records the
+/// unit it reads them in. Text values are literal strings used by `{name}` placeholders.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
 pub struct Variable {
@@ -567,10 +566,6 @@ pub struct Variable {
     pub name: String,
     pub kind: VariableKind,
     pub value: String,
-    /// Unit the numeric formula was typed in; absent means millimetres.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub unit: Option<BindingUnit>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ts_rs::TS)]
 #[ts(export, export_to = "../../../src/generated/")]
@@ -2452,8 +2447,8 @@ mod print_tests {
     fn validates_variables_and_links() {
         let ok = variable_doc(
             serde_json::json!([
-                {"id":"1","name":"card_w","kind":"length","value":"86"},
-                {"id":"2","name":"slot","kind":"length","value":"card_w + 2*t"},
+                {"id":"1","name":"card_w","kind":"number","value":"86"},
+                {"id":"2","name":"slot","kind":"number","value":"card_w + 2*t"},
                 {"id":"3","name":"t","kind":"number","value":"1.5"},
                 {"id":"4","name":"brand","kind":"text","value":"Acme (1+1)"}
             ]),
@@ -2526,9 +2521,8 @@ mod print_tests {
         next.variables = Some(vec![Variable {
             id: "v".into(),
             name: "w".into(),
-            kind: VariableKind::Length,
+            kind: VariableKind::Number,
             value: "20".into(),
-            unit: None,
         }]);
         next.shapes[0].points[1].x = 20.0;
         next.shapes[0].bindings = Some(vec![Binding {

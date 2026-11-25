@@ -282,7 +282,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.textBaseline = "top";
         ctx.fillStyle = ctx.strokeStyle;
         const size = s.fontSize ?? 5;
-        const shown = displayTemplate(s.text ?? "", editor.variableDocument.variables, editor.units);
+        const shown = displayTemplate(s.text ?? "", editor.variableDocument.variables);
         const width = measureText(shown, size, s).width;
         shown.split("\n").forEach((line, i) => {
           const w = ctx.measureText(line).width;
