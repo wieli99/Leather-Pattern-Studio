@@ -16,7 +16,7 @@ import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
 import { evaluateBinding, pruneBindings, recompute, withBinding } from "../model/bindings";
-import { propertyChanges, clampFillets, applyChanges, getProperty, type PropertyId } from "../model/propertySetters";
+import { propertyChanges, clampFillets, applyChanges, getProperty, PROPERTIES, type PropertyId } from "../model/propertySetters";
 import { bindingUnit, displayTemplate, hasPlaceholders, resolveVariables, type VariableScope } from "../model/variables";
 import { resizeText } from "../model/text";
 import { formulaReferences } from "../model/expression";
@@ -215,6 +215,8 @@ export class Controller {
   get variableDocument(): Doc {
     return this.propertySession?.next ?? this.pendingDocument ?? this.document;
   }
+  /** False for scenes such as print layouts, where formulas are used once instead. */
+  linksEnabled = true;
   /** Object, group or text name with `{name}` placeholders resolved. */
   displayName(template: string) {
     return displayTemplate(template, this.variableDocument.variables);
@@ -5027,10 +5029,17 @@ export class Controller {
     if (!shape) return;
     const changes = propertyChanges(shape, property, value, options);
     if (!changes) return;
+    const linking = !!formula && formulaReferences(formula).length > 0;
+    // An image size link remembers whether the aspect ratio was locked when it was made.
+    const keepAspect = shape.kind === "image" && (property === "width" || property === "height") &&
+      (options.aspectLocked ?? true) ? { keepAspect: true } : {};
+    if (linking && !this.linksEnabled) this.noteUsedOnce([formula!], [PROPERTIES[property].label]);
     const linked = withBinding(
       applyChanges(shape, clampFillets(shape, changes)),
       property,
-      formula && formulaReferences(formula).length ? { property, expression: formula.trim(), unit: bindingUnit(unit) } : null,
+      linking && this.linksEnabled
+        ? { property, expression: formula!.trim(), unit: bindingUnit(unit), ...keepAspect }
+        : null,
     );
     await this.applyPropertyDocument(() => ({
       ...source,
@@ -5062,11 +5071,12 @@ export class Controller {
     try {
       const next = parseProject(JSON.stringify(this.syncTextBoxes(build())));
       if (this.propertySession) {
-        this.propertySession.next = next;
+        const session = this.propertySession,
+          previous = { next: session.next, preview: this.preview };
+        session.next = next;
         this.preview = next;
         this.notify();
-        const session = this.propertySession,
-          revision = this.revision,
+        const revision = this.revision,
           token = ++this.previewId;
         const result = await this.core.request(
           "preview",
@@ -5075,6 +5085,12 @@ export class Controller {
         ).catch((error) => {
           // A committed or superseded field can invalidate an in-flight preview.
           if (this.propertySession !== session || token !== this.previewId || this.revision !== revision) return null;
+          // The core rejected this state: keep the session on its last valid document.
+          if (session.next === next) {
+            session.next = previous.next;
+            this.preview = previous.preview;
+            this.notify();
+          }
           throw error;
         });
         if (

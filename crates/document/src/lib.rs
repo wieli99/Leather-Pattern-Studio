@@ -582,6 +582,14 @@ pub struct Binding {
     pub property: String,
     pub expression: String,
     pub unit: BindingUnit,
+    /// Image width/height links that also scale the other side, as when linked.
+    #[serde(
+        default,
+        rename = "keepAspect",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub keep_aspect: Option<bool>,
 }
 pub const BINDABLE_PROPERTIES: &[&str] = &[
     "x",
@@ -615,7 +623,8 @@ pub fn formula_references(text: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'{' && bytes.get(i + 1) == Some(&b'{') {
+        // Same left-to-right rules as the editor: `{{` and `}}` are escapes.
+        if (bytes[i] == b'{' || bytes[i] == b'}') && bytes.get(i + 1) == Some(&bytes[i]) {
             i += 2;
             continue;
         }
@@ -2433,6 +2442,7 @@ mod print_tests {
             vec!["card_w", "t2"]
         );
         assert!(formula_references("(10+5)*2 {{x}} {1a}").is_empty());
+        assert_eq!(formula_references("{a}} }}{b}"), vec!["a", "b"]);
     }
     #[test]
     fn validates_variables_and_links() {
@@ -2520,6 +2530,7 @@ mod print_tests {
             property: "width".into(),
             expression: "{w}".into(),
             unit: BindingUnit::Mm,
+            keep_aspect: None,
         }]);
         editor
             .execute("commit", &serde_json::to_string(&next).unwrap(), 1)

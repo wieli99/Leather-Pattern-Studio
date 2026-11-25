@@ -36,6 +36,7 @@ describe("project variables", () => {
     expect(detectKind("86", list)).toBe("number");
     expect(detectKind("3 1/2", list)).toBe("number");
     expect(detectKind("{card_w}*2", list)).toBe("number");
+    expect(detectKind("{card_w}/({card_w}-1)", list)).toBe("number");
     expect(detectKind("{card_w}", list)).toBe("number");
     expect(detectKind("{card_ww} + 2", list)).toBe("number");
     expect(detectKind("card_w", list)).toBe("text");
@@ -49,6 +50,7 @@ describe("project variables", () => {
     expect(interpolate("{brand} slot {{x}} n={n}", values)).toEqual({ text: "Acme slot {x} n=3", missing: [] });
     expect(interpolate("{nope} {brand}", values)).toEqual({ text: "{nope} Acme", missing: ["nope"] });
     expect(templateReferences("{{brand}} {n}")).toEqual(["n"]);
+    expect(interpolate("{n}}", values).text).toBe("3}");
   });
   it("renames whole references only", () => {
     expect(renameInFormula("{w} + {w2}*1e-3 + ({w}) + w", "w", "width")).toBe("{width} + {w2}*1e-3 + ({width}) + w");

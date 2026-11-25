@@ -73,3 +73,57 @@ describe("property links", () => {
     expect(deleted.objectTree?.[0].kind === "group" && deleted.objectTree[0].name).toBe("Acme set");
   });
 });
+
+describe("review fixes", () => {
+  it("renames and deletes inside print snapshots and copy names", () => {
+    const shape = linked();
+    const base = doc(vars(), [shape]);
+    const withSnapshot: Doc = {
+      ...base,
+      printLayouts: [{ id: "l", name: "A4", instances: [{ id: "i", sourceId: "card", x: 0, y: 0, rotation: 0, name: "{brand} copy",
+        snapshot: { shape: structuredClone(shape), stitchGroups: [] } }] } as unknown as NonNullable<Doc["printLayouts"]>[number]],
+    };
+    expect(variableUses(withSnapshot, "card_w")).toBe(4);
+    const renamed = renameVariable(withSnapshot, "b", "maker");
+    expect(renamed.printLayouts![0].instances[0].name).toBe("{maker} copy");
+    expect(renamed.printLayouts![0].instances[0].snapshot!.shape.name).toBe("{maker} card");
+    const deleted = deleteVariable(deleteVariable(withSnapshot, "w"), "b");
+    expect(deleted.printLayouts![0].instances[0].snapshot!.shape.bindings).toBeUndefined();
+    expect(deleted.printLayouts![0].instances[0].name).toBe("Acme copy");
+  });
+  it("keeps visible text when a blank variable is deleted and escapes baked braces", () => {
+    const label = { ...card(), name: "{suffix}", text: "{suffix}" } as Shape;
+    const blank = doc([{ id: "s", name: "suffix", kind: "text", value: " " }], [label]);
+    const baked = deleteVariable(blank, "s");
+    expect(baked.shapes[0].name).toBe("{{suffix}}");
+    expect(baked.shapes[0].text).toBe("{{suffix}}");
+    const braces = doc([{ id: "s", name: "suffix", kind: "text", value: "{x}" }], [label]);
+    expect(deleteVariable(braces, "s").shapes[0].name).toBe("{{x}}");
+  });
+  it("scales an image's other side only when the link kept the aspect ratio", () => {
+    const image = { ...card(), id: "img", kind: "image", image: "data:image/png;base64,AA" } as Shape;
+    const free = withBinding(image, "width", { property: "width", expression: "{card_w}", unit: "mm" });
+    const locked = withBinding(image, "width", { property: "width", expression: "{card_w}", unit: "mm", keepAspect: true });
+    expect(getProperty(recompute(doc(vars("172"), [free])).doc.shapes[0], "height")).toBeCloseTo(54);
+    expect(getProperty(recompute(doc(vars("172"), [locked])).doc.shapes[0], "height")).toBeCloseTo(108);
+  });
+});
+
+describe("label boxes", () => {
+  it("keeps a linked position when the shown text changes its width", async () => {
+    const { vi } = await import("vitest");
+    vi.stubGlobal("document", { createElement: () => ({ getContext: () => ({ font: "", measureText: (t: string) => ({ width: t.length * 2 }) }) }) });
+    const { resizeText } = await import("./text");
+    const label = withBinding(
+      resizeText({ id: "t", name: "Label", kind: "text", text: "{brand}", fontSize: 5, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], radius: 0, rotation: 0 } as Shape, "A"),
+      "x", { property: "x", expression: "{cx}", unit: "mm" });
+    const variables: Variable[] = [{ id: "b", name: "brand", kind: "text", value: "A" }, { id: "c", name: "cx", kind: "number", value: "50" }];
+    const start = recompute(doc(variables, [label])).doc;
+    expect(getProperty(start.shapes[0], "x")).toBeCloseTo(50);
+    const longer = recompute({ ...start, variables: [{ ...variables[0], value: "Acme Leather" }, variables[1]] }).doc;
+    expect(getProperty(longer.shapes[0], "x")).toBeCloseTo(50);
+    expect(Math.abs(longer.shapes[0].points[1].x - longer.shapes[0].points[0].x)).toBeCloseTo(24);
+    expect(pruneBindings(longer).removed).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+});

@@ -5,4 +5,8 @@ import type { BindingUnit } from "./BindingUnit";
  * A derived shape property kept equal to a formula over project variables.
  * `unit` is the display unit the formula was typed in; literals use that unit.
  */
-export type Binding = { property: string, expression: string, unit: BindingUnit, };
+export type Binding = { property: string, expression: string, unit: BindingUnit, 
+/**
+ * Image width/height links that also scale the other side, as when linked.
+ */
+keepAspect?: boolean, };

@@ -2,8 +2,12 @@ import { emptyDocument, type Doc, type Shape } from "./project";
 import { applyMatrix, localCenter, shapeMatrix } from "./geometry";
 import { printTree, printRows, printStitchGroups, resolvedPrintItems, type PrintLayout, type PrintNode } from "./printLayout";
 import type { ObjectNode } from "./objectTree";
+import { withoutBindings } from "./bindings";
 
-/** An editable scene in physical layout coordinates. No source references escape it. */
+/**
+ * An editable scene in physical layout coordinates. No source references escape it:
+ * property links stay on the model, while `{name}` text still resolves from its variables.
+ */
 export function printDocument(document: Doc, layout: PrintLayout): Doc {
   const items = resolvedPrintItems(document, layout);
   const tree = (nodes: PrintNode[]): ObjectNode[] => nodes.map(node => node.kind === "instance"
@@ -11,7 +15,8 @@ export function printDocument(document: Doc, layout: PrintLayout): Doc {
     : { kind: "group", id: node.id, name: node.name, hidden: node.hidden, locked: node.locked, children: tree(node.children) });
   return {
     ...emptyDocument(),
-    shapes: items.map(item => ({ ...item.shape, name: item.instance.name ?? item.source.name })),
+    ...(document.variables?.length ? { variables: document.variables } : {}),
+    shapes: items.map(item => withoutBindings({ ...item.shape, name: item.instance.name ?? item.source.name })),
     objectTree: tree(printTree(layout)),
     stitchGroups: items.flatMap(item => printStitchGroups(document, layout, item.source.id)
       .map((group, index) => ({ ...group, id: `${item.instance.id}:stitch:${index}`, shapeId: item.instance.id }))),

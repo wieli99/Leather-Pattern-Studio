@@ -3,10 +3,12 @@ import type { Doc, Shape } from "./project";
 import type { ObjectNode } from "./objectTree";
 import { formulaReferences } from "./expression";
 import { getProperty, isPropertyId, propertyValueError, setProperty, PROPERTIES, type PropertyId } from "./propertySetters";
+import { resizeText } from "./text";
 import {
   evaluateFormula, interpolate, renameInFormula, renameInTemplate, resolveVariables,
   type Variable, type VariableValue,
 } from "./variables";
+import { REFERENCE_TOKENS } from "./expression";
 import { editableNumber } from "./expression";
 
 export type { Binding };
@@ -40,7 +42,14 @@ export function recomputeShape(
     (a, b) => ORDER.indexOf(a.property as PropertyId) - ORDER.indexOf(b.property as PropertyId),
   );
   const bound = new Set(bindings.map((b) => b.property));
-  let next = shape;
+  // Labels with `{name}` fit the shown text first, so linked positions use the final box.
+  const fit = (s: Shape) => {
+    if (s.kind !== "text" || !s.text || !formulaReferences(s.text).length) return s;
+    const fitted = resizeText(s, interpolate(s.text, values).text);
+    const same = fitted.points.every((p, i) => Math.abs(p.x - s.points[i].x) < 1e-9 && Math.abs(p.y - s.points[i].y) < 1e-9);
+    return same ? s : fitted;
+  };
+  let next = fit(shape);
   for (const b of bindings) {
     if (!isPropertyId(b.property)) continue;
     const label = PROPERTIES[b.property].label;
@@ -51,11 +60,12 @@ export function recomputeShape(
     if (range) return problem(`${label} of ${shapeLabel(shape)} ${range}${PROPERTIES[b.property].kind === "length" && /\d$/.test(range) ? " mm" : ""}`);
     const current = getProperty(next, b.property);
     if (current === null || matches(b.property, current, value)) continue;
+    // Only an image link made with the aspect ratio locked scales the other side.
     const updated = setProperty(next, b.property, value, {
-      aspectLocked: !(bound.has("width") && bound.has("height")),
+      aspectLocked: !!b.keepAspect && !(bound.has("width") && bound.has("height")),
     });
     if (!updated) return problem(`${label} of ${shapeLabel(shape)} cannot be set to this value`);
-    next = updated;
+    next = b.property === "x" || b.property === "y" ? updated : fit(updated);
   }
   return { shape: next };
 }
@@ -120,6 +130,11 @@ export function withBinding(shape: Shape, property: PropertyId, binding: Binding
   return bindings.length ? { ...rest, bindings } : (rest as Shape);
 }
 
+export function withoutBindings(shape: Shape): Shape {
+  const { bindings: _, ...rest } = shape;
+  return rest as Shape;
+}
+
 export const bindingFor = (shape: Shape | null | undefined, property: PropertyId) =>
   shape?.bindings?.find((b) => b.property === property) ?? null;
 
@@ -129,6 +144,29 @@ function mapTree(nodes: ObjectNode[] | undefined, rename: (name: string) => stri
   );
 }
 
+/**
+ * Apply a rewrite to every shape a variable can appear in: model shapes and the shapes
+ * stored in print-layout snapshots, plus print-copy names.
+ */
+function mapShapes(doc: Doc, shape: (s: Shape) => Shape, name: (text: string) => string): Doc {
+  return {
+    ...doc,
+    shapes: doc.shapes.map(shape),
+    ...(doc.printLayouts
+      ? {
+          printLayouts: doc.printLayouts.map((layout) => ({
+            ...layout,
+            instances: layout.instances.map((item) => ({
+              ...item,
+              ...(item.name !== undefined && item.name !== null ? { name: name(item.name) } : {}),
+              ...(item.snapshot ? { snapshot: { ...item.snapshot, shape: shape(item.snapshot.shape) } } : {}),
+            })),
+          })),
+        }
+      : {}),
+  };
+}
+
 /** Rename a variable and every formula and placeholder that refers to it. */
 export function renameVariable(doc: Doc, id: string, name: string): Doc {
   const target = doc.variables?.find((v) => v.id === id);
@@ -136,34 +174,34 @@ export function renameVariable(doc: Doc, id: string, name: string): Doc {
   const from = target.name;
   const formula = (text: string) => renameInFormula(text, from, name);
   const template = (text: string) => renameInTemplate(text, from, name);
+  const renamed = mapShapes(doc, (s) => ({
+    ...s,
+    name: template(s.name),
+    ...(s.text !== undefined ? { text: template(s.text) } : {}),
+    ...(s.bindings ? { bindings: s.bindings.map((b) => ({ ...b, expression: formula(b.expression) })) } : {}),
+  }), template);
   return {
-    ...doc,
+    ...renamed,
     variables: doc.variables!.map((v) =>
       v.id === id ? { ...v, name } : v.kind === "text" ? v : { ...v, value: formula(v.value) },
     ),
-    shapes: doc.shapes.map((s) => ({
-      ...s,
-      name: template(s.name),
-      ...(s.text !== undefined ? { text: template(s.text) } : {}),
-      ...(s.bindings ? { bindings: s.bindings.map((b) => ({ ...b, expression: formula(b.expression) })) } : {}),
-    })),
     ...(doc.objectTree ? { objectTree: mapTree(doc.objectTree, template) } : {}),
   };
 }
 
 /** Count of links, formulas and placeholders that use a variable. */
 export function variableUses(doc: Doc, name: string): number {
-  const inTemplate = (text: string | undefined) =>
-    text ? (text.replace(/\{\{|\}\}/g, "").match(new RegExp(`\\{${name}\\}`, "g"))?.length ?? 0) : 0;
+  const uses = (text: string | null | undefined) => (text ? formulaReferences(text).filter((n) => n === name).length : 0);
   let count = 0;
-  for (const v of doc.variables ?? [])
-    if (v.kind !== "text" && formulaReferences(v.value).includes(name)) count++;
-  for (const s of doc.shapes) {
-    count += (s.bindings ?? []).filter((b) => formulaReferences(b.expression).includes(name)).length;
-    count += inTemplate(s.name) + inTemplate(s.text);
+  for (const v of doc.variables ?? []) if (v.kind !== "text" && uses(v.value)) count++;
+  const shapes = [...doc.shapes, ...(doc.printLayouts ?? []).flatMap((l) => l.instances.flatMap((i) => (i.snapshot ? [i.snapshot.shape] : [])))];
+  for (const s of shapes) {
+    count += (s.bindings ?? []).filter((b) => uses(b.expression)).length;
+    count += uses(s.name) + uses(s.text);
   }
+  for (const layout of doc.printLayouts ?? []) for (const item of layout.instances) count += uses(item.name);
   const walk = (nodes: ObjectNode[] | undefined) =>
-    nodes?.forEach((n) => { if (n.kind === "group") { count += inTemplate(n.name); walk(n.children); } });
+    nodes?.forEach((n) => { if (n.kind === "group") { count += uses(n.name); walk(n.children); } });
   walk(doc.objectTree);
   return count;
 }
@@ -184,23 +222,28 @@ export function deleteVariable(doc: Doc, id: string): Doc {
     if (!value || value.kind === "text") return v;
     return { ...v, value: editableNumber(value.value) };
   };
-  const only = new Map<string, VariableValue>(resolved ? [[target.name, resolved]] : []);
-  const template = (text: string) => {
-    const masked = text.replace(/\{\{|\}\}/g, (m) => (m === "{{" ? "\u0000" : "\u0001"));
-    return interpolate(masked, only).text.replace(/\u0000/g, "{{").replace(/\u0001/g, "}}");
+  // The baked text is literal, so its own braces are escaped.
+  const shown = !resolved ? null
+    : (resolved.kind === "text" ? resolved.value : editableNumber(resolved.value)).replace(/[{}]/g, (b) => b + b);
+  const template = (text: string) =>
+    text.replace(REFERENCE_TOKENS, (match, name?: string) => (name === target.name && shown !== null ? shown : match));
+  // Names and labels must keep visible text; for a blank value keep the name as literal text.
+  const label = (text: string) => {
+    const baked = template(text);
+    return baked.trim() ? baked : text.replace(REFERENCE_TOKENS, (match, name?: string) => (name === target.name ? `{{${name}}}` : match));
   };
+  const baked = mapShapes(doc, (s) => {
+    const bindings = s.bindings?.filter((b) => !formulaReferences(b.expression).includes(target.name));
+    const { bindings: _, ...rest } = s;
+    return {
+      ...(bindings?.length ? { ...rest, bindings } : (rest as Shape)),
+      name: label(s.name),
+      ...(s.text !== undefined ? { text: label(s.text) } : {}),
+    };
+  }, label);
   return {
-    ...doc,
+    ...baked,
     variables: remaining.map(bake),
-    shapes: doc.shapes.map((s) => {
-      const bindings = s.bindings?.filter((b) => !formulaReferences(b.expression).includes(target.name));
-      const { bindings: _, ...rest } = s;
-      return {
-        ...(bindings?.length ? { ...rest, bindings } : (rest as Shape)),
-        name: template(s.name),
-        ...(s.text !== undefined ? { text: template(s.text) } : {}),
-      };
-    }),
-    ...(doc.objectTree ? { objectTree: mapTree(doc.objectTree, template) } : {}),
+    ...(doc.objectTree ? { objectTree: mapTree(doc.objectTree, label) } : {}),
   };
 }

@@ -420,6 +420,7 @@ function parseBindings(input: unknown): NonNullable<Shape["bindings"]> {
   return input.map((b: any) => {
     if (!b || typeof b.property !== "string" || typeof b.expression !== "string" || b.expression.length > 2000)
       throw Error("Invalid property link");
-    return { property: b.property, expression: b.expression, unit: unitOf(b.unit) };
+    if (b.keepAspect !== undefined && typeof b.keepAspect !== "boolean") throw Error("Invalid property link");
+    return { property: b.property, expression: b.expression, unit: unitOf(b.unit), ...(b.keepAspect ? { keepAspect: true } : {}) };
   });
 }

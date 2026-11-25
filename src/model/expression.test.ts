@@ -41,3 +41,14 @@ describe('formula variables', () => {
     expect(formulaReferences('(10+5)*2')).toEqual([]);
   });
 });
+
+describe('reference tokens', () => {
+  it('reads references left to right like the document core', () => {
+    expect(formulaReferences('{a}} }}{b} {{c}}')).toEqual(['a', 'b']);
+  });
+  it('checks syntax without judging values', () => {
+    expect(parseExpression('{l}/({n}-1)', false, () => 1)).toBeNull();
+    expect(parseExpression('{l}/({n}-1)', false, () => 1, false)).not.toBeNull();
+    expect(parseExpression('{l}/(', false, () => 1, false)).toBeNull();
+  });
+});

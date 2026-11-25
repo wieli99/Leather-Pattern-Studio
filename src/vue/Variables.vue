@@ -37,12 +37,17 @@ function evaluate(v: Pick<Variable, "name">, text: string): number | null {
   });
 }
 function formulaError(v: Pick<Variable, "name">, text: string) {
-  const unknown = formulaReferences(text).find((name) => name === v.name || values().get(name)?.kind !== "number");
-  if (unknown === v.name) return `${v.name} cannot refer to itself`;
-  if (unknown) return values().has(unknown) ? `${unknown} is text` : `Unknown variable ${unknown}`;
+  for (const name of formulaReferences(text)) {
+    if (name === v.name) return `${v.name} cannot refer to itself`;
+    const other = list.value.find((item) => item.name === name);
+    if (!other) return `Unknown variable ${name}`;
+    if (other.kind === "text") return `${name} is text`;
+    // It exists but cannot be resolved: report its own problem.
+    const problem = e.value.variableScope.errors.get(other.id);
+    if (problem) return `${name} is invalid: ${problem}`;
+  }
   return evaluate(v, text) === null ? "Enter a valid formula" : null;
 }
-
 async function apply(id: string, change: Parameters<typeof editor.updateVariables>[0]) {
   const message = await editor.updateVariables(change);
   setError(id, message);
@@ -115,11 +120,13 @@ async function createDraft() {
   } finally {
     creating = false;
   }
-  // Apply anything typed while the variable was being created.
+  // Apply anything typed while the variable was being created; matching drafts are done.
   const created = list.value.find((v) => v.id === id);
   if (created) {
     if (nameDrafts.value[id] !== undefined && nameDrafts.value[id].trim() !== created.name) await applyName(created, nameDrafts.value[id]);
+    else clearDraft(nameDrafts, id);
     if (valueDrafts.value[id] !== undefined && valueDrafts.value[id] !== created.value) await applyValue(created, valueDrafts.value[id]);
+    else clearDraft(valueDrafts, id);
   }
 }
 
@@ -149,7 +156,8 @@ async function commitName(id: string, reopen = true) {
   const v = list.value.find((item) => item.id === id), text = nameDrafts.value[id];
   if (!v || text === undefined) return;
   clearDraft(nameDrafts, id);
-  if (text.trim() === v.name || variableNameError(text.trim(), list.value, id)) return setError(id, null);
+  if (text.trim() === v.name) return;
+  if (variableNameError(text.trim(), list.value, id)) return setError(id, null);
   // A rename is its own committed step, so every list shows the new name at once.
   await editor.finishProperty();
   await applyName(v, text);

@@ -1,4 +1,4 @@
-import { editableNumber, formulaReferences, parseExpression } from "./expression";
+import { editableNumber, formulaReferences, parseExpression, REFERENCE_TOKENS } from "./expression";
 import { toMillimetres, type UnitMode } from "./units";
 import type { Variable } from "../generated/Variable";
 import type { BindingUnit } from "../generated/BindingUnit";
@@ -47,7 +47,8 @@ export function detectKind(value: string, variables: readonly Variable[] | undef
   const text = value.trim();
   if (!text) return "text";
   const isText = (name: string) => (variables ?? []).some((v) => v.name === name && v.kind === "text");
-  return parseExpression(text, true, (name) => (isText(name) ? null : 1)) === null ? "text" : "number";
+  // Syntax only: values such as {len}/({n}-1) must not be judged by stand-in values.
+  return parseExpression(text, true, (name) => (isText(name) ? null : 1), false) === null ? "text" : "number";
 }
 
 export function resolveVariables(variables: readonly Variable[] | undefined): VariableScope {
@@ -94,7 +95,7 @@ export function interpolate(
   values: Map<string, VariableValue>,
 ): { text: string; missing: string[] } {
   const missing: string[] = [];
-  const text = template.replace(/\{\{|\}\}|\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name?: string) => {
+  const text = template.replace(REFERENCE_TOKENS, (match, name?: string) => {
     if (!name) return match[0];
     const v = values.get(name);
     if (!v) {
@@ -106,19 +107,15 @@ export function interpolate(
   return { text, missing };
 }
 
-export const hasPlaceholders = (template: string) =>
-  /\{[A-Za-z_][A-Za-z0-9_]*\}/.test(template.replace(/\{\{|\}\}/g, ""));
-export const templateReferences = (template: string) =>
-  [...template.replace(/\{\{|\}\}/g, "").matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]);
+export const templateReferences = (template: string) => formulaReferences(template);
+export const hasPlaceholders = (template: string) => templateReferences(template).length > 0;
 
 /** Rewrite `{from}` references in a formula. */
 export const renameInFormula = (text: string, from: string, to: string) => renameInTemplate(text, from, to);
 
 /** Rewrite `{from}` placeholders, leaving escaped braces untouched. */
 export function renameInTemplate(text: string, from: string, to: string): string {
-  return text.replace(/\{\{|\}\}|\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name?: string) =>
-    name === from ? `{${to}}` : match,
-  );
+  return text.replace(REFERENCE_TOKENS, (match, name?: string) => (name === from ? `{${to}}` : match));
 }
 
 /** First unused name such as `var1`, `var2`. */

@@ -198,6 +198,8 @@ const drawing: Controller = new Controller({
     revision, canUndo: false, canRedo: false,
   }),
 });
+// Print copies are placements: variables fill text but never link their geometry.
+drawing.linksEnabled = false;
 const drawingState = useEditor(drawing);
 const textViewport = ref<InstanceType<typeof Viewport>>();
 const imagePicker = ref<HTMLInputElement>();

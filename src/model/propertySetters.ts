@@ -171,8 +171,12 @@ export function clampFillets(s: Shape, changes: Partial<Shape>): Partial<Shape> 
 /** Merge changes the way the controller does, including text box resizing. */
 export function applyChanges(s: Shape, changes: Partial<Shape>): Shape {
   const updated = { ...s, ...changes };
+  // Only real changes re-measure: geometry setters return the whole shape, text included.
   const textChange = ["fontSize", "text", "fontFamily", "bold", "italic", "underline", "strikethrough", "textAlign", "lineSpacing"]
-    .some((key) => (changes as Record<string, unknown>)[key] !== undefined);
+    .some((key) => {
+      const value = (changes as Record<string, unknown>)[key];
+      return value !== undefined && value !== (s as Record<string, unknown>)[key];
+    });
   return s.kind === "text" && textChange ? resizeText(updated) : updated;
 }
 
