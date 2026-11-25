@@ -43,7 +43,7 @@ test("segment selection selects, drags, deletes and switches with 1, 2 and V", a
   const panel = page.getByRole("region", { name: "Segment selection" });
   const objects = page.locator(".objects .object-select");
   // Tool help describes segment selection only while that mode is active.
-  const segmentHint = page.getByText(/Click a segment between crossings|Drag a selected segment/);
+  const segmentHint = page.getByText(/Click a segment between crossings|Drag a segment, or press G/);
 
   await page.keyboard.press("2");
   await expect(select).toHaveAttribute("aria-pressed", "true");
@@ -51,21 +51,23 @@ test("segment selection selects, drags, deletes and switches with 1, 2 and V", a
   await page.mouse.click(at(80, 40).x, at(80, 40).y);
   await expect(panel.getByText("1 segment", { exact: true })).toBeVisible();
 
-  // Dragging detaches the middle span and leaves it selected as an object.
+  // Dragging detaches the middle span; it stays selected in segment mode.
   await page.mouse.move(at(80, 40).x, at(80, 40).y);
   await page.mouse.down();
   await page.mouse.move(at(80, 50).x, at(80, 50).y, { steps: 4 });
   await page.mouse.move(at(80, 60).x, at(80, 60).y, { steps: 4 });
   await page.mouse.up();
   await expect(objects).toHaveCount(5);
-  await expect(panel).toBeHidden();
-  await expect(segmentHint).toBeHidden();
+  await expect(panel.getByText("1 segment", { exact: true })).toBeVisible();
+  await expect(segmentHint).toBeVisible();
 
   await page.keyboard.press("Control+z");
   await expect(objects).toHaveCount(3);
 
-  // V cycles to segments, Delete removes only the clicked span.
+  // V cycles between the select variants; Delete removes only the clicked span.
   await page.getByLabel("Pattern drawing canvas").focus();
+  await page.keyboard.press("v");
+  await expect(segmentHint).toBeHidden();
   await page.keyboard.press("v");
   await expect(segmentHint).toBeVisible();
   await page.mouse.click(at(120, 40).x, at(120, 40).y);
@@ -92,5 +94,21 @@ test("Ctrl+A selects all segments and Separate turns them into objects", async (
   await expect(panel.getByText("7 segments", { exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "Separate", exact: true }).click();
   await expect(page.locator(".objects .object-select")).toHaveCount(7);
-  await expect(page.locator(".selection-summary")).toHaveText("7 objects selected");
+  // The separated pieces stay selected as segments.
+  await expect(panel.getByText("7 segments", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rotate", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Resize", exact: true })).toBeDisabled();
+});
+
+test("E rotates a selected segment by an exact angle", async ({ page }) => {
+  const { at } = await open(page);
+  await page.keyboard.press("2");
+  await page.mouse.click(at(80, 40).x, at(80, 40).y);
+  await page.keyboard.press("e");
+  const angle = page.locator(".transform-inputs input").first();
+  await angle.fill("90");
+  // Enter in the angle field applies the rotation.
+  await angle.press("Enter");
+  await expect(page.locator(".objects .object-select")).toHaveCount(5);
+  await expect(page.getByRole("region", { name: "Segment selection" }).getByText("1 segment", { exact: true })).toBeVisible();
 });

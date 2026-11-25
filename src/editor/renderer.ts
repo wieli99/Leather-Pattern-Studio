@@ -677,12 +677,13 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         const path = new Path2D();
         const m = shapeMatrix(source);
         path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
-        ctx.strokeStyle = color("canvas");
-        ctx.lineWidth = 5 / z;
-        ctx.stroke(path);
+        // A faint outline names the snap reference without looking like a selection.
+        ctx.save();
+        ctx.globalAlpha = 0.5;
         ctx.strokeStyle = color("preview");
-        ctx.lineWidth = 2 / z;
+        ctx.lineWidth = 1 / z;
         ctx.stroke(path);
+        ctx.restore();
       }
       ctx.lineWidth = 1 / z;
       ctx.setLineDash([4 / z, 4 / z]);

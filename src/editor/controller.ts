@@ -2333,6 +2333,13 @@ export class Controller {
       return;
     this.addPoint(this.constrainMeasurement(this.cursor));
   }
+  /** Hovering in a selection tool places nothing, so it shows no snap guides. */
+  private idlePoint(raw: Point) {
+    this.smartGuides = [];
+    this.snapTarget = null;
+    this.snapKind = null;
+    return raw;
+  }
   drawingPoint(raw: Point, alt: boolean, shift: boolean): Point {
     this.drawingShift = shift;
     if (
@@ -2555,8 +2562,18 @@ export class Controller {
   async applyTransform() {
     if (!this.transformValid || !this.transformTool || this.busy) return;
     const next = this.transformDraft ?? this.preview;
+    if (this.segmentTransform) {
+      const v = this.transformValues;
+      // An identity move or rotation leaves the segments attached.
+      if (v.x === 0 && v.y === 0 && v.angle === 0) { this.cancel(); return; }
+      const ids = [...this.selected];
+      this.toolSelection = null;
+      this.segmentTransform = null;
+      this.cancel();
+      if (next) await this.commitSegments(next, ids);
+      return;
+    }
     this.toolSelection = null;
-    this.segmentTransform = null;
     this.cancel();
     if (next && fingerprint(next) !== fingerprint(this.document))
       await this.commit(next);
@@ -3345,14 +3362,17 @@ export class Controller {
   private async commitSegments(document: Doc, select: string[] | null) {
     this.segmentHover = null;
     if (!(await this.commit(document))) return false;
-    if (select) {
-      this.setMode("select");
-      const ids = new Set(this.document.shapes.map(s => s.id));
-      this.selected = select.filter(id => ids.has(id));
-      this.panelRevision++;
-    }
-    this.notify();
+    this.mode = "segment-select";
+    this.selected = [];
+    this.selectSegmentsOf(select ?? []);
     return true;
+  }
+  /** Selects every segment of the given shapes, e.g. after they were moved or created. */
+  private selectSegmentsOf(ids: readonly string[]) {
+    const chosen = new Set(ids);
+    this.setSegmentSelection(chosen.size
+      ? segmentsOf(this.segmentTargets(), s => chosen.has(s.id) && this.segmentEditable(s))
+      : []);
   }
   async deleteSegments() {
     if (!this.canEditSegments) return;
@@ -3378,7 +3398,9 @@ export class Controller {
     }, ids);
   }
   /** Moves the selected segments by exact values, detached from their shapes, in one undo step. */
-  async moveSegments() {
+  moveSegments() { return this.transformSegments("move"); }
+  rotateSegments() { return this.transformSegments("rotate"); }
+  async transformSegments(tool: "move" | "rotate") {
     if (!this.canEditSegments || this.printLayoutActive) return;
     const refs = this.segmentSelection;
     const { document, ids } = this.splitSegmentSelection();
@@ -3388,8 +3410,8 @@ export class Controller {
     this.segmentHover = null;
     this.mode = "select";
     this.selected = ids;
-    await this.activateTransform("move");
-    if (this.transformTool !== "move") {
+    await this.activateTransform(tool);
+    if (this.transformTool !== tool) {
       this.preview = null;
       this.selected = [];
       this.mode = "segment-select";
@@ -4252,7 +4274,9 @@ export class Controller {
       g?.kind === "segment-move" ||
       g?.kind === "marquee"
         ? raw
-        : this.drawingPoint(raw, alt, shift);
+        : !g && this.tool === "select" && !this.placingPivot
+          ? this.idlePoint(raw)
+          : this.drawingPoint(raw, alt, shift);
     if (this.mode === "control-curve" && this.drawingDown) {
       const a = this.drawingDown.point;
       const radius = distance(a, raw);
@@ -5028,8 +5052,10 @@ export class Controller {
         }))],
       });
       if (success) {
-        if (this.segmentMode) this.setMode("select");
-        this.selectedGroups = []; this.selected = copies.map(s => s.id); this.notify();
+        this.selectedGroups = [];
+        if (this.segmentMode) { this.selected = []; this.selectSegmentsOf(copies.map(s => s.id)); }
+        else this.selected = copies.map(s => s.id);
+        this.notify();
       }
     } catch (error) { this.fail(error); }
   }

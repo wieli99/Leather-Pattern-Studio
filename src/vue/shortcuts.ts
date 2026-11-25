@@ -191,9 +191,10 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     }
     if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
       e.preventDefault();
-      // Segments only move; other transforms need whole objects.
+      // Segments move and rotate; other transforms need whole objects.
       if (editor.segmentMode) {
         if (k === "g") void editor.moveSegments();
+        else if (k === "e") void editor.rotateSegments();
         return;
       }
       editor.activateTransform(

@@ -46,6 +46,7 @@ const editor = vi.hoisted(() => ({
   selectAllSegments: vi.fn(),
   separateSegments: vi.fn(),
   moveSegments: vi.fn(),
+  rotateSegments: vi.fn(),
   delete: vi.fn(),
 }));
 vi.mock("../editor/instance", () => ({ editor }));
@@ -303,14 +304,16 @@ test("V still places the pivot during a transform", () => {
   expect(editor.beginPivotPlacement).toHaveBeenCalledOnce();
   expect(editor.cycle).not.toHaveBeenCalled();
 });
-test("segment mode routes G, Ctrl+A, Ctrl+Shift+D, Delete and Escape to segments", () => {
+test("segment mode routes G, E, Ctrl+A, Ctrl+Shift+D, Delete and Escape to segments", () => {
   editor.segmentMode = true;
   editor.mode = "segment-select";
   editor.selected = [];
   editor.segmentSelection = [{}];
   press("g");
   expect(editor.moveSegments).toHaveBeenCalledOnce();
-  for (const key of ["e", "s", "m", "b"]) press(key);
+  press("e");
+  expect(editor.rotateSegments).toHaveBeenCalledOnce();
+  for (const key of ["s", "m", "b"]) press(key);
   expect(editor.activateTransform).not.toHaveBeenCalled();
   press("a", { ctrlKey: true });
   expect(editor.selectAllSegments).toHaveBeenCalledOnce();
