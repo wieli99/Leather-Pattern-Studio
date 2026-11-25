@@ -17,6 +17,7 @@ const points = computed(() => {
     m === "text" ||
     m === "measurement" ||
     m === "select" ||
+    m === "segment-select" ||
     m === "ellipse" ||
     m.startsWith("polygon")
   )
@@ -122,6 +123,10 @@ const points = computed(() => {
     <path v-else-if="mode === 'image'" d="M3 3H21V21H3ZM4 18L9 11L13 15L17 9L20 18M7 7H8" />
     <path v-else-if="mode === 'measurement'" d="M3 7H21V17H3ZM7 7V12M10 7V10M13 7V12M16 7V10M19 7V12" />
     <path v-else-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
+    <template v-else-if="mode === 'segment-select'">
+      <path d="M3 13L13 3" stroke-width="2.4" />
+      <path d="M10 10L18.5 16L14.3 16.6L12.4 21Z" />
+    </template>
     <path v-else-if="mode === 'curve'" d="M3 18C8 18 16 6 21 6" />
     <template v-else-if="mode === 'control-curve'">
       <path d="M3 16V7M21 16V7" stroke-width="1" />

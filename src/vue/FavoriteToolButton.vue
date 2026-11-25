@@ -54,14 +54,14 @@ const e = useEditor();
   <button
     v-for="item in transformShortcuts.filter((t) => t[0] === id)"
     :key="item[0]"
-    :disabled="!e.canStartTransform(item[0])"
+    :disabled="e.segmentMode ? !['move', 'rotate'].includes(item[0]) || !(e.canEditSegments || e.segmentMoveActive) : !e.canStartTransform(item[0])"
     :aria-label="item[1]"
     :title="`${item[1]} (${item[2]})`"
     :aria-pressed="e.transformTool === item[0]"
     :aria-keyshortcuts="item[2].toLowerCase()"
     @click="
       emit('activated');
-      editor.activateTransform(item[0]);
+      e.segmentMode ? editor.transformSegments(item[0] as 'move' | 'rotate') : editor.activateTransform(item[0]);
     "
   >
     <svg

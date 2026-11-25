@@ -12,6 +12,7 @@ export interface HintState {
 
   pending: readonly unknown[];
   selected: readonly string[];
+  segmentSelection?: readonly unknown[];
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   offsetActive?: boolean;
   trimMode?: boolean;
@@ -447,6 +448,24 @@ function buildHint(
       add("rotation-step", "Ctrl / Shift / Alt", "10° / 5° / free rotation");
     } else if (s.transformTool === "move")
       add("snap", "Alt", "Bypass snapping");
+  } else if (s.mode === "segment-select") {
+    const count = s.segmentSelection?.length ?? 0;
+    action = count
+      ? "Drag a segment, or press G to move or E to rotate."
+      : "Click a segment between crossings or corners.";
+    add("toggle", "Shift+click", "Add or remove segments");
+    add("add", "Shift+drag", "Add segments in a box");
+    add("crossing", "Ctrl+drag", "Select crossing segments");
+    add("all", "Ctrl/⌘+A", "Select all segments");
+    if (count) {
+      add("move", "Drag / G", "Move (detaches)");
+      add("rotate", "E", "Rotate (detaches)");
+      add("delete", "Delete / Backspace", "Delete segments");
+      add("separate", "Ctrl/⌘+Shift+D", "Separate into objects");
+      add("duplicate", "Ctrl/⌘+D", "Duplicate");
+      add("measure", "Hold Ctrl", "Show segment lengths");
+    }
+    add("variants", "V / Shift+V", "Switch to object selection");
   } else if (s.mode === "select") {
     if (s.selected.length) action = "Choose Move, Rotate or Resize.";
     add("toggle", "Shift+click", "Add or remove objects from selection");

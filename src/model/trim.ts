@@ -25,119 +25,145 @@ function split(c: Cubic, t: number): [Cubic, Cubic] {
     [m, f, d, c[3]],
   ];
 }
-export function trimAt(
-  shapes: Shape[],
-  point: Point,
-  tolerance: number,
-  preview?: (span: Point[]) => void,
-  canEdit: (shape: Shape) => boolean = () => true,
-): Shape[] | null {
+/** A crossing-, corner- or anchor-bounded span of one shape's outline. */
+export type SegmentRef = {
+  shapeId: string;
+  /** Chain parameters: integer part selects the primitive piece, fraction the position on it. */
+  lo: number;
+  hi: number;
+  /** World-space samples of the span, for rendering and box tests. */
+  points: Point[];
+};
+export const segmentKey = (s: Pick<SegmentRef, "shapeId" | "lo" | "hi">) =>
+  `${s.shapeId}:${s.lo.toFixed(6)}:${s.hi.toFixed(6)}`;
+export const sameSegment = (
+  a: Pick<SegmentRef, "shapeId" | "lo" | "hi">,
+  b: Pick<SegmentRef, "shapeId" | "lo" | "hi">,
+) =>
+  a.shapeId === b.shapeId &&
+  Math.abs(a.lo - b.lo) < 1e-6 &&
+  Math.abs(a.hi - b.hi) < 1e-6;
+
+const splittable = (source: Shape) =>
+  !isIndicator(source.kind) &&
+  source.kind !== "text" &&
+  source.kind !== "measurement";
+
+function piecesOf(source: Shape): Piece[] {
   const pieces: Piece[] = [];
-  for (const source of shapes) {
-    if (isIndicator(source.kind) || source.kind === "text" || source.kind === "measurement") continue;
-    const base = {
-      ...source,
-      rotation: 0,
-      radius: 0,
-      cornerRadii: undefined,
-      transform: undefined,
-      handles: undefined,
-      contours: undefined,
-      sweep: undefined,
-    };
-    if (isCurve(source) || source.kind === "compound") {
-      for (const c of worldCubics(source))
-        pieces.push({
-          source,
-          selfCrossing: true,
-          at: (t) => cubicAt(c, t),
-          shape: (a, b) => {
-            const q = split(split(c, b)[0], a / b)[1];
-            return {
-              ...base,
-              kind: "control-curve",
-              points: [q[0], q[3]],
-              handles: [
-                {
-                  incoming: { x: 0, y: 0 },
-                  outgoing: { x: q[1].x - q[0].x, y: q[1].y - q[0].y },
-                },
-                {
-                  incoming: { x: q[2].x - q[3].x, y: q[2].y - q[3].y },
-                  outgoing: { x: 0, y: 0 },
-                },
-              ],
-            };
-          },
-        });
-    } else {
-      const boundaryPieces = boundary(source);
-      for (const [a, b] of boundaryPieces.lines) {
-        if (distance(a, b) < 1e-10) continue;
-        const at = (t: number) => ({
-          x: a.x + (b.x - a.x) * t,
-          y: a.y + (b.y - a.y) * t,
-        });
-        pieces.push({
-          source,
-          at,
-          shape: (a, b) => ({ ...base, kind: "line", points: [at(a), at(b)] }),
-        });
-      }
-      for (const c of boundaryPieces.curves) {
-        if (Math.hypot(c.u.x, c.u.y) * Math.hypot(c.v.x, c.v.y) < 1e-15)
-          continue;
-        const at = (t: number) => {
-          const angle = c.start + c.span * t;
+  if (!splittable(source)) return pieces;
+  const base = {
+    ...source,
+    rotation: 0,
+    radius: 0,
+    cornerRadii: undefined,
+    transform: undefined,
+    handles: undefined,
+    contours: undefined,
+    sweep: undefined,
+  };
+  if (isCurve(source) || source.kind === "compound") {
+    for (const c of worldCubics(source))
+      pieces.push({
+        source,
+        selfCrossing: true,
+        at: (t) => cubicAt(c, t),
+        shape: (a, b) => {
+          const q = split(split(c, b)[0], a / b)[1];
           return {
-            x: c.c.x + c.u.x * Math.cos(angle) + c.v.x * Math.sin(angle),
-            y: c.c.y + c.u.y * Math.cos(angle) + c.v.y * Math.sin(angle),
-          };
-        };
-        pieces.push({
-          source,
-          at,
-          shape: (a, b) => ({
             ...base,
-            kind: "arc",
-            points: [
-              { x: 0, y: 0 },
+            kind: "control-curve",
+            points: [q[0], q[3]],
+            handles: [
               {
-                x: Math.cos(c.start + c.span * a),
-                y: Math.sin(c.start + c.span * a),
+                incoming: { x: 0, y: 0 },
+                outgoing: { x: q[1].x - q[0].x, y: q[1].y - q[0].y },
+              },
+              {
+                incoming: { x: q[2].x - q[3].x, y: q[2].y - q[3].y },
+                outgoing: { x: 0, y: 0 },
               },
             ],
-            sweep: (c.span * (b - a) * 180) / Math.PI,
-            transform: {
-              a: c.u.x,
-              b: c.u.y,
-              c: c.v.x,
-              d: c.v.y,
-              e: c.c.x,
-              f: c.c.y,
+          };
+        },
+      });
+  } else {
+    const boundaryPieces = boundary(source);
+    for (const [a, b] of boundaryPieces.lines) {
+      if (distance(a, b) < 1e-10) continue;
+      const at = (t: number) => ({
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+      });
+      pieces.push({
+        source,
+        at,
+        shape: (a, b) => ({ ...base, kind: "line", points: [at(a), at(b)] }),
+      });
+    }
+    for (const c of boundaryPieces.curves) {
+      if (Math.hypot(c.u.x, c.u.y) * Math.hypot(c.v.x, c.v.y) < 1e-15)
+        continue;
+      const at = (t: number) => {
+        const angle = c.start + c.span * t;
+        return {
+          x: c.c.x + c.u.x * Math.cos(angle) + c.v.x * Math.sin(angle),
+          y: c.c.y + c.u.y * Math.cos(angle) + c.v.y * Math.sin(angle),
+        };
+      };
+      pieces.push({
+        source,
+        at,
+        shape: (a, b) => ({
+          ...base,
+          kind: "arc",
+          points: [
+            { x: 0, y: 0 },
+            {
+              x: Math.cos(c.start + c.span * a),
+              y: Math.sin(c.start + c.span * a),
             },
-          }),
-        });
-      }
+          ],
+          sweep: (c.span * (b - a) * 180) / Math.PI,
+          transform: {
+            a: c.u.x,
+            b: c.u.y,
+            c: c.v.x,
+            d: c.v.y,
+            e: c.c.x,
+            f: c.c.y,
+          },
+        }),
+      });
     }
   }
   // Boundary exposes straight and round pieces separately. Restore traversal order
   // before deciding whether a join is smooth or a trim boundary.
   const ordered: Piece[] = [];
-  for (const source of shapes) {
-    const pending = pieces.filter((p) => p.source === source);
+  const pending = [...pieces];
+  while (pending.length) {
+    let p = pending.shift()!;
+    ordered.push(p);
     while (pending.length) {
-      let p = pending.shift()!;
+      const end = p.at(1);
+      const i = pending.findIndex((q) => distance(end, q.at(0)) < EPS);
+      if (i < 0) break;
+      p = pending.splice(i, 1)[0];
       ordered.push(p);
-      while (pending.length) {
-        const end = p.at(1);
-        const i = pending.findIndex((q) => distance(end, q.at(0)) < EPS);
-        if (i < 0) break;
-        p = pending.splice(i, 1)[0];
-        ordered.push(p);
-      }
     }
   }
+  return ordered;
+}
+
+type Layout = {
+  ordered: Piece[];
+  paths: Sample[][];
+  pathBounds: Box[];
+  segmentBounds: Box[][];
+  trees: BoxTree[];
+};
+function layout(shapes: Shape[]): Layout {
+  const ordered = shapes.flatMap(piecesOf);
   const paths = ordered.map((p) => sample(p));
   const pathBounds = paths.map(bounds);
   const segmentBounds = paths.map((path) =>
@@ -146,49 +172,34 @@ export function trimAt(
   const trees = segmentBounds.map((boxes) =>
     makeTree(boxes.map((box, index) => ({ box, index }))),
   );
-  let best = Infinity,
-    target = -1,
-    parameter = 0;
-  paths.forEach((points, k) =>
-    points.slice(1).forEach((b, i) => {
-      const a = points[i],
-        d = distanceToSegment(point, a.p, b.p);
-      if (d <= tolerance && d <= best) {
-        const dx = b.p.x - a.p.x,
-          dy = b.p.y - a.p.y;
-        const fraction = Math.max(
-          0,
-          Math.min(
-            1,
-            ((point.x - a.p.x) * dx + (point.y - a.p.y) * dy) /
-              (dx * dx + dy * dy || 1),
-          ),
-        );
-        best = d;
-        target = k;
-        parameter = a.t + (b.t - a.t) * fraction;
-      }
-    }),
-  );
-  if (target < 0) return null;
-  const source = ordered[target].source;
-  if (!canEdit(source)) return null;
+  return { ordered, paths, pathBounds, segmentBounds, trees };
+}
+
+type Chain = { source: Shape; indices: number[]; count: number; closed: boolean };
+const smooth = (a: Piece, b: Piece) => {
+  if (distance(a.at(1), b.at(0)) > EPS) return false;
+  const u = sub(a.at(1), a.at(1 - 1e-5)),
+    v = sub(b.at(1e-5), b.at(0));
+  const norm = Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y);
+  return norm > 0 && (u.x * v.x + u.y * v.y) / norm > 1 - 1e-7;
+};
+function chainOf(ordered: Piece[], source: Shape): Chain {
   const indices = ordered
     .map((p, i) => (p.source === source ? i : -1))
     .filter((i) => i >= 0);
-  const local = indices.indexOf(target),
-    count = indices.length;
-  const cuts: number[] = [];
-  const smooth = (a: Piece, b: Piece) => {
-    if (distance(a.at(1), b.at(0)) > EPS) return false;
-    const u = sub(a.at(1), a.at(1 - 1e-5)),
-      v = sub(b.at(1e-5), b.at(0));
-    const norm = Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y);
-    return norm > 0 && (u.x * v.x + u.y * v.y) / norm > 1 - 1e-7;
-  };
+  const count = indices.length;
   const closed =
-    !isCurve(source) && source.kind !== "compound" &&
+    count > 0 &&
+    !isCurve(source) &&
+    source.kind !== "compound" &&
     smooth(ordered[indices[count - 1]], ordered[indices[0]]);
+  return { source, indices, count, closed };
+}
+
+/** Sorted, de-duplicated cut parameters bounding the chain's segments. */
+function cutsOf({ ordered, paths, pathBounds, segmentBounds, trees }: Layout, chain: Chain) {
+  const { source, indices, count, closed } = chain;
+  const cuts: number[] = [];
   if (!closed) cuts.push(0, count);
   for (let i = 1; i < count; i++)
     if (
@@ -245,9 +256,83 @@ export function trimAt(
         }
     }
   }
+  if (closed) {
+    // A crossing on a closed seam can appear at both 0 and count.
+    const wrapped = cuts.map((t) => ((t % count) + count) % count).sort((a, b) => a - b);
+    const unique = wrapped.filter((t, i) => !i || t - wrapped[i - 1] > 1e-7);
+    if (unique.length > 1 && unique[0] + count - unique.at(-1)! <= 1e-7) unique.pop();
+    return unique;
+  }
   cuts.sort((a, b) => a - b);
-  const unique = cuts.filter((t, i) => !i || t - cuts[i - 1] > 1e-7);
-  const position = local + parameter;
+  return cuts.filter((t, i) => !i || t - cuts[i - 1] > 1e-7);
+}
+
+function intervalsOf(ordered: Piece[], chain: Chain, start: number, end: number) {
+  const result: { piece: Piece; a: number; b: number }[] = [];
+  for (let k = Math.floor(start); k < end - 1e-10; k++) {
+    const a = Math.max(start, k) - k,
+      b = Math.min(end, k + 1) - k;
+    if (b - a > 1e-9)
+      result.push({
+        piece: ordered[chain.indices[((k % chain.count) + chain.count) % chain.count]],
+        a,
+        b,
+      });
+  }
+  return result;
+}
+
+function spanPoints(ordered: Piece[], chain: Chain, lo: number, hi: number) {
+  const points: Point[] = [];
+  for (const { piece, a, b } of intervalsOf(ordered, chain, lo, hi))
+    for (const entry of sample(piece, a, b)) points.push(entry.p);
+  return points;
+}
+
+function refOf(ordered: Piece[], chain: Chain, lo: number, hi: number): SegmentRef {
+  return { shapeId: chain.source.id, lo, hi, points: spanPoints(ordered, chain, lo, hi) };
+}
+
+/** Nearest editable segment within `tolerance` of `point`, or null. */
+export function segmentAt(
+  shapes: Shape[],
+  point: Point,
+  tolerance: number,
+  canEdit: (shape: Shape) => boolean = () => true,
+): SegmentRef | null {
+  const view = layout(shapes);
+  const { ordered, paths } = view;
+  let best = Infinity,
+    target = -1,
+    parameter = 0;
+  paths.forEach((points, k) =>
+    points.slice(1).forEach((b, i) => {
+      const a = points[i],
+        d = distanceToSegment(point, a.p, b.p);
+      if (d <= tolerance && d <= best) {
+        const dx = b.p.x - a.p.x,
+          dy = b.p.y - a.p.y;
+        const fraction = Math.max(
+          0,
+          Math.min(
+            1,
+            ((point.x - a.p.x) * dx + (point.y - a.p.y) * dy) /
+              (dx * dx + dy * dy || 1),
+          ),
+        );
+        best = d;
+        target = k;
+        parameter = a.t + (b.t - a.t) * fraction;
+      }
+    }),
+  );
+  if (target < 0) return null;
+  const source = ordered[target].source;
+  if (!canEdit(source)) return null;
+  const chain = chainOf(ordered, source);
+  const unique = cutsOf(view, chain);
+  const { count, closed } = chain;
+  const position = chain.indices.indexOf(target) + parameter;
   let lo: number, hi: number;
   if (!unique.length) {
     lo = 0;
@@ -267,34 +352,37 @@ export function trimAt(
     lo = unique[j - 1];
     hi = unique[j];
   }
-  const intervals = (start: number, end: number) => {
-    const result: { piece: Piece; a: number; b: number }[] = [];
-    for (let k = Math.floor(start); k < end - 1e-10; k++) {
-      const a = Math.max(start, k) - k,
-        b = Math.min(end, k + 1) - k;
-      if (b - a > 1e-9)
-        result.push({
-          piece: ordered[indices[((k % count) + count) % count]],
-          a,
-          b,
-        });
+  return refOf(ordered, chain, lo, hi);
+}
+
+/** Every segment of every editable shape, in shape order. */
+export function segmentsOf(
+  shapes: Shape[],
+  canEdit: (shape: Shape) => boolean = () => true,
+): SegmentRef[] {
+  const view = layout(shapes);
+  const result: SegmentRef[] = [];
+  for (const source of shapes) {
+    if (!canEdit(source)) continue;
+    const chain = chainOf(view.ordered, source);
+    if (!chain.count) continue;
+    const unique = cutsOf(view, chain);
+    if (!unique.length) {
+      result.push(refOf(view.ordered, chain, 0, chain.count));
+      continue;
     }
-    return result;
-  };
-  if (preview) {
-    const points: Point[] = [];
-    for (const { piece, a, b } of intervals(lo, hi))
-      for (const entry of sample(piece, a, b)) points.push(entry.p);
-    preview(points);
-    return null;
+    for (let i = 1; i < unique.length; i++)
+      result.push(refOf(view.ordered, chain, unique[i - 1], unique[i]));
+    if (chain.closed)
+      result.push(refOf(view.ordered, chain, unique.at(-1)!, unique[0] + chain.count));
   }
-  const retained = closed
-    ? intervals(hi, lo + count)
-    : [...intervals(0, lo), ...intervals(hi, count)];
-  const fragments = retained.map(({ piece, a, b }) => piece.shape(a, b));
-  // Keep adjacent cubic portions editable as one connected control curve.
+  return result;
+}
+
+// Keep adjacent cubic portions editable as one connected control curve.
+function buildFragments(parts: { piece: Piece; a: number; b: number }[]) {
   const remaining: Shape[] = [];
-  for (const fragment of fragments) {
+  for (const fragment of parts.map(({ piece, a, b }) => piece.shape(a, b))) {
     const last = remaining.at(-1);
     const merged =
       last && isCurve(last) && isCurve(fragment)
@@ -325,11 +413,115 @@ export function trimAt(
       };
     } else remaining.push(fragment);
   }
-  return shapes.flatMap((s) =>
-    s !== source
-      ? [s]
-      : remaining.map((p, i) => ({ ...p, id: i ? crypto.randomUUID() : s.id })),
+  return remaining;
+}
+
+export type SegmentSplit = {
+  /** The document shapes with sources rebuilt (or untouched when copying). */
+  shapes: Shape[];
+  /** Ids of the shapes built from the selected segments, in selection order. */
+  extracted: string[];
+  /** Source shape id for every newly created shape id. */
+  origin: Map<string, string>;
+};
+/**
+ * Splits each referenced segment out of its source shape. With `copy`, sources stay
+ * intact and the segments are added as new shapes after them. A source whose whole
+ * outline is selected hands its id to the first extracted shape, so links survive.
+ */
+export function splitSegments(
+  shapes: Shape[],
+  refs: readonly Pick<SegmentRef, "shapeId" | "lo" | "hi">[],
+  { copy = false }: { copy?: boolean } = {},
+): SegmentSplit {
+  const extracted: string[] = [];
+  const origin = new Map<string, string>();
+  const result = shapes.flatMap((source) => {
+    const mine = refs.filter((r) => r.shapeId === source.id);
+    if (!mine.length) return [source];
+    const ordered = piecesOf(source);
+    const chain = chainOf(ordered, source);
+    if (!chain.count) return [source];
+    const { count, closed } = chain;
+    // Normalise to [0, count) and drop overlapping duplicates.
+    const spans = mine
+      .map((r) => {
+        const shift = closed ? Math.floor(r.lo / count) * count : 0;
+        return { lo: r.lo - shift, hi: r.hi - shift };
+      })
+      .sort((a, b) => a.lo - b.lo)
+      .filter((s, i, all) => !i || s.lo >= all[i - 1].hi - 1e-9);
+    const pieces = spans.map((s) => buildFragments(intervalsOf(ordered, chain, s.lo, s.hi)));
+    let retained: Shape[] = [];
+    if (!copy) {
+      const parts = closed
+        ? spans.flatMap((s, i) =>
+            intervalsOf(ordered, chain, s.hi, i + 1 < spans.length ? spans[i + 1].lo : spans[0].lo + count),
+          )
+        : spans.flatMap((s, i) => [
+            ...(i ? [] : intervalsOf(ordered, chain, 0, s.lo)),
+            ...intervalsOf(ordered, chain, s.hi, i + 1 < spans.length ? spans[i + 1].lo : count),
+          ]);
+      retained = buildFragments(parts);
+    }
+    let keepId = !copy;
+    const named = (shape: Shape) => {
+      const id = keepId ? source.id : crypto.randomUUID();
+      if (!keepId) origin.set(id, source.id);
+      keepId = false;
+      return { ...shape, id };
+    };
+    const kept = retained.map(named);
+    const segments = pieces.flatMap((group) => {
+      const built = group.map(named);
+      extracted.push(...built.map((s) => s.id));
+      return built;
+    });
+    return copy ? [source, ...segments] : [...kept, ...segments];
+  });
+  return { shapes: result, extracted, origin };
+}
+
+/** Whether a segment lies fully inside `box`, or with `crossing`, touches it at all. */
+export function segmentInBox(
+  ref: Pick<SegmentRef, "points">,
+  box: { x: number; y: number; width: number; height: number },
+  crossing = false,
+) {
+  const right = box.x + box.width,
+    bottom = box.y + box.height;
+  const inside = (p: Point) => p.x >= box.x && p.x <= right && p.y >= box.y && p.y <= bottom;
+  if (!crossing) return ref.points.length > 0 && ref.points.every(inside);
+  if (ref.points.some(inside)) return true;
+  const corners = [p0(box.x, box.y), p0(right, box.y), p0(right, bottom), p0(box.x, bottom)];
+  const cross = (a: Point, b: Point, c: Point) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const meets = (a: Point, b: Point, c: Point, d: Point) =>
+    // The extent check rejects collinear pieces that do not overlap.
+    Math.max(a.x, b.x) >= Math.min(c.x, d.x) && Math.max(c.x, d.x) >= Math.min(a.x, b.x) &&
+    Math.max(a.y, b.y) >= Math.min(c.y, d.y) && Math.max(c.y, d.y) >= Math.min(a.y, b.y) &&
+    cross(a, b, c) * cross(a, b, d) <= 0 && cross(c, d, a) * cross(c, d, b) <= 0;
+  return ref.points.slice(1).some((b, i) =>
+    corners.some((c, k) => meets(ref.points[i], b, c, corners[(k + 1) % 4])),
   );
+}
+const p0 = (x: number, y: number): Point => ({ x, y });
+
+export function trimAt(
+  shapes: Shape[],
+  point: Point,
+  tolerance: number,
+  preview?: (span: Point[]) => void,
+  canEdit: (shape: Shape) => boolean = () => true,
+): Shape[] | null {
+  const ref = segmentAt(shapes, point, tolerance, canEdit);
+  if (!ref) return null;
+  if (preview) {
+    preview(ref.points);
+    return null;
+  }
+  const { shapes: next, extracted } = splitSegments(shapes, [ref]);
+  const removed = new Set(extracted);
+  return next.filter((s) => !removed.has(s.id));
 }
 
 const EPS = 1e-5;

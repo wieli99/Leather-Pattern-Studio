@@ -1,4 +1,4 @@
-import { test, expect, vi, afterEach } from "vitest";
+import { describe, test, expect, vi, afterEach } from "vitest";
 import { DOCUMENT_VERSION, emptyDocument, parseProject, type Doc } from "../model/project";
 vi.mock("./core", () => ({
   Core: class {
@@ -42,6 +42,7 @@ vi.mock("./persistence", () => ({
   recovery: vi.fn(async () => undefined),
 }));
 import { Controller } from "./controller";
+import { worldPoints } from "../model/geometry";
 function editor() {
   const e = new Controller();
   e.ready = true;
@@ -3834,4 +3835,211 @@ test("Alt eye clicks show only the selection or the clicked item", async () => {
   expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([true, false, false, true]);
   await e.toggleGroupState(group!, "hidden", true);
   expect(["a", "b", "c", "d"].map(id => e.isHidden(id))).toEqual([false, false, false, false]);
+});
+
+describe("segment selection", () => {
+  const line = (id: string, a: [number, number], b: [number, number]) => ({
+    id, name: id, kind: "line" as const,
+    points: [{ x: a[0], y: a[1] }, { x: b[0], y: b[1] }], radius: 0, rotation: 0,
+  });
+  // A horizontal target cut into three spans by two vertical lines.
+  async function crossed() {
+    const e = editor();
+    await e.commit({ ...emptyDocument(), shapes: [line("target", [0, 0], [30, 0]), line("cut1", [10, -5], [10, 5]), line("cut2", [20, -5], [20, 5])] });
+    e.setMode("segment-select");
+    return e;
+  }
+  const at = (e: Controller, x: number, y: number) => e.screen({ x, y });
+  function click(e: Controller, x: number, y: number, shift = false, ctrl = false) {
+    e.pointerDown(at(e, x, y), 0, shift, false, ctrl);
+    e.pointerUp(at(e, x, y), false, shift, ctrl);
+  }
+
+  test("click, Shift-click and empty clicks select segments; V cycles back to objects", async () => {
+    const e = await crossed();
+    expect(e.selected).toEqual([]);
+    e.pointerMove(at(e, 15, 0.2), false);
+    expect(e.segmentHover?.shapeId).toBe("target");
+    click(e, 15, 0);
+    expect(e.segmentSelection.map(s => [s.shapeId, s.points[0], s.points.at(-1)])).toEqual([["target", { x: 10, y: 0 }, { x: 20, y: 0 }]]);
+    click(e, 25, 0, true);
+    expect(e.segmentSelection).toHaveLength(2);
+    click(e, 25, 0, true);
+    expect(e.segmentSelection).toHaveLength(1);
+    click(e, 50, 50);
+    expect(e.segmentSelection).toEqual([]);
+    e.cycle("select", 1);
+    expect(e.mode).toBe("select");
+    e.cycle("select", -1);
+    expect(e.mode).toBe("segment-select");
+  });
+
+  test("marquee selects contained segments, Ctrl includes crossing ones", async () => {
+    const e = await crossed();
+    const drag = (from: [number, number], to: [number, number], ctrl = false) => {
+      e.pointerDown(at(e, ...from), 0, false, false, ctrl);
+      e.pointerMove(at(e, ...to), false, ctrl);
+      e.pointerUp(at(e, ...to), false, false, ctrl);
+    };
+    // Start points stay beyond the 8 px pick tolerance so the drags start marquees.
+    drag([7, -3], [23, 3]);
+    expect(e.segmentSelection.map(s => s.shapeId)).toEqual(["target"]);
+    drag([13, -3], [17, 3]);
+    expect(e.segmentSelection).toEqual([]);
+    drag([13, -3], [17, 3], true);
+    expect(e.segmentSelection.map(s => s.shapeId)).toEqual(["target"]);
+    await e.selectAllSegments();
+    expect(e.segmentSelection).toHaveLength(7);
+  });
+
+  test("locked and hidden shapes have no selectable segments", async () => {
+    const e = await crossed();
+    await e.commit({ ...e.document, shapes: e.document.shapes.map(s => s.id === "target" ? { ...s, locked: true } : s.id === "cut1" ? { ...s, hidden: true } : s) });
+    click(e, 15, 0);
+    expect(e.segmentSelection).toEqual([]);
+    e.selectAllSegments();
+    expect(e.segmentSelection.every(s => s.shapeId === "cut2")).toBe(true);
+  });
+
+  test("Delete removes only the selected segment in one undo step", async () => {
+    const e = await crossed();
+    const original = JSON.stringify(e.document.shapes);
+    click(e, 15, 0);
+    e.delete();
+    await vi.waitFor(() => expect(e.document.shapes).toHaveLength(4));
+    const pieces = e.document.shapes.filter(s => s.name === "target").map(s => s.points);
+    expect(pieces).toEqual(expect.arrayContaining([[{ x: 0, y: 0 }, { x: 10, y: 0 }], [{ x: 20, y: 0 }, { x: 30, y: 0 }]]));
+    expect(e.segmentSelection).toEqual([]);
+    expect(e.mode).toBe("segment-select");
+    e.cancel();
+    await e.transact("undo");
+    expect(JSON.stringify(e.document.shapes)).toBe(original);
+  });
+
+  test("Separate keeps the segment in its source group and stays in segment mode", async () => {
+    const e = await crossed();
+    await e.commit({ ...e.document, objectTree: [{ kind: "group", id: "g", name: "G", children: [{ kind: "object", id: "target" }] }, { kind: "object", id: "cut1" }, { kind: "object", id: "cut2" }] });
+    click(e, 15, 0);
+    await e.separateSegments();
+    expect(e.mode).toBe("segment-select");
+    expect(e.selected).toEqual([]);
+    expect(e.segmentSelection).toHaveLength(1);
+    const id = e.segmentSelection[0].shapeId;
+    expect(id).not.toBe("target");
+    expect(e.document.shapes.find(s => s.id === id)?.points).toEqual([{ x: 10, y: 0 }, { x: 20, y: 0 }]);
+    const group = e.document.objectTree?.find(n => n.id === "g");
+    // The far remainder of the target is a new object too; all stay in the group.
+    const children = group?.kind === "group" ? group.children.map(c => c.id) : [];
+    expect(children).toHaveLength(3);
+    expect(children).toContain(id);
+    expect(children.at(-1)).toBe("target");
+  });
+
+  test("Duplicate leaves the source whole and offsets the copy", async () => {
+    const e = await crossed();
+    click(e, 15, 0);
+    await e.duplicate();
+    expect(e.mode).toBe("segment-select");
+    expect(e.document.shapes.find(s => s.id === "target")?.points).toEqual([{ x: 0, y: 0 }, { x: 30, y: 0 }]);
+    const copy = e.document.shapes.find(s => s.id === e.segmentSelection[0].shapeId)!;
+    expect(copy.points).toEqual([{ x: 20, y: 10 }, { x: 30, y: 10 }]);
+    expect(copy.name).toBe("target copy");
+  });
+
+  test("dragging a selected segment detaches and moves it in one commit", async () => {
+    const e = await crossed();
+    const original = JSON.stringify(e.document.shapes);
+    click(e, 15, 0);
+    e.pointerDown(at(e, 15, 0), 0, false, false);
+    e.pointerMove(at(e, 15, 0.1), false);
+    expect(e.preview).toBeNull();
+    e.pointerMove(at(e, 15, 20), true);
+    expect(e.preview?.shapes.length).toBe(5);
+    expect(e.document.shapes).toHaveLength(3);
+    e.pointerUp(at(e, 15, 20), true);
+    await vi.waitFor(() => expect(e.document.shapes).toHaveLength(5));
+    expect(e.mode).toBe("segment-select");
+    expect(e.segmentSelection).toHaveLength(1);
+    const moved = e.document.shapes.find(s => s.id === e.segmentSelection[0].shapeId)!;
+    expect(moved.points).toEqual([{ x: 10, y: 20 }, { x: 20, y: 20 }]);
+    expect(e.document.shapes).toHaveLength(5);
+    await e.transact("undo");
+    expect(JSON.stringify(e.document.shapes)).toBe(original);
+  });
+
+  test("G moves detached segments exactly; Esc returns to the untouched segments", async () => {
+    const e = await crossed();
+    const original = JSON.stringify(e.document);
+    click(e, 15, 0);
+    await e.moveSegments();
+    expect(e.transformTool).toBe("move");
+    expect(e.segmentMoveActive).toBe(true);
+    // The segment tool stays active and object-only tools stay unavailable.
+    expect(e.mode).toBe("segment-select");
+    expect(e.canTrim).toBe(false);
+    expect(e.canOffset).toBe(false);
+    expect(e.canJoin).toBe(false);
+    expect(e.canStartTransform("scale")).toBe(false);
+    expect(e.selectionToolsAvailable).toBe(false);
+    e.setTransformValues({ x: 0, y: 7 });
+    const moved = e.preview!.shapes.find(s => s.id === e.selected[0])!;
+    expect(moved.points).toEqual([{ x: 10, y: 7 }, { x: 20, y: 7 }]);
+    // Switching to Rotate restarts from the untouched segments.
+    await e.rotateSegments();
+    expect(e.transformTool).toBe("rotate");
+    expect(e.mode).toBe("segment-select");
+    expect(e.transformValues.y).toBe(0);
+    e.cancel();
+    expect(e.mode).toBe("segment-select");
+    expect(e.transformTool).toBeNull();
+    expect(e.segmentSelection).toHaveLength(1);
+    expect(JSON.stringify(e.document)).toBe(original);
+    // Applying without any movement keeps the segment attached.
+    await e.moveSegments();
+    await e.applyTransform();
+    expect(JSON.stringify(e.document)).toBe(original);
+    expect(e.mode).toBe("segment-select");
+    expect(e.segmentSelection).toHaveLength(1);
+    await e.moveSegments();
+    e.setTransformValues({ x: 0, y: 7 });
+    await e.applyTransform();
+    expect(e.mode).toBe("segment-select");
+    expect(e.document.shapes.find(s => s.id === e.segmentSelection[0].shapeId)?.points).toEqual([{ x: 10, y: 7 }, { x: 20, y: 7 }]);
+    expect(e.document.shapes.find(s => s.id === "target")?.points).toEqual([{ x: 0, y: 0 }, { x: 10, y: 0 }]);
+  });
+
+  test("E rotates detached segments about their centre and stays in segment mode", async () => {
+    const e = await crossed();
+    click(e, 15, 0);
+    await e.rotateSegments();
+    expect(e.transformTool).toBe("rotate");
+    e.setTransformValues({ angle: 90 });
+    await e.applyTransform();
+    expect(e.mode).toBe("segment-select");
+    const rotated = e.document.shapes.find(s => s.id === e.segmentSelection[0].shapeId)!;
+    const ends = worldPoints(rotated).map(p => ({ x: Math.round(p.x * 1e6) / 1e6, y: Math.round(p.y * 1e6) / 1e6 }));
+    expect(ends).toEqual(expect.arrayContaining([{ x: 15, y: -5 }, { x: 15, y: 5 }]));
+  });
+
+  test("hovering in a selection tool shows no snap guides", async () => {
+    const e = await crossed();
+    e.objects = true;
+    for (const mode of ["select", "segment-select"] as const) {
+      e.setMode(mode);
+      e.pointerMove(at(e, 10, 2), false);
+      expect(e.smartGuides).toEqual([]);
+      expect(e.snapTarget).toBeNull();
+    }
+  });
+
+  test("selections lapse when the document changes", async () => {
+    const e = await crossed();
+    click(e, 15, 0);
+    await e.commit({ ...e.document, shapes: [...e.document.shapes, line("extra", [0, 30], [10, 30])] });
+    expect(e.segmentSelection).toEqual([]);
+    click(e, 15, 0);
+    e.setMode("rectangle");
+    e.setMode("segment-select");
+    expect(e.segmentSelection).toEqual([]);
+  });
 });

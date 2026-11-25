@@ -36,7 +36,8 @@ Copy/paste works between Model and print tabs and across browser tabs. Pasted ob
 
 | Shortcut | Action |
 | --- | --- |
-| V | Select |
+| V / Shift+V | Select tool group: Select objects / Select segments |
+| 1 / 2 | Select objects / Select segments |
 | P / R / C / H | Path / rectangle / circle / polygon tool group |
 | Repeat group letter / Shift+letter | Next / previous variant |
 | T | Text |
@@ -74,6 +75,21 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | Alt+click edge | Insert anchor where supported |
 | Double-click anchor | Toggle sharp/smooth where supported |
 | Alt+drag curve handle | Move handle independently |
+
+In [Select segments](#selection/select-segments), selection and editing apply to segments:
+
+| Control | Action |
+| --- | --- |
+| Click / Shift+click | Select a segment / add or remove one |
+| Drag / Shift+drag / Ctrl+drag | Select enclosed segments / add them / include crossing segments |
+| Ctrl/⌘+A | Select all segments |
+| Drag a selected segment / G | Move segments; they detach from their shapes |
+| E | Rotate segments; they detach from their shapes |
+| Delete / Backspace | Delete segments |
+| Ctrl/⌘+Shift+D | Separate segments into their own objects |
+| Ctrl/⌘+D / Ctrl/⌘+C | Duplicate / copy segments as new objects |
+| Hold Ctrl | Show segment lengths |
+| Esc | Clear segments, then return to Select objects |
 
 Rotation steps: 1° normally, Shift 5°, Ctrl 10°, Alt free. Guide and corner measurement steps: 1 mm normally, Shift 5 mm, Ctrl 10 mm; in inches, 1/16 inch normally, Shift 1/4 inch, Ctrl 1 inch. In Corners, Alt affects all corners of the targeted shape instead of bypassing snapping.
 

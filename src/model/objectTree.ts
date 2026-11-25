@@ -268,3 +268,21 @@ export function inheritedStateSource(
       );
   }
 }
+
+/** Places each new object directly in front of its source object, inside the source's group. */
+export function placeBesideSources(
+  tree: readonly ObjectNode[],
+  origin: ReadonlyMap<string, string>,
+): ObjectNode[] {
+  const bySource = new Map<string, string[]>();
+  for (const [id, source] of origin)
+    bySource.set(source, [...(bySource.get(source) ?? []), id]);
+  const visit = (nodes: readonly ObjectNode[]): ObjectNode[] =>
+    nodes.flatMap<ObjectNode>((node) => {
+      if (node.kind === "group") return [{ ...node, children: visit(node.children) }];
+      const added = bySource.get(node.id) ?? [];
+      // Panel order is front to back; later-created shapes sit in front.
+      return [...[...added].reverse().map((id) => ({ kind: "object" as const, id })), node];
+    });
+  return visit(tree);
+}

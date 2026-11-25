@@ -38,6 +38,17 @@ const editor = vi.hoisted(() => ({
   copyObjects: vi.fn(() => "clipboard snapshot"),
   pasteObjects: vi.fn(),
   toggleMeasurementObjects: vi.fn(),
+  setMode: vi.fn(),
+  segmentMode: false,
+  segmentSelection: [] as unknown[],
+  gesture: null as unknown,
+  setSegmentSelection: vi.fn(),
+  selectAllSegments: vi.fn(),
+  separateSegments: vi.fn(),
+  moveSegments: vi.fn(),
+  segmentMoveActive: false,
+  rotateSegments: vi.fn(),
+  delete: vi.fn(),
 }));
 vi.mock("../editor/instance", () => ({ editor }));
 import { handleShortcut, handleClipboard } from "./shortcuts";
@@ -64,6 +75,10 @@ beforeEach(() => {
   editor.transformTool = null;
   editor.placingPivot = false;
   editor.transformAxis = undefined;
+  editor.segmentMode = false;
+  editor.segmentMoveActive = false;
+  editor.segmentSelection = [];
+  editor.mode = "select";
   vi.stubGlobal("HTMLElement", ElementStub);
   vi.stubGlobal("document", { querySelector: () => null });
 });
@@ -266,4 +281,69 @@ test("Shift+M toggles measurement objects from the canvas only", () => {
   expect(editor.toggleMeasurementObjects).toHaveBeenCalledOnce();
   press("m");
   expect(editor.activateTransform).toHaveBeenCalledWith("mirror");
+});
+
+test("1 and 2 pick object or segment selection; V and Shift+V cycle the select variants", () => {
+  press("1");
+  expect(editor.setMode).toHaveBeenLastCalledWith("select");
+  press("2");
+  expect(editor.setMode).toHaveBeenLastCalledWith("segment-select");
+  press("v");
+  expect(editor.cycle).toHaveBeenLastCalledWith("select", 1);
+  press("V", { shiftKey: true });
+  expect(editor.cycle).toHaveBeenLastCalledWith("select", -1);
+  vi.clearAllMocks();
+  // Shift+1 reports "!", modifiers and text fields keep their own meaning.
+  press("!", { shiftKey: true });
+  press("1", { ctrlKey: true });
+  press("2", { target: new ElementStub("INPUT", true) });
+  press("2", { repeat: true });
+  expect(editor.setMode).not.toHaveBeenCalled();
+});
+test("V still places the pivot during a transform", () => {
+  editor.transformTool = "rotate";
+  press("v");
+  expect(editor.beginPivotPlacement).toHaveBeenCalledOnce();
+  expect(editor.cycle).not.toHaveBeenCalled();
+});
+test("segment mode routes G, E, Ctrl+A, Ctrl+Shift+D, Delete and Escape to segments", () => {
+  editor.segmentMode = true;
+  editor.mode = "segment-select";
+  editor.selected = [];
+  editor.segmentSelection = [{}];
+  press("g");
+  expect(editor.moveSegments).toHaveBeenCalledOnce();
+  press("e");
+  expect(editor.rotateSegments).toHaveBeenCalledOnce();
+  for (const key of ["s", "m", "b"]) press(key);
+  expect(editor.activateTransform).not.toHaveBeenCalled();
+  press("a", { ctrlKey: true });
+  expect(editor.selectAllSegments).toHaveBeenCalledOnce();
+  press("D", { ctrlKey: true, shiftKey: true });
+  expect(editor.separateSegments).toHaveBeenCalledOnce();
+  expect(editor.duplicate).not.toHaveBeenCalled();
+  press("Delete");
+  expect(editor.delete).toHaveBeenCalledOnce();
+  press("Escape");
+  expect(editor.setSegmentSelection).toHaveBeenCalledWith([]);
+  expect(editor.setMode).not.toHaveBeenCalled();
+  editor.segmentSelection = [];
+  press("Escape");
+  expect(editor.setMode).toHaveBeenCalledWith("select");
+});
+test("Ctrl+Shift+D does nothing outside segment mode", () => {
+  press("D", { ctrlKey: true, shiftKey: true });
+  expect(editor.separateSegments).not.toHaveBeenCalled();
+  expect(editor.duplicate).not.toHaveBeenCalled();
+});
+
+test("Escape during a segment transform returns to the segments", () => {
+  editor.segmentMode = true;
+  editor.segmentMoveActive = true;
+  editor.transformTool = "rotate";
+  editor.segmentSelection = [{}];
+  press("Escape");
+  expect(editor.cancel).toHaveBeenCalledOnce();
+  expect(editor.setMode).not.toHaveBeenCalled();
+  expect(editor.setSegmentSelection).not.toHaveBeenCalled();
 });

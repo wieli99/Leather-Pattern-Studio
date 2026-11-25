@@ -8,6 +8,7 @@ import type { Controller } from "../editor/controller";
 import { useEditorSelector } from "./useEditorSelector";
 import { edgeMeasurements } from "../model/edgeMeasurements";
 import { editEdge } from "../model/editEdge";
+import { segmentKey } from "../model/trim";
 import { bounds, transformShape } from "../model/geometry";
 const props = defineProps<{ controller?: Controller }>();
 const editor = props.controller ?? defaultEditor;
@@ -65,6 +66,7 @@ const items = computed(() => {
   }
   if (editor.transformTool === "corner") return [];
   if (!editor.measurementsVisible && !active.value) return [];
+  if (editor.segmentMode && !editor.transformTool) return segmentItems();
   return (editor.preview ?? editor.document).shapes
     .filter((s) => editor.selected.includes(s.id))
     .flatMap((shape) =>
@@ -79,6 +81,35 @@ const items = computed(() => {
       })),
     );
 });
+// Segment lengths; a segment covering a whole edge edits that edge like object selection does.
+function segmentItems() {
+  return editor.segmentSelection.flatMap((segment) => {
+    const points = segment.points;
+    const steps = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.y - points[i].y));
+    const length = steps.reduce((sum, step) => sum + step, 0);
+    if (!(length > 1e-9)) return [];
+    let walked = 0, i = 0;
+    while (i < steps.length - 1 && walked + steps[i] < length / 2) walked += steps[i++];
+    const t = steps[i] ? (length / 2 - walked) / steps[i] : 0;
+    const a = points[i], b = points[i + 1];
+    const middle = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    const shape = editor.document.shapes.find((s) => s.id === segment.shapeId);
+    const index = shape
+      ? edgeMeasurements(shape).findIndex((edge) =>
+          Math.abs(edge.length - length) < 1e-6 &&
+          Math.hypot(edge.point.x - middle.x, edge.point.y - middle.y) < 1e-6)
+      : -1;
+    return [{
+      id: segmentKey(segment),
+      key: "",
+      value: length,
+      point: editor.screen(middle),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
+      shape: index >= 0 ? shape : undefined,
+      index,
+    }];
+  });
+}
 async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   const field = event.target as HTMLInputElement;
   active.value = item.id;
@@ -234,7 +265,7 @@ function style(item: (typeof items.value)[number]) {
       }}</span>
       <input
         v-numeric-wheel="['Angle', 'Sweep'].includes(item.key) ? 'number' : editor.units"
-        :readonly="!!editor.gesture"
+        :readonly="!!editor.gesture || (!item.key && !item.shape)"
         type="text"
         step="any"
         :aria-label="item.key || 'Edge length'"

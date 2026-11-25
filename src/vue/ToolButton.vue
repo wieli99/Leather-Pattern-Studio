@@ -21,6 +21,7 @@ const props = defineProps<{ tool: (typeof tools)[number]; controller?: Controlle
   e = useEditor(editor),
   open = ref(false);
 const group = computed(() =>
+    props.tool.id === "select" ? "select" :
     props.tool.id === "measurement" ? "measurement" :
     props.tool.id === "arrow" ? "drawing" :
     props.tool.id === "polygon" ||
@@ -31,6 +32,8 @@ const group = computed(() =>
       : null,
   ),
   current = computed(() =>
+    // The rail button always returns to object selection; the icon follows the active variant.
+    group.value === "select" ? (e.value.mode === "segment-select" ? "segment-select" : "select") :
     group.value === "measurement" ? e.value.lastMeasurement :
     group.value === "drawing" ? e.value.lastDrawing :
     group.value === "rectangle"

@@ -2,6 +2,18 @@
 
 Click an edge to select only that object, including when it is already part of a multi-selection, or drag an empty area to select fully enclosed outlines. Shift+click toggles selection; Shift+drag adds. Ctrl+click includes interiors; Ctrl+drag includes crossing outlines. Ctrl/⌘+A selects all.
 
+## Select segments
+
+Select segments picks parts of outlines instead of whole objects. Press **2**, press **V** or **Shift+V** while Select is active, or hold the Select button and choose **Select segments**; press **1** to return to Select objects. A segment is the part of an outline between crossings with other visible outlines, sharp corners, open ends, and curve anchors, the same portions [Trim](#transforms/trim) removes. Hovering highlights the segment under the pointer.
+
+Click a segment to select it; Shift+click adds or removes segments. Drag an empty area to select fully enclosed segments; Ctrl+drag also selects segments crossing the box, and Shift+drag adds to the selection. Ctrl/⌘+A selects every segment of visible, unlocked objects. Hidden and locked objects are skipped. Esc clears the selection; press it again to return to Select objects.
+
+Drag a selected segment to move the selection, or press **G** to move it or **E** to rotate it by exact values with the usual transform panel and pivot. Moving or rotating detaches the segments from their shapes: each shape is split at the segment ends and the segments become separate objects in the same group. Delete or Backspace removes the selected segments from their shapes. **Separate** (Ctrl/⌘+Shift+D) turns them into separate objects without moving them. **Duplicate** (Ctrl/⌘+D) adds offset copies and Ctrl/⌘+C copies them for pasting; the original shapes stay whole. Each operation is one undo step and keeps Select segments active with the resulting segments selected. While moving or rotating segments, other tools stay unavailable until you apply or cancel; Esc returns to the original segments.
+
+Hold Ctrl to show segment lengths. When a segment covers a whole straight edge, click its length to edit that edge as in object selection.
+
+![Selected segments with lengths and segment actions](/manual/images/segment-selection.png)
+
 ## Edit anchors and curves
 
 Alt+click a non-text edge inserts an anchor where supported. Select a single path to drag its anchors. You can keep Alt held while clicking or dragging visible anchors and curve handles. On control point curves, drag handles to shape the curve; double-click an anchor toggles sharp/smooth. Sharp and Smooth buttons are also available in Vertex coordinates.
