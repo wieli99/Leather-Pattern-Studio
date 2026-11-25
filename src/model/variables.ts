@@ -131,3 +131,37 @@ export function variableNameError(name: string, variables: readonly Variable[] |
   if ((variables ?? []).some((v) => v.name === name && v.id !== id)) return `${name} already exists`;
   return null;
 }
+
+/**
+ * Evaluate a field draft with variables: millimetres for a unit mode, a plain number for
+ * "number". Matches parseLength/parseExpression when the text uses no variables.
+ */
+export function parseFieldValue(
+  text: string,
+  mode: UnitMode | "number",
+  values: Map<string, VariableValue>,
+  displayUnits: UnitMode = "mm",
+): number | null {
+  const units = mode === "number" ? displayUnits : mode;
+  const result = parseExpression(text, mode !== "number" && mode !== "mm", (name) => {
+    const v = values.get(name);
+    if (!v || v.kind === "text") return null;
+    return v.kind === "length" ? fromMillimetres(v.value, units) : v.value;
+  });
+  if (result === null || mode === "number") return result;
+  const mm = mode === "mm" ? result : result * 25.4;
+  return Number.isFinite(mm) ? mm : null;
+}
+
+const scopes = new WeakMap<readonly Variable[], VariableScope>();
+const EMPTY_SCOPE: VariableScope = { values: new Map(), errors: new Map() };
+/** Cached resolution for renderers and exports that only hold a document. */
+export function variableScopeOf(variables: readonly Variable[] | undefined): VariableScope {
+  if (!variables?.length) return EMPTY_SCOPE;
+  let scope = scopes.get(variables);
+  if (!scope) scopes.set(variables, (scope = resolveVariables(variables)));
+  return scope;
+}
+/** Shown form of a name or text template. */
+export const displayTemplate = (template: string, variables: readonly Variable[] | undefined, units: UnitMode = "mm") =>
+  hasPlaceholders(template) || /\{\{|\}\}/.test(template) ? interpolate(template, variableScopeOf(variables).values, units).text : template;

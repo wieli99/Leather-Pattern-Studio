@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { editableNumber, parseExpression } from "../model/expression";
-import { computed, ref, watch } from "vue";
+import { editableNumber } from "../model/expression";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useEditor } from "./useEditor";
-import { editableLength, formatLength, parseLength } from "../model/units";
+import { editableLength, formatLength } from "../model/units";
+import { parseFieldValue } from "../model/variables";
+import { numericReaders } from "./numericWheel";
 defineOptions({ inheritAttrs: false });
 const props = withDefaults(defineProps<{
   scalar?: boolean;
@@ -28,6 +30,17 @@ const focused = ref(false),
 let initial = "";
 let lastValid = props.value;
 watch(() => props.value, value => { if (Number.isFinite(value)) lastValid = value; });
+/** Variables evaluate here too; these fields keep only the resulting number. */
+function evaluate(text: string): number | null {
+  return parseFieldValue(text, props.scalar ? "number" : inputUnits.value, e.value.variableScope.values, inputUnits.value);
+}
+let inputElement: HTMLInputElement | null = null;
+function register(el: unknown) {
+  if (inputElement) numericReaders.delete(inputElement);
+  inputElement = el as HTMLInputElement | null;
+  if (inputElement) numericReaders.set(inputElement, evaluate);
+}
+onBeforeUnmount(() => { if (inputElement) numericReaders.delete(inputElement); });
 const editable = (value: number) => props.scalar ? editableNumber(value) : editableLength(value, inputUnits.value);
 watch(
   () => inputUnits.value,
@@ -59,7 +72,7 @@ function confirm() {
 }
 function commit() {
   if (!focused.value || (draft.value === initial && !invalid.value)) return;
-  const value = props.scalar ? parseExpression(draft.value) : parseLength(draft.value, inputUnits.value);
+  const value = evaluate(draft.value);
   invalid.value =
     value === null ||
     (props.integer && !Number.isInteger(value)) ||
@@ -84,6 +97,7 @@ function blur() {
 </script>
 <template>
   <input
+    :ref="register"
     v-numeric-wheel="wheel === false ? false : scalar ? 'number' : inputUnits"
     :data-wheel-nonzero="nonZero ? 'true' : undefined"
     v-bind="$attrs"

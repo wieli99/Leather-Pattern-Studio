@@ -52,3 +52,16 @@ describe("project variables", () => {
     expect(variableNameError("card_w", list)).toBeNull();
   });
 });
+
+describe("evaluate-only fields", () => {
+  it("matches plain parsing and adds variables", async () => {
+    const { parseFieldValue } = await import("./variables");
+    const { values } = resolveVariables([v("w", "length", "25.4"), v("n", "number", "2")]);
+    expect(parseFieldValue("1 1/2", "in-fractional", values)).toBeCloseTo(38.1);
+    expect(parseFieldValue("w*n", "mm", values)).toBeCloseTo(50.8);
+    expect(parseFieldValue("w*n", "in-decimal", values)).toBeCloseTo(50.8);
+    expect(parseFieldValue("n*45", "number", values)).toBe(90);
+    expect(parseFieldValue("w", "number", values, "in-decimal")).toBe(1);
+    expect(parseFieldValue("1 1/2", "number", values)).toBeNull();
+  });
+});

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { editableNumber, parseExpression } from "../model/expression";
-import { editableLength, parseLength } from "../model/units";
+import { editableNumber } from "../model/expression";
+import { editableLength } from "../model/units";
+import { parseFieldValue } from "../model/variables";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
 import { editor as defaultEditor } from "../editor/instance";
@@ -161,13 +162,13 @@ function input(item: (typeof items.value)[number], event: Event) {
         editor.measurementLocks[signKey] ??=
           Math.sign(editor.cursor[axis] - editor.pending.at(-1)![axis]) || 1;
       }
-      editor.measurementLocks[item.key] = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
+      editor.measurementLocks[item.key] = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values, editor.units) ?? NaN);
     }
     editor.notify();
   }
 }
 async function confirm(item: (typeof items.value)[number]) {
-  const value = (["Angle", "Sweep"].includes(item.key) ? (parseExpression(draft.value) ?? NaN) : (parseLength(draft.value, editor.units) ?? NaN));
+  const value = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values, editor.units) ?? NaN);
   const signedHeight = item.key === "Height" &&
     ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
     editor.pending.length === 2;
