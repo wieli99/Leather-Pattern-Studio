@@ -4,8 +4,8 @@ import PinnablePopover from "./PinnablePopover.vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { numericReaders } from "./numericWheel";
-import { editableNumber, formulaReferences, parseExpression } from "../model/expression";
-import { detectKind, nextVariableName, variableNameError, type Variable } from "../model/variables";
+import { editableNumber, formulaReferences, onceReferences, parseExpression } from "../model/expression";
+import { bakeFormula, bakeText, detectKind, nextVariableName, variableNameError, type Variable } from "../model/variables";
 import { deleteVariable, renameVariable, variableUses } from "../model/bindings";
 const e = useEditor();
 const open = ref(false);
@@ -37,7 +37,7 @@ function evaluate(v: Pick<Variable, "name">, text: string): number | null {
   });
 }
 function formulaError(v: Pick<Variable, "name">, text: string) {
-  for (const name of formulaReferences(text)) {
+  for (const name of [...formulaReferences(text), ...onceReferences(text)]) {
     if (name === v.name) return `${v.name} cannot refer to itself`;
     const other = list.value.find((item) => item.name === name);
     if (!other) return `Unknown variable ${name}`;
@@ -119,7 +119,7 @@ async function createDraft() {
     editor.beginVariableEdit();
     const message = await editor.updateVariables((doc) => ({
       ...doc,
-      variables: [...(doc.variables ?? []), { id, name, kind, value: kind === "number" ? value.trim() : value }],
+      variables: [...(doc.variables ?? []), { id, name, kind, value: stored(kind, value) }],
     }));
     setError(id, message);
     if (message) return;
@@ -142,11 +142,25 @@ async function applyName(v: Variable, text: string) {
   if (error) return setError(v.id, error);
   await apply(v.id, (doc) => renameVariable(doc, v.id, text.trim()));
 }
+/** Links and number formulas that read a variable as a number. */
+function numberUses(name: string) {
+  const doc = e.value.variableDocument;
+  const reads = (text: string) => formulaReferences(text).includes(name);
+  return (doc.variables ?? []).filter((v) => v.kind === "number" && reads(v.value)).length +
+    doc.shapes.reduce((sum, s) => sum + (s.bindings ?? []).filter((b) => reads(b.expression)).length, 0);
+}
 async function applyValue(v: Variable, text: string) {
   const kind = detectKind(text, list.value);
+  // Turning a number that links or formulas use into text would break them.
+  if (v.kind === "number" && kind === "text" && text.trim() && numberUses(v.name))
+    return setError(v.id, `${v.name} is used as a number; enter a number or formula`);
   const error = kind === "number" ? formulaError(v, text) : null;
   if (error) return setError(v.id, error);
-  await apply(v.id, replace(v.id, { kind, value: kind === "number" ? text.trim() : text }));
+  await apply(v.id, replace(v.id, { kind, value: stored(kind, text) }));
+}
+/** `{=name}` copies a value in once: written in as a number or as literal text. */
+function stored(kind: Variable["kind"], text: string) {
+  return kind === "number" ? bakeFormula(text.trim(), values()) : bakeText(text, values());
 }
 
 function nameInput(row: { v: Variable; draft: boolean }, event: Event) {
@@ -232,7 +246,7 @@ async function remove(v: Variable) {
   <PinnablePopover v-model:open="open" label="Variables" storage-key="variables" content-class="variables-content" align="center">
     <template #trigger>Variables<span v-if="list.length" class="variable-count" aria-hidden="true" :title="`${list.length} variables`">{{ list.length }}</span></template>
     <p class="variables-help">
-      Values are plain numbers or text. Type <code>{</code> in number fields, names and labels to use a variable, such as <code>{card_w} + 2*{t}</code>.
+      Values are plain numbers or text. Type <code>{</code> to use a variable: <code>{card_w}</code> stays linked, <code>{=card_w}</code> copies the current value once.
     </p>
     <p v-if="e.ready && !e.canEditVariables" class="variables-paused" role="status">Apply or cancel the active tool to edit variables.</p>
     <table class="variables-table">
@@ -272,7 +286,7 @@ async function remove(v: Variable) {
                   :placeholder="row.draft ? 'Value' : undefined"
                   :aria-label="row.draft ? 'New variable value' : `Value of ${row.v.name}`"
                   :aria-invalid="row.v.id in valueDrafts && row.v.id in errors"
-                  v-variable-hints="{ kinds: 'number', exclude: row.v.name }"
+                  v-variable-hints="{ kinds: !row.draft && row.v.kind === 'number' ? 'number' : 'all', exclude: row.v.name }"
                   :disabled="!e.canEditVariables || (row.draft && list.length >= 500)"
                   :value="valueDrafts[row.v.id] ?? row.v.value"
                   @focus="valueFocus(row, $event)"

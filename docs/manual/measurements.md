@@ -8,7 +8,7 @@ While constructing a shape, Tab enters available dimension fields and selects th
 
 ![Entering exact width and height during rectangle construction](/manual/images/construction-dimensions.png)
 
-Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Enter applies the edit; Esc leaves the field.
+Hold Ctrl to display selected edge lengths. Click a measurement to edit it, or use Tab when the fields are visible. The sides of a plain rectangle stand for its width and height: if that value is [linked to a variable](#measurements/reuse-values-with-variables), its label shows the formula with the result below it, and entering `{name}` there links it. Tab and Shift+Tab cycle through the measurements. If a field is outside the view, the canvas pans to reveal it while the controls stay in place. Enter applies the edit; Esc leaves the field.
 
 ![Canvas panned to reveal an off-screen dimension field](/manual/images/offscreen-measurement-focus.png)
 
@@ -32,12 +32,17 @@ Displayed and editable values hide floating-point noise. Display rounding never 
 
 Variables are named values saved with the project, such as a card width or leather thickness. Click **Variables** in the footer to create and edit them. Type a name and a value in the empty row at the bottom: as soon as both are valid, the row becomes a variable and a new empty row appears below it. Enter moves from a name to its value and from a value to the next row. Names use letters, digits, and underscores, start with a letter or underscore, and are case-sensitive. A rename applies when you press Enter or leave the row, and updates everything that uses the variable. The footer shows how many variables the project has.
 
-Always refer to a variable as `{name}`, for example `{card_w} + 2*{t}` in Width or `{brand} card slot` as an object name. Typing `{` lists matching variables under the field: number fields list number variables, while names and labels list all of them. Keep typing to narrow the list, press Down or Up to highlight a variable, and press Enter or Tab to insert it, or click it. Tab also inserts the only remaining match. Esc closes the list. Enter without a highlighted variable confirms the field as usual.
+Refer to a variable in one of two ways:
+
+- `{name}` **links** the value: it follows later changes of the variable, for example `{card_w} + 2*{t}` in Width or `{brand} card slot` as an object name.
+- `{=name}` **copies the current value once**: `{=card_w}` is written in as a number, and in names and labels as text, so later changes of the variable do not affect it.
+
+You can mix both, such as `{card_w} + {=t}`: the width then follows `card_w`, while `t` is written in as its current number. Typing `{` or `{=` lists matching variables under the field: number fields list number variables, while names, labels and variable values list all of them. In fields that cannot stay linked, the list inserts `{=name}`. Keep typing to narrow the list, press Down or Up to highlight a variable, and press Enter or Tab to insert it, or click it. Tab also inserts the only remaining match. Esc closes the list. Enter without a highlighted variable confirms the field as usual.
 
 The value decides what kind of variable it is:
 
 - A number or formula, such as `86`, `3 1/2`, or `{card_w} - 2*{t}`, is a **number**. A formula shows its result below it. It cannot refer to itself, directly or through other variables. A formula with an unknown name, such as `{card_ww} + 2`, is reported as an error.
-- Anything else, such as `Acme` or `Card 2`, is **text** and is marked *text*. Text variables fill `{name}` in object names, group names, and text labels.
+- Anything else, such as `Acme` or `Card 2`, is **text** and is marked *text*. Text variables fill `{name}` in object names, group names, and text labels. A text value can combine other variables, such as `{brand} {model}` or `Panel {n}`; write `{{` and `}}` for literal braces. Variables cannot refer to each other in a loop.
 
 Number variables are plain numbers without a unit. A field reads them in its own unit: `{card_w}` with the value `86` means 86 mm in millimetre mode and 86 inches in inch mode. Switching units does not convert variables; the status bar warns when the project has number variables. Fields already linked to a variable keep their size, because each link remembers the unit it was typed in. Focusing such a field shows its formula with that unit beside it, such as `in`.
 
@@ -48,20 +53,21 @@ Changes apply while you type. An invalid value is marked and does not change the
 Entering a variable **links** the value, and changing the variable later updates it:
 
 - **Properties:** a link icon appears next to the field's label; hovering the field shows the formula, and focusing it lets you edit the formula. Linking is available for position, size, radius, sweep, rotation, outline width, arrow and indicator sizes, font size, line spacing, and measurement sections and offset.
-- **Construction fields:** width and height of rectangles and ellipses, size guide sides, radius, diameter, arc sweep, and measurement offset link to the new object.
+- **Construction fields:** Width, Height, Radius, Diameter, Sweep, and Offset link to the matching property of the new object, such as a rectangle's or ellipse's width or an arc's sweep. If the finished object has no such property, the status bar says the value was used once.
+- **Edge lengths (Ctrl):** the sides of a plain rectangle link its width or height and show the formula when you edit them.
 - **Names and labels:** `{name}` always shows the current value. Lists, the canvas, previews, and print output show the value; editing shows `{name}` again. Write `{{` and `}}` for literal braces. An unknown `{name}` stays as typed, and the name field lists it. Label boxes fit the shown text.
 
 When you change a variable, every linked value updates; the change and all updated objects form one undo step. A linked image size keeps the aspect ratio only if the aspect lock was on when you linked it. A curve can link its width or height, or its rotation, but not both. Labels keep a linked position when their text or size changes. If a new value does not fit a linked field, for example a width below 0.001 mm, the change is refused and the message names the object and field. Linked objects must be unlocked before a variable change can update them.
 
 A link ends when you type a plain number, use Alt+wheel or arrow keys on the field, or change that property directly, for example by dragging, scaling or moving the object. The status bar reports which field was unlinked. Undo restores the link.
 
-Some fields cannot stay linked: path segment Length and Direction while drawing, edge lengths, vertex coordinates, opacity, tool amounts such as move, rotate, scale, offset and array values, stitching fields, grid spacing, and print move and rotation. They accept `{name}` but use its current value once; the status bar says so when the value is applied. Print page size and margin fields do not accept variables.
+Some fields cannot stay linked: path segment Length and Direction while drawing, edge lengths other than the sides of a plain rectangle, vertex coordinates, opacity, tool amounts such as move, rotate, scale, offset and array values, stitching fields, grid spacing, and print move and rotation. Use `{=name}` there; a linked `{name}` is refused with a message suggesting `{=name}`. Fields in print layouts work the same way. Print page size and margin fields do not accept variables.
 
 Delete a variable with the × at the end of its row. Deleting a variable that is in use asks for confirmation: **Delete and keep values** keeps every linked field at its current value, replaces formulas in other variables with their results, and writes the current text into names and labels.
 
 Use the pin button to keep Variables open while you work in Properties or on the canvas; keyboard shortcuts and Tab into construction fields keep working. Click **Variables** again to close it. While a tool such as Move, stitching, or an array is active, Variables is paused: apply or cancel the tool first. A variable edit is saved as soon as you leave its row, so a tool chosen next starts from the new values.
 
-Print layout copies are placements: their labels show current variable values, but their geometry does not follow variables. A formula typed in a print layout field uses the value once.
+Print layout copies are placements: their labels show current variable values, but their geometry does not follow variables. In print layout fields, use `{=name}`.
 
 ![Variables open beside a linked Width field](/manual/images/variables.png)
 

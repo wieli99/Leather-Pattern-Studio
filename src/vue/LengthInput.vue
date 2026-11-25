@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { editableNumber, formulaReferences } from "../model/expression";
+import { editableNumber } from "../model/expression";
 import { editor } from "../editor/instance";
-import { computed, onBeforeUnmount, ref, useAttrs, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useEditor } from "./useEditor";
 import { editableLength, formatLength } from "../model/units";
-import { parseFieldValue } from "../model/variables";
+import { parseFieldValue, unlinkableError } from "../model/variables";
 import { numericReaders } from "./numericWheel";
 defineOptions({ inheritAttrs: false });
 const props = withDefaults(defineProps<{
@@ -22,7 +22,6 @@ const props = withDefaults(defineProps<{
   clamp?: boolean;
   step?: number;
 }>(), { wheel: true });
-const attrs = useAttrs();
 const emit = defineEmits<{ commit: [number]; invalid: [] }>();
 const e = useEditor();
 const inputUnits = computed(() => props.units ?? e.value.units);
@@ -65,7 +64,6 @@ function focus(event: FocusEvent) {
 }
 function confirm() {
   commit();
-  noteVariables();
   if (props.clamp && !invalid.value) {
     initial = draft.value =
       inputUnits.value === "mm"
@@ -76,7 +74,14 @@ function confirm() {
 function commit() {
   if (!focused.value || (draft.value === initial && !invalid.value)) return;
   const value = evaluate(draft.value);
+  // These fields keep only the number: linked `{name}` is refused, `{=name}` is used once.
+  const linkError = unlinkableError(draft.value);
+  if (linkError) {
+    editor.message = linkError;
+    editor.notify();
+  }
   invalid.value =
+    !!linkError ||
     value === null ||
     (props.integer && !Number.isInteger(value)) ||
     (props.min !== undefined && value < props.min) ||
@@ -92,14 +97,8 @@ function restoreInvalid() {
   if (invalid.value && Number.isFinite(lastValid)) emit("commit", lastValid);
   invalid.value = false;
 }
-/** These fields keep only the number, so a variable is reported as used once. */
-function noteVariables() {
-  if (!invalid.value && formulaReferences(draft.value).length)
-    editor.noteUsedOnce([draft.value], [String(attrs["aria-label"] ?? "This field")]);
-}
 function blur() {
   commit();
-  noteVariables();
   restoreInvalid();
   focused.value = false;
 }
@@ -108,7 +107,7 @@ function blur() {
   <input
     :ref="register"
     v-numeric-wheel="wheel === false ? false : scalar ? 'number' : inputUnits"
-    v-variable-hints="'number'"
+    v-variable-hints="{ kinds: 'number', once: true }"
     :data-wheel-nonzero="nonZero ? 'true' : undefined"
     v-bind="$attrs"
     type="text"

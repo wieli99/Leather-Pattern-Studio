@@ -101,7 +101,8 @@ describe("review fixes", () => {
     const baked = deleteVariable(blank, "s");
     expect(baked.shapes[0].name).toBe("{{suffix}}");
     expect(baked.shapes[0].text).toBe("{{suffix}}");
-    const braces = doc([{ id: "s", name: "suffix", kind: "text", value: "{x}" }], [label]);
+    // Literal braces in a text value are written as {{ and }}.
+    const braces = doc([{ id: "s", name: "suffix", kind: "text", value: "{{x}}" }], [label]);
     expect(deleteVariable(braces, "s").shapes[0].name).toBe("{{x}}");
   });
   it("scales an image's other side only when the link kept the aspect ratio", () => {
@@ -133,5 +134,16 @@ describe("label boxes", () => {
     const bigger = applyChanges(longer.shapes[0], { fontSize: 8 });
     expect(getProperty(bigger, "x")).toBeCloseTo(50);
     vi.unstubAllGlobals();
+  });
+});
+
+describe("one-time values in print groups", () => {
+  it("bakes {=name} in print layout group names", async () => {
+    const { bakeOnceText } = await import("./bindings");
+    const base = doc(vars(), [card()]);
+    const layout = { id: "l", name: "A4", instances: [], tree: [{ kind: "group", id: "pg", name: "{=brand} set", x: 0, y: 0, rotation: 0, children: [] }] };
+    const baked = bakeOnceText({ ...base, printLayouts: [layout as unknown as NonNullable<Doc["printLayouts"]>[number]] });
+    const group = baked.printLayouts![0].tree![0];
+    expect(group.kind === "group" && group.name).toBe("Acme set");
   });
 });

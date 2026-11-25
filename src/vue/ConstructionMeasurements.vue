@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { editableNumber, formulaReferences } from "../model/expression";
+import { editableNumber, formulaReferences, onceReferences } from "../model/expression";
+import { edgeProperty } from "../model/propertySetters";
+import { numericReaders } from "./numericWheel";
+import { bindingFor } from "../model/bindings";
+import type { UnitMode } from "../model/units";
 import { editableLength } from "../model/units";
-import { parseFieldValue } from "../model/variables";
+import { parseFieldValue, unlinkableError } from "../model/variables";
 import { segmentLabelPoint } from "../editor/constructionLabels";
 import { computed, nextTick, ref } from "vue";
 import { editor as defaultEditor } from "../editor/instance";
@@ -116,7 +120,10 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   active.value = item.id;
   pinned.value = item.point;
   pinnedAngle.value = item.angle;
-  draft.value = ["Angle", "Sweep"].includes(item.key) ? editableNumber(item.value) : editableLength(item.value, editor.units);
+  // A linked side opens with its formula, so it can be seen and edited.
+  const linked = edgeLink(item)?.binding;
+  draft.value = linked ? linked.expression
+    : ["Angle", "Sweep"].includes(item.key) ? editableNumber(item.value) : editableLength(item.value, editor.units);
   // Wheel handlers read immediately after focus, before Vue renders the draft.
   field.value = draft.value;
   error.value = "";
@@ -145,8 +152,29 @@ async function focus(item: (typeof items.value)[number], event: FocusEvent) {
   // Set the selection without select() asking Firefox to scroll the field.
   if (document.activeElement === field) field.setSelectionRange(0, field.value.length);
 }
+/** A rectangle side stands for its width or height, so it shows and edits that link. */
+const edgeLink = (item: (typeof items.value)[number]) => {
+  const property = !item.key && item.shape ? edgeProperty(item.shape, item.index) : null;
+  return property ? { property, binding: bindingFor(item.shape, property) } : null;
+};
+/** Only fields that link to an object accept `{name}`; others take `{=name}`. */
+const linkable = (item: (typeof items.value)[number]) =>
+  item.key ? editor.constructionFieldLinkable(item.key) : !!edgeLink(item) && editor.linksEnabled;
+/** A linked formula keeps the unit it was typed in; plain numbers use the display unit. */
+function unitsFor(item: (typeof items.value)[number], text: string): UnitMode {
+  const binding = edgeLink(item)?.binding;
+  if (!binding || !formulaReferences(text).length) return editor.units;
+  return binding.unit === "mm" ? "mm" : editor.units === "mm" ? "in-decimal" : editor.units;
+}
+const valueOf = (item: (typeof items.value)[number], text: string) =>
+  parseFieldValue(text, ["Angle", "Sweep"].includes(item.key) ? "number" : unitsFor(item, text), editor.variableScope.values) ?? NaN;
+function linkError(item: (typeof items.value)[number]) {
+  return linkable(item) ? null : unlinkableError(draft.value);
+}
 function input(item: (typeof items.value)[number], event: Event) {
   draft.value = (event.target as HTMLInputElement).value;
+  const refused = linkError(item);
+  error.value = refused ?? "";
   if (item.key) {
     if (!draft.value.trim()) {
       delete editor.measurementLocks[item.key];
@@ -163,15 +191,20 @@ function input(item: (typeof items.value)[number], event: Event) {
         editor.measurementLocks[signKey] ??=
           Math.sign(editor.cursor[axis] - editor.pending.at(-1)![axis]) || 1;
       }
-      if (formulaReferences(draft.value).length) editor.measurementFormulas[item.key] = draft.value.trim();
+      if (linkable(item) && formulaReferences(draft.value).length) editor.measurementFormulas[item.key] = draft.value.trim();
       else delete editor.measurementFormulas[item.key];
-      editor.measurementLocks[item.key] = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
+      editor.measurementLocks[item.key] = refused ? NaN : (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
     }
     editor.notify();
   }
 }
 async function confirm(item: (typeof items.value)[number]) {
-  const value = (parseFieldValue(draft.value, ["Angle", "Sweep"].includes(item.key) ? "number" : editor.units, editor.variableScope.values) ?? NaN);
+  const refused = linkError(item);
+  if (refused) {
+    error.value = refused;
+    return;
+  }
+  const value = valueOf(item, draft.value);
   const signedHeight = item.key === "Height" &&
     ["rectangle-three", "ellipse-center"].includes(editor.mode) &&
     editor.pending.length === 2;
@@ -188,8 +221,19 @@ async function confirm(item: (typeof items.value)[number]) {
         : "Enter a positive finite measurement";
     return;
   }
+  const link = edgeLink(item);
+  const text = draft.value.trim();
+  const usesVariables = formulaReferences(text).length > 0 || onceReferences(text).length > 0;
   if (item.key) editor.confirmMeasurement();
-  else if (item.shape) {
+  else if (item.shape && link && (link.binding || usesVariables)) {
+    // A linked side, or one being linked, edits like the Properties field: {name} links,
+    // a plain number unlinks. Unlinked sides keep scaling with plain numbers below.
+    const applied = await editor.editProperty(item.shape.id, link.property, value, usesVariables ? text : null, unitsFor(item, text));
+    if (!applied) {
+      error.value = "Unlock the object or finish the active tool to edit it";
+      return;
+    }
+  } else if (item.shape) {
     const shape = item.shape;
     const box = bounds([shape]);
     const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -209,13 +253,42 @@ async function confirm(item: (typeof items.value)[number]) {
       e: center.x * (1 - factor),
       f: center.y * (1 - factor),
     });
-    const formula = draft.value;
-    if (await editor.commit({
+    await editor.commit({
       ...editor.document,
       shapes: editor.document.shapes.map((s) => (s.id === shape.id ? next : s)),
-    })) editor.noteUsedOnce([formula], ["Edge length"]);
+    });
   }
   cancel();
+}
+/** What a field shows: the draft while editing, a linked side's formula, or the length. */
+function shown(item: (typeof items.value)[number]) {
+  if (active.value === item.id) return draft.value;
+  const linked = edgeLink(item)?.binding;
+  if (linked) return linked.expression;
+  return ["Angle", "Sweep"].includes(item.key) ? String(Number(item.value.toFixed(2))) : editor.formatLength(item.value);
+}
+/** "= result" under a linked side, as in the Variables popover; live while editing. */
+function result(item: (typeof items.value)[number]) {
+  if (!edgeLink(item)) return "";
+  const text = active.value === item.id ? draft.value : edgeLink(item)?.binding?.expression ?? "";
+  if (!formulaReferences(text).length && !onceReferences(text).length) return "";
+  const value = active.value === item.id ? valueOf(item, text) : item.value;
+  return Number.isFinite(value) ? `= ${editor.formatLength(value)} ${editor.unitSymbol}` : "";
+}
+/** Arrow keys and Alt+wheel step the evaluated value of a formula, as in other fields. */
+function register(item: (typeof items.value)[number], el: unknown) {
+  if (el instanceof HTMLInputElement) numericReaders.set(el, (text) => {
+    const value = valueOf(item, text);
+    return Number.isFinite(value) ? value : null;
+  });
+}
+/** Leaving an edge field ends its edit, so it does not stay shown after Ctrl is released. */
+function blur(item: (typeof items.value)[number], event: FocusEvent) {
+  if (item.key || root.value?.contains(event.relatedTarget as Node | null)) return;
+  if (active.value === item.id) {
+    active.value = undefined;
+    error.value = "";
+  }
 }
 function cancel() {
   active.value = undefined;
@@ -262,6 +335,19 @@ function style(item: (typeof items.value)[number]) {
   };
 }
 </script>
+<style scoped>
+.edge-result {
+  position: absolute;
+  top: 100%;
+  left: 4px;
+  padding: 0 4px;
+  background: var(--canvas, #20252c);
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.linked-edge { font-family: monospace; }
+</style>
 <template>
   <div ref="root" class="construction-measurements" data-hint-edit="measurement">
     <label v-for="item in items" :key="item.id" :style="style(item)">
@@ -270,13 +356,18 @@ function style(item: (typeof items.value)[number]) {
       }}</span>
       <input
         v-numeric-wheel="['Angle', 'Sweep'].includes(item.key) ? 'number' : editor.units"
-        v-variable-hints="'number'"
+        v-variable-hints="linkable(item) ? 'number' : { kinds: 'number', once: true }"
         :readonly="!!editor.gesture || (!item.key && !item.shape)"
         type="text"
         step="any"
         :aria-label="item.key || 'Edge length'"
-        :value="active === item.id ? draft : (['Angle', 'Sweep'].includes(item.key) ? Number(item.value.toFixed(2)) : editor.formatLength(item.value))"
+        :title="edgeLink(item)?.binding ? `Linked to ${edgeLink(item)!.binding!.expression}` : undefined"
+        :value="shown(item)"
+        :class="{ 'linked-edge': !!edgeLink(item)?.binding }"
+        :style="edgeLink(item)?.binding ? { width: `${Math.max(8, shown(item).length + 2)}ch` } : undefined"
+        :ref="(el) => register(item, el)"
         @focus="focus(item, $event)"
+        @blur="blur(item, $event)"
         @input="input(item, $event)"
         @keydown.tab="cycleField"
         @keydown.enter.prevent="!$event.isComposing && confirm(item)"
@@ -284,6 +375,7 @@ function style(item: (typeof items.value)[number]) {
       />
       <span>{{ ["Angle", "Sweep"].includes(item.key) ? "°" : editor.unitSymbol }}</span>
       <small v-if="active === item.id && error" role="alert">{{ error }}</small>
+      <small v-else-if="result(item)" class="edge-result">{{ result(item) }}</small>
     </label>
   </div>
 </template>

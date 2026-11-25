@@ -7,17 +7,22 @@ import type { VariableValue } from "../model/variables";
  * names and labels list all of them. Arrow keys move through open suggestions; Enter or Tab
  * inserts the highlighted one; Esc closes the list without leaving the field.
  */
-export type HintOptions = false | "number" | "all" | { kinds: "number" | "all"; exclude?: string };
+export type HintOptions =
+  | false
+  | "number"
+  | "all"
+  /** `once` inserts one-time `{=name}` values, for fields that cannot stay linked. */
+  | { kinds: "number" | "all"; exclude?: string; once?: boolean };
 type State = { list: HTMLUListElement; items: string[]; highlight: number; options: HintOptions; cleanup: () => void };
 const states = new WeakMap<HTMLInputElement | HTMLTextAreaElement, State>();
 let counter = 0;
 
 function prefixAt(el: HTMLInputElement | HTMLTextAreaElement) {
   const before = el.value.slice(0, el.selectionStart ?? el.value.length);
-  const match = /\{([A-Za-z0-9_]*)$/.exec(before);
+  const match = /\{(=?)([A-Za-z0-9_]*)$/.exec(before);
   // `{{` writes a literal brace in names and labels.
   if (!match || before[match.index - 1] === "{") return null;
-  return { start: match.index, typed: match[1] };
+  return { start: match.index, typed: match[2], once: !!match[1] };
 }
 
 function candidates(options: HintOptions, typed: string) {
@@ -32,6 +37,11 @@ function candidates(options: HintOptions, typed: string) {
     .slice(0, 8);
 }
 
+/** Whether the open list inserts one-time `{=name}` values. */
+function onceMode(el: HTMLInputElement | HTMLTextAreaElement, state: State) {
+  return !!prefixAt(el)?.once || (typeof state.options === "object" && !!state.options && !!state.options.once);
+}
+
 function render(el: HTMLInputElement | HTMLTextAreaElement, state: State) {
   const { list } = state;
   if (!state.items.length || document.activeElement !== el) {
@@ -44,7 +54,7 @@ function render(el: HTMLInputElement | HTMLTextAreaElement, state: State) {
     const item = document.createElement("li");
     item.id = `${list.id}-${i}`;
     item.role = "option";
-    item.textContent = `{${name}}`;
+    item.textContent = `{${onceMode(el, state) ? "=" : ""}${name}}`;
     item.setAttribute("aria-selected", String(i === state.highlight));
     item.addEventListener("mousedown", (event) => {
       event.preventDefault();
@@ -77,8 +87,9 @@ function choose(el: HTMLInputElement | HTMLTextAreaElement, state: State, name: 
   if (!prefix) return;
   const caret = el.selectionStart ?? el.value.length;
   const after = el.value.slice(caret).replace(/^[A-Za-z0-9_]*\}?/, "");
-  el.value = `${el.value.slice(0, prefix.start)}{${name}}${after}`;
-  const position = prefix.start + name.length + 2;
+  const marker = prefix.once || (typeof state.options === "object" && state.options && state.options.once) ? "=" : "";
+  el.value = `${el.value.slice(0, prefix.start)}{${marker}${name}}${after}`;
+  const position = prefix.start + name.length + 2 + marker.length;
   el.setSelectionRange(position, position);
   state.items = [];
   state.highlight = -1;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { parseExpression, formulaReferences } from "../model/expression";
+import { parseExpression, formulaReferences, onceReferences } from "../model/expression";
 import { editableLength, formatLength, toMillimetres, unitSymbol, type UnitMode } from "../model/units";
-import { interpolate, templateReferences } from "../model/variables";
+import { interpolate, templateReferences, unlinkableError } from "../model/variables";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useEditor } from "./useEditor";
 import { editor as defaultEditor } from "../editor/instance";
@@ -51,7 +51,9 @@ const unitTag = computed(() => {
   const symbol = unitSymbol(unitsFor(editing.value ? draft.value : props.binding?.expression ?? ""));
   return props.binding && symbol !== e.value.unitSymbol ? symbol : "";
 });
-let usedFormula: string | null = null;
+/** Linked `{name}` works only where this field can keep a link. */
+const linksHere = computed(() => !!props.linkable && editor.linksEnabled);
+const invalidMessage = ref("");
 let focused = false,
   pristine = false,
   initial = props.value,
@@ -101,6 +103,12 @@ function change(event: Event) {
   pristine = false;
   draft.value = text;
   const n = numeric.value ? evaluate(text) ?? NaN : NaN;
+  const linkError = numeric.value && !linksHere.value ? unlinkableError(text) : null;
+  invalidMessage.value = linkError ?? "";
+  if (linkError) {
+    invalid.value = true;
+    return;
+  }
   if (
     numeric.value &&
     (!text.trim() ||
@@ -114,8 +122,9 @@ function change(event: Event) {
   invalid.value = false;
   if (text !== last) {
     last = text;
-    usedFormula = numeric.value && formulaReferences(text).length ? text : null;
-    emit("commit", numeric.value ? String(n) : text, usedFormula, unitsFor(text));
+    // Any variable use goes to the owner: `{name}` may link, `{=name}` is written in.
+    const formula = numeric.value && (formulaReferences(text).length || onceReferences(text).length) ? text : null;
+    emit("commit", numeric.value ? String(n) : text, formula, unitsFor(text));
   }
 }
 function focus(event: FocusEvent) {
@@ -131,8 +140,6 @@ function focus(event: FocusEvent) {
   editor.beginProperty();
 }
 function blur() {
-  if (usedFormula && !props.linkable) editor.noteUsedOnce([usedFormula], [shownLabel.value]);
-  usedFormula = null;
   focused = false;
   editing.value = false;
   invalid.value = false;
@@ -145,7 +152,6 @@ function key(event: KeyboardEvent) {
   if (event.key === "Escape") {
     event.stopPropagation();
     draft.value = format(initial);
-    usedFormula = null;
     void editor.finishProperty(true);
     (event.target as HTMLInputElement).blur();
   }
@@ -164,7 +170,7 @@ const shownLabel = computed(() => (props.dimension ? props.label.replace(/mm/g, 
         :title="binding ? `Linked to ${binding.expression}` : undefined"
         :disabled="!e.ready || !!e.transformTool || e.stitchMode"
         :aria-invalid="invalid"
-        v-variable-hints="numeric ? 'number' : 'all'"
+        v-variable-hints="numeric ? (linksHere ? 'number' : { kinds: 'number', once: true }) : 'all'"
         type="text"
         :min="min"
         :max="max"
@@ -179,7 +185,8 @@ const shownLabel = computed(() => (props.dimension ? props.label.replace(/mm/g, 
       <small v-if="unitTag" class="formula-unit" :title="`Formula typed in ${unitTag}`">{{ unitTag }}</small>
     </span>
     <small v-if="invalid" role="alert">
-      Enter a valid value{{ min !== undefined ? ` ≥ ${dimension ? formatLength(min, e.units) : min}` : "" }}.
+      <template v-if="invalidMessage">{{ invalidMessage }}.</template>
+      <template v-else>Enter a valid value{{ min !== undefined ? ` ≥ ${dimension ? formatLength(min, e.units) : min}` : "" }}.</template>
     </small>
     <small v-else-if="missing.length" class="field-warning" role="status">Unknown variable{{ missing.length > 1 ? "s" : "" }}: {{ missing.join(", ") }}</small>
   </label>

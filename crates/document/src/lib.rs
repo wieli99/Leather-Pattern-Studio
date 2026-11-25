@@ -651,6 +651,7 @@ fn validate_variables(doc: &Document) -> Result<(), String> {
     }
     let mut ids = HashSet::new();
     let mut numeric: HashMap<&str, &Variable> = HashMap::new();
+    let mut all: HashMap<&str, &Variable> = HashMap::new();
     let mut names = HashSet::new();
     for v in variables {
         if v.id.is_empty() || !ids.insert(v.id.as_str()) {
@@ -668,6 +669,7 @@ fn validate_variables(doc: &Document) -> Result<(), String> {
         if v.kind != VariableKind::Text {
             numeric.insert(v.name.as_str(), v);
         }
+        all.insert(v.name.as_str(), v);
     }
     let numeric_refs = |text: &str| -> Result<(), String> {
         for name in formula_references(text) {
@@ -680,10 +682,18 @@ fn validate_variables(doc: &Document) -> Result<(), String> {
     for v in numeric.values() {
         numeric_refs(&v.value)?;
     }
-    // Reject reference cycles with a depth-first walk over numeric variables.
+    // Text values may combine any variables.
+    for v in variables.iter().filter(|v| v.kind == VariableKind::Text) {
+        for name in formula_references(&v.value) {
+            if !all.contains_key(name) {
+                return Err(format!("Unknown variable {name}"));
+            }
+        }
+    }
+    // Reject reference cycles with a depth-first walk over all variables.
     fn visit<'a>(
         name: &'a str,
-        numeric: &HashMap<&'a str, &'a Variable>,
+        all: &HashMap<&'a str, &'a Variable>,
         state: &mut HashMap<&'a str, u8>,
     ) -> Result<(), String> {
         match state.get(name) {
@@ -692,15 +702,15 @@ fn validate_variables(doc: &Document) -> Result<(), String> {
             _ => {}
         }
         state.insert(name, 1);
-        for next in formula_references(&numeric[name].value) {
-            visit(next, numeric, state)?;
+        for next in formula_references(&all[name].value) {
+            visit(next, all, state)?;
         }
         state.insert(name, 2);
         Ok(())
     }
     let mut state = HashMap::new();
-    for name in numeric.keys() {
-        visit(name, &numeric, &mut state)?;
+    for name in all.keys() {
+        visit(name, &all, &mut state)?;
     }
     for shape in &doc.shapes {
         let mut seen = HashSet::new();
@@ -2443,6 +2453,29 @@ mod print_tests {
         );
         assert!(formula_references("(10+5)*2 {{x}} {1a}").is_empty());
         assert_eq!(formula_references("{a}} }}{b}"), vec!["a", "b"]);
+    }
+    #[test]
+    fn text_variables_compose_without_cycles() {
+        let ok = variable_doc(
+            serde_json::json!([
+                {"id":"1","name":"brand","kind":"text","value":"Acme"},
+                {"id":"2","name":"n","kind":"number","value":"2"},
+                {"id":"3","name":"full","kind":"text","value":"{brand} No. {n} {{x}}"}
+            ]),
+            serde_json::json!([]),
+        );
+        ok.validate().unwrap();
+        for variables in [
+            serde_json::json!([{"id":"1","name":"a","kind":"text","value":"{b}"},{"id":"2","name":"b","kind":"text","value":"x {a}"}]),
+            serde_json::json!([{"id":"1","name":"a","kind":"text","value":"{missing}"}]),
+        ] {
+            assert!(
+                variable_doc(variables.clone(), serde_json::json!([]))
+                    .validate()
+                    .is_err(),
+                "{variables}"
+            );
+        }
     }
     #[test]
     fn validates_variables_and_links() {

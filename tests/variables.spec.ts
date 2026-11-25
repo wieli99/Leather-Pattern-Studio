@@ -343,16 +343,26 @@ test("construction fields link sizes and report fields used once", async ({ page
   await page.keyboard.press("Enter");
   await expect(width).toHaveValue("50");
 
-  // A path segment has no lasting property: the value is used once, with a note.
+  // A path segment cannot stay linked: {name} is refused, {=name} copies the value once.
   await page.getByRole("button", { name: "Polyline (P)", exact: true }).click();
   await canvas.click({ position: { x: 200, y: 450 } });
   await canvas.hover({ position: { x: 300, y: 500 } });
   await page.keyboard.press("Tab");
+  const length = page.locator(".construction-measurements input").first();
   await page.keyboard.type("{card_w}");
+  await expect(page.getByRole("alert").filter({ hasText: "Use {=card_w} here: this field does not stay linked" })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(length).toBeFocused();
+  // Typing { here suggests the one-time form.
+  await length.fill("");
+  await page.keyboard.type("{car");
+  await expect(page.getByRole("option", { name: "{=card_w}", exact: true })).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(length).toHaveValue("{=card_w}");
   await page.keyboard.press("Enter");
   await canvas.click({ position: { x: 320, y: 560 } });
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Used {card_w} once: Length does not stay linked to variables")).toBeVisible();
+  await expect(page.locator(".objects .object-select")).toHaveCount(2);
 });
 
 test("names, labels and one-off fields suggest variables", async ({ page }) => {
@@ -377,12 +387,17 @@ test("names, labels and one-off fields suggest variables", async ({ page }) => {
   await width.press("Escape");
   await expect(width).toBeFocused();
   await width.press("Escape");
-  // Unlinkable fields use the value once and say so.
+  // Unlinkable fields refuse {name} and take {=name} once.
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const grid = page.getByLabel("Grid spacing (mm)", { exact: true });
   await grid.fill("{w}/4");
+  await expect(grid).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Use {=w} here: this field does not stay linked")).toBeVisible();
+  await grid.fill("{=w}/4");
   await grid.press("Enter");
-  await expect(page.getByText("Used {w} once: Grid spacing (mm) does not stay linked to variables")).toBeVisible();
+  await expect(grid).toHaveAttribute("aria-invalid", "false");
+  await grid.press("Tab");
+  await expect(grid).toHaveValue("5");
 });
 
 test("choosing a tool right after editing a variable keeps the edited model", async ({ page }) => {
@@ -471,4 +486,149 @@ test("renaming then editing the next row keeps one undoable edit per row", async
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(dialog.getByRole("textbox", { name: "Name of a", exact: true })).toBeVisible();
   await expect(b).toHaveValue("20");
+});
+
+test("text variables combine others and {=name} copies a value once", async ({ page }) => {
+  await rectangle(page);
+  const brand = await addVariable(page, "brand", "Acme");
+  await addVariable(page, "model", "Slim");
+  const dialog = await openVariables(page);
+  await addVariable(page, "full", "{brand} {model}");
+  await expect(dialog.getByRole("textbox", { name: "Value of full", exact: true })).toHaveValue("{brand} {model}");
+  const name = page.getByLabel("Name", { exact: true });
+  await name.fill("{full} / {=brand}");
+  await name.press("Enter");
+  const row = page.locator(".objects .object-select");
+  await expect(row).toHaveText("Acme Slim / Acme");
+  await brand.fill("Nova");
+  await page.keyboard.press("Enter");
+  // The linked part follows; the one-time part was written in as text.
+  await expect(row).toHaveText("Nova Slim / Acme");
+  await name.focus();
+  await expect(name).toHaveValue("{full} / Acme");
+  await name.press("Tab");
+  // A linked width written with a one-time part keeps only the linked variable.
+  await addVariable(page, "w", "40");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("{w} + {=w}");
+  await width.press("Enter");
+  await expect(width).toHaveValue("80");
+  await expect(width).toHaveAttribute("title", "Linked to {w} + (40)");
+  const vertexLike = page.getByLabel("Outline opacity (%)", { exact: true });
+  await vertexLike.fill("{w}");
+  await expect(vertexLike).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Use {=w} here: this field does not stay linked.")).toBeVisible();
+  await vertexLike.press("Escape");
+  // A loop between text variables is refused.
+  const brandValue = dialog.getByRole("textbox", { name: "Value of brand", exact: true });
+  await brandValue.fill("{full}");
+  await expect(dialog.getByText(/refers to itself/)).toBeVisible();
+  await brandValue.press("Escape");
+  await expect(brandValue).toHaveValue("Nova");
+});
+
+test("Ctrl edge labels show and edit a linked side's formula", async ({ page }) => {
+  await rectangle(page);
+  const w = await addVariable(page, "w", "50");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("{w}");
+  await width.press("Enter");
+  // Hold Ctrl over the canvas to show edge lengths, then open the width side.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const edges = page.getByRole("textbox", { name: "Edge length", exact: true });
+  await expect(edges).toHaveCount(4);
+  const side = edges.and(page.locator('[title="Linked to {w}"]')).first();
+  // The formula and its result show before the field is opened.
+  await expect(side).toHaveValue("{w}");
+  await expect(page.locator(".edge-result").first()).toHaveText("= 50 mm");
+  const before = await side.boundingBox();
+  await side.focus();
+  await page.keyboard.up("Control");
+  await expect(side).toHaveValue("{w}");
+  // Opening the field keeps the label in place.
+  expect(await side.boundingBox()).toEqual(before);
+  await side.fill("{w}*2");
+  await expect(page.locator(".edge-result").first()).toHaveText("= 100 mm");
+  await side.press("Enter");
+  await expect(width).toHaveValue("100");
+  await expect(width).toHaveAttribute("title", "Linked to {w}*2");
+  await w.fill("30");
+  await page.keyboard.press("Enter");
+  await expect(width).toHaveValue("60");
+  // Sides without a linked property still take plain lengths; a number unlinks.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const linked = edges.and(page.locator('[title="Linked to {w}*2"]')).first();
+  await linked.focus();
+  await page.keyboard.up("Control");
+  await expect(linked).toHaveValue("{w}*2");
+  await linked.fill("40");
+  await linked.press("Enter");
+  await expect(width).toHaveValue("40");
+  await expect(width).not.toHaveAttribute("title", /Linked/);
+  // Alt+wheel on a linked side steps its result and replaces the formula with a number.
+  await width.fill("{w}");
+  await width.press("Enter");
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const wheelSide = edges.and(page.locator('[title="Linked to {w}"]')).first();
+  await wheelSide.focus();
+  await page.keyboard.up("Control");
+  await wheelSide.hover();
+  await page.keyboard.down("Alt");
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up("Alt");
+  await expect(wheelSide).toHaveValue("31");
+  await wheelSide.press("Enter");
+  await expect(width).toHaveValue("31");
+  await expect(width).not.toHaveAttribute("title", /Linked/);
+  // An unlinked side keeps the original edge edit for plain numbers.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const plainSide = edges.first();
+  await plainSide.focus();
+  await page.keyboard.up("Control");
+  await plainSide.fill("80");
+  await plainSide.press("Enter");
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  await expect.poll(() => edges.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).value))).toContain("80");
+  await page.keyboard.up("Control");
+  // Clicking away from an open edge field hides the labels once Ctrl is up.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  await edges.first().focus();
+  await page.keyboard.up("Control");
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 600, y: 120 } });
+  await page.locator(".objects .object-select").first().click();
+  await expect(edges).toHaveCount(0);
+});
+
+test("a number variable used by links cannot become text", async ({ page }) => {
+  await rectangle(page);
+  const w = await addVariable(page, "w", "40");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("{w}");
+  await width.press("Enter");
+  await w.fill("Acme");
+  await expect(page.getByText("w is used as a number; enter a number or formula")).toBeVisible();
+  await w.press("Escape");
+  await expect(w).toHaveValue("40");
+  await expect(width).toHaveAttribute("title", "Linked to {w}");
+});
+
+test("ellipse width typed while drawing links", async ({ page }) => {
+  await page.goto("/");
+  const ellipse = page.getByRole("button", { name: "Circle (C)", exact: true });
+  await expect(ellipse).toBeEnabled();
+  await addVariable(page, "w", "40");
+  await ellipse.click({ button: "right" });
+  await page.getByRole("menuitemradio", { name: "Center ellipse", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.hover({ position: { x: 300, y: 300 } });
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("{w}");
+  await expect(page.getByRole("alert").filter({ hasText: "does not stay linked" })).toHaveCount(0);
 });
