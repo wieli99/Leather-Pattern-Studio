@@ -3,6 +3,7 @@ import {
   effectiveObjectStates,
   flattenObjectTree,
   moveObjectNodes,
+  placeBesideSources,
   validateObjectTree,
   type ObjectNode,
 } from "./objectTree";
@@ -80,4 +81,24 @@ test("cross-parent moves preserve block order and leave the source immutable", (
   expect(flattenObjectTree(next)).toEqual(["b", "c", "a"]);
   expect(flattenObjectTree(tree)).toEqual(["a", "b", "c"]);
   expect(() => moveObjectNodes(tree, ["a"], "unknown", 0)).toThrow();
+});
+
+test("placeBesideSources keeps new objects in their source's group, in front", () => {
+  const tree: ObjectNode[] = [
+    { kind: "object", id: "a" },
+    { kind: "group", id: "g", name: "G", children: [{ kind: "object", id: "b" }] },
+  ];
+  expect(placeBesideSources(tree, new Map([["b1", "b"], ["b2", "b"]]))).toEqual([
+    { kind: "object", id: "a" },
+    {
+      kind: "group",
+      id: "g",
+      name: "G",
+      children: [
+        { kind: "object", id: "b2" },
+        { kind: "object", id: "b1" },
+        { kind: "object", id: "b" },
+      ],
+    },
+  ]);
 });

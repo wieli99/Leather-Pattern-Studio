@@ -53,7 +53,14 @@ const e = useEditor(editor),
       : Math.abs(b.value.y - a.value.y) *
         Math.hypot(matrix.value.c, matrix.value.d),
   ),
-  vertices = computed(() => worldPoints(s.value!));
+  vertices = computed(() => worldPoints(s.value!)),
+  segmentLength = computed(() =>
+    e.value.segmentSelection.reduce(
+      (sum, segment) =>
+        sum + segment.points.slice(1).reduce((t, p, i) => t + Math.hypot(p.x - segment.points[i].x, p.y - segment.points[i].y), 0),
+      0,
+    ),
+  );
 function isSharp(shape: Shape, index: number) {
   const handles = shape.handles?.[index];
   return (
@@ -441,6 +448,14 @@ function vertex(i: number, axis: "x" | "y", v: string) {
     </details>
     </fieldset>
   </fieldset>
+  <template v-else-if="e.segmentMode">
+    <h2>Segments</h2>
+    <p v-if="e.segmentSelection.length">
+      {{ e.segmentSelection.length === 1 ? "1 segment" : `${e.segmentSelection.length} segments` }} selected,
+      {{ editor.formatLength(segmentLength) }} {{ editor.unitSymbol }} total
+    </p>
+    <p v-else>Click a segment, or drag to select several.</p>
+  </template>
   <template v-else>
     <h2>Selection</h2>
     <p>

@@ -289,3 +289,19 @@ test("field help replaces canvas controls and describes array Enter and Escape p
     ).controls.find((c) => c.id === "confirm")?.action,
   ).toBe("Confirm value");
 });
+test("segment selection explains selecting and editing segments", () => {
+  const idle = editorHint({ ...base, mode: "segment-select" });
+  expect(idle.action).toBe("Click a segment between crossings or corners.");
+  expect(idle.controls.some((row) => row.id === "delete")).toBe(false);
+  const chosen = editorHint({ ...base, mode: "segment-select", segmentSelection: [{}] });
+  expect(chosen.action).toBe("Drag a selected segment or press G to move it.");
+  expect(chosen.controls).toEqual(
+    expect.arrayContaining([
+      { id: "move", gesture: "Drag / G", action: "Move (detaches)" },
+      { id: "delete", gesture: "Delete / Backspace", action: "Delete segments" },
+      { id: "separate", gesture: "Ctrl/⌘+Shift+D", action: "Separate into objects" },
+      { id: "variants", gesture: "V / Shift+V", action: "Switch to object selection" },
+    ]),
+  );
+  expect(chosen.controls.filter((row) => row.id === "cancel")).toHaveLength(1);
+});

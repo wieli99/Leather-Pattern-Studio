@@ -219,6 +219,15 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     </section>
     <StitchToolbox />
     <StitchToolbar />
+    <section v-if="e.segmentMode && !e.transformTool && e.segmentSelection.length" class="transform-options segment-options" aria-label="Segment selection">
+      <strong>{{ e.segmentSelection.length === 1 ? "1 segment" : `${e.segmentSelection.length} segments` }}</strong>
+      <small>Drag or press G to move. Moving, separating or duplicating detaches segments from their shapes.</small>
+      <div class="actions tool-popup-footer">
+        <button :disabled="e.busy" title="Separate (Ctrl+Shift+D)" @click="editor.separateSegments()">Separate</button>
+        <button :disabled="e.busy" title="Duplicate (Ctrl+D)" @click="editor.duplicateSegments()">Duplicate</button>
+        <button :disabled="e.busy" title="Delete (Delete)" @click="editor.deleteSegments()">Delete</button>
+      </div>
+    </section>
     <section v-if="e.trimMode" class="transform-options" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
       @keydown.esc.stop.prevent="cancelOutline()">
       <strong>{{ e.booleanOperation ? e.booleanLabel : e.mergeMode ? "Join" : "Trim" }}</strong>
@@ -283,7 +292,8 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
               ? "Move"
               : "Rotate"
       }}</strong>
-      <ToolObjectPicker /><hr>
+      <template v-if="e.segmentMoveActive"><small>Moving detached segments.</small><hr></template>
+      <template v-else><ToolObjectPicker /><hr></template>
       <small>{{ {
         move: "Drag the gizmo or enter X/Y distances to move the selection.",
         rotate: "Drag the rotation ring or enter an angle to rotate the selection.",

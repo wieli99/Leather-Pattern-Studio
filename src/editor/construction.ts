@@ -2,6 +2,7 @@ import type { Point, Shape } from "../model/project";
 import { zeroHandles } from "../model/curves";
 import { distance } from "../model/geometry";
 export const variants = {
+  select: ["select", "segment-select"],
   measurement: ["measurement", "size-square", "size-ruler"],
   drawing: ["arrow", "arrow-head", "crosshair"],
   polygon: ["polygon", "polygon-box"],
@@ -23,7 +24,7 @@ export type Mode =
   | (typeof variants.drawing)[number]
   | "text"
   | "measurement"
-  | "select"
+  | (typeof variants.select)[number]
   | (typeof variants.polyline)[number]
   | (typeof variants.rectangle)[number]
   | (typeof variants.circle)[number];
@@ -38,6 +39,7 @@ export const labels: Record<Mode, string> = {
   curve: "Curve",
   "control-curve": "Control point curve",
   select: "Select",
+  "segment-select": "Select segments",
   text: "Text",
   measurement: "Measurement",
   polyline: "Polyline",

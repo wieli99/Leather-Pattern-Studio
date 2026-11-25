@@ -179,6 +179,8 @@ const cursor = computed(() => {
   if (editor.array && !editor.objectPicker) return editor.arrayFollowing || editor.arrayCenterPicking ? "crosshair" : "default";
   if (editor.placingPivot) return "crosshair";
   if (editor.hoverHandle === "move") return "move";
+  if (editor.segmentMode && !editor.transformTool)
+    return editor.gesture?.kind === "move" ? "grabbing" : editor.segmentHover ? "pointer" : "crosshair";
   return editor.tool !== "select"
     ? "none"
     : editor.gesture?.kind === "rotate" || editor.hoverHandle === "rotate"

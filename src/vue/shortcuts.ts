@@ -110,12 +110,20 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if (mod && !e.shiftKey && e.key.toLowerCase() === "g") {
     e.preventDefault(); void editor.newGroup(true); return;
   }
+  if (mod && e.shiftKey && e.key.toLowerCase() === "d" && editor.segmentMode) {
+    e.preventDefault(); void editor.separateSegments(); return;
+  }
   if (mod && !e.shiftKey && e.key.toLowerCase() === "d") {
     e.preventDefault();
     editor.duplicate();
     return;
   }
   if (mod && !e.shiftKey && e.key.toLowerCase() === "a") {
+    if (editor.segmentMode && !editor.transformTool) {
+      e.preventDefault();
+      editor.selectAllSegments();
+      return;
+    }
     if (editor.objectPicker) {
       e.preventDefault();
       editor.setToolSelection(editor.document.shapes.filter(s=>!editor.isHidden(s.id) && !editor.isLocked(s.id)).map(s=>s.id));
@@ -183,6 +191,11 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     }
     if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
       e.preventDefault();
+      // Segments only move; other transforms need whole objects.
+      if (editor.segmentMode) {
+        if (k === "g") void editor.moveSegments();
+        return;
+      }
       editor.activateTransform(
         k === "b"
           ? "corner"
@@ -229,6 +242,10 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     else editor.escapeStitch();
     return;
   }
+  if (e.key === "Escape" && editor.segmentMode && editor.segmentSelection.length && !editor.gesture) {
+    editor.setSegmentSelection([]);
+    return;
+  }
   if (e.key === "Escape") {
     editor.setMode("select");
   }
@@ -255,6 +272,11 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     return;
   }
   if (!mod && !e.repeat) {
+    if (e.key === "1" || e.key === "2") {
+      e.preventDefault();
+      editor.setMode(e.key === "1" ? "select" : "segment-select");
+      return;
+    }
     if (groupKeys[e.key.toLowerCase()]) {
       e.preventDefault();
       editor.cycle(groupKeys[e.key.toLowerCase()], e.shiftKey ? -1 : 1);

@@ -1,4 +1,5 @@
 import { flattenOutline } from "../model/flattenOutline";
+import type { Point } from "../model/project";
 import { textFont, measureText } from "../model/text";
 import { constructionGuides } from "./construction";
 import { drawAnnotation } from "./annotationRenderer";
@@ -408,6 +409,45 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.strokeStyle = "#f43f5e";
       ctx.lineWidth = 5 / z;
       ctx.stroke();
+      ctx.restore();
+    }
+    if (editor.segmentMode) {
+      const span = (points: Point[]) => {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (const p of points.slice(1)) ctx.lineTo(p.x, p.y);
+      };
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      const hover = editor.pointerInside && !editor.gesture ? editor.segmentHover : null;
+      if (hover?.points.length) {
+        span(hover.points);
+        ctx.strokeStyle = color("accent");
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth = 7 / z;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      for (const segment of editor.segmentSelection) {
+        if (!segment.points.length) continue;
+        span(segment.points);
+        ctx.strokeStyle = color("canvas");
+        ctx.lineWidth = 7 / z;
+        ctx.stroke();
+        ctx.strokeStyle = color("accent");
+        ctx.lineWidth = 4 / z;
+        ctx.stroke();
+        // End markers show where the segment detaches from its shape.
+        ctx.fillStyle = color("canvas");
+        for (const p of [segment.points[0], segment.points.at(-1)!]) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3.5 / z, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.lineWidth = 1.5 / z;
+          ctx.stroke();
+        }
+      }
       ctx.restore();
     }
     if (editor.transformTool === "mirror" && editor.active.length && !editor.objectPicker) {
