@@ -7,6 +7,7 @@ import ToolObjectPicker from "./ToolObjectPicker.vue";
 import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
+import ToolPopover from "./ToolPopover.vue";
 import { computed } from "vue";
 import { polygonFillets } from "../model/geometry";
 import { editor } from "../editor/instance";
@@ -41,6 +42,7 @@ const selectedChamfer = computed(() => e.value.cornerStyleOverride ??
 const bulkCorners = computed(() => e.value.active.flatMap(s => polygonFillets(s).corners));
 const bulkValues = computed(() => bulkCorners.value.map(c => c.chamfer || c.radius));
 const bulkMixed = computed(() => e.value.bulkCornerStyle === null || !bulkValues.value.every(v => Math.abs(v - bulkValues.value[0]) < 1e-9));
+const transformHeading = { scale: "Resize", mirror: "Mirror", corner: "Corners", move: "Move", rotate: "Rotate" } as const;
 const squareSelection = computed(() => e.value.active.some(s => s.kind === "size-square"));
 </script>
 <template>
@@ -48,9 +50,11 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     v-if="!e.printLayoutActive"
     class="transform-overlay"
   >
-    <section
+    <ToolPopover
       v-if="e.array"
-      class="transform-options array-options"
+      class="array-options"
+      :heading="e.array.kind === 'rectangular' ? 'Rectangular Array' : 'Radial Array'"
+      :apply-disabled="!e.preview || !!e.array.error || e.busy || e.objectPicker || e.arrayStage !== 'review'"
       :aria-label="
         e.array.kind === 'rectangular'
           ? 'Rectangular Array settings'
@@ -58,10 +62,9 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       "
       @keydown.enter="handleToolEnter($event, applyArray)"
       @keydown.esc.stop.prevent="editor.cancelArrayPoint() || cancelPathCopy()"
+      @apply="applyArray()"
+      @cancel="cancelPathCopy()"
     >
-      <strong>{{
-        e.array.kind === "rectangular" ? "Rectangular Array" : "Radial Array"
-      }}</strong>
       <ToolObjectPicker />
       <hr />
       <small>{{
@@ -186,23 +189,10 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       </template>
       <small>Shift+wheel changes count. Counts include the original.</small>
       <p v-if="e.array.error" role="alert">{{ e.array.error }}</p>
-      <div class="actions tool-popup-footer">
-        <button
-          :disabled="
-            !e.preview ||
-            !!e.array.error ||
-            e.busy ||
-            e.objectPicker ||
-            e.arrayStage !== 'review'
-          "
-          @click="applyArray()"
-        >
-          Apply</button
-        ><button @click="cancelPathCopy()">Cancel</button>
-      </div>
-    </section>
-    <section v-if="e.pathCopy" class="transform-options path-copy-options" aria-label="Copy along path settings" @keydown.esc.stop.prevent="cancelPathCopy()">
-      <strong>Copy along path</strong>
+    </ToolPopover>
+    <ToolPopover v-if="e.pathCopy" class="path-copy-options" heading="Copy along path" aria-label="Copy along path settings"
+      :apply-disabled="!e.preview || !!e.pathCopy.error || e.busy"
+      @keydown.esc.stop.prevent="cancelPathCopy()" @apply="applyPathCopy()" @cancel="cancelPathCopy()">
       <button v-for="role in (['source', 'path'] as const)" :key="role" class="boolean-picker" :aria-pressed="e.pathCopy.picker === role" @click="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()">
         <span class="boolean-picker-label">{{ role === 'source' ? 'Select Source' : 'Select Path' }}</span><span class="boolean-object-name">{{ e.pathCopy![role] ? '(1)' : 'Choose object' }}</span>
       </button>
@@ -215,8 +205,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <label class="stitch-toggle">Rotate with path<input v-model="e.pathCopy.rotate" type="checkbox" @change="editor.refreshPathCopy()" /></label>
       <small v-if="e.preview && !e.pathCopy.picker">{{ e.preview.shapes.filter(s => !e.document.shapes.some(o => o.id === s.id) && !s.stitchParentId).length }} new objects</small>
       <p v-if="e.pathCopy.error" role="alert">{{ e.pathCopy.error }}</p>
-      <div class="actions tool-popup-footer"><button :disabled="!e.preview || !!e.pathCopy.error || e.busy" @click="applyPathCopy()">Apply</button><button @click="cancelPathCopy()">Cancel</button></div>
-    </section>
+    </ToolPopover>
     <StitchToolbox />
     <StitchToolbar />
     <section v-if="e.segmentMode && !e.transformTool && e.segmentSelection.length" class="transform-options segment-options" aria-label="Segment selection">
@@ -228,9 +217,10 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         <button :disabled="e.busy" title="Delete (Delete)" @click="editor.deleteSegments()">Delete</button>
       </div>
     </section>
-    <section v-if="e.trimMode" class="transform-options" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
-      @keydown.esc.stop.prevent="cancelOutline()">
-      <strong>{{ e.booleanOperation ? e.booleanLabel : e.mergeMode ? "Join" : "Trim" }}</strong>
+    <ToolPopover v-if="e.trimMode" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
+      :heading="e.booleanOperation ? e.booleanLabel : e.mergeMode ? 'Join' : 'Trim'"
+      :apply-disabled="e.objectPicker || (!e.booleanOperation && !!e.toolSelectionError) || !e.trimDraft || !!e.transformError || !!e.booleanError || e.busy"
+      @keydown.esc.stop.prevent="cancelOutline()" @apply="applyOutline()" @cancel="cancelOutline()">
       <template v-if="!e.booleanOperation"><ToolObjectPicker /></template>
       <template v-if="e.booleanOperation">
         <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'target'"
@@ -251,14 +241,11 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       </template>
       <small v-else>{{ e.mergeMode ? "Apply to join the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
-      <div class="actions tool-popup-footer">
-        <button :disabled="e.objectPicker || (!e.booleanOperation && !!e.toolSelectionError) || !e.trimDraft || !!e.transformError || !!e.booleanError || e.busy" @click="applyOutline()">Apply</button>
-        <button @click="cancelOutline()">Cancel</button>
-      </div>
-    </section>
-    <section v-if="e.offsetActive" class="transform-options" aria-label="Offset settings"
-      @keydown.enter="handleToolEnter($event, () => editor.applyOffset())" @keydown.esc.stop.prevent="editor.cancel()">
-      <strong>Offset</strong>
+    </ToolPopover>
+    <ToolPopover v-if="e.offsetActive" heading="Offset" aria-label="Offset settings"
+      :apply-disabled="e.objectPicker || !!e.toolSelectionError || !e.offsetDraft || !!e.offsetError || e.busy"
+      @keydown.enter="handleToolEnter($event, () => editor.applyOffset())" @keydown.esc.stop.prevent="editor.cancel()"
+      @apply="editor.applyOffset()" @cancel="editor.cancel()">
       <ToolObjectPicker /><hr>
       <small>Positive expands closed outlines; negative insets. On open paths, positive goes left from start to end.</small>
       <div class="transform-inputs" data-hint-edit="transform">
@@ -271,27 +258,17 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         </select>
       </label>
       <p v-if="e.offsetError" role="alert">{{ e.offsetError }}</p>
-      <div class="actions tool-popup-footer">
-        <button :disabled="e.objectPicker || !!e.toolSelectionError || !e.offsetDraft || !!e.offsetError || e.busy" @click="editor.applyOffset()">Apply</button>
-        <button @click="editor.cancel()">Cancel</button>
-      </div>
-    </section>
-    <div
+    </ToolPopover>
+    <ToolPopover
       v-if="e.transformTool && !e.stitchMode"
-      class="transform-options"
+      tag="div"
+      :heading="transformHeading[e.transformTool]"
+      :apply-disabled="!e.transformValid || e.busy"
       @keydown.enter="handleToolEnter($event, () => editor.applyTransform())"
       @keydown.esc.stop="editor.cancelPivotPlacement() || editor.cancel()"
+      @apply="editor.applyTransform()"
+      @cancel="editor.cancel()"
     >
-      <strong>{{
-        e.transformTool === "scale"
-          ? "Resize"
-          : e.transformTool === "mirror" ? "Mirror"
-          : e.transformTool === "corner"
-            ? "Corners"
-            : e.transformTool === "move"
-              ? "Move"
-              : "Rotate"
-      }}</strong>
       <template v-if="e.segmentMoveActive"><small>Transforming detached segments.</small><hr></template>
       <template v-else><ToolObjectPicker /><hr></template>
       <small>{{ {
@@ -348,15 +325,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       >
       <PivotSelector v-if="e.transformTool !== 'corner'" :disabled="e.objectPicker" :mode="e.pivotMode" :placing="e.placingPivot" @change="editor.setPivotMode($event)" @cancel="editor.cancelPivotPlacement()" />
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
-      <div class="actions tool-popup-footer">
-        <button
-          :disabled="!e.transformValid || e.busy"
-          @click="editor.applyTransform()"
-        >
-          Apply</button
-        ><button @click="editor.cancel()">Cancel</button>
-      </div>
-    </div>
+    </ToolPopover>
     <ToolSearch v-if="!e.stitchMode" />
   </div>
 </template>

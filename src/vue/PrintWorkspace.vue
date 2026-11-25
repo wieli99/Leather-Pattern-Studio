@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reconcilePrintTargets } from "../model/printLayout";
 import ToolObjectPicker from "./ToolObjectPicker.vue";
+import ToolPopover from "./ToolPopover.vue";
 import { objectSelection } from "../model/objectSelection";
 import PivotSelector from "./PivotSelector.vue";
 import { automaticPivot, type PivotMode } from "../model/pivot";
@@ -3403,15 +3404,17 @@ defineExpose({
           ×
         </button>
       </template>
-      <div
+      <ToolPopover
         v-if="tool !== 'select'"
-        class="print-transform transform-options"
+        tag="div"
+        class="print-transform"
+        :heading="tool === 'move' ? 'Move' : tool === 'rotate' ? 'Rotate' : 'Mirror'"
+        :apply-disabled="choosingObjects || !selected.length || busy || !!error || !preview"
         @keydown.enter.prevent="applyTransform"
         @keydown.esc.stop.prevent="cancelPivotPlacement() || cancel()"
+        @apply="applyTransform"
+        @cancel="cancel"
       >
-        <strong>{{
-          tool === "move" ? "Move" : tool === "rotate" ? "Rotate" : "Mirror"
-        }}</strong>
         <ToolObjectPicker :count="toolObjectCount" :choosing="choosingObjects" :error="choosingObjects ? printSelectionError : undefined" @toggle="toggleObjects" /><hr>
         <p v-if="error" role="alert">{{ error }}</p>
         <small>{{
@@ -3451,15 +3454,7 @@ defineExpose({
           </select></label
         >
         <PivotSelector :disabled="choosingObjects" :mode="pivotMode" :placing="placingPivot" @change="setPivotMode" @cancel="cancelPivotPlacement" />
-        <div class="actions tool-popup-footer">
-          <button
-            :disabled="choosingObjects || !selected.length || busy || !!error || !preview"
-            @click="applyTransform"
-          >
-            Apply</button
-          ><button @click="cancel">Cancel</button>
-        </div>
-      </div>
+      </ToolPopover>
       <div v-if="bottom" class="print-status">
         <span
           >{{ formatLength(layout.width, layout.units) }} ×
