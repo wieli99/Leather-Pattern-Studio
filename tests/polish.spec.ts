@@ -388,6 +388,28 @@ test("Settings closes on outside clicks without consuming the click", async ({
   await expect(settings).not.toHaveAttribute("aria-expanded", "true");
 });
 
+test("pinned Settings stays open while working until closed explicitly", async ({ page }) => {
+  await ready(page);
+  const settings = page.locator(".settings-trigger");
+  await page.getByText("Settings", { exact: true }).click();
+  const pin = page.getByRole("button", { name: "Keep Settings open", exact: true });
+  await expect(pin).toHaveAttribute("aria-pressed", "false");
+  await pin.click();
+  await expect(pin).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 300, y: 300 } });
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "Close Settings", exact: true }).click();
+  await expect(settings).not.toHaveAttribute("aria-expanded", "true");
+  await page.reload();
+  await ready(page);
+  await page.getByText("Settings", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Keep Settings open", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Keep Settings open", exact: true }).click();
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 300, y: 300 } });
+  await expect(settings).not.toHaveAttribute("aria-expanded", "true");
+});
+
 test("object context menu duplicates, renames and captures styling", { tag: "@manual" }, async ({ page }) => {
   await ready(page);
   await page.evaluate(() => {
