@@ -411,7 +411,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.stroke();
       ctx.restore();
     }
-    if (editor.segmentMode) {
+    if (editor.segmentMode && !editor.transformTool) {
       const span = (points: Point[]) => {
         ctx.beginPath();
         ctx.moveTo(points[0].x, points[0].y);

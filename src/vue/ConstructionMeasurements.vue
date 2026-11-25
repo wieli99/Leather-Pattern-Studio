@@ -66,7 +66,7 @@ const items = computed(() => {
   }
   if (editor.transformTool === "corner") return [];
   if (!editor.measurementsVisible && !active.value) return [];
-  if (editor.segmentMode) return segmentItems();
+  if (editor.segmentMode && !editor.transformTool) return segmentItems();
   return (editor.preview ?? editor.document).shapes
     .filter((s) => editor.selected.includes(s.id))
     .flatMap((shape) =>

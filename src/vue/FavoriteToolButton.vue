@@ -54,7 +54,7 @@ const e = useEditor();
   <button
     v-for="item in transformShortcuts.filter((t) => t[0] === id)"
     :key="item[0]"
-    :disabled="e.segmentMode ? !['move', 'rotate'].includes(item[0]) || !e.canEditSegments : !e.canStartTransform(item[0])"
+    :disabled="e.segmentMode ? !['move', 'rotate'].includes(item[0]) || !(e.canEditSegments || e.segmentMoveActive) : !e.canStartTransform(item[0])"
     :aria-label="item[1]"
     :title="`${item[1]} (${item[2]})`"
     :aria-pressed="e.transformTool === item[0]"

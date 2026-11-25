@@ -46,6 +46,7 @@ const editor = vi.hoisted(() => ({
   selectAllSegments: vi.fn(),
   separateSegments: vi.fn(),
   moveSegments: vi.fn(),
+  segmentMoveActive: false,
   rotateSegments: vi.fn(),
   delete: vi.fn(),
 }));
@@ -75,6 +76,7 @@ beforeEach(() => {
   editor.placingPivot = false;
   editor.transformAxis = undefined;
   editor.segmentMode = false;
+  editor.segmentMoveActive = false;
   editor.segmentSelection = [];
   editor.mode = "select";
   vi.stubGlobal("HTMLElement", ElementStub);
@@ -333,4 +335,15 @@ test("Ctrl+Shift+D does nothing outside segment mode", () => {
   press("D", { ctrlKey: true, shiftKey: true });
   expect(editor.separateSegments).not.toHaveBeenCalled();
   expect(editor.duplicate).not.toHaveBeenCalled();
+});
+
+test("Escape during a segment transform returns to the segments", () => {
+  editor.segmentMode = true;
+  editor.segmentMoveActive = true;
+  editor.transformTool = "rotate";
+  editor.segmentSelection = [{}];
+  press("Escape");
+  expect(editor.cancel).toHaveBeenCalledOnce();
+  expect(editor.setMode).not.toHaveBeenCalled();
+  expect(editor.setSegmentSelection).not.toHaveBeenCalled();
 });

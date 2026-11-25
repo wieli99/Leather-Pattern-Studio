@@ -3974,10 +3974,22 @@ describe("segment selection", () => {
     await e.moveSegments();
     expect(e.transformTool).toBe("move");
     expect(e.segmentMoveActive).toBe(true);
+    // The segment tool stays active and object-only tools stay unavailable.
+    expect(e.mode).toBe("segment-select");
+    expect(e.canTrim).toBe(false);
+    expect(e.canOffset).toBe(false);
+    expect(e.canJoin).toBe(false);
+    expect(e.canStartTransform("scale")).toBe(false);
+    expect(e.selectionToolsAvailable).toBe(false);
     e.setTransformValues({ x: 0, y: 7 });
     const moved = e.preview!.shapes.find(s => s.id === e.selected[0])!;
     expect(moved.points).toEqual([{ x: 10, y: 7 }, { x: 20, y: 7 }]);
-    e.setMode("select");
+    // Switching to Rotate restarts from the untouched segments.
+    await e.rotateSegments();
+    expect(e.transformTool).toBe("rotate");
+    expect(e.mode).toBe("segment-select");
+    expect(e.transformValues.y).toBe(0);
+    e.cancel();
     expect(e.mode).toBe("segment-select");
     expect(e.transformTool).toBeNull();
     expect(e.segmentSelection).toHaveLength(1);

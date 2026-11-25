@@ -261,7 +261,7 @@ export class Controller {
     return normal;
   }
   get canOffset() {
-    return this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
+    return !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
         ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc", "compound"].includes(s.kind) &&
         !s.stitchOnly && !this.isHidden(s.id));
   }
@@ -1406,6 +1406,7 @@ export class Controller {
   }
   get selectionToolsAvailable() {
     return (
+      !this.segmentTransform &&
       !!this.selected.length &&
       !this.pending.length &&
       !this.drawingDown &&
@@ -1416,7 +1417,7 @@ export class Controller {
   }
   get canStitch() {
     return (
-      this.ready && !this.busy && !this.fileBusy && !this.selectionLocked &&
+      !this.segmentTransform && this.ready && !this.busy && !this.fileBusy && !this.selectionLocked &&
       (!this.selected.length ||
         this.active.some((shape) => stitchEdges(shape).length > 0))
     );
@@ -2135,8 +2136,6 @@ export class Controller {
     const previous = this.mode;
     const returning = !!this.segmentTransform;
     this.cancel();
-    // Esc from a segment move returns to the segments it started from.
-    if (returning && mode === "select") mode = "segment-select";
     if (mode === "segment-select") {
       if (!returning && previous !== "segment-select") this.segmentState = { document: this.document, refs: [] };
       if (previous !== "segment-select") {
@@ -2540,7 +2539,7 @@ export class Controller {
     });
   }
   canStartTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
-    return this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length &&
+    return !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length &&
       !this.selectionLocked && this.selected.every(id=>!this.isHidden(id)) &&
       (tool !== "corner" || this.active.every(shape=>cornerPoints(shape).length > 0));
   }
@@ -2994,7 +2993,7 @@ export class Controller {
   }
   pathCopy: { source: string; path: string; picker: 'source' | 'path' | null; mode: 'spacing' | 'count'; spacing: number; count: number; rotate: boolean; error: string } | null = null;
   private pathCopySelection: string[] = [];
-  get canCopyAlongPath() { return this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && !this.busy; }
+  get canCopyAlongPath() { return !this.segmentTransform && this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && !this.busy; }
   activatePathCopy() {
     if (!this.canCopyAlongPath) return;
     const source = this.active[0]?.id ?? "";
@@ -3081,12 +3080,12 @@ export class Controller {
   }
   get canBoolean() {
     return (
-      this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
+      !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
     );
   }
   get canJoin() {
     return (
-      this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
+      !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
     );
   }
   setBooleanPicker(picker: "target" | "cutters") {
@@ -3223,7 +3222,7 @@ export class Controller {
   }
   get canTrim() {
     return (
-      this.ready && !this.busy && !this.printLayoutActive && !this.selectionLocked &&
+      !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !this.selectionLocked &&
       (!!this.selected.length &&
         this.active.every((shape) => !isIndicator(shape.kind) && shape.kind !== "text" && shape.kind !== "measurement"))
     );
@@ -3401,6 +3400,11 @@ export class Controller {
   moveSegments() { return this.transformSegments("move"); }
   rotateSegments() { return this.transformSegments("rotate"); }
   async transformSegments(tool: "move" | "rotate") {
+    if (this.segmentTransform) {
+      // Switching between Move and Rotate restarts from the untouched segments.
+      if (this.transformTool === tool || this.busy) return;
+      this.cancel();
+    }
     if (!this.canEditSegments || this.printLayoutActive) return;
     const refs = this.segmentSelection;
     const { document, ids } = this.splitSegmentSelection();
@@ -3420,6 +3424,8 @@ export class Controller {
       return;
     }
     this.segmentTransform = refs;
+    // The segment tool stays active; only the detached shapes are transformed.
+    this.mode = "segment-select";
     this.transformOriginal = document;
     this.preview = document;
     this.resetPivot();

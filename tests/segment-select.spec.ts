@@ -105,6 +105,14 @@ test("E rotates a selected segment by an exact angle", async ({ page }) => {
   await page.keyboard.press("2");
   await page.mouse.click(at(80, 40).x, at(80, 40).y);
   await page.keyboard.press("e");
+  // The segment tool stays active; object-only tools stay unavailable while rotating.
+  await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+  for (const name of ["Resize", "Mirror", "Corners", "Trim"])
+    await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Rotate", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Pattern drawing canvas").focus();
+  await page.keyboard.press("k");
+  await expect(page.getByRole("button", { name: "Rotate", exact: true })).toHaveAttribute("aria-pressed", "true");
   const angle = page.locator(".transform-inputs input").first();
   await angle.fill("90");
   // Enter in the angle field applies the rotation.

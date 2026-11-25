@@ -243,7 +243,12 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
     else editor.escapeStitch();
     return;
   }
-  if (e.key === "Escape" && editor.segmentMode && editor.segmentSelection.length && !editor.gesture) {
+  if (e.key === "Escape" && editor.segmentMoveActive) {
+    // Back to the untouched segments rather than to object selection.
+    editor.cancel();
+    return;
+  }
+  if (e.key === "Escape" && editor.segmentMode && !editor.transformTool && editor.segmentSelection.length && !editor.gesture) {
     editor.setSegmentSelection([]);
     return;
   }
