@@ -25,7 +25,7 @@ const operationLines = computed(() => {
     const shape=doc.shapes.find(s=>s.id===group.shapeId)!;
     let holes: number | null=null;
     try { holes=stitchGeometry(shape,group,doc.stitchGroups).holes.length; } catch { /* The operation reports invalid geometry. */ }
-    return {id:group.id,name:shape.name,holes,edges:group.edges.map(edgeLabel).join(", ")};
+    return {id:group.id,name:editor.displayName(shape.name),holes,edges:group.edges.map(edgeLabel).join(", ")};
   });
 });
 const dependentTransfers = computed(() => (e.value.stitchOriginal?.stitchTransfers ?? []).filter(t=>e.value.stitchOperationSelection.includes(t.masterId)).length);
@@ -143,7 +143,7 @@ const warnings = computed(() =>
       <small>{{ e.stitchTransferPlacement.phase==='placed' ? 'Review the placement, then Apply to confirm. You can reposition it before applying.' : 'Move the master preview over receiving pieces and place it before applying.' }}</small>
       <p>{{ e.stitchTransferPlacement.angle.toFixed(1) }}° · {{ e.stitchTransferPreview.results.length }} selected-line transfers ready</p>
       <small v-if="!e.stitchTransferPreview.transfers.length">No eligible receiving piece here. Reposition the preview over an unlocked closed piece.</small>
-      <small v-for="result in e.stitchTransferPreview.results" :key="result.group.id">{{ result.target.name }}: {{ result.included }} holes, {{ result.excluded }} outside, {{ result.edgeHits.length }} edge contacts</small>
+      <small v-for="result in e.stitchTransferPreview.results" :key="result.group.id">{{ editor.displayName(result.target.name) }}: {{ result.included }} holes, {{ result.excluded }} outside, {{ result.edgeHits.length }} edge contacts</small>
       <small v-for="reason in e.stitchTransferPreview.skipped" :key="reason">Skipped: {{ reason }}</small>
 
     </div>
@@ -250,7 +250,7 @@ const warnings = computed(() =>
     </template>
     <p v-if="e.stitchError" role="alert">{{ e.stitchError }}</p>
     <p v-for="warning in warnings" :key="warning.key" role="alert">
-      {{ warning.name }}: {{ warning.message }}
+      {{ editor.displayName(warning.name) }}: {{ warning.message }}
     </p>
 
     <div class="actions tool-popup-footer">

@@ -416,3 +416,59 @@ test("choosing a tool right after editing a variable keeps the edited model", as
   await expect(width).toHaveValue("50");
   await expect(w).toHaveValue("50");
 });
+
+test("dragging a vertex right after a variable edit keeps the edit", async ({ page }) => {
+  await page.goto("/");
+  const polyline = page.getByRole("button", { name: "Polyline (P)", exact: true });
+  await expect(polyline).toBeEnabled();
+  await page.getByRole("checkbox", { name: "Grid snap", exact: true }).uncheck();
+  await page.getByRole("checkbox", { name: "Object snap", exact: true }).uncheck();
+  const s = await addVariable(page, "s", "0.5");
+  await polyline.click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 240, y: 240 } });
+  await canvas.click({ position: { x: 500, y: 350 } });
+  await canvas.click({ position: { x: 600, y: 240 } });
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  const outline = page.getByLabel("Outline width (mm)", { exact: true });
+  await outline.fill("{s}");
+  await outline.press("Enter");
+  await expect(outline).toHaveAttribute("title", "Linked to {s}");
+  await page.getByText("Vertex coordinates", { exact: true }).click();
+  const x = page.getByLabel("Vertex 1 X", { exact: true });
+  const initialX = await x.inputValue();
+  await s.fill("1");
+  // Pressing a vertex leaves the field and starts a drag at once.
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + 240, box.y + 240);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 320, box.y + 240, { steps: 5 });
+  await page.mouse.up();
+  await expect(x).not.toHaveValue(initialX);
+  await expect(s).toHaveValue("1");
+  await expect(outline).toHaveValue("1");
+  await expect(outline).toHaveAttribute("title", "Linked to {s}");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(x).toHaveValue(initialX);
+  await expect(outline).toHaveValue("1");
+});
+
+test("renaming then editing the next row keeps one undoable edit per row", async ({ page }) => {
+  await rectangle(page);
+  await addVariable(page, "a", "10");
+  const b = await addVariable(page, "b", "20");
+  const dialog = await openVariables(page);
+  const nameA = dialog.getByRole("textbox", { name: "Name of a", exact: true });
+  await nameA.fill("alpha");
+  // Leave row a for row b's value: the rename is committed with row a.
+  await b.click();
+  await expect(dialog.getByRole("textbox", { name: "Name of alpha", exact: true })).toBeVisible();
+  await b.fill("25");
+  await b.press("Escape");
+  await expect(b).toHaveValue("20");
+  await expect(dialog.getByRole("textbox", { name: "Name of alpha", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Name of a", exact: true })).toBeVisible();
+  await expect(b).toHaveValue("20");
+});

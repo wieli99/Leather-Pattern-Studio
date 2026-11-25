@@ -15,8 +15,8 @@ import { hitsTransformShaft } from "./transformUi";
 import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
-import { evaluateBinding, pruneBindings, recompute, withBinding } from "../model/bindings";
-import { propertyChanges, clampFillets, applyChanges, getProperty, PROPERTIES, type PropertyId } from "../model/propertySetters";
+import { evaluateBinding, mapShapes, pruneBindings, recompute, withBinding } from "../model/bindings";
+import { propertyChanges, clampFillets, applyChanges, getProperty, keepLinkedCenter, PROPERTIES, type PropertyId } from "../model/propertySetters";
 import { bindingUnit, displayTemplate, hasPlaceholders, resolveVariables, type VariableScope } from "../model/variables";
 import { resizeText } from "../model/text";
 import { formulaReferences } from "../model/expression";
@@ -224,14 +224,16 @@ export class Controller {
   /** Text boxes follow the shown text, so placeholder values size them. */
   private syncTextBoxes(doc: Doc): Doc {
     let changed = false;
-    const shapes = doc.shapes.map((s) => {
+    const fit = (s: Shape) => {
       if (s.kind !== "text" || !s.text || !(hasPlaceholders(s.text) || /\{\{|\}\}/.test(s.text))) return s;
-      const next = resizeText(s, displayTemplate(s.text, doc.variables));
+      const next = keepLinkedCenter(s, resizeText(s, displayTemplate(s.text, doc.variables)));
       if (next.points.every((p, i) => Math.abs(p.x - s.points[i].x) < 1e-9 && Math.abs(p.y - s.points[i].y) < 1e-9)) return s;
       changed = true;
       return next;
-    });
-    return changed ? { ...doc, shapes } : doc;
+    };
+    // Print snapshots hold their own labels; their boxes drive page tiling.
+    const next = mapShapes(doc, fit);
+    return changed ? next : doc;
   }
   private scopeCache: { variables: Doc["variables"]; scope: VariableScope } | null = null;
   get variableScope(): VariableScope {
@@ -3352,6 +3354,7 @@ export class Controller {
   }
   cancel() {
     this.settleProperty();
+    this.usedOnce = null;
     const segmentReturn = this.segmentTransform;
     this.segmentTransform = null;
     if (this.toolSelection) {
@@ -4051,6 +4054,8 @@ export class Controller {
     if (this.smartGuides.length) this.snapTarget = this.cursor;
     this.notify();
   }
+  // Gestures start from a commit still in flight (such as an edit just left by clicking
+  // the canvas), so they never overwrite it with an older document.
   pointerDown(
     pixel: Point,
     button: number,
@@ -4188,7 +4193,7 @@ export class Controller {
         kind: "pan",
         start: pixel,
         end: pixel,
-        original: this.document,
+        original: this.pendingDocument ?? this.document,
         selection: [],
         pivot: raw,
         pan: { ...this.pan },
@@ -4237,7 +4242,7 @@ export class Controller {
     if (this.segmentMode && !this.transformTool) {
       const hit = this.segmentAtPoint(raw);
       const current = this.segmentSelection;
-      const gesture = { start: raw, end: raw, original: this.document, selection: [], pivot: raw };
+      const gesture = { start: raw, end: raw, original: this.pendingDocument ?? this.document, selection: [], pivot: raw };
       if (hit) {
         const chosen = current.some(s => sameSegment(s, hit));
         if (shift)
@@ -4287,7 +4292,7 @@ export class Controller {
         shapeId: handle.shapeId,
         start: raw,
         end: raw,
-        original: this.preview ?? this.document,
+        original: this.preview ?? this.pendingDocument ?? this.document,
         selection: [...this.selected],
         pivot: { ...this.transformPivot },
         axis: handle.axis ?? this.transformAxis,
@@ -4320,7 +4325,7 @@ export class Controller {
           kind: "move",
           start: raw,
           end: raw,
-          original: this.preview ?? this.document,
+          original: this.preview ?? this.pendingDocument ?? this.document,
           selection: [...this.selected],
           pivot: raw,
           axis: this.transformAxis,
@@ -4334,7 +4339,7 @@ export class Controller {
         kind: "marquee",
         start: raw,
         end: raw,
-        original: this.document,
+        original: this.pendingDocument ?? this.document,
         selection,
         pivot: raw,
         crossing: ctrl,
@@ -4962,6 +4967,7 @@ export class Controller {
   private linkConstruction(shape: Shape): Shape {
     const formulas = this.constructionFormulas;
     this.constructionFormulas = [];
+    this.usedOnce = null;
     if (!formulas.length) return shape;
     const target: Record<string, PropertyId> = {
       Width: this.mode === "size-square" ? "indicatorSize" : "width",
@@ -5029,11 +5035,21 @@ export class Controller {
     if (!shape) return;
     const changes = propertyChanges(shape, property, value, options);
     if (!changes) return;
-    const linking = !!formula && formulaReferences(formula).length > 0;
+    let linking = !!formula && formulaReferences(formula).length > 0;
     // An image size link remembers whether the aspect ratio was locked when it was made.
     const keepAspect = shape.kind === "image" && (property === "width" || property === "height") &&
       (options.aspectLocked ?? true) ? { keepAspect: true } : {};
     if (linking && !this.linksEnabled) this.noteUsedOnce([formula!], [PROPERTIES[property].label]);
+    // A curve's width and height are world bounding-box sizes: resizing a rotated curve
+    // also changes its angle, so size and rotation links on one curve cannot both hold.
+    const sizes = ["width", "height"], curve = shape.kind === "curve" || shape.kind === "control-curve";
+    const conflict = curve && (shape.bindings ?? []).some((b) =>
+      property === "rotation" ? sizes.includes(b.property) : sizes.includes(property) && b.property === "rotation");
+    if (linking && this.linksEnabled && conflict) {
+      linking = false;
+      this.message = `A curve cannot link both its ${property === "rotation" ? "size" : property} and rotation: used ${formulaReferences(formula!).map((n) => `{${n}}`).join(", ")} once`;
+      this.notify();
+    }
     const linked = withBinding(
       applyChanges(shape, clampFillets(shape, changes)),
       property,
@@ -5065,6 +5081,29 @@ export class Controller {
       failed = error instanceof Error ? error.message : String(error);
     });
     return failed;
+  }
+  /**
+   * Apply a variable change to the open edit immediately, without a preview round trip.
+   * Used when an edit is about to be committed, such as a rename on leaving a row; the
+   * commit validates it.
+   */
+  stageVariables(change: (doc: Doc) => Doc): string | null {
+    const session = this.propertySession;
+    if (!session || !this.canEditVariables) return "Apply or cancel the active tool to edit variables";
+    const changed = change(session.next);
+    const { errors } = resolveVariables(changed.variables);
+    if (errors.size) {
+      const [id, message] = [...errors][0];
+      return `${changed.variables?.find((v) => v.id === id)?.name ?? "Variable"}: ${message}`;
+    }
+    const { doc, problems } = recompute(changed, (id) => this.isLocked(id));
+    if (problems.length) return problems[0].message;
+    try {
+      session.next = parseProject(JSON.stringify(this.syncTextBoxes(doc)));
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    return null;
   }
   /** Preview inside a property session, otherwise commit as one history step. */
   private async applyPropertyDocument(build: () => Doc, onError?: (error: unknown) => void) {
@@ -5102,7 +5141,10 @@ export class Controller {
           this.preview = result.document;
           this.notify();
         }
-      } else await this.commit(next);
+      } else if (!(await this.commit(next))) {
+        // commit() reports its own failure in the status bar; callers still need to know.
+        onError?.(new Error(this.message));
+      }
     } catch (e) {
       if (onError) onError(e);
       else this.fail(e);

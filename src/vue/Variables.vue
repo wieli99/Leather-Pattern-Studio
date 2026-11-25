@@ -78,13 +78,20 @@ function rowFocus() {
 function rowLeave(id: string, event: FocusEvent) {
   const row = event.currentTarget as HTMLElement;
   if (row.contains(event.relatedTarget as Node | null)) return;
+  if (id !== draftId.value) {
+    // A pending rename joins this row's edit, so it is committed with it right now.
+    const v = list.value.find((item) => item.id === id), text = nameDrafts.value[id]?.trim();
+    if (v && text && text !== v.name && !variableNameError(text, list.value, id)) {
+      const message = editor.stageVariables((doc) => renameVariable(doc, id, text));
+      if (message) editor.message = message;
+    }
+    clearDraft(nameDrafts, id);
+    clearDraft(valueDrafts, id);
+    setError(id, null);
+  }
   // Commit before anything else can run (such as a tool chosen by this click), so the
   // whole editor sees the edited values. Leaving keeps the last valid values.
-  const committed = editor.finishProperty();
-  if (id === draftId.value) return;
-  clearDraft(valueDrafts, id);
-  setError(id, null);
-  void committed.then(() => commitName(id, false));
+  void editor.finishProperty();
 }
 function rowEscape(id: string, event: KeyboardEvent) {
   event.stopPropagation();
@@ -152,7 +159,7 @@ function nameInput(row: { v: Variable; draft: boolean }, event: Event) {
   // Renames apply on Enter or when leaving the row, so lists never show a half-typed name.
   setError(row.v.id, variableNameError(text.trim(), list.value, row.v.id));
 }
-async function commitName(id: string, reopen = true) {
+async function commitName(id: string) {
   const v = list.value.find((item) => item.id === id), text = nameDrafts.value[id];
   if (!v || text === undefined) return;
   clearDraft(nameDrafts, id);
@@ -161,7 +168,7 @@ async function commitName(id: string, reopen = true) {
   // A rename is its own committed step, so every list shows the new name at once.
   await editor.finishProperty();
   await applyName(v, text);
-  if (reopen) editor.beginVariableEdit();
+  editor.beginVariableEdit();
 }
 function valueInput(row: { v: Variable; draft: boolean }, event: Event) {
   const input = event.target as HTMLInputElement;

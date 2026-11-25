@@ -1,8 +1,9 @@
 import type { Binding } from "../generated/Binding";
 import type { Doc, Shape } from "./project";
 import type { ObjectNode } from "./objectTree";
+import type { PrintNode } from "./printLayout";
 import { formulaReferences } from "./expression";
-import { getProperty, isPropertyId, propertyValueError, setProperty, PROPERTIES, type PropertyId } from "./propertySetters";
+import { getProperty, isPropertyId, keepLinkedCenter, propertyValueError, setProperty, PROPERTIES, type PropertyId } from "./propertySetters";
 import { resizeText } from "./text";
 import {
   evaluateFormula, interpolate, renameInFormula, renameInTemplate, resolveVariables,
@@ -27,10 +28,11 @@ function matches(id: PropertyId, current: number, target: number) {
 
 const shapeLabel = (s: Shape) => (s.name.trim() ? `'${s.name}'` : "an object");
 
-// Size and angle first: they keep the centre, so linked positions apply last.
+// Rotation first: curve widths and heights are world bounding-box sizes that change when
+// the curve turns. Sizes and angles keep the centre, so linked positions apply last.
 const ORDER: PropertyId[] = [
-  "width", "height", "radius", "indicatorSize", "sweep", "headSize", "fontSize", "lineSpacing",
-  "strokeWidth", "measurementSections", "measurementOffset", "rotation", "x", "y",
+  "rotation", "width", "height", "radius", "indicatorSize", "sweep", "headSize", "fontSize",
+  "lineSpacing", "strokeWidth", "measurementSections", "measurementOffset", "x", "y",
 ];
 
 /** Apply every link of one shape; stops at the first value the shape cannot take. */
@@ -45,7 +47,7 @@ export function recomputeShape(
   // Labels with `{name}` fit the shown text first, so linked positions use the final box.
   const fit = (s: Shape) => {
     if (s.kind !== "text" || !s.text || !formulaReferences(s.text).length) return s;
-    const fitted = resizeText(s, interpolate(s.text, values).text);
+    const fitted = keepLinkedCenter(s, resizeText(s, interpolate(s.text, values).text));
     const same = fitted.points.every((p, i) => Math.abs(p.x - s.points[i].x) < 1e-9 && Math.abs(p.y - s.points[i].y) < 1e-9);
     return same ? s : fitted;
   };
@@ -148,7 +150,9 @@ function mapTree(nodes: ObjectNode[] | undefined, rename: (name: string) => stri
  * Apply a rewrite to every shape a variable can appear in: model shapes and the shapes
  * stored in print-layout snapshots, plus print-copy names.
  */
-function mapShapes(doc: Doc, shape: (s: Shape) => Shape, name: (text: string) => string): Doc {
+export function mapShapes(doc: Doc, shape: (s: Shape) => Shape, name: (text: string) => string = (t) => t): Doc {
+  const tree = (nodes: PrintNode[]): PrintNode[] =>
+    nodes.map((n) => (n.kind === "group" ? { ...n, name: name(n.name), children: tree(n.children) } : n));
   return {
     ...doc,
     shapes: doc.shapes.map(shape),
@@ -156,6 +160,7 @@ function mapShapes(doc: Doc, shape: (s: Shape) => Shape, name: (text: string) =>
       ? {
           printLayouts: doc.printLayouts.map((layout) => ({
             ...layout,
+            ...(layout.tree ? { tree: tree(layout.tree) } : {}),
             instances: layout.instances.map((item) => ({
               ...item,
               ...(item.name !== undefined && item.name !== null ? { name: name(item.name) } : {}),
@@ -199,7 +204,12 @@ export function variableUses(doc: Doc, name: string): number {
     count += (s.bindings ?? []).filter((b) => uses(b.expression)).length;
     count += uses(s.name) + uses(s.text);
   }
-  for (const layout of doc.printLayouts ?? []) for (const item of layout.instances) count += uses(item.name);
+  const printGroups = (nodes: PrintNode[] | undefined) =>
+    nodes?.forEach((n) => { if (n.kind === "group") { count += uses(n.name); printGroups(n.children); } });
+  for (const layout of doc.printLayouts ?? []) {
+    for (const item of layout.instances) count += uses(item.name);
+    printGroups(layout.tree);
+  }
   const walk = (nodes: ObjectNode[] | undefined) =>
     nodes?.forEach((n) => { if (n.kind === "group") { count += uses(n.name); walk(n.children); } });
   walk(doc.objectTree);

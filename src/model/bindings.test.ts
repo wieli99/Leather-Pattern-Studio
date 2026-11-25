@@ -81,11 +81,15 @@ describe("review fixes", () => {
     const withSnapshot: Doc = {
       ...base,
       printLayouts: [{ id: "l", name: "A4", instances: [{ id: "i", sourceId: "card", x: 0, y: 0, rotation: 0, name: "{brand} copy",
-        snapshot: { shape: structuredClone(shape), stitchGroups: [] } }] } as unknown as NonNullable<Doc["printLayouts"]>[number]],
+        snapshot: { shape: structuredClone(shape), stitchGroups: [] } }],
+      tree: [{ kind: "group", id: "pg", name: "{brand} set", x: 0, y: 0, rotation: 0, children: [{ kind: "instance", id: "i" }] }] } as unknown as NonNullable<Doc["printLayouts"]>[number]],
     };
     expect(variableUses(withSnapshot, "card_w")).toBe(4);
     const renamed = renameVariable(withSnapshot, "b", "maker");
     expect(renamed.printLayouts![0].instances[0].name).toBe("{maker} copy");
+    expect(variableUses(withSnapshot, "brand")).toBe(5);
+    const group = renamed.printLayouts![0].tree![0];
+    expect(group.kind === "group" && group.name).toBe("{maker} set");
     expect(renamed.printLayouts![0].instances[0].snapshot!.shape.name).toBe("{maker} card");
     const deleted = deleteVariable(deleteVariable(withSnapshot, "w"), "b");
     expect(deleted.printLayouts![0].instances[0].snapshot!.shape.bindings).toBeUndefined();
@@ -124,6 +128,10 @@ describe("label boxes", () => {
     expect(getProperty(longer.shapes[0], "x")).toBeCloseTo(50);
     expect(Math.abs(longer.shapes[0].points[1].x - longer.shapes[0].points[0].x)).toBeCloseTo(24);
     expect(pruneBindings(longer).removed).toEqual([]);
+    // A direct font-size edit re-measures from the anchor but keeps the linked centre.
+    const { applyChanges } = await import("./propertySetters");
+    const bigger = applyChanges(longer.shapes[0], { fontSize: 8 });
+    expect(getProperty(bigger, "x")).toBeCloseTo(50);
     vi.unstubAllGlobals();
   });
 });

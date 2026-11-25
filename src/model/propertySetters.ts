@@ -168,6 +168,18 @@ export function clampFillets(s: Shape, changes: Partial<Shape>): Partial<Shape> 
   return isPolygon(next) ? { ...changes, radius: Math.min(next.radius, polygonFillets(next).max) } : changes;
 }
 
+/**
+ * Text boxes re-measure from their top-left anchor. Keep the centre of `before` on axes
+ * whose position is linked, so re-measuring never ends a position link.
+ */
+export function keepLinkedCenter(before: Shape, after: Shape): Shape {
+  const linked = new Set((after.bindings ?? []).map((b) => b.property));
+  if (!linked.has("x") && !linked.has("y")) return after;
+  const a = center(before), b = center(after);
+  const dx = linked.has("x") ? a.x - b.x : 0, dy = linked.has("y") ? a.y - b.y : 0;
+  return dx || dy ? ({ ...after, ...moveShape(after, dx, dy) } as Shape) : after;
+}
+
 /** Merge changes the way the controller does, including text box resizing. */
 export function applyChanges(s: Shape, changes: Partial<Shape>): Shape {
   const updated = { ...s, ...changes };
@@ -177,7 +189,7 @@ export function applyChanges(s: Shape, changes: Partial<Shape>): Shape {
       const value = (changes as Record<string, unknown>)[key];
       return value !== undefined && value !== (s as Record<string, unknown>)[key];
     });
-  return s.kind === "text" && textChange ? resizeText(updated) : updated;
+  return s.kind === "text" && textChange ? keepLinkedCenter(updated, resizeText(updated)) : updated;
 }
 
 export function setProperty(s: Shape, id: PropertyId, v: number, options: { aspectLocked?: boolean } = {}): Shape | null {

@@ -115,8 +115,7 @@ function change(event: Event) {
   if (text !== last) {
     last = text;
     usedFormula = numeric.value && formulaReferences(text).length ? text : null;
-    const formula = numeric.value && formulaReferences(text).length ? text : null;
-    emit("commit", numeric.value ? String(n) : text, formula, unitsFor(text));
+    emit("commit", numeric.value ? String(n) : text, usedFormula, unitsFor(text));
   }
 }
 function focus(event: FocusEvent) {
