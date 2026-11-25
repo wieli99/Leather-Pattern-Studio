@@ -83,8 +83,8 @@ In [Select segments](#selection/select-segments), selection and editing apply to
 | Click / Shift+click | Select a segment / add or remove one |
 | Drag / Shift+drag / Ctrl+drag | Select enclosed segments / add them / include crossing segments |
 | Ctrl/⌘+A | Select all segments |
-| Drag a selected segment / G | Move segments; they detach from their shapes |
-| E | Rotate segments; they detach from their shapes |
+| G / E / S / M | Move / rotate / resize / mirror segments; they detach from their shapes |
+| Alt+click outline | Insert an anchor, splitting the segment |
 | Delete / Backspace | Delete segments |
 | Ctrl/⌘+Shift+D | Separate segments into their own objects |
 | Ctrl/⌘+D / Ctrl/⌘+C | Duplicate / copy segments as new objects |

@@ -105,10 +105,10 @@ const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
   return JSON.stringify(parseProject(JSON.stringify({ ...doc, objectTree: tree, shapes: treeInDrawingOrder(tree, doc.shapes) })));
 };
+/** Transforms that apply to detached segments; Corners needs whole objects. */
+export type SegmentTransformTool = "move" | "rotate" | "scale" | "mirror";
 export type Gesture = {
-  kind: "move" | "scale" | "rotate" | "vertex" | "corner" | "marquee" | "pan" | "segment-move";
-  /** Set once a segment drag detaches its segments: the new shape ids being moved. */
-  segmentIds?: string[];
+  kind: "move" | "scale" | "rotate" | "vertex" | "corner" | "marquee" | "pan";
   start: Point;
   end: Point;
   original: Doc;
@@ -781,7 +781,6 @@ export class Controller {
       !this.pointerInside ||
       this.space ||
       this.tool !== "select" ||
-      this.segmentMode ||
       this.transformTool ||
       this.array ||
       this.placingPivot ||
@@ -2563,8 +2562,11 @@ export class Controller {
     const next = this.transformDraft ?? this.preview;
     if (this.segmentTransform) {
       const v = this.transformValues;
-      // An identity move or rotation leaves the segments attached.
-      if (v.x === 0 && v.y === 0 && v.angle === 0) { this.cancel(); return; }
+      // An identity transform leaves the segments attached.
+      const identity = this.transformTool === "mirror"
+        ? !this.mirrorAxis
+        : v.x === 0 && v.y === 0 && v.angle === 0 && v.sx === 1 && v.sy === 1;
+      if (identity) { this.cancel(); return; }
       const ids = [...this.selected];
       this.toolSelection = null;
       this.segmentTransform = null;
@@ -3399,9 +3401,9 @@ export class Controller {
   /** Moves the selected segments by exact values, detached from their shapes, in one undo step. */
   moveSegments() { return this.transformSegments("move"); }
   rotateSegments() { return this.transformSegments("rotate"); }
-  async transformSegments(tool: "move" | "rotate") {
+  async transformSegments(tool: SegmentTransformTool) {
     if (this.segmentTransform) {
-      // Switching between Move and Rotate restarts from the untouched segments.
+      // Switching between transforms restarts from the untouched segments.
       if (this.transformTool === tool || this.busy) return;
       this.cancel();
     }
@@ -4121,15 +4123,20 @@ export class Controller {
       const hit = this.segmentAtPoint(raw);
       const current = this.segmentSelection;
       const gesture = { start: raw, end: raw, original: this.document, selection: [], pivot: raw };
+      if (alt) {
+        // Alt-click inserts an anchor, as in object selection.
+        const shape = this.segmentTargets().slice().reverse()
+          .find(s => this.segmentEditable(s) && !isIndicator(s.kind) && s.kind !== "text" && s.kind !== "measurement" && hitTest(s, raw, 8 / this.zoom, this.units));
+        const next = shape && insertAnchor(shape, raw, 8 / this.zoom);
+        if (shape && next)
+          void this.commit({ ...this.document, shapes: this.document.shapes.map(s => s.id === shape.id ? next : s) });
+        return;
+      }
       if (hit) {
         const chosen = current.some(s => sameSegment(s, hit));
         if (shift)
           this.setSegmentSelection(chosen ? current.filter(s => !sameSegment(s, hit)) : [...current, hit]);
-        else {
-          if (!chosen) this.setSegmentSelection([hit]);
-          // Dragging a selected segment detaches and moves the whole selection.
-          this.gesture = { ...gesture, kind: "segment-move" };
-        }
+        else this.setSegmentSelection([hit]);
       } else {
         if (!shift) this.setSegmentSelection([]);
         this.gesture = { ...gesture, kind: "marquee", crossing: ctrl };
@@ -4277,7 +4284,6 @@ export class Controller {
       g?.kind === "pan" ||
       g?.kind === "rotate" ||
       g?.kind === "move" ||
-      g?.kind === "segment-move" ||
       g?.kind === "marquee"
         ? raw
         : !g && this.tool === "select" && !this.placingPivot
@@ -4330,21 +4336,6 @@ export class Controller {
       };
       this.notifyPointer();
       return;
-    }
-    if (g?.kind === "segment-move") {
-      if (distance(g.start, raw) * this.zoom < 4) {
-        this.notifyPointer();
-        return;
-      }
-      const { document, ids } = this.splitSegmentSelection();
-      if (!ids.length) {
-        this.gesture = null;
-        this.notify();
-        return;
-      }
-      // From here on it is an ordinary rigid move of the detached shapes.
-      Object.assign(g, { kind: "move", original: document, selection: ids, segmentIds: ids, baseValues: { x: 0, y: 0, angle: 0, sx: 1, sy: 1 } });
-      this.segmentHover = null;
     }
     if (g) {
       g.end = this.cursor;
@@ -4718,18 +4709,6 @@ export class Controller {
         x: this.transformPivot.x + (g.displacement?.x ?? 0),
         y: this.transformPivot.y + (g.displacement?.y ?? 0),
       };
-    }
-    if (g.kind === "segment-move") {
-      this.notify();
-      return;
-    }
-    if (g.segmentIds) {
-      const next = this.preview, ids = g.segmentIds;
-      this.preview = null;
-      this.message = "Ready";
-      if (next) void this.commitSegments(next, ids);
-      this.notify();
-      return;
     }
     if (["move", "rotate", "scale"].includes(g.kind)) this.captureNumericBasis();
     if (g.kind === "marquee" && this.segmentMode) {

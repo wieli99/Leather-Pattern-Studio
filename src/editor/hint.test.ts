@@ -294,11 +294,14 @@ test("segment selection explains selecting and editing segments", () => {
   expect(idle.action).toBe("Click a segment between crossings or corners.");
   expect(idle.controls.some((row) => row.id === "delete")).toBe(false);
   const chosen = editorHint({ ...base, mode: "segment-select", segmentSelection: [{}] });
-  expect(chosen.action).toBe("Drag a segment, or press G to move or E to rotate.");
+  expect(chosen.action).toBe("Press G to move, E to rotate, S to resize or M to mirror.");
   expect(chosen.controls).toEqual(
     expect.arrayContaining([
-      { id: "move", gesture: "Drag / G", action: "Move (detaches)" },
+      { id: "move", gesture: "G", action: "Move (detaches)" },
       { id: "rotate", gesture: "E", action: "Rotate (detaches)" },
+      { id: "scale", gesture: "S", action: "Resize (detaches)" },
+      { id: "mirror", gesture: "M", action: "Mirror (detaches)" },
+      { id: "insert", gesture: "Alt+click edge", action: "Add anchor" },
       { id: "delete", gesture: "Delete / Backspace", action: "Delete segments" },
       { id: "separate", gesture: "Ctrl/⌘+Shift+D", action: "Separate into objects" },
       { id: "variants", gesture: "V / Shift+V", action: "Switch to object selection" },

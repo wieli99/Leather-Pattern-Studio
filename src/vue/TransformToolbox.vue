@@ -221,7 +221,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     <StitchToolbar />
     <section v-if="e.segmentMode && !e.transformTool && e.segmentSelection.length" class="transform-options segment-options" aria-label="Segment selection">
       <strong>{{ e.segmentSelection.length === 1 ? "1 segment" : `${e.segmentSelection.length} segments` }}</strong>
-      <small>Drag or press G to move, E to rotate. Moving, rotating or separating detaches segments from their shapes.</small>
+      <small>Press G to move, E to rotate, S to resize or M to mirror. Transforming or separating detaches segments from their shapes.</small>
       <div class="actions tool-popup-footer">
         <button :disabled="e.busy" title="Separate (Ctrl+Shift+D)" @click="editor.separateSegments()">Separate</button>
         <button :disabled="e.busy" title="Duplicate (Ctrl+D)" @click="editor.duplicateSegments()">Duplicate</button>
