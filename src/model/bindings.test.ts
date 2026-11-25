@@ -136,3 +136,14 @@ describe("label boxes", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("one-time values in print groups", () => {
+  it("bakes {=name} in print layout group names", async () => {
+    const { bakeOnceText } = await import("./bindings");
+    const base = doc(vars(), [card()]);
+    const layout = { id: "l", name: "A4", instances: [], tree: [{ kind: "group", id: "pg", name: "{=brand} set", x: 0, y: 0, rotation: 0, children: [] }] };
+    const baked = bakeOnceText({ ...base, printLayouts: [layout as unknown as NonNullable<Doc["printLayouts"]>[number]] });
+    const group = baked.printLayouts![0].tree![0];
+    expect(group.kind === "group" && group.name).toBe("Acme set");
+  });
+});

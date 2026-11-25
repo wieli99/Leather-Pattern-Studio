@@ -53,7 +53,7 @@ Changes apply while you type. An invalid value is marked and does not change the
 Entering a variable **links** the value, and changing the variable later updates it:
 
 - **Properties:** a link icon appears next to the field's label; hovering the field shows the formula, and focusing it lets you edit the formula. Linking is available for position, size, radius, sweep, rotation, outline width, arrow and indicator sizes, font size, line spacing, and measurement sections and offset.
-- **Construction fields:** width and height of rectangles and ellipses, size guide sides, radius, diameter, arc sweep, and measurement offset link to the new object.
+- **Construction fields:** Width, Height, Radius, Diameter, Sweep, and Offset link to the matching property of the new object, such as a rectangle's or ellipse's width or an arc's sweep. If the finished object has no such property, the status bar says the value was used once.
 - **Edge lengths (Ctrl):** the sides of a plain rectangle link its width or height and show the formula when you edit them.
 - **Names and labels:** `{name}` always shows the current value. Lists, the canvas, previews, and print output show the value; editing shows `{name}` again. Write `{{` and `}}` for literal braces. An unknown `{name}` stays as typed, and the name field lists it. Label boxes fit the shown text.
 
@@ -61,7 +61,7 @@ When you change a variable, every linked value updates; the change and all updat
 
 A link ends when you type a plain number, use Alt+wheel or arrow keys on the field, or change that property directly, for example by dragging, scaling or moving the object. The status bar reports which field was unlinked. Undo restores the link.
 
-Some fields cannot stay linked: path segment Length and Direction and three-point heights while drawing, edge lengths other than the sides of a plain rectangle, vertex coordinates, opacity, tool amounts such as move, rotate, scale, offset and array values, stitching fields, grid spacing, and print move and rotation. Use `{=name}` there; a linked `{name}` is refused with a message suggesting `{=name}`. Fields in print layouts work the same way. Print page size and margin fields do not accept variables.
+Some fields cannot stay linked: path segment Length and Direction while drawing, edge lengths other than the sides of a plain rectangle, vertex coordinates, opacity, tool amounts such as move, rotate, scale, offset and array values, stitching fields, grid spacing, and print move and rotation. Use `{=name}` there; a linked `{name}` is refused with a message suggesting `{=name}`. Fields in print layouts work the same way. Print page size and margin fields do not accept variables.
 
 Delete a variable with the × at the end of its row. Deleting a variable that is in use asks for confirmation: **Delete and keep values** keeps every linked field at its current value, replaces formulas in other variables with their results, and writes the current text into names and labels.
 

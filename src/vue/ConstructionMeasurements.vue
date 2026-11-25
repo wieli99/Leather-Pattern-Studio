@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { editableNumber, formulaReferences, onceReferences } from "../model/expression";
 import { edgeProperty } from "../model/propertySetters";
+import { numericReaders } from "./numericWheel";
 import { bindingFor } from "../model/bindings";
 import type { UnitMode } from "../model/units";
 import { editableLength } from "../model/units";
@@ -221,12 +222,17 @@ async function confirm(item: (typeof items.value)[number]) {
     return;
   }
   const link = edgeLink(item);
+  const text = draft.value.trim();
+  const usesVariables = formulaReferences(text).length > 0 || onceReferences(text).length > 0;
   if (item.key) editor.confirmMeasurement();
-  else if (item.shape && link) {
-    // Same path as the Properties field: {name} links, a plain number unlinks.
-    const text = draft.value.trim();
-    const formula = formulaReferences(text).length || onceReferences(text).length ? text : null;
-    await editor.editProperty(item.shape.id, link.property, value, formula, unitsFor(item, text));
+  else if (item.shape && link && (link.binding || usesVariables)) {
+    // A linked side, or one being linked, edits like the Properties field: {name} links,
+    // a plain number unlinks. Unlinked sides keep scaling with plain numbers below.
+    const applied = await editor.editProperty(item.shape.id, link.property, value, usesVariables ? text : null, unitsFor(item, text));
+    if (!applied) {
+      error.value = "Unlock the object or finish the active tool to edit it";
+      return;
+    }
   } else if (item.shape) {
     const shape = item.shape;
     const box = bounds([shape]);
@@ -268,6 +274,13 @@ function result(item: (typeof items.value)[number]) {
   if (!formulaReferences(text).length && !onceReferences(text).length) return "";
   const value = active.value === item.id ? valueOf(item, text) : item.value;
   return Number.isFinite(value) ? `= ${editor.formatLength(value)} ${editor.unitSymbol}` : "";
+}
+/** Arrow keys and Alt+wheel step the evaluated value of a formula, as in other fields. */
+function register(item: (typeof items.value)[number], el: unknown) {
+  if (el instanceof HTMLInputElement) numericReaders.set(el, (text) => {
+    const value = valueOf(item, text);
+    return Number.isFinite(value) ? value : null;
+  });
 }
 /** Leaving an edge field ends its edit, so it does not stay shown after Ctrl is released. */
 function blur(item: (typeof items.value)[number], event: FocusEvent) {
@@ -352,6 +365,7 @@ function style(item: (typeof items.value)[number]) {
         :value="shown(item)"
         :class="{ 'linked-edge': !!edgeLink(item)?.binding }"
         :style="edgeLink(item)?.binding ? { width: `${Math.max(8, shown(item).length + 2)}ch` } : undefined"
+        :ref="(el) => register(item, el)"
         @focus="focus(item, $event)"
         @blur="blur(item, $event)"
         @input="input(item, $event)"

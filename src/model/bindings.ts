@@ -267,7 +267,9 @@ export function bakeOnceText(doc: Doc): Doc {
   const has = (t: string | null | undefined) => !!t && onceReferences(t).length > 0;
   const treeHas = (nodes: ObjectNode[] | undefined): boolean =>
     !!nodes?.some((n) => n.kind === "group" && (has(n.name) || treeHas(n.children)));
-  const printHas = (doc.printLayouts ?? []).some((l) => l.instances.some((i) =>
+  const printTreeHas = (nodes: PrintNode[] | undefined): boolean =>
+    !!nodes?.some((n) => n.kind === "group" && (has(n.name) || printTreeHas(n.children)));
+  const printHas = (doc.printLayouts ?? []).some((l) => printTreeHas(l.tree) || l.instances.some((i) =>
     has(i.name) || has(i.snapshot?.shape.name) || has(i.snapshot?.shape.text)));
   if (!doc.shapes.some((s) => has(s.name) || has(s.text)) && !treeHas(doc.objectTree) && !printHas) return doc;
   const { values } = resolveVariables(doc.variables);

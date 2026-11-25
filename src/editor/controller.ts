@@ -2281,16 +2281,13 @@ export class Controller {
   /** Formulas confirmed for earlier points of the shape being drawn. */
   private constructionFormulas: { key: string; formula: string; unit: UnitMode }[] = [];
   /**
-   * Construction fields that link to a property of the new object. Others (path segment
-   * Length and Direction, three-point heights) only accept one-time `{=name}` values.
+   * Construction fields that can link to a property of the new object. Path segment
+   * Length and Direction only accept one-time `{=name}` values.
    */
   constructionFieldLinkable(key: string) {
-    const linkable: Record<string, string[]> = {
-      rectangle: ["Width", "Height"], "rectangle-center": ["Width", "Height"], ellipse: ["Width", "Height"],
-      "size-square": ["Width", "Height"], circle: ["Radius"], "circle-two": ["Diameter"],
-      arc: ["Radius", "Sweep"], measurement: ["Offset"],
-    };
-    return this.linksEnabled && (linkable[this.mode] ?? []).includes(key);
+    // Sizes, radii, sweep and offset can link; the finished object must reproduce the
+    // value, otherwise the status bar reports that it was used once.
+    return this.linksEnabled && ["Width", "Height", "Radius", "Diameter", "Sweep", "Offset"].includes(key);
   }
   get measurementFields() {
     if (!this.pending.length || this.mode === "select" || this.mode === "text")
@@ -5021,13 +5018,14 @@ export class Controller {
     formula: string | null,
     unit: UnitMode,
     options: { aspectLocked?: boolean } = {},
-  ) {
-    if (!this.canEditProperties) return;
+  ): Promise<boolean> {
+    // Callers outside Properties (Ctrl edge labels) report a refused edit themselves.
+    if (!this.canEditProperties || this.isLocked(id)) return false;
     const source = this.variableDocument;
     const shape = source.shapes.find((s) => s.id === id);
-    if (!shape) return;
+    if (!shape) return false;
     const changes = propertyChanges(shape, property, value, options);
-    if (!changes) return;
+    if (!changes) return false;
     let linking = !!formula && formulaReferences(formula).length > 0;
     // An image size link remembers whether the aspect ratio was locked when it was made.
     const keepAspect = shape.kind === "image" && (property === "width" || property === "height") &&
@@ -5052,10 +5050,15 @@ export class Controller {
         ? { property, expression: formula!.trim(), unit: bindingUnit(unit), ...keepAspect }
         : null,
     );
+    let applied = true;
     await this.applyPropertyDocument(() => ({
       ...source,
       shapes: source.shapes.map((s) => (s.id === id ? linked : s)),
-    }));
+    }), (error) => {
+      applied = false;
+      this.fail(error);
+    });
+    return applied;
   }
   /**
    * Change project variables and update every linked property in one history step.

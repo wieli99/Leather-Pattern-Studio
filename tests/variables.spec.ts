@@ -567,6 +567,34 @@ test("Ctrl edge labels show and edit a linked side's formula", async ({ page }) 
   await linked.press("Enter");
   await expect(width).toHaveValue("40");
   await expect(width).not.toHaveAttribute("title", /Linked/);
+  // Alt+wheel on a linked side steps its result and replaces the formula with a number.
+  await width.fill("{w}");
+  await width.press("Enter");
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const wheelSide = edges.and(page.locator('[title="Linked to {w}"]')).first();
+  await wheelSide.focus();
+  await page.keyboard.up("Control");
+  await wheelSide.hover();
+  await page.keyboard.down("Alt");
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up("Alt");
+  await expect(wheelSide).toHaveValue("31");
+  await wheelSide.press("Enter");
+  await expect(width).toHaveValue("31");
+  await expect(width).not.toHaveAttribute("title", /Linked/);
+  // An unlinked side keeps the original edge edit for plain numbers.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  const plainSide = edges.first();
+  await plainSide.focus();
+  await page.keyboard.up("Control");
+  await plainSide.fill("80");
+  await plainSide.press("Enter");
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  await expect.poll(() => edges.evaluateAll((els) => els.map((el) => (el as HTMLInputElement).value))).toContain("80");
+  await page.keyboard.up("Control");
   // Clicking away from an open edge field hides the labels once Ctrl is up.
   await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
   await page.keyboard.down("Control");
@@ -575,4 +603,32 @@ test("Ctrl edge labels show and edit a linked side's formula", async ({ page }) 
   await page.getByLabel("Pattern drawing canvas").click({ position: { x: 600, y: 120 } });
   await page.locator(".objects .object-select").first().click();
   await expect(edges).toHaveCount(0);
+});
+
+test("a number variable used by links cannot become text", async ({ page }) => {
+  await rectangle(page);
+  const w = await addVariable(page, "w", "40");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("{w}");
+  await width.press("Enter");
+  await w.fill("Acme");
+  await expect(page.getByText("w is used as a number; enter a number or formula")).toBeVisible();
+  await w.press("Escape");
+  await expect(w).toHaveValue("40");
+  await expect(width).toHaveAttribute("title", "Linked to {w}");
+});
+
+test("ellipse width typed while drawing links", async ({ page }) => {
+  await page.goto("/");
+  const ellipse = page.getByRole("button", { name: "Circle (C)", exact: true });
+  await expect(ellipse).toBeEnabled();
+  await addVariable(page, "w", "40");
+  await ellipse.click({ button: "right" });
+  await page.getByRole("menuitemradio", { name: "Center ellipse", exact: true }).click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 150, y: 180 } });
+  await canvas.hover({ position: { x: 300, y: 300 } });
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("{w}");
+  await expect(page.getByRole("alert").filter({ hasText: "does not stay linked" })).toHaveCount(0);
 });
