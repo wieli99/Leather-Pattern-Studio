@@ -539,10 +539,17 @@ test("Ctrl edge labels show and edit a linked side's formula", async ({ page }) 
   const edges = page.getByRole("textbox", { name: "Edge length", exact: true });
   await expect(edges).toHaveCount(4);
   const side = edges.and(page.locator('[title="Linked to {w}"]')).first();
+  // The formula and its result show before the field is opened.
+  await expect(side).toHaveValue("{w}");
+  await expect(page.locator(".edge-result").first()).toHaveText("= 50 mm");
+  const before = await side.boundingBox();
   await side.focus();
   await page.keyboard.up("Control");
   await expect(side).toHaveValue("{w}");
+  // Opening the field keeps the label in place.
+  expect(await side.boundingBox()).toEqual(before);
   await side.fill("{w}*2");
+  await expect(page.locator(".edge-result").first()).toHaveText("= 100 mm");
   await side.press("Enter");
   await expect(width).toHaveValue("100");
   await expect(width).toHaveAttribute("title", "Linked to {w}*2");
@@ -560,4 +567,12 @@ test("Ctrl edge labels show and edit a linked side's formula", async ({ page }) 
   await linked.press("Enter");
   await expect(width).toHaveValue("40");
   await expect(width).not.toHaveAttribute("title", /Linked/);
+  // Clicking away from an open edge field hides the labels once Ctrl is up.
+  await page.getByLabel("Pattern drawing canvas").hover({ position: { x: 600, y: 120 } });
+  await page.keyboard.down("Control");
+  await edges.first().focus();
+  await page.keyboard.up("Control");
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 600, y: 120 } });
+  await page.locator(".objects .object-select").first().click();
+  await expect(edges).toHaveCount(0);
 });

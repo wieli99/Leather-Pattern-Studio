@@ -254,6 +254,29 @@ async function confirm(item: (typeof items.value)[number]) {
   }
   cancel();
 }
+/** What a field shows: the draft while editing, a linked side's formula, or the length. */
+function shown(item: (typeof items.value)[number]) {
+  if (active.value === item.id) return draft.value;
+  const linked = edgeLink(item)?.binding;
+  if (linked) return linked.expression;
+  return ["Angle", "Sweep"].includes(item.key) ? String(Number(item.value.toFixed(2))) : editor.formatLength(item.value);
+}
+/** "= result" under a linked side, as in the Variables popover; live while editing. */
+function result(item: (typeof items.value)[number]) {
+  if (!edgeLink(item)) return "";
+  const text = active.value === item.id ? draft.value : edgeLink(item)?.binding?.expression ?? "";
+  if (!formulaReferences(text).length && !onceReferences(text).length) return "";
+  const value = active.value === item.id ? valueOf(item, text) : item.value;
+  return Number.isFinite(value) ? `= ${editor.formatLength(value)} ${editor.unitSymbol}` : "";
+}
+/** Leaving an edge field ends its edit, so it does not stay shown after Ctrl is released. */
+function blur(item: (typeof items.value)[number], event: FocusEvent) {
+  if (item.key || root.value?.contains(event.relatedTarget as Node | null)) return;
+  if (active.value === item.id) {
+    active.value = undefined;
+    error.value = "";
+  }
+}
 function cancel() {
   active.value = undefined;
   error.value = "";
@@ -299,6 +322,19 @@ function style(item: (typeof items.value)[number]) {
   };
 }
 </script>
+<style scoped>
+.edge-result {
+  position: absolute;
+  top: 100%;
+  left: 4px;
+  padding: 0 4px;
+  background: var(--canvas, #20252c);
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.linked-edge { font-family: monospace; }
+</style>
 <template>
   <div ref="root" class="construction-measurements" data-hint-edit="measurement">
     <label v-for="item in items" :key="item.id" :style="style(item)">
@@ -313,8 +349,11 @@ function style(item: (typeof items.value)[number]) {
         step="any"
         :aria-label="item.key || 'Edge length'"
         :title="edgeLink(item)?.binding ? `Linked to ${edgeLink(item)!.binding!.expression}` : undefined"
-        :value="active === item.id ? draft : (['Angle', 'Sweep'].includes(item.key) ? Number(item.value.toFixed(2)) : editor.formatLength(item.value))"
+        :value="shown(item)"
+        :class="{ 'linked-edge': !!edgeLink(item)?.binding }"
+        :style="edgeLink(item)?.binding ? { width: `${Math.max(8, shown(item).length + 2)}ch` } : undefined"
         @focus="focus(item, $event)"
+        @blur="blur(item, $event)"
         @input="input(item, $event)"
         @keydown.tab="cycleField"
         @keydown.enter.prevent="!$event.isComposing && confirm(item)"
@@ -322,6 +361,7 @@ function style(item: (typeof items.value)[number]) {
       />
       <span>{{ ["Angle", "Sweep"].includes(item.key) ? "°" : editor.unitSymbol }}</span>
       <small v-if="active === item.id && error" role="alert">{{ error }}</small>
+      <small v-else-if="result(item)" class="edge-result">{{ result(item) }}</small>
     </label>
   </div>
 </template>
