@@ -3946,25 +3946,55 @@ describe("segment selection", () => {
     expect(copy.name).toBe("target copy");
   });
 
-  test("dragging a selected segment detaches and moves it in one commit", async () => {
+  test("dragging a segment selects it without moving it, as in object selection", async () => {
     const e = await crossed();
-    const original = JSON.stringify(e.document.shapes);
-    click(e, 15, 0);
+    const original = JSON.stringify(e.document);
+    click(e, 5, 0);
+    click(e, 15, 0, true);
+    expect(e.segmentSelection).toHaveLength(2);
+    // Pressing a selected segment replaces the selection, like clicking an object.
     e.pointerDown(at(e, 15, 0), 0, false, false);
-    e.pointerMove(at(e, 15, 0.1), false);
+    e.pointerMove(at(e, 15, 20), false);
+    e.pointerUp(at(e, 15, 20), false);
+    expect(e.gesture).toBeNull();
     expect(e.preview).toBeNull();
-    e.pointerMove(at(e, 15, 20), true);
-    expect(e.preview?.shapes.length).toBe(5);
-    expect(e.document.shapes).toHaveLength(3);
-    e.pointerUp(at(e, 15, 20), true);
-    await vi.waitFor(() => expect(e.document.shapes).toHaveLength(5));
+    expect(JSON.stringify(e.document)).toBe(original);
+    expect(e.segmentSelection.map(s => s.points[0])).toEqual([{ x: 10, y: 0 }]);
+  });
+
+  test("Alt-click inserts an anchor and stays in segment mode", async () => {
+    const e = await crossed();
+    expect(e.anchorIndicator).toBeNull();
+    e.pointerMove(at(e, 25, 0), true);
+    expect(e.anchorIndicator!.x).toBeCloseTo(25, 4);
+    e.pointerDown(at(e, 25, 0), 0, false, true);
+    await vi.waitFor(() => expect(e.document.shapes.find(s => s.id === "target")!.points).toHaveLength(3));
     expect(e.mode).toBe("segment-select");
+    // The new anchor splits the last span into two segments.
+    click(e, 22, 0);
     expect(e.segmentSelection).toHaveLength(1);
-    const moved = e.document.shapes.find(s => s.id === e.segmentSelection[0].shapeId)!;
-    expect(moved.points).toEqual([{ x: 10, y: 20 }, { x: 20, y: 20 }]);
-    expect(e.document.shapes).toHaveLength(5);
-    await e.transact("undo");
-    expect(JSON.stringify(e.document.shapes)).toBe(original);
+    expect(e.segmentSelection[0].points[0]).toEqual({ x: 20, y: 0 });
+    expect(e.segmentSelection[0].points.at(-1)!.x).toBeCloseTo(25, 4);
+  });
+
+  test("S and M resize and mirror detached segments in segment mode", async () => {
+    const e = await crossed();
+    click(e, 15, 0);
+    await e.transformSegments("scale");
+    expect(e.transformTool).toBe("scale");
+    expect(e.mode).toBe("segment-select");
+    e.setTransformValues({ sx: 2, sy: 2 });
+    await e.applyTransform();
+    expect(e.mode).toBe("segment-select");
+    const scaled = e.document.shapes.find(s => s.id === e.segmentSelection[0].shapeId)!;
+    expect(worldPoints(scaled).map(p => p.x).sort((a, b) => a - b)).toEqual([5, 25]);
+    // Mirror without an axis leaves the segments attached.
+    const before = JSON.stringify(e.document);
+    await e.transformSegments("mirror");
+    expect(e.transformTool).toBe("mirror");
+    await e.applyTransform();
+    expect(JSON.stringify(e.document)).toBe(before);
+    expect(e.mode).toBe("segment-select");
   });
 
   test("G moves detached segments exactly; Esc returns to the untouched segments", async () => {
