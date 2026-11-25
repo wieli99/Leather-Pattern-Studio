@@ -1,3 +1,4 @@
+import { manualScreenshot } from "./manual-capture";
 import { test, expect, type Page } from "@playwright/test";
 
 const line = (id: string, a: [number, number], b: [number, number]) => ({
@@ -119,4 +120,43 @@ test("E rotates a selected segment by an exact angle", async ({ page }) => {
   await angle.press("Enter");
   await expect(page.locator(".objects .object-select")).toHaveCount(5);
   await expect(page.getByRole("region", { name: "Segment selection" }).getByText("1 segment", { exact: true })).toBeVisible();
+});
+
+test("selected segments show lengths and segment actions", { tag: "@manual" }, async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Open", exact: true })).toBeEnabled();
+  await page.evaluate(() => {
+    delete (window as any).showOpenFilePicker;
+    delete (window as any).showSaveFilePicker;
+  });
+  // A panel crossed by a fold line, with a circular cut-out over one corner.
+  const shapes = [
+    { id: "panel", name: "Panel", kind: "rectangle", points: [{ x: 20, y: 20 }, { x: 140, y: 90 }], radius: 0, rotation: 0 },
+    line("Fold", [0, 55], [170, 55]),
+    { id: "hole", name: "Cut-out", kind: "circle", points: [{ x: 140, y: 90 }, { x: 155, y: 90 }], radius: 0, rotation: 0 },
+  ];
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await (await chooser).setFiles({
+    name: "segments.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ version: 11, shapes })),
+  });
+  await expect(page.locator(".objects .object-select")).toHaveCount(3);
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  const box = (await canvas.boundingBox())!;
+  const at = (x: number, y: number) => ({ x: box.x + 80 + x * 3, y: box.y + 100 + y * 3 });
+  await canvas.focus();
+  await page.keyboard.press("2");
+  await page.mouse.click(at(80, 20).x, at(80, 20).y);
+  await page.keyboard.down("Shift");
+  await page.mouse.click(at(140, 40).x, at(140, 40).y);
+  await page.keyboard.up("Shift");
+  const panel = page.getByRole("region", { name: "Segment selection" });
+  await expect(panel.getByText("2 segments", { exact: true })).toBeVisible();
+  await page.mouse.move(at(152, 80).x, at(152, 80).y);
+  await page.keyboard.down("Control");
+  await expect(page.getByRole("textbox", { name: "Edge length" })).toHaveCount(2);
+  await manualScreenshot(page, "segment-selection.png");
+  await page.keyboard.up("Control");
 });
