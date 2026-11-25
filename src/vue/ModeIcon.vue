@@ -124,9 +124,12 @@ const points = computed(() => {
     <path v-else-if="mode === 'measurement'" d="M3 7H21V17H3ZM7 7V12M10 7V10M13 7V12M16 7V10M19 7V12" />
     <path v-else-if="mode === 'select'" d="M5 3L19 13L12 14L9 21Z" />
     <template v-else-if="mode === 'segment-select'">
-      <path d="M3 21L21 3" stroke-width="1" stroke-dasharray="2 2" />
-      <path d="M8 16L16 8" stroke-width="3" />
-      <path d="M13 13L21 19L17 19.6L15.6 23Z" />
+      <!-- A shape outline with one emphasised edge between its endpoints, picked by a small pointer. -->
+      <path d="M3 21L6 6M18 6L21 21" stroke-width="1.1" opacity=".5" />
+      <path d="M6 6H18" stroke-width="2.6" />
+      <circle cx="6" cy="6" r="1.7" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="6" r="1.7" fill="currentColor" stroke="none" />
+      <path d="M11 9.5L17.5 14.1L14.3 14.6L12.8 18Z" stroke-width="1.3" />
     </template>
     <path v-else-if="mode === 'curve'" d="M3 18C8 18 16 6 21 6" />
     <template v-else-if="mode === 'control-curve'">
