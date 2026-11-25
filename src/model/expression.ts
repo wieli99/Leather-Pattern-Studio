@@ -1,5 +1,8 @@
+/** Looks up a variable in the formula's unit; null rejects the formula. */
+export type ExpressionResolver = (name: string) => number | null;
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*/;
 /** Small arithmetic grammar: never executes user text as JavaScript. */
-export function parseExpression(text: string, mixedFractions = false): number | null {
+export function parseExpression(text: string, mixedFractions = false, resolve?: ExpressionResolver): number | null {
   if (text.length > 2000) return null;
   let pos = 0, depth = 0;
   const space = () => { while (/\s/.test(text[pos] ?? '') && pos < text.length) pos++; };
@@ -17,6 +20,15 @@ export function parseExpression(text: string, mixedFractions = false): number | 
       if (text[pos++] !== ')') throw Error();
     } else {
       const rest = text.slice(pos);
+      const name = resolve && IDENTIFIER.exec(rest);
+      if (name) {
+        const value = resolve(name[0]);
+        if (value === null) throw Error();
+        pos += name[0].length;
+        depth--;
+        if (!Number.isFinite(value)) throw Error();
+        return value;
+      }
       const mixed = mixedFractions && /^(\d+)\s+(\d+)\s*\/\s*(\d+)/.exec(rest);
       const literal = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest);
       if (mixed) {
@@ -66,4 +78,12 @@ export function parseExpression(text: string, mixedFractions = false): number | 
 export function editableNumber(value: number): string {
   const integer = Math.round(value);
   return String(Math.abs(value - integer) < 1e-10 ? integer : Number(value.toPrecision(15)));
+}
+
+/** Identifier names in a formula, skipping exponents such as `1e-3`. */
+export function formulaReferences(text: string): string[] {
+  const names: string[] = [];
+  for (const match of text.matchAll(/(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][A-Za-z0-9_]*/g))
+    if (!/^[\d.]/.test(match[0])) names.push(match[0]);
+  return names;
 }
