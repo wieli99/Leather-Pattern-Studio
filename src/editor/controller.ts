@@ -307,10 +307,7 @@ export class Controller {
   activateOffset() {
     if (this.deferUntilSettled(() => this.activateOffset())) return;
     if (!this.canOffset) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.offsetActive = true;
     this.refreshOffset();
   }
@@ -326,10 +323,7 @@ export class Controller {
   activateAlign() {
     if (this.deferUntilSettled(() => this.activateAlign())) return;
     if (!this.canAlign) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.alignActive = true;
     this.alignX = null;
     this.alignY = null;
@@ -1498,6 +1492,22 @@ export class Controller {
     if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) this.transformPivot = point;
   }
   private toolSelection: { ids: string[]; groups: string[] } | null = null;
+  /** Start a select-based tool from a clean state with the current selection as its targets. */
+  private beginToolSession() {
+    this.cancel();
+    this.tool = "select";
+    this.mode = "select";
+    this.beginToolSelection();
+  }
+  /** Topmost visible object at a point, on its outline or, with `inside`, within it. */
+  private visibleObjectAt(raw: Point, inside: boolean) {
+    return [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s, raw, 8 / this.zoom, this.units) || inside && contains(s, raw)));
+  }
+  /** Objects a tool preview adds, without their stitching shapes. */
+  private addedObjectIds(next: Doc) {
+    const existing = new Set(this.document.shapes.map(s => s.id));
+    return next.shapes.filter(s => !s.stitchParentId && !existing.has(s.id)).map(s => s.id);
+  }
   private beginToolSelection() {
     this.toolSelection = { ids: [...this.selected], groups: [...this.selectedGroups] };
   }
@@ -2810,10 +2820,7 @@ export class Controller {
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
     if (this.unsettled) await this.settled();
     if (!this.canStartTransform(tool)) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.transformTool = tool;
     this.transformOriginal = this.document;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
@@ -3247,12 +3254,7 @@ export class Controller {
     this.refreshArray();
     if (!this.canApplyArray) return;
     const next = this.preview!;
-    const ids = next.shapes
-      .filter(
-        (s) =>
-          !s.stitchParentId && !this.document.shapes.some((o) => o.id === s.id),
-      )
-      .map((s) => s.id);
+    const ids = this.addedObjectIds(next);
     if (await this.commit(next)) {
       this.toolSelection = null;
       this.cancel();
@@ -3314,7 +3316,7 @@ export class Controller {
     this.refreshPathCopy();
     if (!this.canApplyPathCopy) return;
     const next = this.preview!;
-    const ids = next.shapes.filter(s => !s.stitchParentId && !this.document.shapes.some(original => original.id === s.id)).map(s => s.id);
+    const ids = this.addedObjectIds(next);
     if (await this.commit(next)) { this.cancel(); this.selected = ids; this.notify(); }
     else if (this.pathCopy) { this.pathCopy.error = "Could not apply copies. Review the document and try again."; this.notify(); }
   }
@@ -3511,10 +3513,7 @@ export class Controller {
   }
   activateTrim() {
     if (!this.canTrim) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.trimMode = true;
     this.notify();
   }
@@ -4251,7 +4250,7 @@ export class Controller {
     }
     if (this.objectPicker && button === 0 && !this.space) {
       const raw = this.world(pixel);
-      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || ctrl && contains(s,raw)));
+      const hit = this.visibleObjectAt(raw, ctrl);
       this.setToolSelection(objectSelection(this.selected,hit?.id,shift));
       if (!hit) this.gesture = {kind:"marquee",start:raw,end:raw,original:this.document,selection:[...this.selected],pivot:raw,crossing:ctrl};
       return;
@@ -4259,7 +4258,7 @@ export class Controller {
     if (this.pathCopy && !this.space && button !== 1) {
       if (button === 2) { void this.applyPathCopy(); return; }
       const raw = this.world(pixel);
-      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      const hit = this.visibleObjectAt(raw, true);
       if (hit) this.pickPathCopy(hit.id);
       return;
     }
@@ -4281,7 +4280,7 @@ export class Controller {
     const raw = this.world(pixel);
     this.anchorPointer = raw;
     if (this.booleanOperation && button === 0 && !this.space) {
-      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      const hit = this.visibleObjectAt(raw, true);
       if (hit) this.pickBoolean(hit.id);
       return;
     }
