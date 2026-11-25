@@ -170,3 +170,57 @@ test("deleting a used variable keeps current values after confirmation", async (
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(width).toHaveAttribute("title", "Linked to w");
 });
+
+test("text variables fill name and label placeholders", async ({ page }) => {
+  await rectangle(page);
+  const brand = await addVariable(page, "brand", "Acme", "Text");
+  const name = page.getByLabel("Name", { exact: true });
+  await name.fill("{brand} card {{draft}}");
+  await name.press("Enter");
+  const row = page.locator(".objects .object-select");
+  await expect(row).toHaveText("Acme card {draft}");
+  await expect(name).toHaveValue("Acme card {draft}");
+  await name.focus();
+  await expect(name).toHaveValue("{brand} card {{draft}}");
+  await name.press("Tab");
+
+  await brand.fill("Studio");
+  await brand.press("Enter");
+  await expect(row).toHaveText("Studio card {draft}");
+  const dialog = await openVariables(page);
+  const rename = dialog.getByRole("textbox", { name: "Name of brand", exact: true });
+  await rename.fill("maker");
+  await rename.press("Enter");
+  await expect(row).toHaveText("Studio card {draft}");
+  await name.focus();
+  await expect(name).toHaveValue("{maker} card {{draft}}");
+  await name.press("Tab");
+
+  // Label boxes are measured from the shown text.
+  const tool = page.getByRole("button", { name: "Text (T)", exact: true });
+  await tool.click();
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 240, y: 520 } });
+  const label = page.getByRole("textbox", { name: "Label text", exact: true });
+  await label.fill("{maker}");
+  await label.press("Control+Enter");
+  const width = async () => {
+    const project = await savedProject(page);
+    const text = project.shapes.find((s: { kind: string }) => s.kind === "text");
+    expect(text.text).toBe("{maker}");
+    return Math.abs(text.points[1].x - text.points[0].x);
+  };
+  const short = await width();
+  const maker = dialog.getByRole("textbox", { name: "Value of maker", exact: true });
+  await maker.fill("A much longer studio name");
+  await maker.press("Enter");
+  expect(await width()).toBeGreaterThan(short * 2);
+
+  await page.getByLabel("Pattern drawing canvas").click({ position: { x: 300, y: 300 } });
+  await dialog.getByRole("button", { name: "Delete maker", exact: true }).click();
+  await dialog.getByRole("button", { name: "Delete and keep values", exact: true }).click();
+  await expect(row.filter({ hasText: "card" })).toHaveText("A much longer studio name card {draft}");
+  const baked = await savedProject(page);
+  expect(baked.variables).toBeUndefined();
+  expect(baked.shapes.map((s: { name: string }) => s.name)).toContain("A much longer studio name card {{draft}}");
+  expect(baked.shapes.find((s: { kind: string }) => s.kind === "text").text).toBe("A much longer studio name");
+});

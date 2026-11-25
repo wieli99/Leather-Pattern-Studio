@@ -384,7 +384,7 @@ export function parseProject(text: string, options: {frozen?:boolean} = {}): Doc
   }
   const variables = input.variables != null ? parseVariables(input.variables) : undefined;
   return {
-    ...(variables ? { variables } : {}),
+    ...(variables?.length ? { variables } : {}),
     ...(input.stitchTransfers != null ? { stitchTransfers } : {}),
     ...(input.stitchPresets ? { stitchPresets: input.stitchPresets } : {}),
     printLayouts,

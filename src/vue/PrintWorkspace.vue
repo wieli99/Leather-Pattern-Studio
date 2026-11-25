@@ -1178,9 +1178,9 @@ async function sourceUp(event: PointerEvent) {
   }
 }
 function nodeName(node: PrintNode) {
-  if (node.kind === "group") return node.name;
+  if (node.kind === "group") return editor.displayName(node.name);
   const item = layout.value?.instances.find((i) => i.id === node.id);
-  return (
+  return editor.displayName(
     item?.name ??
     item?.snapshot?.shape.name ??
     editor.document.shapes.find((s) => s.id === item?.sourceId)?.name ??
@@ -3511,12 +3511,12 @@ defineExpose({
               @click="!suppressSourceClick && selectSource(row.node.id, $event)"
             >
               {{
-                row.node.kind === "group"
+                editor.displayName(row.node.kind === "group"
                   ? row.node.name
-                  : e.document.shapes.find((s) => s.id === row.node.id)?.name
+                  : e.document.shapes.find((s) => s.id === row.node.id)?.name ?? "")
               }}</button
             ><button
-              :aria-label="`Import ${row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name}`"
+              :aria-label="`Import ${editor.displayName(row.node.kind === 'group' ? row.node.name : e.document.shapes.find((s) => s.id === row.node.id)?.name ?? '')}`"
               :disabled="busy"
               @click="importSource(row.node.id)"
             >

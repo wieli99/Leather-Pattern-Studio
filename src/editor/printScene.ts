@@ -1,3 +1,4 @@
+import { displayTemplate } from "../model/variables";
 import { textFamily, measureText } from "../model/text";
 import { flattenContours } from "../model/flattenOutline";
 import { holeAppearance, holeMark } from "../model/stitchLayers";
@@ -164,15 +165,16 @@ export function printShapeSvg(
     result = `<path d="${lines(g.lines)}" ${style}/><g fill="${color}" fill-opacity="${opacity}">${g.arrowheads.map((p) => `<path d="M${p.map(xy).join(" L")}Z"/>`).join("")}${label(g.label, g.middle, g.angle, g.fontSize)}</g>`;
   } else if (shape.kind === "text") {
     const size = shape.fontSize ?? 5;
+    const shown = displayTemplate(shape.text ?? "", doc.variables, layout.units);
     result = `<g transform="${matrix}" fill="${color}" fill-opacity="${opacity}">${(
-      shape.text ?? ""
+      shown
     )
       .split("\n")
       .map((line, i) =>
         label(
           line,
           {
-            x: shape.points[0].x + (shape.textAlign === "right" || shape.textAlign === "center" ? (shape.textAlign === "right" ? 1 : .5) * (measureText(shape.text ?? "", size, shape).width - measureText(line, size, shape).width) : 0),
+            x: shape.points[0].x + (shape.textAlign === "right" || shape.textAlign === "center" ? (shape.textAlign === "right" ? 1 : .5) * (measureText(shown, size, shape).width - measureText(line, size, shape).width) : 0),
             y: shape.points[0].y + size * 0.65 + i * size * (shape.lineSpacing ?? 1.2),
           },
           0,

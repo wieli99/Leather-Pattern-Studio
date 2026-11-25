@@ -7,7 +7,7 @@ import {
   ContextMenuItem,
 } from "reka-ui";
 import { shapeArea } from "../model/area";
-import { ref, nextTick } from "vue";
+import { computed, ref, nextTick } from "vue";
 import type { Shape } from "../model/project";
 import { editor } from "../editor/instance";
 import { useEditorSelector } from "./useEditorSelector";
@@ -25,6 +25,9 @@ const canToggleObjectState = useEditorSelector(
   editor,
   () => editor.canToggleObjectState,
 );
+/** Placeholders resolve here; renaming edits the stored template. */
+const variableScope = useEditorSelector(editor, () => editor.variableScope);
+const shownName = computed(() => (variableScope.value, editor.displayName(props.shape.name)));
 const hasCopiedStyling = useEditorSelector(
   editor,
   () => !!editor.copiedStyling,
@@ -117,7 +120,7 @@ function openMenu() {
           <span>
             <ModeIcon :mode="shape.kind === 'line' ? 'polyline' : shape.kind" />
           </span>
-          {{ shape.name }}
+          {{ shownName }}
         </button>
       </ContextMenuTrigger>
       <ContextMenuPortal>
@@ -158,7 +161,7 @@ function openMenu() {
     <button
       class="object-state"
       :disabled="!canToggleObjectState"
-      :aria-label="`${shape.hidden ? 'Show' : 'Hide'} ${shape.name}`"
+      :aria-label="`${shape.hidden ? 'Show' : 'Hide'} ${shownName}`"
       :aria-pressed="!!shape.hidden"
       :title="
         editor.isObjectHidden(shape.id) && !shape.hidden
@@ -185,7 +188,7 @@ function openMenu() {
     <button
       class="object-state"
       :disabled="!canToggleObjectState"
-      :aria-label="`${shape.locked ? 'Unlock' : 'Lock'} ${shape.name}`"
+      :aria-label="`${shape.locked ? 'Unlock' : 'Lock'} ${shownName}`"
       :aria-pressed="!!shape.locked"
       :title="
         editor.isLocked(shape.id) && !shape.locked

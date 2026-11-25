@@ -17,7 +17,8 @@ import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
 import { pruneBindings, recompute, withBinding } from "../model/bindings";
 import { propertyChanges, clampFillets, applyChanges, type PropertyId } from "../model/propertySetters";
-import { bindingUnit, resolveVariables, type VariableScope } from "../model/variables";
+import { bindingUnit, displayTemplate, hasPlaceholders, resolveVariables, type VariableScope } from "../model/variables";
+import { resizeText } from "../model/text";
 import { formulaReferences } from "../model/expression";
 import type { ImportedImage } from "./imageImport";
 import type { VectorImport } from "./vectorImport";
@@ -213,6 +214,22 @@ export class Controller {
   /** Document whose variables apply to fields right now, including uncommitted edits. */
   get variableDocument(): Doc {
     return this.propertySession?.next ?? this.pendingDocument ?? this.document;
+  }
+  /** Object, group or text name with `{name}` placeholders resolved. */
+  displayName(template: string) {
+    return displayTemplate(template, this.variableDocument.variables, this.units);
+  }
+  /** Text boxes follow the shown text, so placeholder values size them. */
+  private syncTextBoxes(doc: Doc): Doc {
+    let changed = false;
+    const shapes = doc.shapes.map((s) => {
+      if (s.kind !== "text" || !s.text || !(hasPlaceholders(s.text) || /\{\{|\}\}/.test(s.text))) return s;
+      const next = resizeText(s, displayTemplate(s.text, doc.variables, this.units));
+      if (next.points.every((p, i) => Math.abs(p.x - s.points[i].x) < 1e-9 && Math.abs(p.y - s.points[i].y) < 1e-9)) return s;
+      changed = true;
+      return next;
+    });
+    return changed ? { ...doc, shapes } : doc;
   }
   private scopeCache: { variables: Doc["variables"]; scope: VariableScope } | null = null;
   get variableScope(): VariableScope {
@@ -2077,7 +2094,7 @@ export class Controller {
     }
     try {
       // Direct edits that change a linked property end that link; undo restores it.
-      const { doc: unlinked, removed } = pruneBindings(document);
+      const { doc: unlinked, removed } = pruneBindings(this.syncTextBoxes(document));
       const validated = parseProject(
         JSON.stringify(this.normalizeTree(reconcileStitches(unlinked, this.document))),
       );
@@ -4927,7 +4944,7 @@ export class Controller {
   /** Preview inside a property session, otherwise commit as one history step. */
   private async applyPropertyDocument(build: () => Doc, onError?: (error: unknown) => void) {
     try {
-      const next = parseProject(JSON.stringify(build()));
+      const next = parseProject(JSON.stringify(this.syncTextBoxes(build())));
       if (this.propertySession) {
         this.propertySession.next = next;
         this.preview = next;

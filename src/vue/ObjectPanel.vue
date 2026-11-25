@@ -458,7 +458,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
         >
           <button
             class="group-disclosure"
-            :aria-label="`${e.collapsedGroups.has(row.node.id) ? 'Expand' : 'Collapse'} ${row.node.name}`"
+            :aria-label="`${e.collapsedGroups.has(row.node.id) ? 'Expand' : 'Collapse'} ${editor.displayName(row.node.name)}`"
             :aria-expanded="!e.collapsedGroups.has(row.node.id)"
             @click="editor.toggleGroupExpanded(row.node.id)"
           >
@@ -497,7 +497,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
                 @dblclick="rename(row.node)"
                 @keydown.f2.prevent="rename(row.node)"
               >
-                {{ row.node.name }}
+                {{ editor.displayName(row.node.name) }}
               </button>
             </ContextMenuTrigger>
             <ContextMenuPortal
@@ -537,7 +537,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
           <button
             class="object-state"
             :disabled="!e.canToggleObjectState"
-            :aria-label="`${row.node.hidden ? 'Show' : 'Hide'} ${row.node.name}`"
+            :aria-label="`${row.node.hidden ? 'Show' : 'Hide'} ${editor.displayName(row.node.name)}`"
             :aria-pressed="!!row.node.hidden"
             :title="
               e.isObjectHidden(row.node.id) && !row.node.hidden
@@ -562,7 +562,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
           <button
             class="object-state"
             :disabled="!e.canToggleObjectState"
-            :aria-label="`${row.node.locked ? 'Unlock' : 'Lock'} ${row.node.name}`"
+            :aria-label="`${row.node.locked ? 'Unlock' : 'Lock'} ${editor.displayName(row.node.name)}`"
             :aria-pressed="!!row.node.locked"
             :title="
               e.isLocked(row.node.id) && !row.node.locked
@@ -605,7 +605,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
           "
           class="tree-empty-drop"
           role="group"
-          :aria-label="`Drop into ${row.node.name}`"
+          :aria-label="`Drop into ${editor.displayName(row.node.name)}`"
         ></div>
       </div>
     </template>
