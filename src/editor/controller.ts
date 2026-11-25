@@ -292,11 +292,12 @@ export class Controller {
     return normal;
   }
   get canOffset() {
-    return !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
+    return !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length && !this.selectionLocked && this.active.every(s =>
         ["line", "polyline", "curve", "control-curve", "rectangle", "circle", "ellipse", "arc", "compound"].includes(s.kind) &&
         !s.stitchOnly && !this.isHidden(s.id));
   }
   activateOffset() {
+    if (this.deferUntilSettled(() => this.activateOffset())) return;
     if (!this.canOffset) return;
     this.cancel();
     this.tool = "select";
@@ -640,7 +641,7 @@ export class Controller {
   arcSweep = 0;
   arcRawSweep = 0;
   arcLast: number | undefined;
-  propertySession: { original: Doc; next: Doc } | null = null;
+  propertySession: { original: Doc; next: Doc; epoch: number } | null = null;
   selected: string[] = [];
   hover = "";
   /** Object-panel row under the pointer. Canvas hover ignores hidden objects, so the panel reveals them. */
@@ -1448,13 +1449,14 @@ export class Controller {
   }
   get canStitch() {
     return (
-      !this.segmentTransform && this.ready && !this.busy && !this.fileBusy && !this.selectionLocked &&
+      !this.segmentTransform && this.ready && this.toolIdle && !this.fileBusy && !this.selectionLocked &&
       (!this.selected.length ||
         this.active.some((shape) => stitchEdges(shape).length > 0))
     );
   }
   activateStitch() {
     if (this.stitchMode) {if(!this.stitchTool)void this.activateStitchTool("line");return;}
+    if (this.deferUntilSettled(() => this.activateStitch())) return;
     if (!this.canStitch) return;
     this.cancel();
     this.tool = "select";
@@ -2170,17 +2172,21 @@ export class Controller {
   }
   setMode(mode: Mode) {
     if (this.printLayoutActive && mode !== "select") return;
+    // The edit's commit starts synchronously and sets pendingDocument, so the new tool
+    // starts from the edited document rather than the one before it.
+    this.settleProperty();
+    const base = this.pendingDocument ?? this.document;
     const previous = this.mode;
     const returning = !!this.segmentTransform;
     this.cancel();
     if (mode === "segment-select") {
-      if (!returning && previous !== "segment-select") this.segmentState = { document: this.document, refs: [] };
+      if (!returning && previous !== "segment-select") this.segmentState = { document: base, refs: [] };
       if (previous !== "segment-select") {
         this.selected = [];
         this.selectedGroups = [];
         this.panelRevision++;
       }
-    } else this.segmentState = { document: this.document, refs: [] };
+    } else this.segmentState = { document: base, refs: [] };
     this.segmentHover = null;
     this.mode = mode;
     this.tool =
@@ -2523,11 +2529,27 @@ export class Controller {
   beginProperty() {
     if (this.selectionLocked) return;
     if (this.transformTool || this.stitchMode || this.booleanOperation) return;
+    this.openPropertySession();
+  }
+  private openPropertySession() {
     if (!this.propertySession)
       this.propertySession = {
         original: this.pendingDocument ?? this.document,
         next: this.pendingDocument ?? this.document,
+        epoch: this.projectEpoch,
       };
+  }
+  /**
+   * Variables are project data: editing them ignores object selection locks, but a tool
+   * session (transform, stitching, boolean, array, path copy, offset) must be applied or
+   * cancelled first so the tool never works from a document that changes underneath it.
+   */
+  get canEditVariables() {
+    return this.ready && !(this.transformTool || this.stitchMode || this.booleanOperation ||
+      this.array || this.pathCopy || this.offsetActive);
+  }
+  beginVariableEdit() {
+    if (this.canEditVariables) this.openPropertySession();
   }
   async finishProperty(cancel = false) {
     const session = this.propertySession;
@@ -2535,8 +2557,45 @@ export class Controller {
     this.propertySession = null;
     this.previewId++;
     this.preview = null;
-    if (!cancel) await this.commit(session.next);
-    else this.notify();
+    // A project replaced during the edit (new, open, restored) must not be overwritten.
+    if (!cancel && session.epoch === this.projectEpoch) {
+      const commit = this.commit(session.next);
+      this.settling = commit;
+      this.settlingEdit = true;
+      try { await commit; }
+      finally { if (this.settling === commit) this.settlingEdit = false; }
+    } else this.notify();
+  }
+  private settling: Promise<unknown> = Promise.resolve();
+  private settlingEdit = false;
+  /**
+   * Tools can be chosen while a just-finished edit commits: their start waits for it.
+   * Without this, the click that ends an edit would find its tool disabled.
+   */
+  get toolIdle() {
+    return !this.busy || this.settlingEdit;
+  }
+  /**
+   * Tools snapshot the document when they start. While an edit is open or committing,
+   * start the tool once it has settled instead. Returns true when deferred.
+   */
+  private deferUntilSettled(start: () => void) {
+    if (!this.unsettled) return false;
+    void this.settled().then(start);
+    return true;
+  }
+  /** True while an edit is open or its commit is still running. */
+  get unsettled() {
+    return !!this.propertySession || this.settlingEdit;
+  }
+  /** Finish any property or variable edit, including a commit already in flight. */
+  async settled() {
+    if (this.propertySession) await this.finishProperty();
+    await this.settling;
+  }
+  /** Close an open property or variable edit before the tool state changes. */
+  private settleProperty() {
+    if (this.propertySession) void this.finishProperty();
   }
 
   get canEditCorners() {
@@ -2590,13 +2649,13 @@ export class Controller {
     });
   }
   canStartTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
-    return !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length &&
+    return !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length &&
       !this.selectionLocked && this.selected.every(id=>!this.isHidden(id)) &&
       (tool !== "corner" || this.active.every(shape=>cornerPoints(shape).length > 0));
   }
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+    if (this.unsettled) await this.settled();
     if (!this.canStartTransform(tool)) return;
-    if (this.propertySession) await this.finishProperty();
     this.cancel();
     this.tool = "select";
     this.mode = "select";
@@ -2957,8 +3016,8 @@ export class Controller {
   }
   array: ArraySettings | null = null;
   async activateArray(kind: ArrayKind) {
+    if (this.unsettled) await this.settled();
     if (!this.canStartTransform("move")) return;
-    if (this.propertySession) await this.finishProperty();
     this.cancel();
     this.beginToolSelection();
     const box = bounds(this.active);
@@ -3044,8 +3103,9 @@ export class Controller {
   }
   pathCopy: { source: string; path: string; picker: 'source' | 'path' | null; mode: 'spacing' | 'count'; spacing: number; count: number; rotate: boolean; error: string } | null = null;
   private pathCopySelection: string[] = [];
-  get canCopyAlongPath() { return !this.segmentTransform && this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && !this.busy; }
+  get canCopyAlongPath() { return !this.segmentTransform && this.ready && !this.printLayoutActive && !this.selectedGroups.length && (this.active.length === 1 && !this.isHidden(this.active[0].id)) && !this.selectionLocked && this.toolIdle; }
   activatePathCopy() {
+    if (this.deferUntilSettled(() => this.activatePathCopy())) return;
     if (!this.canCopyAlongPath) return;
     const source = this.active[0]?.id ?? "";
     this.cancel();
@@ -3131,12 +3191,12 @@ export class Controller {
   }
   get canBoolean() {
     return (
-      !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
+      !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id))
     );
   }
   get canJoin() {
     return (
-      !this.segmentTransform && this.ready && !this.busy && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
+      !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length && this.selected.every((id) => this.booleanEligible(id, true))
     );
   }
   setBooleanPicker(picker: "target" | "cutters") {
@@ -3150,6 +3210,7 @@ export class Controller {
     this.refreshBoolean();
   }
   activateBoolean(operation: BooleanOperation) {
+    if (this.deferUntilSettled(() => this.activateBoolean(operation))) return;
     if (!(operation === "union" ? this.canJoin : this.canBoolean) || this.busy)
       return;
     const ids = this.document.shapes
@@ -3288,6 +3349,7 @@ export class Controller {
     this.notify();
   }
   cancel() {
+    this.settleProperty();
     const segmentReturn = this.segmentTransform;
     this.segmentTransform = null;
     if (this.toolSelection) {
@@ -4980,6 +5042,7 @@ export class Controller {
    * Returns a message instead of applying a change that a linked object cannot take.
    */
   async updateVariables(change: (doc: Doc) => Doc): Promise<string | null> {
+    if (!this.canEditVariables) return "Apply or cancel the active tool to edit variables";
     const changed = change(this.variableDocument);
     const { errors } = resolveVariables(changed.variables);
     if (errors.size) {

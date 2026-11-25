@@ -384,3 +384,35 @@ test("names, labels and one-off fields suggest variables", async ({ page }) => {
   await grid.press("Enter");
   await expect(page.getByText("Used {w} once: Grid spacing (mm) does not stay linked to variables")).toBeVisible();
 });
+
+test("choosing a tool right after editing a variable keeps the edited model", async ({ page }) => {
+  await rectangle(page);
+  const w = await addVariable(page, "w", "50");
+  const width = page.getByLabel("Width", { exact: true });
+  await width.fill("{w}");
+  await width.press("Enter");
+  await expect(width).toHaveValue("50");
+
+  // Click a tool straight from the value field: the edit commits before the tool starts.
+  await w.fill("60");
+  await page.getByRole("button", { name: "Move", exact: true }).click();
+  await expect(page.getByText("Apply or cancel the active tool to edit variables.")).toBeVisible();
+  await expect(w).toBeDisabled();
+  // The pinned popover can cover the tool's buttons; use the keyboard.
+  await page.getByRole("button", { name: "Cancel", exact: true }).press("Enter");
+  await expect(w).toBeEnabled();
+  await expect(width).toHaveValue("60");
+
+  // Switching tools straight from the field goes through the mode change.
+  await w.fill("70");
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).click();
+  await page.getByRole("button", { name: "Select (V)", exact: true }).click();
+  await page.locator(".objects .object-select").first().click();
+  await expect(width).toHaveValue("70");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(width).toHaveValue("60");
+  await expect(w).toHaveValue("60");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(width).toHaveValue("50");
+  await expect(w).toHaveValue("50");
+});

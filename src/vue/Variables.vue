@@ -68,18 +68,18 @@ const rows = computed(() => [
 
 /** Each row is edited in one property session: one undo step, Esc reverts the row. */
 function rowFocus() {
-  editor.beginProperty();
+  editor.beginVariableEdit();
 }
-async function rowLeave(id: string, event: FocusEvent) {
+function rowLeave(id: string, event: FocusEvent) {
   const row = event.currentTarget as HTMLElement;
   if (row.contains(event.relatedTarget as Node | null)) return;
-  if (id !== draftId.value) {
-    await commitName(id);
-    clearDraft(valueDrafts, id);
-    setError(id, null);
-  }
-  // Leaving keeps the last valid values; invalid drafts are discarded.
-  await editor.finishProperty();
+  // Commit before anything else can run (such as a tool chosen by this click), so the
+  // whole editor sees the edited values. Leaving keeps the last valid values.
+  const committed = editor.finishProperty();
+  if (id === draftId.value) return;
+  clearDraft(valueDrafts, id);
+  setError(id, null);
+  void committed.then(() => commitName(id, false));
 }
 function rowEscape(id: string, event: KeyboardEvent) {
   event.stopPropagation();
@@ -104,7 +104,7 @@ async function createDraft() {
   if (error) return setError(id, error);
   creating = true;
   try {
-    editor.beginProperty();
+    editor.beginVariableEdit();
     const message = await editor.updateVariables((doc) => ({
       ...doc,
       variables: [...(doc.variables ?? []), { id, name, kind, value: kind === "number" ? value.trim() : value }],
@@ -145,7 +145,7 @@ function nameInput(row: { v: Variable; draft: boolean }, event: Event) {
   // Renames apply on Enter or when leaving the row, so lists never show a half-typed name.
   setError(row.v.id, variableNameError(text.trim(), list.value, row.v.id));
 }
-async function commitName(id: string) {
+async function commitName(id: string, reopen = true) {
   const v = list.value.find((item) => item.id === id), text = nameDrafts.value[id];
   if (!v || text === undefined) return;
   clearDraft(nameDrafts, id);
@@ -153,7 +153,7 @@ async function commitName(id: string) {
   // A rename is its own committed step, so every list shows the new name at once.
   await editor.finishProperty();
   await applyName(v, text);
-  editor.beginProperty();
+  if (reopen) editor.beginVariableEdit();
 }
 function valueInput(row: { v: Variable; draft: boolean }, event: Event) {
   const input = event.target as HTMLInputElement;
@@ -219,6 +219,7 @@ async function remove(v: Variable) {
     <p class="variables-help">
       Values are plain numbers or text. Type <code>{</code> in number fields, names and labels to use a variable, such as <code>{card_w} + 2*{t}</code>.
     </p>
+    <p v-if="e.ready && !e.canEditVariables" class="variables-paused" role="status">Apply or cancel the active tool to edit variables.</p>
     <table class="variables-table">
       <colgroup><col class="col-name" /><col /><col class="col-action" /></colgroup>
       <thead>
@@ -237,7 +238,7 @@ async function remove(v: Variable) {
                 :placeholder="row.draft ? 'New name' : undefined"
                 :aria-label="row.draft ? 'New variable name' : `Name of ${row.v.name}`"
                 :aria-invalid="row.v.id in nameDrafts && row.v.id in errors && !!variableNameError((nameDrafts[row.v.id] ?? '').trim(), list, row.draft ? undefined : row.v.id)"
-                :disabled="row.draft && (!e.ready || list.length >= 500)"
+                :disabled="!e.canEditVariables || (row.draft && list.length >= 500)"
                 :value="nameDrafts[row.v.id] ?? row.v.name"
                 @input="nameInput(row, $event)"
                 @keydown.enter="enter(row, 'name', $event)"
@@ -257,7 +258,7 @@ async function remove(v: Variable) {
                   :aria-label="row.draft ? 'New variable value' : `Value of ${row.v.name}`"
                   :aria-invalid="row.v.id in valueDrafts && row.v.id in errors"
                   v-variable-hints="{ kinds: 'number', exclude: row.v.name }"
-                  :disabled="row.draft && (!e.ready || list.length >= 500)"
+                  :disabled="!e.canEditVariables || (row.draft && list.length >= 500)"
                   :value="valueDrafts[row.v.id] ?? row.v.value"
                   @focus="valueFocus(row, $event)"
                   @input="valueInput(row, $event)"
@@ -268,7 +269,7 @@ async function remove(v: Variable) {
               <small v-if="hasFormula(row.v)" class="variable-resolved">= {{ resolvedText(row.v) }}</small>
             </td>
             <td>
-              <button v-if="!row.draft" type="button" class="variable-delete" :aria-label="`Delete ${row.v.name}`" title="Delete variable" @click="remove(row.v)">×</button>
+              <button v-if="!row.draft" type="button" class="variable-delete" :disabled="!e.canEditVariables" :aria-label="`Delete ${row.v.name}`" title="Delete variable" @click="remove(row.v)">×</button>
             </td>
           </tr>
           <tr v-if="confirmDelete === row.v.id" class="variable-message">
@@ -294,6 +295,7 @@ async function remove(v: Variable) {
 }
 .variables-help { margin: 0 0 10px; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .variables-help code { color: var(--text); }
+.variables-paused { margin: 0 0 10px; color: var(--accent); font-size: 11px; }
 .variables-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .col-name { width: 38%; }
 .col-action { width: 28px; }
