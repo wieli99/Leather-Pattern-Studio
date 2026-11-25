@@ -2,14 +2,12 @@
 import { parseExpression, formulaReferences } from "../model/expression";
 import { editableLength, formatLength, toMillimetres, unitSymbol, type UnitMode } from "../model/units";
 import { interpolate, templateReferences } from "../model/variables";
-import { computed, onBeforeUnmount, ref, useId, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useEditor } from "./useEditor";
 import { editor as defaultEditor } from "../editor/instance";
 import type { Controller } from "../editor/controller";
 import type { Binding } from "../generated/Binding";
 import LinkIcon from "./LinkIcon.vue";
-import VariableSuggestions from "./VariableSuggestions.vue";
-import { useVariableSuggestions } from "./variableInput";
 import { numericReaders } from "./numericWheel";
 const props = withDefaults(
   defineProps<{
@@ -23,6 +21,8 @@ const props = withDefaults(
     precision?: number;
     /** Current link of this property; its formula is shown while editing. */
     binding?: Binding | null;
+    /** Formulas with variables link this field; otherwise they are used once. */
+    linkable?: boolean;
   }>(),
   { step: 0.1, precision: 1, binding: null },
 );
@@ -51,6 +51,7 @@ const unitTag = computed(() => {
   const symbol = unitSymbol(unitsFor(editing.value ? draft.value : props.binding?.expression ?? ""));
   return props.binding && symbol !== e.value.unitSymbol ? symbol : "";
 });
+let usedFormula: string | null = null;
 let focused = false,
   pristine = false,
   initial = props.value,
@@ -87,8 +88,6 @@ function evaluate(text: string): number | null {
   if (result === null) return null;
   return props.dimension ? toMillimetres(result, mode) : result;
 }
-const variables = useVariableSuggestions(values, ["number"]);
-const listId = `field-variables-${useId()}`;
 let inputElement: HTMLInputElement | null = null;
 function register(el: unknown) {
   if (inputElement) numericReaders.delete(inputElement);
@@ -101,7 +100,6 @@ function change(event: Event) {
   const text = input.value;
   pristine = false;
   draft.value = text;
-  if (numeric.value) variables.update(input);
   const n = numeric.value ? evaluate(text) ?? NaN : NaN;
   if (
     numeric.value &&
@@ -116,6 +114,7 @@ function change(event: Event) {
   invalid.value = false;
   if (text !== last) {
     last = text;
+    usedFormula = numeric.value && formulaReferences(text).length ? text : null;
     const formula = numeric.value && formulaReferences(text).length ? text : null;
     emit("commit", numeric.value ? String(n) : text, formula, unitsFor(text));
   }
@@ -133,19 +132,21 @@ function focus(event: FocusEvent) {
   editor.beginProperty();
 }
 function blur() {
+  if (usedFormula && !props.linkable) editor.noteUsedOnce([usedFormula], [shownLabel.value]);
+  usedFormula = null;
   focused = false;
   editing.value = false;
   invalid.value = false;
-  variables.close();
   draft.value = format(props.value);
   void editor.finishProperty();
 }
 function key(event: KeyboardEvent) {
-  if (event.isComposing || variables.key(event)) return;
+  if (event.isComposing) return;
   if (event.key === "Enter") (event.target as HTMLInputElement).blur();
   if (event.key === "Escape") {
     event.stopPropagation();
     draft.value = format(initial);
+    usedFormula = null;
     void editor.finishProperty(true);
     (event.target as HTMLInputElement).blur();
   }
@@ -164,9 +165,7 @@ const shownLabel = computed(() => (props.dimension ? props.label.replace(/mm/g, 
         :title="binding ? `Linked to ${binding.expression}` : undefined"
         :disabled="!e.ready || !!e.transformTool || e.stitchMode"
         :aria-invalid="invalid"
-        :aria-autocomplete="numeric ? 'list' : undefined"
-        :aria-controls="variables.suggestions.value.length ? listId : undefined"
-        :aria-activedescendant="variables.highlight.value >= 0 ? `${listId}-${variables.highlight.value}` : undefined"
+        v-variable-hints="numeric ? 'number' : 'all'"
         type="text"
         :min="min"
         :max="max"
@@ -177,10 +176,8 @@ const shownLabel = computed(() => (props.dimension ? props.label.replace(/mm/g, 
         @input="change"
         @blur="blur"
         @keydown="key"
-        @click="numeric && variables.update($event.target as HTMLInputElement)"
       />
       <small v-if="unitTag" class="formula-unit" :title="`Formula typed in ${unitTag}`">{{ unitTag }}</small>
-      <VariableSuggestions :id="listId" :suggestions="variables.suggestions.value" :highlight="variables.highlight.value" @choose="variables.choose" />
     </span>
     <small v-if="invalid" role="alert">
       Enter a valid value{{ min !== undefined ? ` ≥ ${dimension ? formatLength(min, e.units) : min}` : "" }}.

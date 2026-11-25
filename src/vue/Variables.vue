@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import PinnablePopover from "./PinnablePopover.vue";
-import VariableSuggestions from "./VariableSuggestions.vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
-import { useVariableSuggestions } from "./variableInput";
 import { numericReaders } from "./numericWheel";
 import { editableNumber, formulaReferences, parseExpression } from "../model/expression";
 import { detectKind, nextVariableName, variableNameError, type Variable } from "../model/variables";
@@ -75,7 +73,6 @@ function rowFocus() {
 async function rowLeave(id: string, event: FocusEvent) {
   const row = event.currentTarget as HTMLElement;
   if (row.contains(event.relatedTarget as Node | null)) return;
-  suggestions.close();
   if (id !== draftId.value) {
     await commitName(id);
     clearDraft(valueDrafts, id);
@@ -132,7 +129,7 @@ async function applyName(v: Variable, text: string) {
   await apply(v.id, (doc) => renameVariable(doc, v.id, text.trim()));
 }
 async function applyValue(v: Variable, text: string) {
-  const kind = detectKind(text, list.value, v.name);
+  const kind = detectKind(text, list.value);
   const error = kind === "number" ? formulaError(v, text) : null;
   if (error) return setError(v.id, error);
   await apply(v.id, replace(v.id, { kind, value: kind === "number" ? text.trim() : text }));
@@ -161,7 +158,6 @@ async function commitName(id: string) {
 function valueInput(row: { v: Variable; draft: boolean }, event: Event) {
   const input = event.target as HTMLInputElement;
   valueDrafts.value = { ...valueDrafts.value, [row.v.id]: input.value };
-  suggestions.update(input);
   if (row.draft) {
     setError(row.v.id, null);
     return tryCreate();
@@ -169,7 +165,6 @@ function valueInput(row: { v: Variable; draft: boolean }, event: Event) {
   if (!creating) return applyValue(row.v, input.value);
 }
 function valueFocus(row: { v: Variable; draft: boolean }, event: FocusEvent) {
-  activeSuggestions.value = row.v.id;
   rowFocus();
   if (!row.draft && row.v.kind === "number") (event.target as HTMLInputElement).select();
 }
@@ -193,12 +188,10 @@ async function enter(row: { v: Variable }, field: "name" | "value", event: Keybo
   else input.blur();
 }
 function valueKey(row: { v: Variable }, event: KeyboardEvent) {
-  if (event.isComposing || suggestions.key(event)) return;
+  if (event.isComposing) return;
   if (event.key === "Enter") void enter(row, "value", event);
   else if (event.key === "Escape") rowEscape(row.v.id, event);
 }
-const suggestions = useVariableSuggestions(values, ["number"]);
-const activeSuggestions = ref<string | null>(null);
 function registerValue(id: string, el: unknown) {
   if (!(el instanceof HTMLInputElement)) return;
   valueInputs.set(id, el);
@@ -208,7 +201,7 @@ function registerValue(id: string, el: unknown) {
 const wheelMode = (id: string) => {
   const v = list.value.find((item) => item.id === id);
   const text = valueDrafts.value[id] ?? v?.value ?? "";
-  return detectKind(text, list.value, v?.name) === "number" ? "number" : false;
+  return detectKind(text, list.value) === "number" ? "number" : false;
 };
 
 async function remove(v: Variable) {
@@ -224,7 +217,7 @@ async function remove(v: Variable) {
   <PinnablePopover v-model:open="open" label="Variables" storage-key="variables" content-class="variables-content" align="center">
     <template #trigger>Variables<span v-if="list.length" class="variable-count" aria-hidden="true" :title="`${list.length} variables`">{{ list.length }}</span></template>
     <p class="variables-help">
-      Values are plain numbers or text. Use names in number fields, such as <code>card_w + 2*t</code>, and <code>{name}</code> in names and labels.
+      Values are plain numbers or text. Type <code>{</code> in number fields, names and labels to use a variable, such as <code>{card_w} + 2*{t}</code>.
     </p>
     <table class="variables-table">
       <colgroup><col class="col-name" /><col /><col class="col-action" /></colgroup>
@@ -263,7 +256,7 @@ async function remove(v: Variable) {
                   :placeholder="row.draft ? 'Value' : undefined"
                   :aria-label="row.draft ? 'New variable value' : `Value of ${row.v.name}`"
                   :aria-invalid="row.v.id in valueDrafts && row.v.id in errors"
-                  aria-autocomplete="list"
+                  v-variable-hints="{ kinds: 'number', exclude: row.v.name }"
                   :disabled="row.draft && (!e.ready || list.length >= 500)"
                   :value="valueDrafts[row.v.id] ?? row.v.value"
                   @focus="valueFocus(row, $event)"
@@ -271,13 +264,6 @@ async function remove(v: Variable) {
                   @keydown="valueKey(row, $event)"
                 />
                 <small v-if="!row.draft && row.v.kind === 'text' && row.v.value" class="value-kind" title="Detected as text: fills {name} placeholders">text</small>
-                <VariableSuggestions
-                  v-if="activeSuggestions === row.v.id"
-                  :id="`variable-suggestions-${row.v.id}`"
-                  :suggestions="suggestions.suggestions.value.filter((name) => name !== row.v.name)"
-                  :highlight="suggestions.highlight.value"
-                  @choose="suggestions.choose"
-                />
               </span>
               <small v-if="hasFormula(row.v)" class="variable-resolved">= {{ resolvedText(row.v) }}</small>
             </td>

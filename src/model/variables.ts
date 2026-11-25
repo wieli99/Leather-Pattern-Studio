@@ -40,17 +40,14 @@ export function evaluateFormula(
 }
 
 /**
- * Number when the value is a formula; text otherwise. A lone unknown word such as `Acme`
- * is text, while `card_ww + 2` stays a (broken) number so typos are reported.
+ * Number when the value is a formula, such as `86` or `{card_w} - 2*{t}`; text otherwise.
+ * A formula with an unknown `{name}` stays a (broken) number so typos are reported.
  */
-export function detectKind(value: string, variables: readonly Variable[] | undefined, self?: string): Variable["kind"] {
+export function detectKind(value: string, variables: readonly Variable[] | undefined): Variable["kind"] {
   const text = value.trim();
   if (!text) return "text";
-  if (parseExpression(text, true, () => 1) === null) return "text";
-  const names = formulaReferences(text);
-  const known = (name: string) => (variables ?? []).some((v) => v.name === name && v.name !== self && v.kind === "number");
-  if (names.length === 1 && VARIABLE_NAME.test(text) && !known(text)) return "text";
-  return "number";
+  const isText = (name: string) => (variables ?? []).some((v) => v.name === name && v.kind === "text");
+  return parseExpression(text, true, (name) => (isText(name) ? null : 1)) === null ? "text" : "number";
 }
 
 export function resolveVariables(variables: readonly Variable[] | undefined): VariableScope {
@@ -114,12 +111,8 @@ export const hasPlaceholders = (template: string) =>
 export const templateReferences = (template: string) =>
   [...template.replace(/\{\{|\}\}/g, "").matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]);
 
-/** Rewrite whole-identifier references in a formula. */
-export function renameInFormula(text: string, from: string, to: string): string {
-  return text.replace(/(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][A-Za-z0-9_]*/g, (token) =>
-    token === from ? to : token,
-  );
-}
+/** Rewrite `{from}` references in a formula. */
+export const renameInFormula = (text: string, from: string, to: string) => renameInTemplate(text, from, to);
 
 /** Rewrite `{from}` placeholders, leaving escaped braces untouched. */
 export function renameInTemplate(text: string, from: string, to: string): string {

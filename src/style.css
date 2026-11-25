@@ -1203,3 +1203,20 @@ label:has(> select) { display:flex; align-items:center; column-gap:8px !importan
   max-height: min(70vh, 560px);
   overflow: auto;
 }
+.variable-hints {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  padding: 3px 0;
+  max-height: 220px;
+  overflow: auto;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px #0005;
+  font: 12px monospace;
+}
+.variable-hints li { padding: 4px 8px; cursor: pointer; color: var(--text); white-space: nowrap; }
+.variable-hints li:hover,
+.variable-hints li[aria-selected="true"] { background: var(--accent); color: var(--panel); }

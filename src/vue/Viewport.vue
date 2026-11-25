@@ -319,6 +319,7 @@ defineExpose({ beginText, cancelText });
     <textarea
       ref="input"
       v-model="draft.text"
+      v-variable-hints="'all'"
       aria-label="Label text"
       maxlength="10000"
       spellcheck="false"

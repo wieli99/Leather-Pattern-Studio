@@ -1,6 +1,6 @@
-/** Looks up a variable in the formula's unit; null rejects the formula. */
+/** Looks up a `{name}` variable; null rejects the formula. */
 export type ExpressionResolver = (name: string) => number | null;
-const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*/;
+const REFERENCE = /^\{([A-Za-z_][A-Za-z0-9_]*)\}/;
 /** Small arithmetic grammar: never executes user text as JavaScript. */
 export function parseExpression(text: string, mixedFractions = false, resolve?: ExpressionResolver): number | null {
   if (text.length > 2000) return null;
@@ -20,9 +20,9 @@ export function parseExpression(text: string, mixedFractions = false, resolve?: 
       if (text[pos++] !== ')') throw Error();
     } else {
       const rest = text.slice(pos);
-      const name = resolve && IDENTIFIER.exec(rest);
+      const name = resolve && REFERENCE.exec(rest);
       if (name) {
-        const value = resolve(name[0]);
+        const value = resolve(name[1]);
         if (value === null) throw Error();
         pos += name[0].length;
         depth--;
@@ -80,10 +80,7 @@ export function editableNumber(value: number): string {
   return String(Math.abs(value - integer) < 1e-10 ? integer : Number(value.toPrecision(15)));
 }
 
-/** Identifier names in a formula, skipping exponents such as `1e-3`. */
+/** Variable names written as `{name}` in a formula or template. */
 export function formulaReferences(text: string): string[] {
-  const names: string[] = [];
-  for (const match of text.matchAll(/(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][A-Za-z0-9_]*/g))
-    if (!/^[\d.]/.test(match[0])) names.push(match[0]);
-  return names;
+  return [...text.replace(/\{\{|\}\}/g, "").matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]);
 }

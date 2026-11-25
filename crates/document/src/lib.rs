@@ -609,38 +609,29 @@ fn valid_identifier(name: &str) -> bool {
             .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
-/// Identifiers referenced by a formula; numeric literals such as `1e-3` are skipped.
+/// Variable names written as `{name}` in a formula; `{{` and `}}` are literal braces.
 pub fn formula_references(text: &str) -> Vec<&str> {
     let bytes = text.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        let c = bytes[i];
-        if c.is_ascii_digit() || c == b'.' {
-            while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
-                i += 1;
-            }
-            if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
-                let mut j = i + 1;
-                if j < bytes.len() && (bytes[j] == b'+' || bytes[j] == b'-') {
-                    j += 1;
-                }
-                if j < bytes.len() && bytes[j].is_ascii_digit() {
-                    i = j;
-                    while i < bytes.len() && bytes[i].is_ascii_digit() {
-                        i += 1;
-                    }
-                }
-            }
-        } else if c.is_ascii_alphabetic() || c == b'_' {
-            let start = i;
-            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-                i += 1;
-            }
-            out.push(&text[start..i]);
-        } else {
-            i += 1;
+        if bytes[i] == b'{' && bytes.get(i + 1) == Some(&b'{') {
+            i += 2;
+            continue;
         }
+        if bytes[i] == b'{' {
+            let start = i + 1;
+            let mut j = start;
+            while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'}' && valid_identifier(&text[start..j]) {
+                out.push(&text[start..j]);
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
     }
     out
 }
@@ -2436,23 +2427,23 @@ mod print_tests {
         .unwrap()
     }
     #[test]
-    fn formula_references_skip_scientific_literals() {
+    fn formula_references_read_braced_names() {
         assert_eq!(
-            formula_references("1e-3 + card_w*2.5E+2 - (t2)"),
+            formula_references("1e-3 + {card_w}*2.5E+2 - ({t2}) + card"),
             vec!["card_w", "t2"]
         );
-        assert!(formula_references("(10+5)*2").is_empty());
+        assert!(formula_references("(10+5)*2 {{x}} {1a}").is_empty());
     }
     #[test]
     fn validates_variables_and_links() {
         let ok = variable_doc(
             serde_json::json!([
                 {"id":"1","name":"card_w","kind":"number","value":"86"},
-                {"id":"2","name":"slot","kind":"number","value":"card_w + 2*t"},
+                {"id":"2","name":"slot","kind":"number","value":"{card_w} + 2*{t}"},
                 {"id":"3","name":"t","kind":"number","value":"1.5"},
                 {"id":"4","name":"brand","kind":"text","value":"Acme (1+1)"}
             ]),
-            serde_json::json!([{"property":"width","expression":"slot","unit":"mm"}]),
+            serde_json::json!([{"property":"width","expression":"{slot}","unit":"mm"}]),
         );
         ok.validate().unwrap();
         let cases = [
@@ -2469,24 +2460,24 @@ mod print_tests {
                 serde_json::json!([]),
             ),
             (
-                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"b"},{"id":"2","name":"b","kind":"number","value":"a+1"}]),
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"{b}"},{"id":"2","name":"b","kind":"number","value":"{a}+1"}]),
                 serde_json::json!([]),
             ),
             (
-                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"a"}]),
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"{a}"}]),
                 serde_json::json!([]),
             ),
             (
-                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"missing"}]),
+                serde_json::json!([{"id":"1","name":"a","kind":"number","value":"{missing}"}]),
                 serde_json::json!([]),
             ),
             (
-                serde_json::json!([{"id":"1","name":"a","kind":"text","value":"x"},{"id":"2","name":"b","kind":"number","value":"a"}]),
+                serde_json::json!([{"id":"1","name":"a","kind":"text","value":"x"},{"id":"2","name":"b","kind":"number","value":"{a}"}]),
                 serde_json::json!([]),
             ),
             (
                 serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
-                serde_json::json!([{"property":"points","expression":"a","unit":"mm"}]),
+                serde_json::json!([{"property":"points","expression":"{a}","unit":"mm"}]),
             ),
             (
                 serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
@@ -2494,11 +2485,11 @@ mod print_tests {
             ),
             (
                 serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
-                serde_json::json!([{"property":"width","expression":"b","unit":"mm"}]),
+                serde_json::json!([{"property":"width","expression":"{b}","unit":"mm"}]),
             ),
             (
                 serde_json::json!([{"id":"1","name":"a","kind":"number","value":"1"}]),
-                serde_json::json!([{"property":"width","expression":"a","unit":"mm"},{"property":"width","expression":"a","unit":"in"}]),
+                serde_json::json!([{"property":"width","expression":"{a}","unit":"mm"},{"property":"width","expression":"{a}","unit":"in"}]),
             ),
         ];
         for (variables, bindings) in cases {
@@ -2527,7 +2518,7 @@ mod print_tests {
         next.shapes[0].points[1].x = 20.0;
         next.shapes[0].bindings = Some(vec![Binding {
             property: "width".into(),
-            expression: "w".into(),
+            expression: "{w}".into(),
             unit: BindingUnit::Mm,
         }]);
         editor

@@ -467,6 +467,7 @@ function keyboardMove(event: KeyboardEvent, id: string) {
           <input
             v-if="naming === row.node.id"
             v-model="draft"
+            v-variable-hints="'all'"
             aria-label="Rename group"
             maxlength="200"
             :ref="(el) => {

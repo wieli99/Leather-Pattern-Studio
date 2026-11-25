@@ -15,8 +15,8 @@ import { hitsTransformShaft } from "./transformUi";
 import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
-import { pruneBindings, recompute, withBinding } from "../model/bindings";
-import { propertyChanges, clampFillets, applyChanges, type PropertyId } from "../model/propertySetters";
+import { evaluateBinding, pruneBindings, recompute, withBinding } from "../model/bindings";
+import { propertyChanges, clampFillets, applyChanges, getProperty, type PropertyId } from "../model/propertySetters";
 import { bindingUnit, displayTemplate, hasPlaceholders, resolveVariables, type VariableScope } from "../model/variables";
 import { resizeText } from "../model/text";
 import { formulaReferences } from "../model/expression";
@@ -2265,6 +2265,17 @@ export class Controller {
     this.finish([...this.pending, this.pending[0]]);
   }
   measurementLocks: Record<string, number> = {};
+  /** Construction field text that uses `{variables}`, by field key. */
+  measurementFormulas: Record<string, string> = {};
+  /** Formulas confirmed for earlier points of the shape being drawn. */
+  private constructionFormulas: { key: string; formula: string; unit: UnitMode }[] = [];
+  /** Report a variable that was used once in a field that cannot stay linked. */
+  noteUsedOnce(formulas: string[], fields: string[]) {
+    const names = [...new Set(formulas.flatMap((f) => formulaReferences(f)))].map((n) => `{${n}}`).join(", ");
+    if (!names) return;
+    this.message = `Used ${names} once: ${fields.join(", ")} does not stay linked to variables`;
+    this.notify();
+  }
   get measurementFields() {
     if (!this.pending.length || this.mode === "select" || this.mode === "text")
       return [];
@@ -2448,7 +2459,10 @@ export class Controller {
       this.notify();
       return;
     }
+    for (const [key, formula] of Object.entries(this.measurementFormulas))
+      if (key in this.measurementLocks) this.constructionFormulas.push({ key, formula, unit: this.units });
     this.measurementLocks = {};
+    this.measurementFormulas = {};
     if (isCurveMode(this.mode)) {
       if (!this.pending.length || distance(p, this.pending.at(-1)!) > 1e-9) {
         this.pending.push(p);
@@ -3327,6 +3341,8 @@ export class Controller {
     this.stitchError = "";
     this.guideDrag = null;
     this.measurementLocks = {};
+    this.measurementFormulas = {};
+    this.constructionFormulas = [];
     this.transformGeneration++;
     this.transformDraft = null;
     this.transformError = "";
@@ -4845,9 +4861,10 @@ export class Controller {
         shape.handles = this.pendingHandles.slice(0, points.length);
       shape.id = crypto.randomUUID();
       shape.name = `${isCurveMode(this.mode) || isIndicator(this.mode) ? labels[this.mode] : shape.kind[0].toUpperCase() + shape.kind.slice(1)} ${this.document.shapes.length + 1}`;
+      const linked = this.linkConstruction(shape);
       const next = {
         ...this.document,
-        shapes: [...this.document.shapes, shape],
+        shapes: [...this.document.shapes, linked],
       };
       parseProject(JSON.stringify(this.normalizeTree(next)));
       this.pending = [];
@@ -4862,12 +4879,48 @@ export class Controller {
         if (!success) return;
         if (this.document.shapes.some((s) => s.id === shape.id))
           this.selected = [shape.id];
+        const once = this.usedOnce;
+        this.usedOnce = null;
         this.message = "Ready";
+        if (once) this.noteUsedOnce(once.formulas, once.fields);
         this.notify();
       });
     } catch (e) {
       this.fail(e);
     }
+  }
+  /**
+   * Link construction fields typed with `{variables}` to the matching property of the new
+   * shape. A link is kept only when it reproduces the drawn value; other fields used the
+   * value once and are reported.
+   */
+  private usedOnce: { formulas: string[]; fields: string[] } | null = null;
+  private linkConstruction(shape: Shape): Shape {
+    const formulas = this.constructionFormulas;
+    this.constructionFormulas = [];
+    if (!formulas.length) return shape;
+    const target: Record<string, PropertyId> = {
+      Width: this.mode === "size-square" ? "indicatorSize" : "width",
+      Height: this.mode === "size-square" ? "indicatorSize" : "height",
+      Radius: "radius", Diameter: "radius", Sweep: "sweep", Offset: "measurementOffset",
+    };
+    const { values } = resolveVariables(this.document.variables);
+    let next = shape;
+    const once: typeof formulas = [];
+    for (const item of formulas) {
+      const property = target[item.key];
+      const expression = item.key === "Diameter" ? `(${item.formula})/2` : item.formula;
+      const binding = property && { property, expression, unit: bindingUnit(item.unit) };
+      const value = binding ? evaluateBinding(binding, values) : null;
+      const current = property ? getProperty(next, property) : null;
+      const kept = binding && value !== null && current !== null &&
+        !next.bindings?.some((b) => b.property === property) &&
+        Math.abs(current - value) <= 1e-6 * Math.max(1, Math.abs(value));
+      if (kept) next = withBinding(next, property, binding);
+      else once.push(item);
+    }
+    this.usedOnce = once.length ? { formulas: once.map((i) => i.formula), fields: [...new Set(once.map((i) => i.key))] } : null;
+    return next;
   }
   async toggleAnchorSmooth(id: string, index: number) {
     if (this.gesture || this.transformTool || this.busy) return;

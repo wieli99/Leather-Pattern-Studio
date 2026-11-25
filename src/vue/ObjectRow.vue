@@ -92,6 +92,7 @@ function openMenu() {
     <input
       ref="input"
       v-model="draft"
+      v-variable-hints="'all'"
       aria-label="Rename object"
       maxlength="200"
       @blur="finish()"

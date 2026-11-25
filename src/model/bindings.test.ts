@@ -16,8 +16,8 @@ const vars = (w = "86"): Variable[] => [
   { id: "t", name: "t", kind: "number", value: "1.5" },
   { id: "b", name: "brand", kind: "text", value: "Acme" },
 ];
-const linked = () => withBinding(withBinding(card(), "width", { property: "width", expression: "card_w + 2*t", unit: "mm" }),
-  "x", { property: "x", expression: "card_w", unit: "mm" });
+const linked = () => withBinding(withBinding(card(), "width", { property: "width", expression: "{card_w} + 2*{t}", unit: "mm" }),
+  "x", { property: "x", expression: "{card_w}", unit: "mm" });
 
 describe("property links", () => {
   it("recomputes linked sizes before positions", () => {
@@ -28,12 +28,12 @@ describe("property links", () => {
     expect(getProperty(next.shapes[0], "x")).toBeCloseTo(100);
   });
   it("reads plain variables in the unit the link was typed in", () => {
-    const shape = withBinding(card(), "width", { property: "width", expression: "card_w + 1", unit: "in" });
+    const shape = withBinding(card(), "width", { property: "width", expression: "{card_w} + 1", unit: "in" });
     const { doc: next } = recompute(doc(vars("2"), [shape]));
     expect(getProperty(next.shapes[0], "width")).toBeCloseTo(76.2);
   });
   it("reports out-of-range values and locked objects instead of applying them", () => {
-    const shape = withBinding(card(), "width", { property: "width", expression: "card_w", unit: "mm" });
+    const shape = withBinding(card(), "width", { property: "width", expression: "{card_w}", unit: "mm" });
     expect(recompute(doc(vars("-5"), [shape])).problems[0].message).toBe("Width of '{brand} card' must be ≥ 0.001 mm");
     expect(recompute(doc(vars("90"), [shape]), () => true).problems[0].message).toMatch("Unlock");
   });
@@ -52,17 +52,17 @@ describe("property links", () => {
     const shifted = { ...start, shapes: [{ ...start.shapes[0], ...moveShape(start.shapes[0], 5, 0) }] };
     const result = pruneBindings(shifted);
     expect(result.doc.shapes[0].bindings?.map((b) => b.property)).toEqual(["width"]);
-    expect(result.removed[0].message).toBe("Unlinked position x of '{brand} card' from card_w");
+    expect(result.removed[0].message).toBe("Unlinked position x of '{brand} card' from {card_w}");
   });
   it("renames references everywhere", () => {
     const renamed = renameVariable(renameVariable(doc(vars(), [linked()]), "w", "width"), "b", "maker");
     expect(renamed.variables?.map((v) => v.name)).toEqual(["width", "t", "maker"]);
-    expect(renamed.shapes[0].bindings?.map((b) => b.expression)).toEqual(["width + 2*t", "width"]);
+    expect(renamed.shapes[0].bindings?.map((b) => b.expression)).toEqual(["{width} + 2*{t}", "{width}"]);
     expect(renamed.shapes[0].name).toBe("{maker} card");
     expect(renamed.objectTree?.[0].kind === "group" && renamed.objectTree[0].name).toBe("{maker} set");
   });
   it("counts uses and deletes by keeping current values", () => {
-    const start = recompute(doc([...vars(), { id: "s", name: "slot", kind: "number", value: "card_w + 1" }], [linked()])).doc;
+    const start = recompute(doc([...vars(), { id: "s", name: "slot", kind: "number", value: "{card_w} + 1" }], [linked()])).doc;
     expect(variableUses(start, "card_w")).toBe(3);
     expect(variableUses(start, "brand")).toBe(2);
     const deleted = deleteVariable(deleteVariable(start, "w"), "b");
