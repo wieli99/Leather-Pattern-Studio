@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { manualScreenshot } from './manual-capture';
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("tool-favorites-v1", JSON.stringify(["move", "rotate", "scale", "mirror", "corner", "align"])));
 });
@@ -61,7 +62,6 @@ test('align previews choices from the original until Apply, and Cancel discards 
   // Switching the reference recomputes from the original: Pocket (largest) stays put.
   await panel.getByLabel('Align relative to').selectOption('largest');
   await expect(left).toHaveAttribute('aria-pressed', 'true');
-  await page.screenshot({ path: 'test-results/align-preview.png' });
   await apply.click();
   await expect(panel).toHaveCount(0);
   doc = await saved(page);
@@ -127,4 +127,20 @@ test('Enter applies after clicking a choice, and rail Undo ends an open session'
   doc = await saved(page);
   expect(['a', 'b'].map(doc.left)).toEqual([10, 30]);
   expect(['a', 'b'].map(doc.top)).toEqual([0, 30]);
+});
+
+test('align panel combining a horizontal and a vertical arrangement @manual', async ({ page }) => {
+  await openProject(page);
+  const objects = page.locator('.objects .object-select');
+  await objects.filter({ hasText: 'Strap' }).click();
+  await objects.filter({ hasText: 'Pocket' }).click({ modifiers: ['Shift'] });
+  await objects.filter({ hasText: 'Tab' }).click({ modifiers: ['Shift'] });
+  await page.getByRole('button', { name: 'Align and distribute', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Align and distribute settings' });
+  await panel.getByLabel('Align relative to').selectOption('largest');
+  await panel.getByRole('button', { name: 'Center horizontally' }).click();
+  await panel.getByRole('button', { name: 'Equalize vertical gaps' }).click();
+  await expect(panel.getByRole('button', { name: 'Apply', exact: true })).toBeEnabled();
+  await page.mouse.move(5, 400);
+  await manualScreenshot(page, 'align-distribute.png');
 });

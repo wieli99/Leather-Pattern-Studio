@@ -8,6 +8,7 @@ const sections: Record<string, string> = {
   scale: "resize",
   corner: "individual-corner-radii",
   "path-copy": "copy-along-path",
+  align: "align-and-distribute",
   subtract: "subtract-intersect-and-exclude",
   intersect: "subtract-intersect-and-exclude",
   exclude: "subtract-intersect-and-exclude",

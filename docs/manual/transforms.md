@@ -58,6 +58,21 @@ Select objects and choose Mirror (M), next to Resize. Click an X, Y, +45Â° or âˆ
 
 Click a straight outline segment to use its infinite supporting line. Selected objects can supply the reference edge. Curves cannot supply an axis. Apply, Enter or right-click replaces the selection in one undo step; Cancel or Escape discards the preview.
 
+## Align and distribute
+
+Select two or more objects and choose **Align and distribute** through Search (**F**). Add it to favorites for one-click access. **Relative to** sets what the objects line up with: **Selection bounds** (the default), or a reference object that stays in place: **First selected**, **Last selected**, **Largest object** or **Smallest object**.
+
+The panel has a **Horizontal** and a **Vertical** column. Choose up to one button in each to combine them, for example centering horizontally while equalizing vertical gaps. Another button in the same column replaces that choice; the selected button clears it.
+
+- **Align** lines up left edges, centers or right edges, or top edges, centers or bottom edges.
+- **Distribute centers** spaces object centers evenly. **Equalize gaps** makes the spaces between objects equal. Both need three or more objects and keep the two outermost objects in place. Equal gaps keep the objects reaching furthest out fixed and are unavailable when the objects are too wide to fit side by side between them.
+
+The preview is always calculated from the original positions, so changing a choice or the reference never builds on an earlier preview. Positions use world axes and each object's outer bounds. Apply, Enter on the canvas or right-click moves the objects in one undo step. Cancel or Escape discards the preview, as does Undo or Redo while the panel is open.
+
+A selected group moves as one object, and stitching follows its piece. Locked or hidden objects cannot be aligned. Use **Select Objects** to change the targets; canvas clicks do not change them while the panel is open. Align and distribute works on the Model tab.
+
+![Align and distribute panel with a combined horizontal and vertical preview](/manual/images/align-distribute.png)
+
 ## Join
 
 Join is always visible beside the other selection tools. Select one compatible object to start, then choose other objects on the canvas or in Model objects. Join unions closed outlines, including rounded shapes, circles, ellipses and closed curves. Results may contain holes and separate pieces within one compound object. A Join that mixes DXF cut outlines with visual-only SVG fill layers requires the result to be a single connected piece. For open straight paths, the entire selection must form one unbranched path with matching endpoints. Text, mixed open/closed selections, self-intersecting outlines, locked or hidden objects, and objects with active stitching or stitch transfers are unsupported.

@@ -149,6 +149,10 @@ Type `{` (linked) or `{=` (value copied once) in a number field, name, or label 
 
 See [numeric formulas](#measurements/calculate-values-in-numeric-fields), [variables](#measurements/reuse-values-with-variables), [stitch sessions](#stitching), and [tool selection and previews](#transforms) for operation-specific behavior.
 
+## Align and distribute
+
+Open **Align and distribute** through **F** tool search. Choose up to one Horizontal and one Vertical arrangement, then press Enter on the canvas or right-click to apply; Escape discards. Clicking an arrangement returns focus to the canvas; buttons activated with Enter or Space keep focus. See [align and distribute](#transforms/align-and-distribute).
+
 ## Arrays
 
 Open Rectangular Array or Radial Array through **F** tool search. Choose endpoints or a center on the canvas,
