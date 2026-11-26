@@ -6,7 +6,7 @@ import { holeAppearance } from "../model/stitchLayers";
 import type { StitchSettings } from "../model/stitch";
 import LengthInput from "./LengthInput.vue";
 const e=useEditor();
-const selected=computed(()=>e.value.stitchHoleSelection.flatMap(h=>{
+const selected=computed(()=>e.value.stitch.holeSelection.flatMap(h=>{
   const group=e.value.stitchGroups.find(g=>g.id===h.groupId);
   return group ? [{...h,group,appearance:holeAppearance(group,h.number-1)}] : [];
 }));
@@ -26,7 +26,7 @@ async function change(changes:Partial<StitchSettings>|null) {
   });
   await editor.commit({...editor.document,stitchGroups:groups});
 }
-function lineSettings(){editor.editingStitchHoles=false;editor.stitchHoleSelection=[];editor.notify();}
+
 </script>
 <template>
   <div class="hole-settings" data-stitch-holes>
@@ -34,7 +34,7 @@ function lineSettings(){editor.editingStitchHoles=false;editor.stitchHoleSelecti
     <label>Hole type<select aria-label="Hole type" :value="style" :disabled="e.busy" @change="change({style:($event.target as HTMLSelectElement).value as StitchSettings['style']})"><option v-if="!style" value="" disabled>Mixed</option><option value="round">Round</option><option value="french">French</option><option value="japanese">Japanese</option><option value="flat">Flat</option></select></label>
     <label v-if="style==='round' || style==='flat'">{{ style==='round' ? 'Diameter' : 'Length' }} ({{ e.unitSymbol }})<LengthInput aria-label="Hole size" :value="selected[0] ? size(selected[0].appearance) : .8" :mixed="mixedSize" placeholder="Mixed" :min=".1" :max="5" :disabled="e.busy" @commit="change(style==='round' ? {roundDiameter:$event} : {flatLength:$event})" /></label>
     <button type="button" :disabled="e.busy" @click="change(null)">Reset to line settings</button>
-    <button type="button" @click="lineSettings">Line settings</button>
+    <button type="button" @click="editor.stopEditingStitchHoles()">Line settings</button>
   </div>
 </template>
 <style scoped>

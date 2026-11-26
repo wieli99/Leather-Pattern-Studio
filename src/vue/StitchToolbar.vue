@@ -9,7 +9,7 @@ const e=useEditor();
     <template v-for="item in stitchTools" :key="item.id">
       <span v-if="item.separator" class="tool-separator" role="separator" aria-orientation="vertical" />
       <span class="tool-slot" :title="`${item.label}: ${editor.stitchToolReason(item.id) || item.hint}`">
-        <button type="button" :aria-label="item.id==='line' ? 'Place or edit stitching' : item.label" :aria-description="editor.stitchToolReason(item.id) || item.hint" :aria-pressed="e.stitchTool===item.id" :disabled="!!editor.stitchToolReason(item.id)" @click="editor.activateStitchTool(item.id)">
+        <button type="button" :aria-label="item.id==='line' ? 'Place or edit stitching' : item.label" :aria-description="editor.stitchToolReason(item.id) || item.hint" :aria-pressed="e.stitch.tool===item.id" :disabled="!!editor.stitchToolReason(item.id)" @click="editor.activateStitchTool(item.id)">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" :stroke-width="item.strokeWidth ?? 1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path :d="item.icon" /></svg>
         </button>
       </span>

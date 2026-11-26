@@ -223,10 +223,10 @@ const helpContexts: Partial<HintState>[] = [
   { array: { kind: "radial" }, arrayStage: "center" },
   { pathCopy: { picker: null } },
   { booleanOperation: "subtract", boolean: { picker: "cutters" } },
-  { stitchMode: true, stitchTool: null },
-  { stitchMode: true, stitchTool: "link" },
-  { stitchMode: true, stitchTool: "continue" },
-  { stitchMode: true, stitchTransferPlacement: { phase: "hover" } },
+  { stitchMode: true, stitch: { tool: null } },
+  { stitchMode: true, stitch: { tool: "link" } },
+  { stitchMode: true, stitch: { tool: "continue" } },
+  { stitchMode: true, stitch: { transferPlacement: { phase: "hover" } } },
 ];
 test.each(helpContexts)(
   "canvas contexts have one shared navigation footer: %j",
@@ -236,7 +236,7 @@ test.each(helpContexts)(
     for (const id of ["pan", "zoom", "fit"])
       expect(hint.controls.filter((c) => c.id === id)).toHaveLength(1);
     expect(hint.controls.filter((c) => c.id === "scroll")).toHaveLength(
-      context.stitchTransferPlacement ? 0 : 1,
+      context.stitch?.transferPlacement ? 0 : 1,
     );
     expect(new Set(hint.controls.map((c) => c.id)).size).toBe(
       hint.controls.length,

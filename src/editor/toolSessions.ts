@@ -1,4 +1,7 @@
 import type { Doc, Point, Shape } from "../model/project";
+import type { StitchSettings } from "../model/stitch";
+import type { StitchGroup } from "../model/stitchGeometry";
+import type { StitchTool } from "./stitchTools";
 import type { BooleanOperation } from "../model/boolean";
 import type { ArraySettings } from "../model/array";
 import type { AlignAction, AlignUnit } from "../model/align";
@@ -69,4 +72,35 @@ export interface TransformSession {
     line: [Point, Point] | null;
     hover: { axis: string; line: [Point, Point] } | null;
   };
+}
+/** State of one stitch operation (placing, linking, transferring, editing holes, ...). */
+export interface StitchOperation {
+  tool: StitchTool | null;
+  /** Lines selected when the operation started; restored when it is cancelled. */
+  operationSelection: string[];
+  draft: StitchGroup | null;
+  hover: StitchGroup | null;
+  /** Lines a placement preview would merge into the new one. */
+  absorbed: string[];
+  transferPlacement: { placementId: string; groupIds: string[]; center: Point; angle: number; rawAngle: number; phase?: "hover" | "placed" } | null;
+  editingHoles: boolean;
+  holeSelection: { groupId: string; number: number }[];
+  addingRun: boolean;
+  error: string;
+}
+export interface StitchSession extends StitchOperation {
+  /** Stitch mode is open. Outside it the fields keep their idle values. */
+  active: boolean;
+  /** Document and settings restored when stitch mode is cancelled. */
+  original: Doc | null;
+  originalSettings: StitchSettings | null;
+}
+export function idleStitchOperation(): StitchOperation {
+  return {
+    tool: null, operationSelection: [], draft: null, hover: null, absorbed: [], transferPlacement: null,
+    editingHoles: false, holeSelection: [], addingRun: false, error: "",
+  };
+}
+export function idleStitchSession(): StitchSession {
+  return { ...idleStitchOperation(), active: false, original: null, originalSettings: null };
 }

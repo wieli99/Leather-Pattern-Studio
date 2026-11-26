@@ -83,8 +83,8 @@ function exportFile() {
     <small v-if="!presets.length">No saved presets. Save the current settings below or import a backup.</small>
 
     <div class="actions">
-      <button type="button" :disabled="e.busy || !!e.stitchError || !!action" @click="action='save'; name=''; error=''">Save as…</button>
-      <button type="button" :disabled="e.busy || !selected || !!e.stitchError || !!action" @click="save(true)">Update</button>
+      <button type="button" :disabled="e.busy || !!e.stitch.error || !!action" @click="action='save'; name=''; error=''">Save as…</button>
+      <button type="button" :disabled="e.busy || !selected || !!e.stitch.error || !!action" @click="save(true)">Update</button>
       <button type="button" :disabled="e.busy || !selected || !!action" @click="action='rename'; name=chosen; error=''">Rename</button>
       <button type="button" :disabled="e.busy || !selected || !!action" @click="remove">Delete</button>
     </div>

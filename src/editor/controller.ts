@@ -105,7 +105,7 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
-import type { AlignSession, ArraySession, OffsetSession, TransformSession, TransformTool, TrimSession } from "./toolSessions";
+import { idleStitchOperation, idleStitchSession, type AlignSession, type ArraySession, type OffsetSession, type StitchSession, type TransformSession, type TransformTool, type TrimSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
@@ -868,9 +868,9 @@ export class Controller {
       this.stitchMode,
       this.stitchMode ? this.version : 0,
       this.stitchSelected.join(","),
-      JSON.stringify(this.stitchDraft),
+      JSON.stringify(this.stitch.draft),
       JSON.stringify(this.stitchSettings),
-      this.stitchError,
+      this.stitch.error,
       this.transformTool,
       this.transformTool ? this.version : 0,
       this.offsetActive,
@@ -948,7 +948,7 @@ export class Controller {
     return point;
   }
   leavePointer() {
-    this.stitchHover = null;
+    this.stitch.hover = null;
     this.pointerInside = false;
     this.smartGuides = [];
     this.snapTarget = null;
@@ -960,7 +960,7 @@ export class Controller {
     const source =
       this.propertySession?.next ??
       this.pendingDocument ??
-      this.stitchOriginal ??
+      this.stitch.original ??
       this.document;
     if (
       source !== this.dirtySource ||
@@ -1041,7 +1041,7 @@ export class Controller {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       void recovery({
-        document: this.stitchOriginal ?? this.document,
+        document: this.stitch.original ?? this.document,
         name: this.name,
         time: Date.now(),
         collapsedGroupIds: [...this.collapsedGroups],
@@ -1091,20 +1091,21 @@ export class Controller {
   stitchGeometry(shape: Shape, group: StitchGroup) {
     return computeStitches(shape, group, this.stitchGroups.map(g => g.id === group.id ? group : g));
   }
-  stitchTool: StitchTool | null = null;
+  /** Stitch mode and its current operation; reset rather than cleared, as it is read outside the mode. */
+  stitch: StitchSession = idleStitchSession();
+  get stitchMode() { return this.stitch.active; }
   stitchToolPending = false;
-  stitchOperationSelection: string[] = [];
   stitchSplitMethod: "all" | "junction" = "all";
-  get stitchToolInfo() { return stitchTools.find(t=>t.id===this.stitchTool); }
+  get stitchToolInfo() { return stitchTools.find(t=>t.id===this.stitch.tool); }
   get stitchOperationGroups() {
-    const doc=this.stitchOriginal ?? this.document;
-    return this.stitchOperationSelection.flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
+    const doc=this.stitch.original ?? this.document;
+    return this.stitch.operationSelection.flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
   }
   stitchToolReason(tool: StitchTool): string {
     if(this.busy || this.stitchToolPending) return "Wait for the current operation.";
     if(this.selectionLocked) return "Unlock the selection first.";
-    const doc=this.stitchOriginal ?? this.document;
-    const ids=this.stitchTool && !["line","add","continue","convert"].includes(this.stitchTool) ? this.stitchOperationSelection : this.stitchSelected;
+    const doc=this.stitch.original ?? this.document;
+    const ids=this.stitch.tool && !["line","add","continue","convert"].includes(this.stitch.tool) ? this.stitch.operationSelection : this.stitchSelected;
     const selectedIds=new Set(ids);
     if(tool==="link")for(const link of doc.stitchLinks ?? [])if(link.members.some(id=>selectedIds.has(id)))link.members.forEach(id=>selectedIds.add(id));
     const groups=[...selectedIds].flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
@@ -1139,32 +1140,30 @@ export class Controller {
     }catch{return "Select at least two connected lines on the same piece, in connection order.";}
   }
   resetStitchOperation() {
-    if(this.stitchOriginal)this.document=this.stitchOriginal;
-    if(this.stitchOriginalSettings)this.stitchSettings={...this.stitchOriginalSettings};
+    if(this.stitch.original)this.document=this.stitch.original;
+    if(this.stitch.originalSettings)this.stitchSettings={...this.stitch.originalSettings};
     const ids=new Set(resolvedStitchGroups(this.document).map(g=>g.id));
-    const previousSelection=this.stitchOperationSelection.filter(id=>ids.has(id));
+    const previousSelection=this.stitch.operationSelection.filter(id=>ids.has(id));
     const currentSelection=this.stitchSelected.filter(id=>ids.has(id));
-    this.stitchSelected=this.stitchTool && ["link","unlink","merge","split","delete","transfer"].includes(this.stitchTool) ? previousSelection : currentSelection.length ? currentSelection : previousSelection;
-    this.stitchOperationSelection=[];this.stitchTool=null;
-    this.stitchDraft=null;this.stitchHover=null;this.stitchAbsorbed=[];
-    this.stitchTransferPlacement=null;this.editingStitchHoles=false;this.stitchHoleSelection=[];
-    this.addingStitchRun=false;this.stitchError="";this.smartGuides=[];this.snapTarget=null;
+    this.stitchSelected=this.stitch.tool && ["link","unlink","merge","split","delete","transfer"].includes(this.stitch.tool) ? previousSelection : currentSelection.length ? currentSelection : previousSelection;
+    Object.assign(this.stitch, idleStitchOperation());
+    this.smartGuides=[];this.snapTarget=null;
   }
   cancelStitchOperation() {
     if(this.busy || this.stitchToolPending)return;
     this.resetStitchOperation();this.notify();
   }
   async activateStitchTool(tool: StitchTool) {
-    if(this.stitchTool===tool || this.stitchToolReason(tool))return;
+    if(this.stitch.tool===tool || this.stitchToolReason(tool))return;
     this.resetStitchOperation();
     // Recheck against committed state after dropping the previous preview.
     const reason=this.stitchToolReason(tool);
-    if(reason){this.stitchError=reason;this.notify();return;}
+    if(reason){this.stitch.error=reason;this.notify();return;}
     if(tool==="path"){await this.editStitchPath();return;}
-    this.stitchTool=tool;this.stitchOperationSelection=[...this.stitchSelected];
+    this.stitch.tool=tool;this.stitch.operationSelection=[...this.stitchSelected];
     this.stitchSplitMethod="all";
     this.stitchSplitJunction=this.stitchOperationGroups[0]?.closed ? 0 : 1;
-    if(tool==="add")this.addingStitchRun=true;
+    if(tool==="add")this.stitch.addingRun=true;
     if(tool==="transfer")this.beginStitchTransfer();
     else if(tool==="continue"){this.stitchToolPending=true;await this.continueStitchRun();this.stitchToolPending=false;}
     else if(tool==="convert"){this.stitchToolPending=true;await this.convertPathToStitch();this.stitchToolPending=false;}
@@ -1172,13 +1171,13 @@ export class Controller {
     this.notify();
   }
   async previewStitchOperation() {
-    const tool=this.stitchTool;
+    const tool=this.stitch.tool;
     if(!tool || !["link","unlink","merge","split","delete"].includes(tool) || this.busy || this.stitchToolPending)return;
-    this.document=this.stitchOriginal!;this.stitchSelected=[...this.stitchOperationSelection];this.stitchError="";
+    this.document=this.stitch.original!;this.stitchSelected=[...this.stitch.operationSelection];this.stitch.error="";
     const reason=this.stitchToolReason(tool);
-    if(reason){this.stitchError=reason;this.notify();return;}
+    if(reason){this.stitch.error=reason;this.notify();return;}
     if(tool==="split" && this.stitchSplitMethod==="junction") {
-      const group=this.stitchGroups.find(g=>g.id===this.stitchOperationSelection[0])!;
+      const group=this.stitchGroups.find(g=>g.id===this.stitch.operationSelection[0])!;
       this.stitchSplitJunction=Math.max(group.closed ? 0 : 1,Math.min(this.stitchSplitJunction,group.edges.length-1));
     }
     this.stitchToolPending=true;
@@ -1188,61 +1187,50 @@ export class Controller {
       else if(tool==="split")await this.splitStitches(this.stitchSplitMethod==="junction" ? this.stitchSplitJunction : undefined);
       else await this.deleteStitches();
     } catch(reason) {
-      this.document=this.stitchOriginal!;
-      this.stitchSelected=[...this.stitchOperationSelection];
-      this.stitchError=String(reason);
+      this.document=this.stitch.original!;
+      this.stitchSelected=[...this.stitch.operationSelection];
+      this.stitch.error=String(reason);
     } finally {this.stitchToolPending=false;this.notify();}
   }
   focusStitchLine(id: string) {
     if(this.busy || this.stitchToolPending)return;
     this.resetStitchOperation();
     if(resolvedStitchGroups(this.document).some(g=>g.id===id)) {
-      this.stitchTool="line";this.stitchSelected=[id];
+      this.stitch.tool="line";this.stitchSelected=[id];
     }
     this.notify();
   }
   get canApplyStitchTool() {
-    return !!this.stitchTool && !this.busy && !this.stitchToolPending && !this.stitchError && (!this.stitchTransferPlacement || this.stitchTransferPlacement.phase==="placed" && this.stitchTransferPreview.transfers.length>0);
+    return !!this.stitch.tool && !this.busy && !this.stitchToolPending && !this.stitch.error && (!this.stitch.transferPlacement || this.stitch.transferPlacement.phase==="placed" && this.stitchTransferPreview.transfers.length>0);
   }
-  stitchOriginal: Doc | null = null;
-  stitchOriginalSettings: StitchSettings | null = null;
-  stitchMode = false;
-  editingStitchHoles = false;
   stitchHoleNumber = 1;
   stitchHoleNumbers: number[] = [1];
-  addingStitchRun = false;
   stitchTransferHighlight: string | null = null;
-  stitchHoleSelection: { groupId:string; number:number }[] = [];
-  stitchTransferPlacement: { placementId:string; groupIds:string[]; center:Point; angle:number; rawAngle:number; phase?:"hover"|"placed" } | null = null;
   stitchSplitJunction = 1;
   stitchSelected: string[] = [];
   stitchSettings: StitchSettings = { ...defaultStitchSettings };
-  stitchDraft: StitchGroup | null = null;
-  stitchHover: StitchGroup | null = null;
-  stitchAbsorbed: string[] = [];
   updateStitchHover() {
-    if (!this.stitchTool || !["line","add"].includes(this.stitchTool)) {this.stitchHover=null;return;}
-    if (this.stitchDraft) {
-      this.stitchHover = null;
+    if (!this.stitch.tool || !["line","add"].includes(this.stitch.tool)) {this.stitch.hover=null;return;}
+    if (this.stitch.draft) {
+      this.stitch.hover = null;
       return;
     }
-    this.stitchAbsorbed = [];
-    if (this.stitchTransferPlacement) return;
+    this.stitch.absorbed = [];
+    if (this.stitch.transferPlacement) return;
     const target = this.stitchTarget(this.anchorPointer);
-    this.stitchHover = target;
+    this.stitch.hover = target;
     if (target?.id === "preview") {
       try {
         const result = this.stitchPlacement(target, this.drawingShift);
-        this.stitchHover = { ...result.next, id: "preview" };
-        this.stitchAbsorbed = result.absorbed;
-        this.stitchError = "";
+        this.stitch.hover = { ...result.next, id: "preview" };
+        this.stitch.absorbed = result.absorbed;
+        this.stitch.error = "";
       } catch (error) {
-        this.stitchHover = null;
-        this.stitchError = String(error);
+        this.stitch.hover = null;
+        this.stitch.error = String(error);
       }
     }
   }
-  stitchError = "";
   updateStitchTransferHighlight(raw: Point) {
     this.stitchTransferHighlight=null;
     if(!this.stitchMode && !this.measurementsVisible)return;
@@ -1258,18 +1246,18 @@ export class Controller {
   get selectedTransfer() { return this.document.stitchTransfers?.find(t=>this.stitchSelected.includes(t.id)); }
   get transferStitchReason() {
     if (!this.stitchSelected.length) return "Select the stitch lines to transfer.";
-    if (this.editingStitchHoles) return "Select stitch lines rather than individual holes.";
+    if (this.stitch.editingHoles) return "Select stitch lines rather than individual holes.";
     if (this.stitchSelected.some(id=>!this.stitchGroups.some(g=>g.id===id))) return "Detach linked transfers before transferring them again.";
 
     return "";
   }
   beginStitchTransfer() {
-    if (this.transferStitchReason || this.busy || this.stitchDraft || this.stitchError) return;
-    this.stitchTool="transfer";
-    this.stitchOperationSelection=[...this.stitchSelected];
-    this.editingStitchHoles=false; this.addingStitchRun=false;
-    this.stitchTransferPlacement={placementId:crypto.randomUUID(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
-    this.stitchHover=null; this.stitchError=""; this.notify();
+    if (this.transferStitchReason || this.busy || this.stitch.draft || this.stitch.error) return;
+    this.stitch.tool="transfer";
+    this.stitch.operationSelection=[...this.stitchSelected];
+    this.stitch.editingHoles=false; this.stitch.addingRun=false;
+    this.stitch.transferPlacement={placementId:crypto.randomUUID(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
+    this.stitch.hover=null; this.stitch.error=""; this.notify();
   }
   get transferSourceCenter(): Point {
     const ids=new Set(this.selectedTransferSources.map(s=>s.id));
@@ -1277,11 +1265,11 @@ export class Controller {
     return {x:box.x+box.width/2,y:box.y+box.height/2};
   }
   get selectedTransferSources(): Shape[] {
-    const ids=new Set((this.stitchTransferPlacement?.groupIds ?? []).map(id=>this.stitchGroups.find(g=>g.id===id)).filter((g): g is StitchGroup=>!!g).map(g=>stitchPiece(this.document,g).id));
+    const ids=new Set((this.stitch.transferPlacement?.groupIds ?? []).map(id=>this.stitchGroups.find(g=>g.id===id)).filter((g): g is StitchGroup=>!!g).map(g=>stitchPiece(this.document,g).id));
     return this.document.shapes.filter(s=>ids.has(s.id));
   }
   get stitchTransferGhosts(): Shape[] {
-    const placement=this.stitchTransferPlacement;
+    const placement=this.stitch.transferPlacement;
     if(!placement)return [];
     const center=this.transferSourceCenter,angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
     const matrix={a:c,b:sn,c:-sn,d:c,e:placement.center.x-c*center.x+sn*center.y,f:placement.center.y-sn*center.x-c*center.y};
@@ -1290,7 +1278,7 @@ export class Controller {
   get stitchTransferGhost(): Shape | null { return this.stitchTransferGhosts[0] ?? null; }
   updateStitchTransfer(raw: Point,alt=false) {
     this.queuedTransferPointer=null;
-    const placement=this.stitchTransferPlacement;
+    const placement=this.stitch.transferPlacement;
     if (!placement) return;
     placement.center={...raw};
     this.smartGuides=[];this.snapTarget=null;
@@ -1301,29 +1289,29 @@ export class Controller {
       this.smartGuides=result.guides;
       if ("target" in result) this.snapTarget=result.target!;
     }
-    this.stitchError=""; this.notify();
+    this.stitch.error=""; this.notify();
   }
   private transferPreviewCache: {doc:Doc;key:string;value:ReturnType<Controller["computeTransferPreview"]>} | null=null;
   private transferRenderCache: {doc:Doc;preview:ReturnType<Controller["computeTransferPreview"]>;value:Doc} | null=null;
   get stitchTransferPreview() {
-    const p=this.stitchTransferPlacement;
+    const p=this.stitch.transferPlacement;
     const key=p ? JSON.stringify([p.placementId,p.groupIds,p.center.x,p.center.y,p.angle]) : "";
     if(this.transferPreviewCache?.doc===this.document && this.transferPreviewCache.key===key)return this.transferPreviewCache.value;
     const value=this.computeTransferPreview();this.transferPreviewCache={doc:this.document,key,value};return value;
   }
   get stitchTransferRenderDocument():Doc {
-    if(!this.stitchTransferPlacement)return this.preview ?? this.document;
+    if(!this.stitch.transferPlacement)return this.preview ?? this.document;
     const preview=this.stitchTransferPreview;
     if(this.transferRenderCache?.doc===this.document && this.transferRenderCache.preview===preview)return this.transferRenderCache.value;
     const value={...this.document,stitchTransfers:[...(this.document.stitchTransfers ?? []),...preview.transfers]};
     shareReceivingGeometry(this.document,value,preview.transfers);
     this.transferRenderCache={doc:this.document,preview,value};return value;
   }
-  private queuedTransferPointer: {placement:NonNullable<Controller["stitchTransferPlacement"]>;point:Point;alt:boolean}|null=null;
+  private queuedTransferPointer: {placement:NonNullable<StitchSession["transferPlacement"]>;point:Point;alt:boolean}|null=null;
   private transferPointerFrame=false;
   queueStitchTransferPointer(point:Point,alt:boolean) {
-    if(!this.stitchTransferPlacement || this.stitchTransferPlacement.phase==="placed")return;
-    this.queuedTransferPointer={placement:this.stitchTransferPlacement,point,alt};
+    if(!this.stitch.transferPlacement || this.stitch.transferPlacement.phase==="placed")return;
+    this.queuedTransferPointer={placement:this.stitch.transferPlacement,point,alt};
     if(this.transferPointerFrame)return;
     if(typeof requestAnimationFrame==="undefined"){this.flushTransferPointer();return;}
     this.transferPointerFrame=true;
@@ -1331,16 +1319,16 @@ export class Controller {
   }
   private flushTransferPointer() {
     const pending=this.queuedTransferPointer;this.queuedTransferPointer=null;
-    if(pending?.placement===this.stitchTransferPlacement && pending?.placement.phase!=="placed")this.updateStitchTransfer(pending.point,pending.alt);
+    if(pending?.placement===this.stitch.transferPlacement && pending?.placement.phase!=="placed")this.updateStitchTransfer(pending.point,pending.alt);
   }
   private transferGroupCenter(groupId:string): Point {
-    const placement=this.stitchTransferPlacement!,pivot=this.transferSourceCenter;
+    const placement=this.stitch.transferPlacement!,pivot=this.transferSourceCenter;
     const source=pieceFrame(stitchPiece(this.document,this.stitchGroups.find(g=>g.id===groupId)!)).center;
     const a=placement.angle*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),dx=source.x-pivot.x,dy=source.y-pivot.y;
     return {x:placement.center.x+c*dx-sn*dy,y:placement.center.y+sn*dx+c*dy};
   }
   private computeTransferPreview() {
-    const placement=this.stitchTransferPlacement;
+    const placement=this.stitch.transferPlacement;
     if (!placement) return {transfers:[] as StitchTransfer[],results:[] as ReturnType<typeof receivingStitches>[],skipped:[] as string[]};
     const transfers:StitchTransfer[]=[],results:ReturnType<typeof receivingStitches>[]=[],skipped:string[]=[];
     const sourceIds=new Set(this.selectedTransferSources.map(s=>s.id)),box=bounds(this.stitchTransferGhosts);
@@ -1364,17 +1352,17 @@ export class Controller {
   }
   async placeStitchTransfer() {
     this.flushTransferPointer();
-    if (!this.stitchTransferPlacement || this.busy) return;
-    if(this.stitchTransferPlacement.phase!=="placed"){this.message="Left-click to place the preview first.";this.notify();return;}
+    if (!this.stitch.transferPlacement || this.busy) return;
+    if(this.stitch.transferPlacement.phase!=="placed"){this.message="Left-click to place the preview first.";this.notify();return;}
     const preview=this.stitchTransferPreview;
-    if (!preview.transfers.length) { this.stitchError=preview.skipped.join("; ") || "No receiving piece contains the selected stitching. Move the preview onto an unlocked closed piece.";this.notify();return; }
-    const placement=this.stitchTransferPlacement;
+    if (!preview.transfers.length) { this.stitch.error=preview.skipped.join("; ") || "No receiving piece contains the selected stitching. Move the preview onto an unlocked closed piece.";this.notify();return; }
+    const placement=this.stitch.transferPlacement;
     const next={...this.document,stitchTransfers:[...(this.document.stitchTransfers ?? []),...preview.transfers]};
-    const before=this.document,baseline=this.stitchOriginal,originalSettings=this.stitchOriginalSettings;
+    const before=this.document,baseline=this.stitch.original,originalSettings=this.stitch.originalSettings;
     if (!(await this.commit(next))) return;
-    this.stitchTransferPlacement=null;
+    this.stitch.transferPlacement=null;
     await this.applyStitch();
-    if(this.stitchError) {this.document=before;this.stitchOriginal=baseline;this.stitchOriginalSettings=originalSettings;this.stitchSelected=[...placement.groupIds];this.stitchTransferPlacement=placement;this.stitchTool="transfer";this.notify();return;}
+    if(this.stitch.error) {this.document=before;this.stitch.original=baseline;this.stitch.originalSettings=originalSettings;this.stitchSelected=[...placement.groupIds];this.stitch.transferPlacement=placement;this.stitch.tool="transfer";this.notify();return;}
     this.stitchSelected=[...placement.groupIds];
     const names=[...new Set(preview.results.map(r=>r.target.name))];
     this.message=`Transferred stitching to ${names.join(", ")}.${preview.skipped.length ? ` Skipped: ${preview.skipped.join("; ")}.` : ""}`;
@@ -1383,23 +1371,27 @@ export class Controller {
   async removeStitchTransfer(id: string,detach=false) {
     const transfer=this.document.stitchTransfers?.find(t=>t.id===id);
     if(!transfer || this.busy || this.isLocked(transfer.targetId))return;
-    if(this.stitchMode && !this.stitchTool)this.stitchTool="line";
+    if(this.stitchMode && !this.stitch.tool)this.stitch.tool="line";
     try {
       const data=detach ? detachTransfer(this.document,transfer) : {shapes:[],groups:[]};
       if(await this.commit({...this.document,shapes:[...this.document.shapes,...data.shapes],objectTree:[...this.tree,...data.shapes.map(shape=>({kind:"object" as const,id:shape.id}))],stitchTransfers:this.document.stitchTransfers?.filter(t=>t.id!==id),stitchGroups:[...this.stitchGroups,...data.groups]})) this.stitchSelected=data.groups.map(g=>g.id);
-    } catch(reason) {this.stitchError=String(reason);}
+    } catch(reason) {this.stitch.error=String(reason);}
     this.notify();
   }
   async editStitchPath() {
     const group=this.stitchGroups.find(g=>g.id===this.stitchSelected[0]);
     const shape=this.document.shapes.find(s=>s.id===group?.shapeId);
-    if(!shape?.stitchOnly || this.busy || this.stitchError)return;
+    if(!shape?.stitchOnly || this.busy || this.stitch.error)return;
     this.cancel();this.selected=[shape.id];this.notify();
+  }
+  /** Leave hole editing and show the settings of the selected line again. */
+  stopEditingStitchHoles() {
+    this.stitch.editingHoles=false;this.stitch.holeSelection=[];this.notify();
   }
   escapeStitch() {
     if(this.busy || this.stitchToolPending)return;
-    if(this.editingStitchHoles){this.editingStitchHoles=false;this.stitchHoleSelection=[];this.notify();return;}
-    if(this.stitchTool || this.stitchTransferPlacement){this.cancelStitchOperation();return;}
+    if(this.stitch.editingHoles){this.stopEditingStitchHoles();return;}
+    if(this.stitch.tool || this.stitch.transferPlacement){this.cancelStitchOperation();return;}
     this.cancel();this.notify();
   }
   validateRunHoles(groups: StitchGroup[]) {
@@ -1407,26 +1399,26 @@ export class Controller {
   }
   async continueStitchRun() {
     const previous = this.stitchGroups.find(g => g.id === this.stitchSelected[0]);
-    if (!previous || previous.holes || this.busy || this.stitchDraft) return;
+    if (!previous || previous.holes || this.busy || this.stitch.draft) return;
     const next: StitchGroup = { ...previous, id: crypto.randomUUID(), holeOverrides: undefined, closed: false, continuation: { previousId: previous.id, gap: previous.settings.spacing }, settings: { ...previous.settings, holeCount: 1, alignment: "start", startClearance: 0, endClearance: 0 } };
     try {
       if (await this.commit({ ...this.document, stitchGroups: [...this.stitchGroups,next] })) {
-        this.stitchSelected=[next.id]; this.stitchHoleNumber=1; this.stitchHoleNumbers=[1]; this.editingStitchHoles=false; this.addingStitchRun=false;
-        try {this.validateRunHoles(this.stitchGroups);}catch(reason){this.stitchError=String(reason);}
+        this.stitchSelected=[next.id]; this.stitchHoleNumber=1; this.stitchHoleNumbers=[1]; this.stitch.editingHoles=false; this.stitch.addingRun=false;
+        try {this.validateRunHoles(this.stitchGroups);}catch(reason){this.stitch.error=String(reason);}
       }
-    } catch (error) { this.stitchError = String(error); }
+    } catch (error) { this.stitch.error = String(error); }
     this.notify();
   }
   setContinuationGap(gap: number) {
     const g = this.stitchGroups.find(g => g.id === this.stitchSelected[0]);
     if (!g?.continuation) return;
-    if (!Number.isFinite(gap) || gap <= 0) { this.stitchError = "Gap to next hole must be positive."; this.notify(); return; }
+    if (!Number.isFinite(gap) || gap <= 0) { this.stitch.error = "Gap to next hole must be positive."; this.notify(); return; }
     const next = { ...g, continuation: { ...g.continuation, gap } };
     try {
       this.validateRunHoles(this.stitchGroups.map(p => p.id === g.id ? next : p));
       void this.commit({ ...this.document, stitchGroups: this.stitchGroups.map(p => p.id === g.id ? next : p) });
-      this.stitchError = "";
-    } catch (error) { this.stitchError = String(error); }
+      this.stitch.error = "";
+    } catch (error) { this.stitch.error = String(error); }
     this.notify();
   }
   get convertiblePath() {
@@ -1440,9 +1432,9 @@ export class Controller {
   }
   async convertPathToStitch() {
     const shape = this.convertiblePath;
-    if (!this.stitchMode || !shape || this.busy || this.stitchDraft) return;
+    if (!this.stitchMode || !shape || this.busy || this.stitch.draft) return;
     if (this.stitchGroups.some((g) => g.shapeId === shape.id)) {
-      this.stitchError =
+      this.stitch.error =
         "Remove existing stitching before converting this path.";
       this.notify();
       return;
@@ -1466,11 +1458,11 @@ export class Controller {
       });
       if (ok) {
         this.stitchSelected = [group.id];
-        this.stitchHover = null;
-        this.stitchError = "";
+        this.stitch.hover = null;
+        this.stitch.error = "";
       }
     } catch (error) {
-      this.stitchError = String(error);
+      this.stitch.error = String(error);
     }
     this.notify();
   }
@@ -1587,19 +1579,14 @@ export class Controller {
     );
   }
   activateStitch() {
-    if (this.stitchMode) {if(!this.stitchTool)void this.activateStitchTool("line");return;}
+    if (this.stitchMode) {if(!this.stitch.tool)void this.activateStitchTool("line");return;}
     if (this.deferUntilSettled(() => this.activateStitch())) return;
     if (!this.canStitch) return;
     this.cancel();
     this.tool = "select";
     this.mode = "select";
-    this.editingStitchHoles = false;
-    this.stitchHoleSelection=[];this.stitchHoleNumbers=[1];this.stitchTransferHighlight=null;
-    this.stitchOriginal = this.document;
-    this.stitchOriginalSettings = { ...this.stitchSettings };
-    this.stitchMode = true;
-    this.stitchTool = "line";
-    this.stitchOperationSelection=[];
+    this.stitchHoleNumbers=[1];
+    this.stitch = { ...idleStitchSession(), active: true, original: this.document, originalSettings: { ...this.stitchSettings }, tool: "line" };
     this.stitchSelected = [];
     this.notify();
   }
@@ -1634,8 +1621,8 @@ export class Controller {
   }
   stitchTarget(raw: Point): StitchGroup | null {
     const line = this.stitchLineAt(raw);
-    if (line && !this.addingStitchRun) return line;
-    const freeSection=this.stitchTool==="line";
+    if (line && !this.stitch.addingRun) return line;
+    const freeSection=this.stitch.tool==="line";
     let best = 24 / this.zoom,
       target: StitchGroup | null = null;
     for (const s of this.document.shapes.filter((s) =>
@@ -1652,10 +1639,10 @@ export class Controller {
             (g) => g.shapeId === s.id && g.edges.includes(edge.key),
           );
           let occupied: StitchGroup | undefined;
-          if(freeSection && !this.addingStitchRun)occupied=this.stitchGroups.filter(g=>g.shapeId===s.id && g.edges.includes(edge.key)).find(g=>{
+          if(freeSection && !this.stitch.addingRun)occupied=this.stitchGroups.filter(g=>g.shapeId===s.id && g.edges.includes(edge.key)).find(g=>{
             try {const points=this.stitchGeometry(s,g).points;return points.slice(1).some((b,index)=>{const a=points[index],dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy,t=((raw.x-a.x)*dx+(raw.y-a.y)*dy)/(length || 1);return length>1e-12 && t>=0 && t<=1 && distanceToSegment(raw,a,b)<=24/this.zoom;});}catch{return true;}
           });
-          target = occupied ?? (this.addingStitchRun || freeSection ? undefined : existing) ?? {
+          target = occupied ?? (this.stitch.addingRun || freeSection ? undefined : existing) ?? {
             id: "preview",
             shapeId: s.id,
             edges: [edge.key],
@@ -1667,7 +1654,7 @@ export class Controller {
                     ? 1
                     : -1,
                 ),
-            settings: { ...this.stitchSettings, ...(this.addingStitchRun || existing ? { holeCount: 1, alignment: "start" as const } : {}) },
+            settings: { ...this.stitchSettings, ...(this.stitch.addingRun || existing ? { holeCount: 1, alignment: "start" as const } : {}) },
             closed: stitchClosed(s) && stitchEdges(s).length === 1,
           };
         }
@@ -1678,7 +1665,7 @@ export class Controller {
     let next: StitchGroup = { ...target, id: crypto.randomUUID() };
     let absorbed: string[] = [];
     const onOccupiedEdge=this.stitchGroups.some(g=>g.shapeId===target.shapeId && g.edges.some(e=>target.edges.includes(e)));
-    if (this.addingStitchRun || onOccupiedEdge) {
+    if (this.stitch.addingRun || onOccupiedEdge) {
       const shape = this.document.shapes.find(s => s.id === next.shapeId)!;
       const path = computeStitches(shape,{...next,settings:{...next.settings,holeCount:undefined,startClearance:0,endClearance:0}}).points;
       let traversed = 0, best = Infinity, start = 0;
@@ -1765,24 +1752,24 @@ export class Controller {
   stitchClick(raw: Point,shift: boolean,alt=false,ctrl=false) {
     this.anchorPointer={...raw};
     if(this.busy || this.stitchToolPending)return;
-    const tool=this.stitchTool;
+    const tool=this.stitch.tool;
     if(tool && ["link","unlink","merge","split","delete"].includes(tool)) {
-      this.document=this.stitchOriginal!;this.stitchSelected=[...this.stitchOperationSelection];
+      this.document=this.stitch.original!;this.stitchSelected=[...this.stitch.operationSelection];
       if(alt)this.stitchLineClick(raw,shift,true,false);
       else {
         const hit=this.stitchLineAt(raw);
         if(hit)this.stitchSelected=shift ? (this.stitchSelected.includes(hit.id) ? this.stitchSelected.filter(id=>id!==hit.id) : [...this.stitchSelected,hit.id]) : [hit.id];
       }
-      this.stitchOperationSelection=[...this.stitchSelected];
+      this.stitch.operationSelection=[...this.stitchSelected];
       void this.previewStitchOperation();return;
     }
     if(tool==="continue" || tool==="convert")return;
-    if(!tool)this.stitchTool="line";
+    if(!tool)this.stitch.tool="line";
     this.stitchLineClick(raw,shift,alt,ctrl);
   }
   private stitchLineClick(raw: Point,shift: boolean,alt=false,ctrl=false) {
-    if (this.stitchTransferPlacement) { this.updateStitchTransfer(raw,alt);this.stitchTransferPlacement.phase="placed";this.notify();return; }
-    if (this.stitchDraft) { this.stitchError="Apply or cancel invalid settings before changing selection.";this.notify();return; }
+    if (this.stitch.transferPlacement) { this.updateStitchTransfer(raw,alt);this.stitch.transferPlacement.phase="placed";this.notify();return; }
+    if (this.stitch.draft) { this.stitch.error="Apply or cancel invalid settings before changing selection.";this.notify();return; }
     if (alt) {
       const hit=this.stitchLineAt(raw);
       const piece=hit ? (this.document.stitchTransfers?.find(t=>t.id===hit.id) ? this.document.shapes.find(s=>s.id===hit.shapeId) : stitchPiece(this.document,hit)) : [...this.document.shapes].reverse().find(s=>!s.stitchParentId && !this.isHidden(s.id) && !this.isLocked(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || (stitchClosed(s) && materialContains(s,raw))));
@@ -1792,7 +1779,7 @@ export class Controller {
           return (shape.id===piece.id || shape.stitchParentId===piece.id) && !this.isHidden(shape.id) && !this.isLocked(shape.id);
         }).map(g=>g.id);
         this.stitchSelected=shift ? [...new Set([...this.stitchSelected,...ids])] : ids;
-        this.editingStitchHoles=false;this.stitchHoleSelection=[];
+        this.stitch.editingHoles=false;this.stitch.holeSelection=[];
       }
       this.notify();return;
     }
@@ -1805,19 +1792,19 @@ export class Controller {
         try {this.stitchGeometry(shape,group).holes.forEach((hole,index)=>{const d=distance(raw,hole.point);if(hitStitchHole(group,index,hole,raw,10/this.zoom) && d<nearest){nearest=d;picked={groupId:group.id,number:index+1};}});}catch{continue;}
       }
       if(picked && this.document.stitchTransfers?.some(t=>t.id===picked!.groupId)) {
-        this.stitchSelected=[picked.groupId];this.editingStitchHoles=false;this.stitchHoleSelection=[];this.message="This transferred hole follows its source. Detach to edit it independently.";
+        this.stitchSelected=[picked.groupId];this.stitch.editingHoles=false;this.stitch.holeSelection=[];this.message="This transferred hole follows its source. Detach to edit it independently.";
       } else if(picked) {
         const pickedHole=picked;
-        this.stitchHoleSelection=shift ? (this.stitchHoleSelection.some(h=>h.groupId===pickedHole.groupId && h.number===pickedHole.number) ? this.stitchHoleSelection.filter(h=>h.groupId!==pickedHole.groupId || h.number!==pickedHole.number) : [...this.stitchHoleSelection,pickedHole]) : [pickedHole];
-        this.editingStitchHoles=this.stitchHoleSelection.length>0;
-        this.stitchSelected=[...new Set(this.stitchHoleSelection.map(h=>h.groupId))];
-        this.stitchHoleNumber=picked.number;this.stitchHoleNumbers=this.stitchHoleSelection.filter(h=>h.groupId===pickedHole.groupId).map(h=>h.number);
+        this.stitch.holeSelection=shift ? (this.stitch.holeSelection.some(h=>h.groupId===pickedHole.groupId && h.number===pickedHole.number) ? this.stitch.holeSelection.filter(h=>h.groupId!==pickedHole.groupId || h.number!==pickedHole.number) : [...this.stitch.holeSelection,pickedHole]) : [pickedHole];
+        this.stitch.editingHoles=this.stitch.holeSelection.length>0;
+        this.stitchSelected=[...new Set(this.stitch.holeSelection.map(h=>h.groupId))];
+        this.stitchHoleNumber=picked.number;this.stitchHoleNumbers=this.stitch.holeSelection.filter(h=>h.groupId===pickedHole.groupId).map(h=>h.number);
       }
       this.notify();return;
     }
-    this.editingStitchHoles=false;this.stitchHoleSelection=[];
-    if (this.stitchDraft) {
-      this.stitchError =
+    this.stitch.editingHoles=false;this.stitch.holeSelection=[];
+    if (this.stitch.draft) {
+      this.stitch.error =
         "Apply or cancel settings before selecting another line.";
       this.notify();
       return;
@@ -1831,12 +1818,12 @@ export class Controller {
           ? this.stitchSelected.filter((id) => id !== target.id)
           : [...this.stitchSelected, target.id]
         : [target.id];
-      this.stitchError = "";
+      this.stitch.error = "";
       this.notify();
       return;
     }
     try {
-      const { next, absorbed } = this.stitchPlacement(target, shift && !this.addingStitchRun);
+      const { next, absorbed } = this.stitchPlacement(target, shift && !this.stitch.addingRun);
       this.validateRunHoles([...this.stitchGroups.filter(g => !absorbed.includes(g.id)),next]);
       void this.commit({
         ...this.document,
@@ -1847,33 +1834,33 @@ export class Controller {
       }).then((ok) => {
         if (ok) {
           this.stitchSelected = [next.id];
-          this.addingStitchRun = false;
-          this.stitchHover = null;
-          this.stitchAbsorbed = [];
+          this.stitch.addingRun = false;
+          this.stitch.hover = null;
+          this.stitch.absorbed = [];
         }
         this.notify();
       });
-      this.stitchError = "";
+      this.stitch.error = "";
     } catch (e) {
-      this.stitchError = String(e);
+      this.stitch.error = String(e);
       this.notify();
     }
   }
   setStitchSettings(settings: StitchSettings) {
-    this.stitchError = "";
+    this.stitch.error = "";
     const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
-    if (g) { const placementChanged=["spacing","inset","alignment","holeCount","startClearance","endClearance"].some(key=>settings[key as keyof StitchSettings]!==g.settings[key as keyof StitchSettings]); this.stitchDraft={...g,holes:placementChanged ? undefined : g.holes,settings:{...settings}}; }
+    if (g) { const placementChanged=["spacing","inset","alignment","holeCount","startClearance","endClearance"].some(key=>settings[key as keyof StitchSettings]!==g.settings[key as keyof StitchSettings]); this.stitch.draft={...g,holes:placementChanged ? undefined : g.holes,settings:{...settings}}; }
     try {
       validateStitchSettings(settings, this.units);
       if (!g) this.stitchSettings = { ...settings };
-      if (this.stitchDraft)
+      if (this.stitch.draft)
         this.stitchGeometry(
           this.document.shapes.find((s) => s.id === g!.shapeId)!,
-          this.stitchDraft,
+          this.stitch.draft,
         );
-      if (this.stitchDraft) this.validateRunHoles(this.stitchGroups.map(p => p.id === this.stitchDraft!.id ? this.stitchDraft! : p));
-      if (this.stitchOriginal && this.stitchDraft) {
-        const draft = this.stitchDraft;
+      if (this.stitch.draft) this.validateRunHoles(this.stitchGroups.map(p => p.id === this.stitch.draft!.id ? this.stitch.draft! : p));
+      if (this.stitch.original && this.stitch.draft) {
+        const draft = this.stitch.draft;
         this.stitchSettings = { ...draft.settings };
         this.document = parseProject(
           JSON.stringify({
@@ -1883,19 +1870,19 @@ export class Controller {
             ),
           }),
         );
-        this.stitchDraft = null;
+        this.stitch.draft = null;
       }
     } catch (e) {
-      this.stitchError = String(e);
+      this.stitch.error = String(e);
     }
     this.notify();
   }
   async applyStitch() {
-    if(this.stitchTransferPlacement){await this.placeStitchTransfer();return;}
-    if (this.selectionLocked || this.stitchToolPending || !this.stitchTool) return;
-    if (this.stitchOriginal) {
-      if (this.busy || this.stitchError) return;
-      const draft = this.stitchDraft;
+    if(this.stitch.transferPlacement){await this.placeStitchTransfer();return;}
+    if (this.selectionLocked || this.stitchToolPending || !this.stitch.tool) return;
+    if (this.stitch.original) {
+      if (this.busy || this.stitch.error) return;
+      const draft = this.stitch.draft;
       const next = draft
         ? {
             ...this.document,
@@ -1911,21 +1898,21 @@ export class Controller {
             draft,
           );
       } catch (error) {
-        this.stitchError = String(error);
+        this.stitch.error = String(error);
         this.notify();
         return;
       }
       const defaults = { ...(draft?.settings ?? this.stitchSettings) };
-      const original=this.stitchOriginal, originalSettings=this.stitchOriginalSettings, selected=[...this.stitchSelected], operation=this.stitchTool, operationSelection=[...this.stitchOperationSelection];
+      const original=this.stitch.original, originalSettings=this.stitch.originalSettings, selected=[...this.stitchSelected], operation=this.stitch.tool, operationSelection=[...this.stitch.operationSelection];
       this.cancel();
       if (!(await this.commit(next))) {
-        this.document=next; this.stitchOriginal=original; this.stitchOriginalSettings=originalSettings;
-        this.stitchMode=true; this.stitchTool=operation;this.stitchOperationSelection=operationSelection;this.stitchSelected=selected; this.stitchError=this.message || "The stitching session could not be applied.";
+        this.document=next; this.stitch.original=original; this.stitch.originalSettings=originalSettings;
+        this.stitch.active = true; this.stitch.tool=operation;this.stitch.operationSelection=operationSelection;this.stitchSelected=selected; this.stitch.error=this.message || "The stitching session could not be applied.";
         this.notify(); return;
       }
       this.stitchSettings = defaults;
       this.activateStitch();
-      this.stitchTool=null;this.stitchSelected=selected.filter(id=>resolvedStitchGroups(this.document).some(g=>g.id===id));
+      this.stitch.tool=null;this.stitchSelected=selected.filter(id=>resolvedStitchGroups(this.document).some(g=>g.id===id));
       this.notify();
       return;
     }
@@ -1938,7 +1925,7 @@ export class Controller {
     const id = this.stitchSelected[0];
     if (!id) return "";
     const count = (member: string) => {
-      const group = this.stitchDraft?.id === member ? this.stitchDraft : this.stitchGroups.find(g => g.id === member);
+      const group = this.stitch.draft?.id === member ? this.stitch.draft : this.stitchGroups.find(g => g.id === member);
       if (!group) throw Error("Missing stitch line");
       const shape = (this.preview ?? this.document).shapes.find(s => s.id === group.shapeId);
       if (!shape) throw Error("Missing shape");
@@ -1975,7 +1962,7 @@ export class Controller {
     }
   }
   async linkStitches(unlink = false) {
-    if (this.busy || this.stitchDraft || (unlink && !this.canUnlinkStitches)) return;
+    if (this.busy || this.stitch.draft || (unlink && !this.canUnlinkStitches)) return;
     const selected = new Set(this.stitchSelected);
     const links = this.document.stitchLinks ?? [];
     const touched = links.filter(l => l.members.some(id => selected.has(id)));
@@ -1997,9 +1984,9 @@ export class Controller {
         });
       }
       if (!(await this.commit({ ...this.document, stitchLinks: remaining }))) return;
-      this.stitchError = "";
+      this.stitch.error = "";
     } catch (error) {
-      this.stitchError = String(error);
+      this.stitch.error = String(error);
     }
     this.notify();
   }
@@ -2023,7 +2010,7 @@ export class Controller {
     }
   }
   async mergeStitches() {
-    if (this.stitchSelected.length < 2 || this.stitchDraft || this.busy)
+    if (this.stitchSelected.length < 2 || this.stitch.draft || this.busy)
       return;
     try {
       const sources = this.stitchSelected.map((id) =>
@@ -2055,16 +2042,16 @@ export class Controller {
           .map((g) => (g.id === master.id ? merged : g)),
       });
       this.stitchSelected = [master.id];
-      this.stitchError = "";
+      this.stitch.error = "";
     } catch (e) {
-      this.stitchError = String(e);
+      this.stitch.error = String(e);
     }
     this.notify();
   }
   async splitStitches(junction?: number) {
     const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
-    if (!g || this.stitchDraft || this.busy) return;
-    if (g.settings.holeCount || g.holes) { this.stitchError = "Only full-length edge lines can be split."; this.notify(); return; }
+    if (!g || this.stitch.draft || this.busy) return;
+    if (g.settings.holeCount || g.holes) { this.stitch.error = "Only full-length edge lines can be split."; this.notify(); return; }
     let runs: string[][];
     if (junction === undefined) runs = g.edges.map((k) => [k]);
     else if (g.closed)
@@ -2080,7 +2067,7 @@ export class Controller {
       closed: false,
     }));
     try { this.remapHoleOverrides(this.document.shapes.find(s => s.id === g.shapeId)!, [g], groups); }
-    catch (error) { this.stitchError = String(error); this.notify(); return; }
+    catch (error) { this.stitch.error = String(error); this.notify(); return; }
     await this.commit({
       ...this.document,
       stitchTransfers: this.document.stitchTransfers?.flatMap(t => t.masterId === g.id ? groups.map((run,index) => ({ ...t, id:index ? crypto.randomUUID() : t.id, masterId:run.id })) : [t]),
@@ -2095,17 +2082,17 @@ export class Controller {
   }
   async deleteStitchSelection() {
     if(this.busy || this.stitchToolPending)return;
-    if(this.editingStitchHoles){this.message="Select a stitch line before deleting stitching.";this.notify();return;}
+    if(this.stitch.editingHoles){this.message="Select a stitch line before deleting stitching.";this.notify();return;}
     const selected=[...this.stitchSelected];
     this.resetStitchOperation();
     this.stitchSelected=selected.filter(id=>this.stitchGroups.some(g=>g.id===id));
     if(!this.stitchSelected.length){this.notify();return;}
-    this.stitchTool="line";
+    this.stitch.tool="line";
     try {await this.deleteStitches();await this.applyStitch();}
-    catch(reason){this.stitchError=String(reason);this.notify();}
+    catch(reason){this.stitch.error=String(reason);this.notify();}
   }
   async deleteStitches() {
-    if(this.stitchTransferPlacement){this.escapeStitch();return;}
+    if(this.stitch.transferPlacement){this.escapeStitch();return;}
     if (this.busy) return;
     let remaining = this.stitchGroups.filter(g => !this.stitchSelected.includes(g.id));
     remaining = remaining.map(g => {
@@ -2120,7 +2107,7 @@ export class Controller {
       stitchGroups: remaining,
     });
     this.stitchSelected = [];
-    this.stitchDraft = null;
+    this.stitch.draft = null;
     this.notify();
   }
   async insertVector(
@@ -2213,7 +2200,7 @@ export class Controller {
       this.fail(error);
       return false;
     }
-    if (this.stitchOriginal) {
+    if (this.stitch.original) {
       try {
         this.document = parseProject(
           JSON.stringify(this.normalizeTree(reconcileStitches(document, this.document))),
@@ -2221,7 +2208,7 @@ export class Controller {
         this.notify();
         return true;
       } catch (error) {
-        this.stitchError = String(error);
+        this.stitch.error = String(error);
         this.notify();
         return false;
       }
@@ -3541,22 +3528,13 @@ export class Controller {
 
     if (this.boolean) this.selected = this.boolean.selection;
     this.trim = null;
-    if (this.stitchOriginal) {
-      this.document = this.stitchOriginal;
-      this.stitchOriginal = null;
-      if (this.stitchOriginalSettings)
-        this.stitchSettings = this.stitchOriginalSettings;
-      this.stitchOriginalSettings = null;
+    if (this.stitch.original) {
+      this.document = this.stitch.original;
+      if (this.stitch.originalSettings)
+        this.stitchSettings = this.stitch.originalSettings;
     }
-    this.stitchMode = false;
-    this.stitchTool=null;this.stitchOperationSelection=[];
-    this.editingStitchHoles=false;this.stitchHoleSelection=[];this.stitchTransferHighlight=null;
-    this.stitchTransferPlacement=null;
-    this.addingStitchRun = false;
-
-    this.stitchDraft = null;
-    this.stitchHover = null;
-    this.stitchError = "";
+    this.stitch = idleStitchSession();
+    this.stitchTransferHighlight = null;
     this.guideDrag = null;
     this.measurementLocks = {};
     this.measurementFormulas = {};
@@ -4519,7 +4497,7 @@ export class Controller {
       this.setOffsetDistance(drag.distance + (raw.x - drag.start.x) * drag.normal.x + (raw.y - drag.start.y) * drag.normal.y);
       return;
     }
-    if(!this.stitchTransferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
+    if(!this.stitch.transferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
     this.clipboardPixel = { ...pixel };
     if (this.transform) this.transform.mirror.hover = null;
     if (this.transform?.tool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
@@ -4543,7 +4521,7 @@ export class Controller {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
       this.drawingShift = shift;
-      if(this.stitchTransferPlacement){this.queueStitchTransferPointer(this.anchorPointer,alt);return;}else this.updateStitchHover();
+      if(this.stitch.transferPlacement){this.queueStitchTransferPointer(this.anchorPointer,alt);return;}else this.updateStitchHover();
       this.notify();
       return;
     }
@@ -5523,11 +5501,11 @@ export class Controller {
     this.notify();
   }
   wheel(pixel: Point, dx: number, dy: number, zoom: boolean, modifiers: {ctrlKey?:boolean;shiftKey?:boolean;altKey?:boolean}={}) {
-    if(this.stitchTransferPlacement && !this.space && !zoom) {
-      const placement=this.stitchTransferPlacement,step=modifiers.shiftKey ? 5 : 1;
+    if(this.stitch.transferPlacement && !this.space && !zoom) {
+      const placement=this.stitch.transferPlacement,step=modifiers.shiftKey ? 5 : 1;
       placement.rawAngle-=dy/100*step;
       placement.angle=snapRotation(placement.rawAngle,{shiftKey:modifiers.shiftKey,altKey:modifiers.altKey});
-      if(placement.phase==="placed"){this.queuedTransferPointer=null;this.stitchError="";this.notify();}
+      if(placement.phase==="placed"){this.queuedTransferPointer=null;this.stitch.error="";this.notify();}
       else this.updateStitchTransfer(this.world(pixel),!!modifiers.altKey);return;
     }
     if (zoom) {
