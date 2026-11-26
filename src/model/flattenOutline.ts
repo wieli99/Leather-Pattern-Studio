@@ -1,5 +1,5 @@
 import { contourShape } from "./compound";
-import { shapePath } from "../editor/renderer";
+import { shapePath, traceRoundRect } from "../editor/renderer";
 import { applyMatrix, shapeMatrix } from "./geometry";
 import { isClosedShape } from "./closedShape";
 import type { Point, Shape } from "./project";
@@ -62,14 +62,7 @@ export function flattenOutline(shape: Shape, tolerance = 0.01) {
       this.ellipse(x,y,r,r,0,start,end,anticlockwise);
     },
     roundRect(x: number,y: number,w: number,h: number,r: number) {
-      this.moveTo(x+r,y); this.lineTo(x+w-r,y);
-      if (r) this.arc(x+w-r,y+r,r,-Math.PI/2,0);
-      this.lineTo(x+w,y+h-r);
-      if (r) this.arc(x+w-r,y+h-r,r,0,Math.PI/2);
-      this.lineTo(x+r,y+h);
-      if (r) this.arc(x+r,y+h-r,r,Math.PI/2,Math.PI);
-      this.lineTo(x,y+r);
-      if (r) this.arc(x+r,y+r,r,Math.PI,Math.PI*1.5);
+      traceRoundRect(this,x,y,w,h,r);
     },
   };
   shapePath(sink as unknown as Path2D, shape);

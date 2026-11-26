@@ -2,7 +2,7 @@ import { displayTemplate } from "../model/variables";
 import { textFamily, measureText } from "../model/text";
 import { flattenContours } from "../model/flattenOutline";
 import { holeAppearance, holeMark } from "../model/stitchLayers";
-import { shapePath } from "./renderer";
+import { shapePath, traceRoundRect } from "./renderer";
 import { bounds, shapeMatrix } from "../model/geometry";
 import { isClosedShape } from "../model/closedShape";
 import { measurementSegments, measurementGeometry } from "../model/measurement";
@@ -111,16 +111,7 @@ export function svgShapePath(shape: Shape): string {
       this.ellipse(x, y, radius, radius, 0, start, end, anticlockwise);
     },
     roundRect(x: number, y: number, w: number, h: number, r: number) {
-      this.moveTo(x + r, y);
-      this.lineTo(x + w - r, y);
-      if (r) this.arc(x + w - r, y + r, r, -Math.PI / 2, 0);
-      this.lineTo(x + w, y + h - r);
-      if (r) this.arc(x + w - r, y + h - r, r, 0, Math.PI / 2);
-      this.lineTo(x + r, y + h);
-      if (r) this.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
-      this.lineTo(x, y + r);
-      if (r) this.arc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
-      this.closePath();
+      traceRoundRect(this, x, y, w, h, r);
     },
   };
   shapePath(sink as unknown as Path2D, shape);

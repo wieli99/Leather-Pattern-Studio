@@ -24,6 +24,26 @@ import {
   polygonFillets,
 } from "../model/geometry";
 import type { Shape } from "../model/project";
+/** Path commands that adapters of `shapePath` build a rounded rectangle from. */
+export interface RoundRectSink {
+  moveTo(x: number, y: number): void;
+  lineTo(x: number, y: number): void;
+  arc(x: number, y: number, radius: number, start: number, end: number): void;
+  closePath(): void;
+}
+/** Trace `roundRect` for path adapters that lack it, matching the canvas command. */
+export function traceRoundRect(sink: RoundRectSink, x: number, y: number, w: number, h: number, r: number) {
+  sink.moveTo(x + r, y);
+  sink.lineTo(x + w - r, y);
+  if (r) sink.arc(x + w - r, y + r, r, -Math.PI / 2, 0);
+  sink.lineTo(x + w, y + h - r);
+  if (r) sink.arc(x + w - r, y + h - r, r, 0, Math.PI / 2);
+  sink.lineTo(x + r, y + h);
+  if (r) sink.arc(x + r, y + h - r, r, Math.PI / 2, Math.PI);
+  sink.lineTo(x, y + r);
+  if (r) sink.arc(x + r, y + r, r, Math.PI, Math.PI * 1.5);
+  sink.closePath();
+}
 export function shapePath(ctx: CanvasRenderingContext2D | Path2D, s: Shape) {
   const a = s.points[0],
     b = s.points[s.points.length - 1];

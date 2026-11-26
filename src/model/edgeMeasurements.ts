@@ -1,5 +1,5 @@
 import { formatLength, unitSymbol, type UnitMode } from "./units";
-import { isIndicator } from "./indicators";
+import { isOutlineKind } from "./indicators";
 import { boundary, distance, worldCubics } from "./geometry";
 import { cubicAt, isCurve } from "./curves";
 import type { Point, Shape } from "./project";
@@ -40,7 +40,7 @@ function measure(at: (t: number) => Point): EdgeMeasurement | undefined {
 }
 
 export function edgeMeasurements(shape: Shape): EdgeMeasurement[] {
-  if (isIndicator(shape.kind) || shape.kind === "text" || shape.kind === "measurement") return [];
+  if (!isOutlineKind(shape.kind)) return [];
   if (isCurve(shape) || shape.kind === "compound")
     return worldCubics(shape)
       .map((c) => measure((t) => cubicAt(c, t)))
