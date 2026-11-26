@@ -1655,7 +1655,7 @@ test("print drawing layout and previews avoid asynchronous image generation", as
   await load(page); await create(page);
   const rail = page.getByRole("navigation", { name: "Print tools" });
   const order = await rail.locator('button[aria-label], [role=separator]').evaluateAll(elements => elements.map(el => el.getAttribute('aria-label') ?? 'separator'));
-  expect(order.slice(0, 10)).toEqual(['Select (V)', 'Move (G)', 'Rotate (E)', 'Mirror (M)', 'separator', 'Text (T)', 'Measurements (D)', 'Drawing tools (A)', 'Import image', 'separator']);
+  expect(order.slice(0, 11)).toEqual(['Select (V)', 'Move (G)', 'Rotate (E)', 'Mirror (M)', 'Align and distribute (L)', 'separator', 'Text (T)', 'Measurements (D)', 'Drawing tools (A)', 'Import image', 'separator']);
   const canvas = page.getByLabel('Print layout canvas');
   await page.getByRole('button', { name: 'Measurements (D)', exact: true }).click({button: 'right'});
   await page.getByRole('menuitemradio', { name: 'Ruler size guide', exact: true }).click();
@@ -1798,7 +1798,7 @@ test("print rail matches Model button presentation without extra drawing tools",
   expect(await printSelect.locator("svg").innerHTML()).toBe(icon);
   await page.getByRole("button",{name:"Import Piece",exact:true}).click();
   await page.getByLabel("Print object tree").getByRole("button",{name:"Piece",exact:true}).click();
-  for (const [label, key] of [["Select", "V"], ["Move", "G"], ["Rotate", "E"], ["Mirror", "M"]]) {
+  for (const [label, key] of [["Select", "V"], ["Move", "G"], ["Rotate", "E"], ["Mirror", "M"], ["Align and distribute", "L"]]) {
     const button = rail.getByRole("button", { name: `${label} (${key})`, exact: true });
     await expect(button.locator("small")).toHaveText(key);
     await button.click();
@@ -1951,4 +1951,73 @@ test("Tab focuses print measurement fields and Enter returns focus to the print 
   const [start, end] = measurement.points;
   expect(Math.hypot(end.x - start.x, end.y - start.y)).toBeCloseTo(50, 6);
   expect(Math.abs(measurement.measurementOffset)).toBeCloseTo(5, 6);
+});
+
+test("Print aligns and spaces placed objects from the rail or L, as one undo step", async ({ page }) => {
+  await load(page, [{ ...rectangle, id: "other", name: "Other", points: [{ x: 120, y: 30 }, { x: 140, y: 50 }] }]);
+  await create(page);
+  await page.getByRole("button", { name: "Import Pattern", exact: true }).click();
+  const original = await save(page);
+  const position = (doc: any, id: string) => doc.printLayouts[0].instances.find((i: any) => i.sourceId === id);
+  const tree = page.getByLabel("Print object tree");
+  await tree.getByRole("button", { name: "Piece", exact: true }).click();
+  await tree.getByRole("button", { name: "Other", exact: true }).click({ modifiers: ["Shift"] });
+  const canvas = page.getByLabel("Print layout canvas");
+  await canvas.focus();
+  await page.keyboard.press("l");
+  const rail = page.getByRole("button", { name: "Align and distribute (L)", exact: true });
+  await expect(rail).toHaveAttribute("aria-pressed", "true");
+  const popup = page.locator(".print-transform");
+  const apply = popup.getByRole("button", { name: "Apply", exact: true });
+  await expect(popup.getByText("Align and distribute", { exact: true })).toBeVisible();
+  // Gizmo, pivot and transform fields belong to Move, Rotate and Mirror only.
+  await expect(popup.getByLabel("Print move X")).toHaveCount(0);
+  await expect(popup.getByRole("button", { name: "Equalize horizontal gaps" })).toBeDisabled();
+  await popup.getByLabel("Align relative to").selectOption("first");
+  await popup.getByRole("button", { name: "Align top edges" }).click();
+  await expect(apply).toBeEnabled();
+  // Canvas drags do not move objects while Align is open.
+  await canvas.dragTo(canvas, { sourcePosition: { x: 300, y: 300 }, targetPosition: { x: 360, y: 340 } });
+  await page.keyboard.press("Enter");
+  await expect(popup).toHaveCount(0);
+  let doc = await save(page);
+  expect(position(doc, "piece")).toMatchObject({ x: position(original, "piece").x, y: position(original, "piece").y });
+  expect(position(doc, "other").x).toBeCloseTo(position(original, "other").x);
+  expect(position(doc, "other").y).not.toBeCloseTo(position(original, "other").y);
+
+  // Reopening with the same choice finds nothing to move.
+  await rail.click();
+  await popup.getByRole("button", { name: "Align top edges" }).click();
+  await expect(popup.getByRole("status")).toHaveText("Already arranged this way.");
+  await popup.getByRole("button", { name: "Align top edges" }).click();
+
+  // An exact gap of zero butts the two pieces together, with Piece kept in place.
+  await popup.getByLabel("Gap spacing").selectOption("exact");
+  await popup.getByLabel("Exact gap").fill("0");
+  await popup.getByLabel("Exact gap").press("Enter");
+  await popup.getByRole("button", { name: "Equalize horizontal gaps" }).click();
+  await apply.click();
+  doc = await save(page);
+  expect(position(doc, "piece").x).toBeCloseTo(position(original, "piece").x);
+  // Piece is 80 mm wide (plus its corner radius does not widen it), Other follows at its right edge.
+  expect(position(doc, "other").x - position(original, "other").x).toBeCloseTo(-40);
+  await rail.click();
+  await popup.getByRole("button", { name: "Equalize horizontal gaps" }).click();
+  await expect(popup.getByRole("status")).toHaveText("Already arranged this way.");
+  await page.keyboard.press("Escape");
+  await expect(popup).toHaveCount(0);
+  // V leaves Align for the Select tool; Align has no pivot to place.
+  await page.keyboard.press("l");
+  await expect(popup).toBeVisible();
+  await canvas.focus();
+  await page.keyboard.press("v");
+  await expect(popup).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Select (V)", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // Each Apply was one undo step.
+  await canvas.focus();
+  await page.keyboard.press("Control+z");
+  await page.keyboard.press("Control+z");
+  doc = await save(page);
+  expect(position(doc, "other")).toMatchObject({ x: position(original, "other").x, y: position(original, "other").y });
 });

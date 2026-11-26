@@ -106,3 +106,33 @@ test("Equal gaps keep the objects reaching furthest out fixed, not the outermost
   expect(gapsFit(spanning, "x")).toBe(false);
   expect(xs(alignOffsets(spanning, { kind: "distribute", mode: "gaps-x" }))).toEqual([0, 0, 0]);
 });
+
+test("An exact gap places objects that far apart from the start-most or reference object", () => {
+  const list = [box(40, 0, 10, 10), box(0, 0, 20, 10), box(100, 0, 5, 10)];
+  const action = { kind: "distribute", mode: "gaps-x" } as const;
+  // Order along x: 1 (0–20), 0, 2; object 1 stays and the others follow 5 mm apart.
+  expect(xs(alignOffsets(list, action, "selection", 5))).toEqual([-15, 0, -60]);
+  // The reference stays instead: the last selected object at 100–105.
+  expect(xs(alignOffsets(list, action, "last", 5))).toEqual([45, 60, 0]);
+  // Two objects are enough, and a zero gap butts them together.
+  expect(xs(alignOffsets([box(0, 0, 10, 10), box(30, 0, 10, 10)], action, "selection", 0))).toEqual([0, -20]);
+  // Overlapping objects are spread apart rather than refused.
+  const crowded = [box(0, 0, 50, 5), box(10, 0, 50, 5), box(40, 0, 50, 5)];
+  expect(xs(alignOffsets(crowded, action, "selection", 2))).toEqual([0, 42, 64]);
+  // Equal-center distribution ignores the gap value.
+  expect(xs(alignOffsets(list, { kind: "distribute", mode: "centers-x" }, "selection", 5)))
+    .toEqual(xs(alignOffsets(list, { kind: "distribute", mode: "centers-x" })));
+});
+
+test("An exact vertical gap moves objects along y only", () => {
+  const list = [box(0, 0, 10, 10), box(5, 50, 10, 20)];
+  const offsets = alignOffsets(list, { kind: "distribute", mode: "gaps-y" }, "selection", 3);
+  expect(ys(offsets)).toEqual([0, -37]);
+  expect(xs(offsets)).toEqual([0, 0]);
+});
+
+test("An exact gap keeps the object that starts first, even when its center is later", () => {
+  // A wide object starting at 0 stays; the narrow one inside its span follows after it.
+  const list = [box(0, 0, 100, 10), box(10, 0, 10, 10)];
+  expect(xs(alignOffsets(list, { kind: "distribute", mode: "gaps-x" }, "selection", 5))).toEqual([0, 95]);
+});

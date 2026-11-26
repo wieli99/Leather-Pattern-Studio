@@ -62,6 +62,7 @@ Selection tools require compatible selected, unlocked objects. Shortcuts also wo
 | --- | --- |
 | G / E / S / M / B | Move / Rotate / Resize / Mirror / Corners |
 | O | Offset selected outlines |
+| L | Align and distribute selected objects |
 | I | Stitch mode (also without a selection) |
 | K / J | Trim / Join |
 | Tab / Shift+Tab | Enter or cycle transform fields |
@@ -123,7 +124,7 @@ See [stitch lines](#stitching) for master settings, clearances and equal hole co
 
 ## Print layouts
 
-Everyday save, history, copy/paste, duplication, grouping and deletion shortcuts also work in print layouts. Text (T), Measurements (D/Shift+D), Drawing tools (A/Shift+A), Select (V), Move (G), Rotate (E), and Mirror (M) are available. Use Model for source geometry edits and resizing.
+Everyday save, history, copy/paste, duplication, grouping and deletion shortcuts also work in print layouts. Text (T), Measurements (D/Shift+D), Drawing tools (A/Shift+A), Select (V), Move (G), Rotate (E), Mirror (M), and Align and distribute (L) are available. Use Model for source geometry edits and resizing.
 
 | Control | Action |
 | --- | --- |
@@ -151,7 +152,7 @@ See [numeric formulas](#measurements/calculate-values-in-numeric-fields), [varia
 
 ## Align and distribute
 
-Open **Align and distribute** through **F** tool search. Choose up to one Horizontal and one Vertical arrangement, then press Enter on the canvas or right-click to apply; Escape discards. Clicking an arrangement returns focus to the canvas; buttons activated with Enter or Space keep focus. See [align and distribute](#transforms/align-and-distribute).
+Press **L**, or open **Align and distribute** through **F** tool search. Choose up to one Horizontal and one Vertical arrangement, then press Enter on the canvas or right-click to apply; Escape discards. Clicking an arrangement returns focus to the canvas; buttons activated with Enter or Space keep focus. See [align and distribute](#transforms/align-and-distribute).
 
 ## Arrays
 

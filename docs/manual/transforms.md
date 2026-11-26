@@ -60,16 +60,17 @@ Click a straight outline segment to use its infinite supporting line. Selected o
 
 ## Align and distribute
 
-Select two or more objects and choose **Align and distribute** through Search (**F**). Add it to favorites for one-click access. **Relative to** sets what the objects line up with: **Selection bounds** (the default), or a reference object that stays in place: **First selected**, **Last selected**, **Largest object** or **Smallest object**.
+Select two or more objects and press **L**, or choose **Align and distribute** through Search (**F**). Add it to favorites for one-click access. **Relative to** sets what the objects line up with: **Selection** bounds (the default), or a reference object that stays in place: **First selected**, **Last selected**, **Largest** or **Smallest**.
 
 The panel has a **Horizontal** and a **Vertical** column. Choose up to one button in each to combine them, for example centering horizontally while equalizing vertical gaps. Another button in the same column replaces that choice; the selected button clears it.
 
 - **Align** lines up left edges, centers or right edges, or top edges, centers or bottom edges.
 - **Distribute centers** spaces object centers evenly. **Equalize gaps** makes the spaces between objects equal. Both need three or more objects and keep the two outermost objects in place. Equal gaps keep the objects reaching furthest out fixed and are unavailable when the objects are too wide to fit side by side between them.
+- **Gaps** chooses how **Equalize gaps** spaces objects. **Equal** shares the existing space between the outer objects. **Exact** places the objects a set **Gap** apart, in their order along the axis; zero butts them together. The reference object stays in place, or, relative to the selection, the object that starts first along the axis. Exact gaps need two or more objects and also spread overlapping objects apart.
 
 The preview is always calculated from the original positions, so changing a choice or the reference never builds on an earlier preview. Positions use world axes and each object's outer bounds. Apply, Enter on the canvas or right-click moves the objects in one undo step. Cancel or Escape discards the preview, as does Undo or Redo while the panel is open.
 
-A selected group moves as one object, and stitching follows its piece. Locked or hidden objects cannot be aligned. Use **Select Objects** to change the targets; canvas clicks do not change them while the panel is open. Align and distribute works on the Model tab.
+A selected group moves as one object, and stitching follows its piece. Locked or hidden objects cannot be aligned. Use **Select Objects** to change the targets; canvas clicks do not change them while the panel is open. Align and distribute also works in print tabs; see [align and distribute print objects](#printing/align-and-distribute-print-objects).
 
 ![Align and distribute panel with a combined horizontal and vertical preview](/manual/images/align-distribute.png)
 

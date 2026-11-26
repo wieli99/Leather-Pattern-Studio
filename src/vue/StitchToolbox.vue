@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ToolField from "./ToolField.vue";
 import LengthInput from "./LengthInput.vue";
 import StitchPresetManager from "./StitchPresetManager.vue";
 import StitchTransfers from "./StitchTransfers.vue";
@@ -151,8 +152,8 @@ const warnings = computed(() =>
       <p>{{ e.stitch.operationSelection.length }} line(s) selected. Select the lines to include in this operation.</p>
       <p v-for="line in operationLines" :key="line.id">{{ line.name }} · {{ line.holes ?? 'Invalid geometry' }}{{ line.holes===null ? '' : ' holes' }} · {{ line.edges }}</p>
       <template v-if="e.stitch.tool==='split'">
-        <label>Method<select aria-label="Stitch split method" :value="e.stitchSplitMethod" :disabled="e.stitchToolPending" @change="editor.stitchSplitMethod=($event.target as HTMLSelectElement).value as 'all'|'junction'; editor.previewStitchOperation()"><option value="all">All edges</option><option value="junction">At junction</option></select></label>
-        <label v-if="e.stitchSplitMethod==='junction'">Split location<select aria-label="Stitch split junction" :value="e.stitchSplitJunction" :disabled="e.stitchToolPending" @change="editor.stitchSplitJunction=Number(($event.target as HTMLSelectElement).value); editor.previewStitchOperation()"><option v-for="(edge,index) in e.stitchOperationGroups[0]?.edges ?? []" :key="edge" :value="index" :disabled="index===0 && !e.stitchOperationGroups[0]?.closed">Before {{ edgeLabel(edge) }}</option></select></label>
+        <ToolField label="Method"><select aria-label="Stitch split method" :value="e.stitchSplitMethod" :disabled="e.stitchToolPending" @change="editor.stitchSplitMethod=($event.target as HTMLSelectElement).value as 'all'|'junction'; editor.previewStitchOperation()"><option value="all">All edges</option><option value="junction">At junction</option></select></ToolField>
+        <ToolField v-if="e.stitchSplitMethod==='junction'" label="Split location"><select aria-label="Stitch split junction" :value="e.stitchSplitJunction" :disabled="e.stitchToolPending" @change="editor.stitchSplitJunction=Number(($event.target as HTMLSelectElement).value); editor.previewStitchOperation()"><option v-for="(edge,index) in e.stitchOperationGroups[0]?.edges ?? []" :key="edge" :value="index" :disabled="index===0 && !e.stitchOperationGroups[0]?.closed">Before {{ edgeLabel(edge) }}</option></select></ToolField>
       </template>
       <small v-if="e.stitch.tool==='delete'">Selected stitching and its live transfers will be removed. {{ dependentTransfers }} dependent transfer(s). The material outlines stay unchanged.</small>
       <small v-else-if="e.stitch.tool==='link'">The preview checks equal hole counts; it does not move holes.</small>
@@ -169,8 +170,7 @@ const warnings = computed(() =>
     <small v-else>{{ selected ? 'Edit the selected run, or click another line.' : 'Hover an edge and click to place stitching.' }}</small>
     <StitchPresetManager v-if="e.stitch.tool==='line' || e.stitch.tool==='convert'" :settings="settings" />
     <template v-if="e.stitch.tool!=='continue'">
-    <label
-      >Style
+    <ToolField label="Style">
       <select
         :disabled="e.busy"
         aria-label="Stitch style"
@@ -181,37 +181,32 @@ const warnings = computed(() =>
         <option value="japanese">Japanese</option>
         <option value="round">Round</option>
         <option value="flat">Flat</option>
-      </select></label
-    >
-    <label v-if="settings.style === 'round' || settings.style === 'flat'">
-      {{ settings.style === 'round' ? `Diameter (${e.unitSymbol})` : `Length (${e.unitSymbol})` }}
+      </select></ToolField>
+    <ToolField v-if="settings.style === 'round' || settings.style === 'flat'" :label="settings.style === 'round' ? `Diameter (${e.unitSymbol})` : `Length (${e.unitSymbol})`">
       <LengthInput :value="settings.style === 'round' ? (settings.roundDiameter ?? .8) : (settings.flatLength ?? 1.4)" :min=".1" :max="5" :aria-label="settings.style === 'round' ? 'Stitch diameter' : 'Stitch length'" @invalid="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', NaN)" @commit="numberValue(settings.style === 'round' ? 'roundDiameter' : 'flatLength', $event)" />
-    </label>
-    <label class="stitch-toggle">Reverse iron<input type="checkbox" :checked="settings.reversed" @change="editor.setStitchSettings({ ...settings, reversed: !settings.reversed })" /></label>
+    </ToolField>
+    <ToolField label="Reverse iron"><input type="checkbox" :checked="settings.reversed" @change="editor.setStitchSettings({ ...settings, reversed: !settings.reversed })" /></ToolField>
     </template>
-    <label
-      >Spacing ({{ e.unitSymbol }})
-      <span class="stitch-value"
+    <ToolField :label="`Spacing (${e.unitSymbol})`">
+      <span class="tool-field-control"
         > <LengthInput fixed aria-label="Stitch spacing" :disabled="e.busy" :value="settings.spacing" :min=".01" @invalid="numberValue('spacing', NaN)" @commit="numberValue('spacing', $event)" /><StitchPresets
           label="Spacing"
           :values="stitchSpacingPresets"
           :disabled="e.busy"
           @choose="chooseNumber('spacing', $event)" /></span
-    ></label>
+    ></ToolField>
 
     <template v-if="e.stitch.tool!=='continue'">
-    <label
-      >Inset ({{ e.unitSymbol }})
-      <span class="stitch-value"
+    <ToolField :label="`Inset (${e.unitSymbol})`">
+      <span class="tool-field-control"
         > <LengthInput fixed aria-label="Stitch inset" :disabled="e.busy" :value="settings.inset" :min="0" @invalid="numberValue('inset', NaN)" @commit="numberValue('inset', $event)" /><StitchPresets
           label="Inset"
           :values="stitchInsetPresets"
           :disabled="e.busy"
           @choose="chooseNumber('inset', $event)" /></span
-    ></label>
+    ></ToolField>
 
-    <label
-      >Alignment
+    <ToolField label="Alignment">
       <select
         :disabled="e.busy || !!selected?.continuation"
         aria-label="Stitch alignment"
@@ -221,25 +216,21 @@ const warnings = computed(() =>
         <option value="center">Center</option>
         <option value="start">Start</option>
         <option value="end">End</option>
-      </select></label
-    >
-    <label
+      </select></ToolField>
+    <ToolField
       v-if="!selected?.continuation"
       v-for="field in ['startClearance', 'endClearance'] as const"
       :key="field"
-      >{{
-        field === "startClearance"
-          ? `Start clearance (${e.unitSymbol})`
-          : `End clearance (${e.unitSymbol})`
-      }}<LengthInput fixed :value="settings[field] ?? 0" :min="0" :disabled="e.busy || !!selected?.continuation" @invalid="numberValue(field, NaN)" @commit="numberValue(field, $event)" /></label>
+      :label="field === 'startClearance' ? `Start clearance (${e.unitSymbol})` : `End clearance (${e.unitSymbol})`"
+      ><LengthInput fixed :value="settings[field] ?? 0" :min="0" :disabled="e.busy || !!selected?.continuation" @invalid="numberValue(field, NaN)" @commit="numberValue(field, $event)" /></ToolField>
     </template>
-    <label v-if="e.stitch.tool==='continue'">End clearance ({{ e.unitSymbol }})<LengthInput :value="settings.endClearance ?? 0" :min="0" @commit="numberValue('endClearance', $event)" /></label>
+    <ToolField v-if="e.stitch.tool==='continue'" :label="`End clearance (${e.unitSymbol})`"><LengthInput :value="settings.endClearance ?? 0" :min="0" @commit="numberValue('endClearance', $event)" /></ToolField>
     <div class="stitch-count">
-      <label>Hole count<select aria-label="Stitch hole count mode" :value="settings.holeCount == null ? 'auto' : 'fixed'" :disabled="e.busy" @change="fixedCount"><option value="auto">Auto</option><option value="fixed">Fixed count</option></select></label>
-      <label v-if="settings.holeCount != null">Number of holes<LengthInput scalar integer :value="settings.holeCount" :min="1" :max="100000" :step="1" :wheel="wheelHoleLimit !== null" :data-wheel-max="wheelHoleLimit" aria-label="Stitch hole count" :disabled="e.busy" @invalid="numberValue('holeCount', NaN)" @commit="numberValue('holeCount', $event)" /></label>
+      <ToolField label="Hole count"><select aria-label="Stitch hole count mode" :value="settings.holeCount == null ? 'auto' : 'fixed'" :disabled="e.busy" @change="fixedCount"><option value="auto">Auto</option><option value="fixed">Fixed count</option></select></ToolField>
+      <ToolField v-if="settings.holeCount != null" label="Number of holes"><LengthInput scalar integer :value="settings.holeCount" :min="1" :max="100000" :step="1" :wheel="wheelHoleLimit !== null" :data-wheel-max="wheelHoleLimit" aria-label="Stitch hole count" :disabled="e.busy" @invalid="numberValue('holeCount', NaN)" @commit="numberValue('holeCount', $event)" /></ToolField>
       <small v-if="settings.holeCount != null">Keeps your chisel spacing; the count sets the run length.</small>
     </div>
-    <label v-if="selected?.continuation">Gap to next hole ({{ e.unitSymbol }})<LengthInput aria-label="Gap to next hole" :value="selected.continuation.gap" :min=".001" :disabled="e.busy" @commit="editor.setContinuationGap($event)" @invalid="editor.stitch.error='Enter a positive continuation gap.'; editor.notify()" /></label>
+    <ToolField v-if="selected?.continuation" :label="`Gap to next hole (${e.unitSymbol})`"><LengthInput aria-label="Gap to next hole" :value="selected.continuation.gap" :min=".001" :disabled="e.busy" @commit="editor.setContinuationGap($event)" @invalid="editor.stitch.error='Enter a positive continuation gap.'; editor.notify()" /></ToolField>
     <small v-if="e.stitch.addingRun">Click the edge where the new run starts. Its spacing stays fixed.</small>
     <StitchTransfers />
     <p v-if="selected">
@@ -258,30 +249,11 @@ const warnings = computed(() =>
 .stitch-options { max-height: min(60vh, calc(100vh - 220px)); }
 details { flex-shrink:0; border-top: 1px solid var(--border); padding-top: 6px; }
 .stitch-count { display:grid; gap:6px; }
-.stitch-toggle { justify-content:space-between; }
 .transfer-guide, .operation-settings {display:grid;gap:8px;}
 summary { cursor:pointer; padding:4px 0; font-size:12px; font-weight:600; }
 summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 fieldset { border:0; padding:4px 0; margin:0; display:grid; gap:6px; min-width:0; }
 legend { font-size:12px; }
-label { align-items:center; }
-input[type="checkbox"] { width:auto; }
-
-label {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0;
-}
-input,
-select {
-  width: 135px;
-  background-color: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px;
-}
 p {
   font-size: 12px;
 }
@@ -291,18 +263,4 @@ p {
   flex-wrap: wrap;
 }
 
-.stitch-value {
-  display: flex;
-  width: 135px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.stitch-value input {
-  width: 0;
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  border-radius: 0;
-}
 </style>

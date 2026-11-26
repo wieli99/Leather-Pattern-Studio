@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ToolField from "./ToolField.vue";
 import { computed, ref, watch, nextTick } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
@@ -79,7 +80,7 @@ function exportFile() {
     <Teleport defer to="#stitch-panel-anchor">
     <section tabindex="-1" v-if="open" @keydown.enter.stop @keydown.esc="escape" id="stitch-preset-panel" class="preset-panel transform-options" aria-label="Stitch presets">
     <strong>Stitch presets</strong>
-    <label>Load preset<select aria-label="Load stitch preset" :value="chosen" :disabled="e.busy || !presets.length" @change="apply"><option value="">Choose a preset…</option><option v-for="preset in presets" :key="preset.name">{{ preset.name }}</option></select></label>
+    <ToolField label="Load preset"><select aria-label="Load stitch preset" :value="chosen" :disabled="e.busy || !presets.length" @change="apply"><option value="">Choose a preset…</option><option v-for="preset in presets" :key="preset.name">{{ preset.name }}</option></select></ToolField>
     <small v-if="!presets.length">No saved presets. Save the current settings below or import a backup.</small>
 
     <div class="actions">
@@ -89,7 +90,7 @@ function exportFile() {
       <button type="button" :disabled="e.busy || !selected || !!action" @click="remove">Delete</button>
     </div>
     <form data-hint-edit="preset" v-if="action" @submit.prevent="save()">
-      <label>{{ action === 'rename' ? 'New name' : 'Preset name' }}<input ref="nameInput" v-model="name" aria-label="Stitch preset name" maxlength="200" autofocus /></label>
+      <ToolField :label="action === 'rename' ? 'New name' : 'Preset name'"><input ref="nameInput" v-model="name" aria-label="Stitch preset name" maxlength="200" autofocus /></ToolField>
       <div class="actions"><button type="submit" :disabled="e.busy || !name.trim()">{{ action === 'rename' ? 'Rename preset' : 'Save preset' }}</button><button type="button" @click="action=null; error=''">Cancel</button></div>
     </form>
     <small v-if="modified">Modified settings. Update changes the preset, leaving existing lines as they are.</small>
@@ -98,7 +99,7 @@ function exportFile() {
     <input ref="picker" type="file" accept="application/json,.json" hidden @change="importFile" />
     <form v-if="incoming" @submit.prevent="confirmImport">
       <p>{{ incoming.length }} presets in this backup. Merge preserves existing entries; Replace removes the current library.</p>
-      <label>Import mode<select v-model="importMode" aria-label="Preset import mode"><option value="merge">Merge</option><option value="replace">Replace all presets</option></select></label>
+      <ToolField label="Import mode"><select v-model="importMode" aria-label="Preset import mode"><option value="merge">Merge</option><option value="replace">Replace all presets</option></select></ToolField>
       <button type="submit">{{ importMode==='replace' ? 'Replace library' : 'Merge presets' }}</button><button type="button" @click="incoming=null">Cancel import</button>
     </form>
 
@@ -109,8 +110,6 @@ function exportFile() {
   </div>
 </template>
 <style scoped>
-.preset-panel label {display:flex;align-items:center;justify-content:space-between;gap:8px;}
-.preset-panel select,.preset-panel input:not([type=file]) {width:135px;box-sizing:border-box;background-color:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
 .preset-toggle {align-self:start;text-align:left;}
 .preset-panel {position:absolute;right:calc(100% + 8px);top:0;box-sizing:border-box;width:302px;max-height:100%;}
 @container stitch-panels (max-width: 620px) { .preset-panel {right:0;top:auto;bottom:calc(100% + 8px);max-height:30vh;max-width:100%;} }
