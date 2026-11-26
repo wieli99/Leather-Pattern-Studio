@@ -329,11 +329,14 @@ export class Controller {
   }
   setAlignReference(reference: AlignReference) {
     this.alignReference = reference;
-    this.refreshAlign();
+    // Print reads these preferences too, without a Model session.
+    if (this.align) this.refreshAlign();
+    else this.notify();
   }
   setAlignGap(gap: number | null) {
     this.alignGap = gap === null || Number.isFinite(gap) && gap >= 0 ? gap : this.alignGap;
-    this.refreshAlign();
+    if (this.align) this.refreshAlign();
+    else this.notify();
   }
   /** Choose an action for its axis; choosing the selected action again clears that axis. */
   toggleAlign(action: AlignAction) {

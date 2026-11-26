@@ -153,6 +153,17 @@ export const alignAxis = (action: AlignAction): "x" | "y" =>
     ? (action.edge === "left" || action.edge === "center-x" || action.edge === "right" ? "x" : "y")
     : (action.mode.endsWith("x") ? "x" : "y");
 
+/** Offsets of one horizontal and one vertical action, both measured from the same bounds. */
+export function combinedOffsets(boxes: Bounds[], actions: AlignAction[], reference: AlignReference, gap?: number | null): Point[] {
+  const offsets = boxes.map(() => ({ x: 0, y: 0 }));
+  for (const action of actions)
+    alignOffsets(boxes, action, reference, gap).forEach((offset, index) => {
+      offsets[index].x += offset.x;
+      offsets[index].y += offset.y;
+    });
+  return offsets;
+}
+
 /**
  * Apply actions to the shapes of each unit, all measured from the given shapes, so one
  * horizontal and one vertical action combine. Returns null when nothing moves.
@@ -166,13 +177,7 @@ export function alignShapes(
   gap?: number | null,
 ): Shape[] | null {
   const measured = measureUnits(shapes, unitsList, units);
-  const boxes = measured.map((entry) => entry.box);
-  const offsets = boxes.map(() => ({ x: 0, y: 0 }));
-  for (const action of actions)
-    alignOffsets(boxes, action, reference, gap).forEach((offset, index) => {
-      offsets[index].x += offset.x;
-      offsets[index].y += offset.y;
-    });
+  const offsets = combinedOffsets(measured.map((entry) => entry.box), actions, reference, gap);
   const moves = new Map<string, Point>();
   measured.forEach(({ unit }, index) => {
     const offset = offsets[index];

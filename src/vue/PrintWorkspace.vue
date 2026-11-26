@@ -6,6 +6,9 @@ import { objectSelection } from "../model/objectSelection";
 import PivotSelector from "./PivotSelector.vue";
 import ToolIcon from "./ToolIcon.vue";
 import TransformFields from "./TransformFields.vue";
+import AlignFields from "./AlignFields.vue";
+import { alignAxis, combinedOffsets, gapsFit, requiredUnits, unitBounds, type AlignAction } from "../model/align";
+import type { Bounds } from "../model/geometry";
 import { transformHeading, transformHelp } from "./transformText";
 import { automaticPivot, type PivotMode } from "../model/pivot";
 import ToolRail from "./ToolRail.vue";
@@ -181,7 +184,7 @@ const zoom = ref(2),
   pan = ref({ x: 50, y: 50 }),
   snap = ref(true),
   objectSnap = ref(true),
-  tool = ref<"select" | "move" | "rotate" | "mirror">("select");
+  tool = ref<"select" | "move" | "rotate" | "mirror" | "align">("select");
 const views = new Map<
   string,
   { zoom: number; pan: Point; selection: string[] }
@@ -386,7 +389,7 @@ function gizmoAt(p: Point) {
   const pivot = worldPixel(selectionPivot()),
     dx = p.x - pivot.x,
     dy = p.y - pivot.y;
-  if (tool.value === "mirror") return;
+  if (tool.value === "mirror" || tool.value === "align") return;
   if (tool.value !== "move" && Math.abs(Math.hypot(dx, dy) - 60) < 9)
     return "rotate";
   if (tool.value === "move") {
@@ -417,6 +420,10 @@ function updateToolSelection(ids: string[]) {
   const previous = preview.value;
   const oldIds = [...selected.value];
   selected.value = ids;
+  if (tool.value === "align") {
+    refreshPrintAlign();
+    return;
+  }
   if (previous) {
     const x=parseLength(moveX.value,original.units) ?? 0, y=parseLength(moveY.value,original.units) ?? 0;
     let candidate=transformPrintNodes(original,ids,x*Math.cos(numericOrientation)-y*Math.sin(numericOrientation),x*Math.sin(numericOrientation)+y*Math.cos(numericOrientation),Number(turn.value)||0,numericPivot);
@@ -444,7 +451,7 @@ function toggleObjects() {
   drag=undefined;
   draw();
 }
-function chooseTool(value: "select" | "move" | "rotate" | "mirror") {
+function chooseTool(value: "select" | "move" | "rotate" | "mirror" | "align") {
   if (busy.value || editor.busy || value !== "select" && !!printSelectionError.value) return;
   cancel();
   drawing.setMode("select");
@@ -458,15 +465,87 @@ function chooseTool(value: "select" | "move" | "rotate" | "mirror") {
   numericOrientation = gizmoAngle();
   if (value === "rotate" || value === "mirror")
     customPivot.value = { ...numericPivot };
+  if (value === "align") {
+    // Align previews only from its own choices, never from the numeric fields.
+    numericBase = undefined;
+    printAlign.value = { x: null, y: null };
+    refreshPrintAlign();
+  }
 }
+/** Align's choices in Print: up to one per axis, previewed from the unchanged layout. */
+const printAlign = ref<{ x: AlignAction | null; y: AlignAction | null }>({ x: null, y: null });
+/** Selected root objects in selection order, each moving as one, with their bounds. */
+function printAlignUnits(l: PrintLayout) {
+  const roots = reorderRoots(printTree(l), movableSelection());
+  const order = (id: string) => {
+    const ids = new Set([id, ...printDescendants(l, [id])]);
+    const index = selected.value.findIndex((s) => ids.has(s));
+    return index < 0 ? Infinity : index;
+  };
+  roots.sort((a, b) => order(a.id) - order(b.id));
+  const items = resolvedPrintItems(editor.document, l);
+  return roots.flatMap((root) => {
+    const ids = new Set(printDescendants(l, [root.id]));
+    // Measured like the pivot: attached stitching does not widen its own piece.
+    const shapes = items
+      .filter((i) => ids.has(i.instance.id))
+      .filter((i) => !i.shape.stitchParentId || !l.instances.some((o) => ids.has(o.id) && o.sourceId === i.shape.stitchParentId))
+      .map((i) => ({ ...i.shape, id: i.instance.id, stitchParentId: undefined }));
+    const box = unitBounds(shapes, l.units);
+    return box ? [{ id: root.id, box }] : [];
+  });
+}
+const printAlignBoxes = computed<Bounds[]>(() => {
+  // Linked print objects resolve against the Model document.
+  void e.value.document;
+  return tool.value === "align" && layout.value ? printAlignUnits(layout.value).map((u) => u.box) : [];
+});
+const printAlignGapsFit = computed(() => ({ x: gapsFit(printAlignBoxes.value, "x"), y: gapsFit(printAlignBoxes.value, "y") }));
+function printAlignAvailable(action: AlignAction) {
+  return !busy.value && printAlignBoxes.value.length >= requiredUnits(action, e.value.alignReference, e.value.alignGap) &&
+    (action.kind !== "distribute" || !action.mode.startsWith("gaps") || e.value.alignGap !== null || printAlignGapsFit.value[alignAxis(action)]);
+}
+const printAlignChosen = (action: AlignAction) =>
+  JSON.stringify(printAlign.value[alignAxis(action)]) === JSON.stringify(action);
+function togglePrintAlign(action: AlignAction, event: MouseEvent) {
+  const axis = alignAxis(action);
+  printAlign.value = { ...printAlign.value, [axis]: printAlignChosen(action) ? null : action };
+  refreshPrintAlign();
+  if (event.detail > 0) canvas.value?.focus({ preventScroll: true });
+}
+function refreshPrintAlign() {
+  if (tool.value !== "align") return;
+  preview.value = undefined;
+  const l = layout.value;
+  if (l && !printSelectionError.value) {
+    const choice = { ...printAlign.value };
+    // Choices the current targets or settings cannot use are dropped rather than kept hidden.
+    if (choice.x && !printAlignAvailable(choice.x)) choice.x = null;
+    if (choice.y && !printAlignAvailable(choice.y)) choice.y = null;
+    if (choice.x !== printAlign.value.x || choice.y !== printAlign.value.y) printAlign.value = choice;
+    const actions = [choice.x, choice.y].filter((a): a is AlignAction => !!a);
+    const units = printAlignUnits(l);
+    const offsets = combinedOffsets(units.map((u) => u.box), actions, e.value.alignReference, e.value.alignGap);
+    let next = l;
+    units.forEach((unit, index) => {
+      const { x, y } = offsets[index];
+      if (Math.abs(x) > 1e-9 || Math.abs(y) > 1e-9) next = transformPrintNodes(next, [unit.id], x, y, 0);
+    });
+    if (next !== l) preview.value = next;
+  }
+  draw();
+}
+watch(() => [e.value.alignReference, e.value.alignGap], refreshPrintAlign);
 const renameId = ref(""),
   renameValue = ref("");
 const moveX = ref("0"),
   moveY = ref("0"),
   turn = ref("0");
-const railToolKeys = { select: "V", move: "G", rotate: "E", mirror: "M" } as const;
+const railToolKeys = { select: "V", move: "G", rotate: "E", mirror: "M", align: "L" } as const;
+const printToolHeading = (value: "move" | "rotate" | "mirror" | "align") =>
+  value === "align" ? "Align and distribute" : transformHeading[value];
 function railToolLabel(value: keyof typeof railToolKeys) {
-  return `${value === "select" ? "Select" : transformHeading[value]} (${railToolKeys[value]})`;
+  return `${value === "select" ? "Select" : printToolHeading(value)} (${railToolKeys[value]})`;
 }
 function commitTransformField(field: "x" | "y" | "angle" | "sx" | "sy", value: number) {
   error.value = "";
@@ -1358,7 +1437,8 @@ function applyTransform() {
   flushMove();
   const next = preview.value;
   if (!next) {
-    cancel();
+    // As in Model, Align stays open until a choice moves something.
+    if (tool.value !== "align") cancel();
     return;
   }
   if (error.value) return;
@@ -2059,7 +2139,8 @@ async function paintFrame() {
       selected.value.length &&
       movableSelection().length &&
       !choosingObjects.value &&
-      tool.value !== "mirror"
+      tool.value !== "mirror" &&
+      tool.value !== "align"
     ) {
       const p = worldPixel(selectionPivot());
       ctx.save();
@@ -2350,6 +2431,8 @@ function down(event: PointerEvent) {
     if (!hit) drag={pixel:p,world,original:layout.value!,ids:[],pan:{...pan.value},rotate:false,marquee:true,pivot:selectionPivot(),numericStart:{x:0,y:0,angle:0}};
     return;
   }
+  // Align arranges only through its panel; the canvas still pans.
+  if (tool.value === "align" && event.button === 0 && !editor.space) return;
   if (drawing.mode !== "select" && event.button === 0 && !editor.space) {
     if (!isPrintablePixel(p, l)) return;
     syncDrawingView();
@@ -2998,7 +3081,9 @@ function keyboard(event: KeyboardEvent) {
   if (!mod && !event.shiftKey && key === "g") chooseTool("move");
   if (!mod && !event.shiftKey && key === "e") chooseTool("rotate");
   if (!mod && !event.shiftKey && key === "m") chooseTool("mirror");
+  if (!mod && !event.shiftKey && key === "l") chooseTool("align");
   if (!mod && !event.shiftKey && key === "v") {
+    if (tool.value === "align") return;
     if (tool.value !== "select") beginPivotPlacement();
     else chooseTool("select");
   }
@@ -3257,7 +3342,7 @@ defineExpose({
   <section v-if="layout" class="print-workspace" aria-label="Print workspace">
     <ToolRail v-if="left" aria-label="Print tools">
       <RailButton
-        v-for="value in ['select', 'move', 'rotate', 'mirror'] as const"
+        v-for="value in ['select', 'move', 'rotate', 'mirror', 'align'] as const"
         :key="value"
         :shortcut="railToolKeys[value]"
         :aria-keyshortcuts="railToolKeys[value].toLowerCase()"
@@ -3399,7 +3484,7 @@ defineExpose({
         v-if="tool !== 'select'"
         tag="div"
         class="print-transform"
-        :heading="transformHeading[tool]"
+        :heading="printToolHeading(tool)"
         :apply-disabled="choosingObjects || !selected.length || busy || !!error || !preview"
         :apply="applyTransform"
         :cancel="cancel"
@@ -3407,6 +3492,23 @@ defineExpose({
         :refocus="() => canvas?.focus({ preventScroll: true })"
       >
         <ToolObjectPicker :count="toolObjectCount" :choosing="choosingObjects" :error="choosingObjects ? printSelectionError : undefined" @toggle="toggleObjects" /><hr>
+        <template v-if="tool === 'align'">
+          <AlignFields
+            :reference="e.alignReference"
+            :gap="e.alignGap"
+            :units="layout.units"
+            :unit-symbol="layout.units === 'mm' ? 'mm' : 'in'"
+            :chosen="printAlignChosen"
+            :available="printAlignAvailable"
+            :gaps-fit="printAlignGapsFit"
+            :disabled="choosingObjects"
+            @toggle="togglePrintAlign"
+            @reference="editor.setAlignReference($event)"
+            @gap="editor.setAlignGap($event)"
+          />
+          <small v-if="(printAlign.x || printAlign.y) && !preview && !choosingObjects" role="status">Already arranged this way.</small>
+        </template>
+        <template v-else>
         <small>{{ transformHelp[tool] }}</small>
         <TransformFields
           :tool="tool === 'mirror' ? null : tool"
@@ -3421,6 +3523,7 @@ defineExpose({
           @orientation="axes = $event"
         />
         <PivotSelector :disabled="choosingObjects" :mode="pivotMode" :placing="placingPivot" @change="setPivotMode" @cancel="cancelPivotPlacement" />
+        </template>
         <p v-if="error" role="alert">{{ error }}</p>
       </ToolPopover>
       <div v-if="bottom" class="print-status">
