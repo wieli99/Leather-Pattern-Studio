@@ -110,6 +110,7 @@ const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
   return JSON.stringify(parseProject(JSON.stringify({ ...doc, objectTree: tree, shapes: treeInDrawingOrder(tree, doc.shapes) })));
 };
+export type ToolSession = "stitch" | "array" | "path-copy" | "boolean" | "trim" | "offset" | "align" | "transform";
 /** Transforms that apply to detached segments; Corners needs whole objects. */
 export type SegmentTransformTool = "move" | "rotate" | "scale" | "mirror";
 export type Gesture = {
@@ -306,10 +307,7 @@ export class Controller {
   activateOffset() {
     if (this.deferUntilSettled(() => this.activateOffset())) return;
     if (!this.canOffset) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.offsetActive = true;
     this.refreshOffset();
   }
@@ -325,10 +323,7 @@ export class Controller {
   activateAlign() {
     if (this.deferUntilSettled(() => this.activateAlign())) return;
     if (!this.canAlign) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.alignActive = true;
     this.alignX = null;
     this.alignY = null;
@@ -1497,6 +1492,22 @@ export class Controller {
     if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) this.transformPivot = point;
   }
   private toolSelection: { ids: string[]; groups: string[] } | null = null;
+  /** Start a select-based tool from a clean state with the current selection as its targets. */
+  private beginToolSession() {
+    this.cancel();
+    this.tool = "select";
+    this.mode = "select";
+    this.beginToolSelection();
+  }
+  /** Topmost visible object at a point, on its outline or, with `inside`, within it. */
+  private visibleObjectAt(raw: Point, inside: boolean) {
+    return [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s, raw, 8 / this.zoom, this.units) || inside && contains(s, raw)));
+  }
+  /** Objects a tool preview adds, without their stitching shapes. */
+  private addedObjectIds(next: Doc) {
+    const existing = new Set(this.document.shapes.map(s => s.id));
+    return next.shapes.filter(s => !s.stitchParentId && !existing.has(s.id)).map(s => s.id);
+  }
   private beginToolSelection() {
     this.toolSelection = { ids: [...this.selected], groups: [...this.selectedGroups] };
   }
@@ -2342,8 +2353,7 @@ export class Controller {
   }
   cycle(group: keyof typeof variants, direction = 1) {
     // Inside a select-based tool session (Trim, transforms, …), V first leaves it for plain Select.
-    if (group === "select" && this.mode === "select" && (this.trimMode || this.mergeMode || this.transformTool ||
-        this.offsetActive || this.alignActive || this.stitchMode || this.booleanOperation || this.array || this.pathCopy)) {
+    if (group === "select" && this.mode === "select" && this.toolSession) {
       this.setMode("select");
       return;
     }
@@ -2665,12 +2675,42 @@ export class Controller {
   }
   /**
    * Variables are project data: editing them ignores object selection locks, but a tool
-   * session (transform, stitching, boolean, array, path copy, offset, align) must be applied or
-   * cancelled first so the tool never works from a document that changes underneath it.
+   * session must be applied or cancelled first so the tool never works from a document
+   * that changes underneath it.
    */
   get canEditVariables() {
-    return this.ready && !(this.transformTool || this.stitchMode || this.booleanOperation ||
-      this.array || this.pathCopy || this.offsetActive || this.alignActive);
+    return this.ready && !this.toolSession;
+  }
+  /**
+   * The tool whose preview is open. It must be applied or cancelled before other edits.
+   * Stitching may open a transform for its holes, so it is checked first.
+   */
+  get toolSession(): ToolSession | null {
+    if (this.stitchMode) return "stitch";
+    if (this.array) return "array";
+    if (this.pathCopy) return "path-copy";
+    if (this.booleanOperation) return "boolean";
+    if (this.trimMode) return "trim";
+    if (this.offsetActive) return "offset";
+    if (this.alignActive) return "align";
+    if (this.transformTool) return "transform";
+    return null;
+  }
+  /** Apply the open tool session, as Enter or its Apply button does. */
+  applyToolSession() {
+    switch (this.toolSession) {
+      case "stitch": return this.applyStitch();
+      case "array": return this.applyArray();
+      case "path-copy": return this.applyPathCopy();
+      case "boolean": case "trim": return this.applyTrim();
+      case "offset": return this.applyOffset();
+      case "align": return this.applyAlign();
+      case "transform": return this.applyTransform();
+    }
+  }
+  /** Escape first leaves a pending array point or custom pivot placement; true when it did. */
+  backToolSession() {
+    return this.cancelArrayPoint() || this.cancelPivotPlacement();
   }
   beginVariableEdit() {
     if (this.canEditVariables) this.openPropertySession();
@@ -2780,10 +2820,7 @@ export class Controller {
   async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
     if (this.unsettled) await this.settled();
     if (!this.canStartTransform(tool)) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.transformTool = tool;
     this.transformOriginal = this.document;
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
@@ -3217,12 +3254,7 @@ export class Controller {
     this.refreshArray();
     if (!this.canApplyArray) return;
     const next = this.preview!;
-    const ids = next.shapes
-      .filter(
-        (s) =>
-          !s.stitchParentId && !this.document.shapes.some((o) => o.id === s.id),
-      )
-      .map((s) => s.id);
+    const ids = this.addedObjectIds(next);
     if (await this.commit(next)) {
       this.toolSelection = null;
       this.cancel();
@@ -3284,7 +3316,7 @@ export class Controller {
     this.refreshPathCopy();
     if (!this.canApplyPathCopy) return;
     const next = this.preview!;
-    const ids = next.shapes.filter(s => !s.stitchParentId && !this.document.shapes.some(original => original.id === s.id)).map(s => s.id);
+    const ids = this.addedObjectIds(next);
     if (await this.commit(next)) { this.cancel(); this.selected = ids; this.notify(); }
     else if (this.pathCopy) { this.pathCopy.error = "Could not apply copies. Review the document and try again."; this.notify(); }
   }
@@ -3481,10 +3513,7 @@ export class Controller {
   }
   activateTrim() {
     if (!this.canTrim) return;
-    this.cancel();
-    this.tool = "select";
-    this.mode = "select";
-    this.beginToolSelection();
+    this.beginToolSession();
     this.trimMode = true;
     this.notify();
   }
@@ -4221,7 +4250,7 @@ export class Controller {
     }
     if (this.objectPicker && button === 0 && !this.space) {
       const raw = this.world(pixel);
-      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || ctrl && contains(s,raw)));
+      const hit = this.visibleObjectAt(raw, ctrl);
       this.setToolSelection(objectSelection(this.selected,hit?.id,shift));
       if (!hit) this.gesture = {kind:"marquee",start:raw,end:raw,original:this.document,selection:[...this.selected],pivot:raw,crossing:ctrl};
       return;
@@ -4229,7 +4258,7 @@ export class Controller {
     if (this.pathCopy && !this.space && button !== 1) {
       if (button === 2) { void this.applyPathCopy(); return; }
       const raw = this.world(pixel);
-      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      const hit = this.visibleObjectAt(raw, true);
       if (hit) this.pickPathCopy(hit.id);
       return;
     }
@@ -4251,7 +4280,7 @@ export class Controller {
     const raw = this.world(pixel);
     this.anchorPointer = raw;
     if (this.booleanOperation && button === 0 && !this.space) {
-      const hit = [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || contains(s,raw)));
+      const hit = this.visibleObjectAt(raw, true);
       if (hit) this.pickBoolean(hit.id);
       return;
     }
@@ -5307,8 +5336,7 @@ export class Controller {
   stylingClipboardFallback = false;
   get canToggleObjectState() {
     return this.ready && !this.busy && !this.gesture && !this.pending.length &&
-      !this.drawingDown && !this.transformTool && !this.propertySession &&
-      !this.array && !this.pathCopy && !this.offsetActive && !this.alignActive && !this.stitchMode && !this.trimMode && !this.mergeMode;
+      !this.drawingDown && !this.toolSession && !this.propertySession;
   }
   toggleObjectState(id: string, field: "hidden" | "locked", isolate = false) {
     return this.setPanelState(id, field, isolate);

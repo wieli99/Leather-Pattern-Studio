@@ -4232,3 +4232,31 @@ describe("Align and distribute", () => {
     expect(e.alignActive).toBe(false);
   });
 });
+
+test('one tool session blocks variable and object-state edits for every tool', async () => {
+  const e = editor();
+  const shape = (id: string, x: number) => ({id, name:id, kind:'rectangle' as const, points:[{x,y:0},{x:x+10,y:10}], radius:0, rotation:0});
+  await e.commit({...e.document, shapes:[shape('a',0),shape('b',5)]});
+  const sessions = [
+    ['trim', () => e.activateTrim()],
+    ['boolean', () => e.activateMerge()],
+    ['offset', () => e.activateOffset()],
+    ['align', () => e.activateAlign()],
+    ['transform', () => e.activateTransform('move')],
+  ] as const;
+  for (const [session, activate] of sessions) {
+    e.selected = ['a','b'];
+    expect(e.toolSession).toBeNull();
+    expect(e.canEditVariables).toBe(true);
+    activate();
+    expect(e.toolSession).toBe(session);
+    expect(e.canEditVariables).toBe(false);
+    expect(e.canToggleObjectState).toBe(false);
+    e.cancel();
+  }
+  e.selected = ['a','b'];
+  e.activateOffset();
+  await e.applyToolSession();
+  expect(e.toolSession).toBeNull();
+  expect(e.document.shapes).toHaveLength(4);
+});

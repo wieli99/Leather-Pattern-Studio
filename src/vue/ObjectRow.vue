@@ -38,14 +38,7 @@ const renaming = ref(false),
   input = ref<HTMLInputElement | null>(null);
 let settled = false;
 async function rename() {
-  if (
-    editor.transformTool || editor.offsetActive || editor.alignActive || editor.trimMode ||
-    editor.booleanOperation ||
-    editor.pathCopy || editor.array ||
-    editor.stitchMode ||
-    editor.isLocked(props.shape.id)
-  )
-    return;
+  if (editor.toolSession || editor.isLocked(props.shape.id)) return;
   settled = false;
   draft.value = props.shape.name;
   renaming.value = true;
@@ -65,7 +58,7 @@ function select(event: MouseEvent) {
   if (editor.objectPicker) { editor.pickToolObject(props.shape.id, event.shiftKey); return; }
   if (editor.pathCopy) { editor.pickPathCopy(props.shape.id); return; }
   if (editor.booleanOperation) { editor.pickBoolean(props.shape.id); return; }
-  if (editor.array || editor.transformTool || editor.offsetActive || editor.alignActive || editor.trimMode || editor.stitchMode) return;
+  if (editor.toolSession) return;
   editor.selectedGroups = [];
   editor.panelRevision++;
   (event.currentTarget as HTMLButtonElement).focus();
