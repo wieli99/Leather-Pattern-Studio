@@ -3518,21 +3518,20 @@ export class Controller {
     this.objectPicker = false;
     this.pivotMode = "bounding-box";
     this.pivotPlacement = null;
-
-
+    // Tools that replace the selection or document restore them before their session is dropped.
     if (this.pathCopy) this.selected = this.pathCopySelection;
-    this.pathCopy = null;
-    this.arraySession = null;
-    this.offset = null;
-    this.align = null;
-
     if (this.boolean) this.selected = this.boolean.selection;
-    this.trim = null;
     if (this.stitch.original) {
       this.document = this.stitch.original;
       if (this.stitch.originalSettings)
         this.stitchSettings = this.stitch.originalSettings;
     }
+    this.pathCopy = null;
+    this.arraySession = null;
+    this.offset = null;
+    this.align = null;
+    this.trim = null;
+    this.transform = null;
     this.stitch = idleStitchSession();
     this.stitchTransferHighlight = null;
     this.guideDrag = null;
@@ -3544,7 +3543,6 @@ export class Controller {
     this.placingPivot = false;
     this.transformAxis = undefined;
     this.hoverHandle = "";
-    this.transform = null;
     this.drawingDown = null;
     this.arcSweep = 0;
     this.arcRawSweep = 0;
