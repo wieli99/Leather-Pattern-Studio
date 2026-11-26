@@ -1161,7 +1161,8 @@ select:disabled { opacity: .5; }
   text-align: left;
   min-height: 36px;
 }
-.object-pick-label { flex-shrink: 0; }
+/* Long labels wrap in narrow popovers so the short choice value always stays visible. */
+.object-pick-label { min-width: 0; }
 /* Pressed choices in tool popovers: object pickers, pivot modes and align actions. */
 .object-pick[aria-pressed="true"],
 .pivot-modes button[aria-pressed="true"],
@@ -1177,9 +1178,7 @@ select:disabled { opacity: .5; }
   outline-offset: 2px;
 }
 .object-pick-value {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
   white-space: nowrap;
   text-align: right;
 }

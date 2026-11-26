@@ -178,7 +178,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         <ObjectPickButton :pressed="e.boolean?.picker === 'target'" label="Select Target" :value="e.boolean?.target ? '(1)' : 'Choose object'"
           :title="e.boolean?.picker === 'target' ? 'Stop choosing a target' : 'Choose a target object'"
           @toggle="editor.setBooleanPicker('target')" />
-        <ObjectPickButton :pressed="e.boolean?.picker === 'cutters'" :value="`(${e.boolean?.cutters.length})`"
+        <ObjectPickButton :pressed="e.boolean?.picker === 'cutters'" :value="`(${e.boolean?.cutters.length ?? 0})`"
           :label="e.booleanOperation === 'subtract' ? 'Select subtract objects' : 'Select other objects'"
           :title="e.boolean?.picker === 'cutters' ? 'Stop choosing other objects' : 'Choose other objects'"
           @toggle="editor.setBooleanPicker('cutters')" />
