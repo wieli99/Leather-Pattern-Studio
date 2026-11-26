@@ -177,6 +177,8 @@ const cursor = computed(() => {
   hover.value;
   if (editor.tool === "text") return "none";
   if (editor.array && !editor.objectPicker) return editor.arrayFollowing || editor.arrayCenterPicking ? "crosshair" : "default";
+  // Calibration picks points with the drawn crosshair the drawing tools use; review ignores handles.
+  if (editor.calibration) return editor.calibrationPicking ? "none" : "default";
   if (editor.placingPivot) return "crosshair";
   if (editor.hoverHandle === "move") return "move";
   return editor.tool !== "select"

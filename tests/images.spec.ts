@@ -95,3 +95,76 @@ for (const aspect of ['width="120" height="60"', 'viewBox="0 0 120 60"', 'viewBo
     if (aspect === 'width="120" height="60"') await manualScreenshot(page, "svg-resize.png");
   });
 }
+
+test("calibrate an image from two points and a known distance", { tag: "@manual" }, async ({ page }) => {
+  await page.goto("/");
+  const importButton = page.getByRole("button", { name: "Import image", exact: true });
+  await expect(importButton).toBeEnabled();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  const box = (await canvas.boundingBox())!;
+  // Zoom out to half size first so the calibrated, larger image still fits the view.
+  await canvas.hover({ position: { x: box.width / 2, y: box.height / 2 } });
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, 347);
+  await page.keyboard.up("Control");
+  await expect(page.getByText("50%", { exact: true })).toBeVisible();
+  const chooser = page.waitForEvent("filechooser");
+  await importButton.click();
+  // A 480 × 300 px scan with a ruler across its middle; major ticks are 100 px apart.
+  await (await chooser).setFiles("tests/fixtures/images/calibration-scan.png");
+  await expect(page.locator(".object-select")).toHaveCount(1);
+  const width = page.getByRole("textbox", { name: "Width", exact: true });
+  const original = await width.inputValue(), before = Number(original);
+  await page.getByRole("button", { name: "Search tools", exact: true }).click();
+  await page.getByRole("textbox", { name: "Search tools", exact: true }).fill("calibrate");
+  await page.getByRole("button", { name: "Calibrate image", exact: true }).click();
+  const panel = page.getByRole("region", { name: "Calibrate image settings" });
+  await expect(panel).toContainText("Click point 1 on the image.");
+  const apply = panel.getByRole("button", { name: "Apply", exact: true });
+  await expect(apply).toBeDisabled();
+  // The image is inserted at the view centre at half the view size.
+  const scale = Math.min(box.width / 480, box.height / 300) / 2;
+  const at = (x: number, y: number) => ({ position: { x: box.width / 2 + (x - 240) * scale, y: box.height / 2 + (y - 150) * scale } });
+  // A click beside the image is refused.
+  await canvas.click(at(240, -40));
+  await expect(panel.getByRole("alert")).toHaveText("Pick a point on the image.");
+  await canvas.click(at(130, 140));
+  await expect(panel).toContainText("Click point 2 on the image.");
+  // Escape steps back to point 1 instead of closing the tool.
+  await canvas.press("Escape");
+  await expect(panel).toContainText("Click point 1 on the image.");
+  await canvas.click(at(130, 140));
+  await canvas.click(at(330, 140));
+  const known = panel.getByLabel("Known distance", { exact: true });
+  await expect(known).toBeFocused();
+  const measured = Number(await panel.getByLabel("Measured distance").textContent());
+  // Clicks land on whole pixels, so allow about one pixel of error.
+  expect(Math.abs(measured / (before * 200 / 480) - 1)).toBeLessThan(0.02);
+  // Arrow keys step 0.1 mm and stop at the 0.001 mm minimum; Alt+scroll steps whole millimetres.
+  await known.fill("0.05");
+  await known.press("ArrowDown");
+  await expect(known).toHaveValue("0.001");
+  await known.press("ArrowUp");
+  await expect(known).toHaveValue("0.101");
+  await known.hover();
+  await page.keyboard.down("Alt");
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up("Alt");
+  await expect(known).toHaveValue("1.101");
+  await known.fill("0");
+  await expect(known).toHaveAttribute("aria-invalid", "true");
+  await expect(apply).toBeDisabled();
+  // Ruler marks 1 to 3 are 20 cm apart on the original.
+  await known.fill("200");
+  await expect(apply).toBeEnabled();
+  const factor = Number((await panel.getByLabel("Scale factor").textContent())!.replace(" %", ""));
+  expect(factor).toBeCloseTo(200 / measured * 100, 0);
+  await manualScreenshot(page, "image-calibration.png");
+  await known.press("Enter");
+  await expect(panel).toHaveCount(0);
+  // 200 mm across 200 of 480 px makes the whole image 480 mm wide.
+  await expect.poll(async () => Number(await width.inputValue())).toBeCloseTo(before * 200 / measured, 0);
+  expect(Math.abs(Number(await width.inputValue()) / 480 - 1)).toBeLessThan(0.02);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(width).toHaveValue(original);
+});

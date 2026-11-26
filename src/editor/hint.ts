@@ -18,6 +18,7 @@ export interface HintState {
   transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null;
   offsetActive?: boolean;
   alignActive?: boolean;
+  calibration?: { stage: "point1" | "point2" | "review"; confirmed?: unknown } | null;
   trimMode?: boolean;
   objectPicker?: boolean;
   array?: { kind: string } | null;
@@ -60,6 +61,7 @@ function canvasHelp(s: HintState, hint: EditorHint): EditorHint {
     s.transformTool ||
     s.offsetActive ||
     s.alignActive ||
+    s.calibration ||
     s.stitchMode ||
     s.objectPicker ||
     s.trimMode
@@ -422,6 +424,17 @@ function buildHint(
     action = "Choose a horizontal and/or vertical arrangement.";
     add("apply", "Enter / Right-click", "Apply alignment");
     add("cancel", "Esc", "Discard alignment preview");
+  } else if (s.calibration) {
+    if (s.calibration.stage === "review") {
+      action = "Enter the real distance between the two points.";
+      add("apply", "Enter / Right-click", "Scale the image");
+      add("values", "Tab", "Edit known distance");
+      add("cancel", "Esc", "Discard calibration");
+    } else {
+      action = `Click point ${s.calibration.stage === "point1" ? 1 : 2} on the image.`;
+      if (s.calibration.stage === "point2" || s.calibration.confirmed) add("angle", "Shift", "Constrain to 45°");
+      add("cancel", "Esc", s.calibration.confirmed ? "Keep the previous point" : s.calibration.stage === "point2" ? "Pick point 1 again" : "Discard calibration");
+    }
   } else if (s.offsetActive) {
     action = "Enter a signed distance and choose Sharp or Rounded corners.";
     add("apply", "Enter / Right-click", "Create offset outlines");

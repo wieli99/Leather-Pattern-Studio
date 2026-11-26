@@ -220,6 +220,9 @@ const helpContexts: Partial<HintState>[] = [
   { booleanOperation: "subtract", boolean: { picker: "target" } },
   { offsetActive: true },
   { alignActive: true },
+  { calibration: { stage: "point1" } },
+  { calibration: { stage: "point2" } },
+  { calibration: { stage: "review" } },
   { array: { kind: "radial" }, arrayStage: "center" },
   { pathCopy: { picker: null } },
   { booleanOperation: "subtract", boolean: { picker: "cutters" } },
@@ -309,4 +312,15 @@ test("segment selection explains selecting and editing segments", () => {
     ]),
   );
   expect(chosen.controls.filter((row) => row.id === "cancel")).toHaveLength(1);
+});
+
+test("calibration hints follow the picking stage", () => {
+  expect(editorHint({ ...base, calibration: { stage: "point1" } }).action).toBe("Click point 1 on the image.");
+  const second = editorHint({ ...base, calibration: { stage: "point2" } });
+  expect(second.controls.find((c) => c.id === "cancel")?.action).toBe("Pick point 1 again");
+  expect(second.controls.some((c) => c.id === "angle")).toBe(true);
+  const repick = editorHint({ ...base, calibration: { stage: "point1", confirmed: {} } });
+  expect(repick.controls.find((c) => c.id === "cancel")?.action).toBe("Keep the previous point");
+  const review = editorHint({ ...base, calibration: { stage: "review" } });
+  expect(review.controls.map((c) => c.id)).toEqual(expect.arrayContaining(["apply", "fields", "cancel"]));
 });

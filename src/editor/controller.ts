@@ -105,13 +105,14 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
-import { idleStitchOperation, idleStitchSession, type AlignSession, type ArraySession, type OffsetSession, type StitchSession, type TransformSession, type TransformTool, type TrimSession } from "./toolSessions";
+import { calibrateImage, hasGeometryBinding, minCalibrationSpan, pointInImage } from "../model/imageCalibration";
+import { idleStitchOperation, idleStitchSession, type AlignSession, type ArraySession, type CalibrationSession, type OffsetSession, type StitchSession, type TransformSession, type TransformTool, type TrimSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
   return JSON.stringify(parseProject(JSON.stringify({ ...doc, objectTree: tree, shapes: treeInDrawingOrder(tree, doc.shapes) })));
 };
-export type ToolSession = "stitch" | "array" | "path-copy" | "boolean" | "trim" | "offset" | "align" | "transform";
+export type ToolSession = "stitch" | "array" | "path-copy" | "boolean" | "trim" | "offset" | "align" | "calibration" | "transform";
 /** Transforms that apply to detached segments; Corners needs whole objects. */
 export type SegmentTransformTool = "move" | "rotate" | "scale" | "mirror";
 export type Gesture = {
@@ -470,6 +471,164 @@ export class Controller {
     if (await this.commit(next)) {
       this.selectedGroups = [];
       this.selected = ids;
+      this.notify();
+    }
+  }
+  /** The open Calibrate image tool: two points picked on one image and their known distance. */
+  calibration: CalibrationSession | null = null;
+  get calibrationActive() { return !!this.calibration; }
+  /** Why Calibrate image cannot start for the current selection, or "" when it can. */
+  get calibrationUnavailable() {
+    const image = this.selected.length === 1 ? this.document.shapes.find(s => s.id === this.selected[0]) : undefined;
+    if (image?.kind !== "image") return "Select one image";
+    if (this.isLocked(image.id) || this.isHidden(image.id)) return "Select a visible, unlocked image";
+    if (hasGeometryBinding(image)) return "Unlink the image's position and size from variables first";
+    return "";
+  }
+  get canCalibrateImage() {
+    return !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !this.calibrationUnavailable;
+  }
+  activateCalibration() {
+    if (this.deferUntilSettled(() => this.activateCalibration())) return;
+    if (!this.canCalibrateImage) return;
+    this.beginToolSession();
+    this.calibration = {
+      imageId: this.selected[0], stage: "point1", p1: null, p2: null, candidate: null,
+      distance: null, confirmed: null, pointerPixel: null, draft: null, error: "",
+    };
+    this.refreshCalibration();
+  }
+  get calibrationImage() {
+    const id = this.calibration?.imageId;
+    return id ? this.document.shapes.find(s => s.id === id) ?? null : null;
+  }
+  get calibrationPicking() {
+    return !!this.calibration && this.calibration.stage !== "review";
+  }
+  /** Distance between the picked points, following the pointer while point 2 is picked. */
+  get calibrationMeasured() {
+    const run = this.calibration;
+    if (!run) return null;
+    const p1 = run.stage === "point1" ? run.candidate ?? run.p1 : run.p1,
+      p2 = run.stage === "point2" ? run.candidate : run.p2;
+    return p1 && p2 ? distance(p1, p2) : null;
+  }
+  /** Re-pick one point; Escape returns to the reviewed points. */
+  pickCalibrationPoint(stage: "point1" | "point2") {
+    const run = this.calibration;
+    if (!run) return;
+    if (run.stage === "review" && run.p1 && run.p2) run.confirmed = { p1: run.p1, p2: run.p2 };
+    run.stage = stage;
+    run.candidate = null;
+    this.refreshCalibration();
+  }
+  /** Move the candidate point to a canvas pixel; Shift keeps point 2 at a multiple of 45° from point 1. */
+  moveCalibration(pixel: Point, shift = false) {
+    const run = this.calibration;
+    if (!run || run.stage === "review" || this.busy) return;
+    this.pointerInside = true;
+    run.pointerPixel = { ...pixel };
+    // Image features are not geometry, so picking ignores object and grid snapping.
+    let point = this.world(pixel);
+    const anchor = run.stage === "point2" ? run.p1 : run.stage === "point1" && run.confirmed ? run.confirmed.p2 : null;
+    if (shift && anchor) {
+      const angle = Math.round(Math.atan2(point.y - anchor.y, point.x - anchor.x) / (Math.PI / 4)) * Math.PI / 4,
+        radius = distance(point, anchor);
+      point = { x: anchor.x + radius * Math.cos(angle), y: anchor.y + radius * Math.sin(angle) };
+    }
+    run.candidate = point;
+    this.cursor = point;
+    this.refreshCalibration();
+  }
+  /** Accept the candidate point; false when no point is being picked. */
+  confirmCalibrationPoint() {
+    const run = this.calibration;
+    if (!run || run.stage === "review") return false;
+    if (!run.candidate || run.error) return true;
+    if (run.stage === "point1") run.p1 = run.candidate;
+    else run.p2 = run.candidate;
+    run.candidate = null;
+    run.stage = run.stage === "point1" && !run.p2 ? "point2" : "review";
+    if (run.stage === "review") run.confirmed = null;
+    this.refreshCalibration();
+    return true;
+  }
+  /** Escape while picking: return to reviewed points or step back to point 1; false when there is nothing to undo. */
+  cancelCalibrationPoint() {
+    const run = this.calibration;
+    if (!run || run.stage === "review") return false;
+    run.candidate = null;
+    if (run.confirmed) {
+      run.p1 = run.confirmed.p1;
+      run.p2 = run.confirmed.p2;
+      run.confirmed = null;
+      run.stage = "review";
+    } else if (run.stage === "point2") {
+      run.p1 = null;
+      run.stage = "point1";
+    } else {
+      // Nothing to step back to: the caller cancels the tool and refocuses the canvas.
+      return false;
+    }
+    this.refreshCalibration();
+    return true;
+  }
+  setCalibrationDistance(value: number | null) {
+    const run = this.calibration;
+    if (!run) return;
+    run.distance = value;
+    this.refreshCalibration();
+  }
+  /** Scale factor the known distance gives, or null until both are known. */
+  get calibrationFactor() {
+    const run = this.calibration, measured = run?.p1 && run.p2 ? distance(run.p1, run.p2) : 0;
+    return run?.distance && measured >= minCalibrationSpan ? run.distance / measured : null;
+  }
+  /** Rebuild the preview from the unchanged document. */
+  refreshCalibration() {
+    const run = this.calibration;
+    if (!run) return;
+    run.draft = null;
+    run.error = "";
+    this.preview = null;
+    const image = this.calibrationImage;
+    if (!image) run.error = "The image is no longer available.";
+    else if (run.stage !== "review") {
+      if (run.candidate && !pointInImage(image, run.candidate)) run.error = "Pick a point on the image.";
+      else {
+        const other = run.stage === "point1" ? run.p2 : run.p1;
+        if (run.candidate && other && distance(other, run.candidate) < minCalibrationSpan)
+          run.error = "Pick two different points.";
+      }
+    } else if (run.p1 && run.p2 && run.distance !== null) {
+      const result = calibrateImage(image, run.p1, run.p2, run.distance);
+      if (typeof result === "string") run.error = result;
+      else {
+        try {
+          const next = { ...this.document, shapes: this.document.shapes.map(s => s.id === image.id ? result : s) };
+          parseProject(JSON.stringify(next));
+          run.draft = next;
+          this.preview = next;
+        } catch (error) {
+          run.error = String(error).replace(/^Error: /, "");
+        }
+      }
+    }
+    this.notify();
+  }
+  get canApplyCalibration() {
+    return !!this.calibration?.draft && this.calibration.stage === "review" && !this.calibration.error && !this.busy;
+  }
+  /** Confirms a point being picked; otherwise commits the scaled image as one undo step. */
+  async applyCalibration() {
+    if (this.confirmCalibrationPoint()) return;
+    if (!this.canApplyCalibration) return;
+    const next = this.calibration!.draft!, id = this.calibration!.imageId;
+    this.toolSelection = null;
+    this.cancel();
+    if (await this.commit(next)) {
+      this.selectedGroups = [];
+      this.selected = [id];
       this.notify();
     }
   }
@@ -889,6 +1048,7 @@ export class Controller {
       this.alignGap,
       JSON.stringify([this.align?.x, this.align?.y]),
       this.align?.draft ? this.version : 0,
+      JSON.stringify(this.calibration && { ...this.calibration, draft: !!this.calibration.draft }),
       this.revision,
       this.ready,
       this.message,
@@ -925,7 +1085,7 @@ export class Controller {
   cursorSnapshot = () =>
     `${this.formatLength(this.cursor.x)}, ${this.formatLength(this.cursor.y)} ${this.unitSymbol}|${this.message}|${this.zoom}`;
   hoverSnapshot = () =>
-    `${this.tool}|${this.segmentMode && !!this.segmentHover}|${this.arrayFollowing}|${this.arrayCenterPicking}|${this.objectPicker}|${this.placingPivot}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
+    `${this.tool}|${this.segmentMode && !!this.segmentHover}|${this.arrayFollowing}|${this.arrayCenterPicking}|${this.calibrationPicking}|${this.objectPicker}|${this.placingPivot}|${this.hoverHandle}|${this.gesture?.kind ?? ""}`;
   private anchorAlt = false;
   private anchorPointer: Point = { x: 0, y: 0 };
   setAnchorModifier(alt: boolean) {
@@ -1066,7 +1226,7 @@ export class Controller {
     }
     // Undo, redo and load replace the document a tool session previews from, so they end it.
     if (this.transformTool || this.stitchMode || this.booleanOperation ||
-        (this.array || this.offsetActive || this.alignActive) && operation !== "commit" && operation !== "preview") this.cancel();
+        (this.array || this.offsetActive || this.alignActive || this.calibration) && operation !== "commit" && operation !== "preview") this.cancel();
     const run = async () => {
       if (!this.ready) return;
       this.busy = true;
@@ -2201,7 +2361,7 @@ export class Controller {
   }
   async commit(document: Doc) {
     if ((this.pathCopy || this.array) && document !== this.preview) this.cancel();
-    if (this.offsetActive || this.align && document !== this.align.draft) this.cancel();
+    if (this.offsetActive || this.align && document !== this.align.draft || this.calibration && document !== this.calibration.draft) this.cancel();
     try {
       if (!this.canCommitFromView(document)) return false;
       document = reconcilePrintLayouts(this.normalizeTree(reconcileStitches(document,this.document)));
@@ -2689,6 +2849,7 @@ export class Controller {
     if (this.trimMode) return "trim";
     if (this.offsetActive) return "offset";
     if (this.alignActive) return "align";
+    if (this.calibration) return "calibration";
     if (this.transformTool) return "transform";
     return null;
   }
@@ -2701,12 +2862,13 @@ export class Controller {
       case "boolean": case "trim": return this.applyTrim();
       case "offset": return this.applyOffset();
       case "align": return this.applyAlign();
+      case "calibration": return this.applyCalibration();
       case "transform": return this.applyTransform();
     }
   }
   /** Escape first leaves a pending array point or custom pivot placement; true when it did. */
   backToolSession() {
-    return this.cancelArrayPoint() || this.cancelPivotPlacement();
+    return this.cancelArrayPoint() || this.cancelCalibrationPoint() || this.cancelPivotPlacement();
   }
   beginVariableEdit() {
     if (this.canEditVariables) this.openPropertySession();
@@ -3540,6 +3702,7 @@ export class Controller {
     this.arraySession = null;
     this.offset = null;
     this.align = null;
+    this.calibration = null;
     this.trim = null;
     this.transform = null;
     this.stitch = idleStitchSession();
@@ -4227,6 +4390,15 @@ export class Controller {
       if (hit) this.pickPathCopy(hit.id);
       return;
     }
+    if (this.calibration && !this.space && button !== 1) {
+      if (button === 0 || button === 2) {
+        if (this.calibrationPicking) {
+          this.moveCalibration(pixel, shift);
+          this.confirmCalibrationPoint();
+        } else if (button === 2 && !shift && !alt && !ctrl) void this.applyCalibration();
+      }
+      return;
+    }
     if (this.offsetActive && button === 2) { void this.applyOffset(); return; }
     if (this.alignActive && button === 2) { void this.applyAlign(); return; }
     // Align changes its targets through Select Objects; plain canvas clicks keep them.
@@ -4499,6 +4671,16 @@ export class Controller {
       return;
     }
     if (this.objectPicker && !this.space && !this.gesture) return;
+    if (this.calibration && !this.space && !this.gesture) {
+      // Review swallows canvas clicks, so it shows no move, rotate or resize handles.
+      if (this.calibrationPicking) this.moveCalibration(pixel, shift);
+      else {
+        this.pointerInside = true;
+        this.cursor = this.world(pixel);
+        this.notifyPointer();
+      }
+      return;
+    }
     const drag = this.offset?.drag;
     if (drag) {
       const raw = this.snap(this.world(pixel), alt, this.selected);

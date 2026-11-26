@@ -38,6 +38,24 @@ export interface ArraySession {
   pointerPixel: Point | null;
   invalidDistances: Set<"vector1" | "vector2">;
 }
+export type CalibrationStage = "point1" | "point2" | "review";
+export interface CalibrationSession {
+  imageId: string;
+  /** The point being picked on the image, or review once both are set. */
+  stage: CalibrationStage;
+  /** Picked world points on the unchanged image. */
+  p1: Point | null;
+  p2: Point | null;
+  /** The point following the pointer while picking. */
+  candidate: Point | null;
+  /** Known distance in millimetres, or null until entered. */
+  distance: number | null;
+  /** Points to return to when picking from review is cancelled. */
+  confirmed: { p1: Point; p2: Point } | null;
+  pointerPixel: Point | null;
+  draft: Doc | null;
+  error: string;
+}
 export interface TrimSession {
   draft: Doc | null;
   /** The outline portion a click would cut. */

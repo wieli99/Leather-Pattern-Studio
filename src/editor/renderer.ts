@@ -22,6 +22,7 @@ import {
   applyMatrix,
   isPolygon,
   polygonFillets,
+  distance,
 } from "../model/geometry";
 import type { Shape } from "../model/project";
 /** Path commands that adapters of `shapePath` build a rounded rectangle from. */
@@ -400,6 +401,40 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       ctx.stroke();
       ctx.restore();
     }
+    const calibration = editor.calibration;
+    if (calibration) {
+      // Review shows the segment on the scaled preview; picking shows it on the unchanged image.
+      const factor = calibration.stage === "review" ? editor.calibrationFactor ?? 1 : 1,
+        p1 = calibration.stage === "point1" ? calibration.candidate ?? calibration.p1 : calibration.p1,
+        raw = calibration.stage === "point2" ? calibration.candidate ?? calibration.p2 : calibration.p2,
+        p2 = raw && p1 ? { x: p1.x + (raw.x - p1.x) * factor, y: p1.y + (raw.y - p1.y) * factor } : raw;
+      ctx.save();
+      if (p1 && p2) {
+        ctx.lineWidth = 3 / z;
+        ctx.strokeStyle = color("panel");
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+        ctx.lineWidth = 1 / z;
+        ctx.strokeStyle = color("accent");
+        ctx.setLineDash([4 / z, 4 / z]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const label = editor.formatLength(distance(p1, p2)) + " " + editor.unitSymbol,
+          mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        ctx.font = `${12 / z}px sans-serif`;
+        ctx.lineWidth = 3 / z;
+        ctx.strokeStyle = color("panel");
+        ctx.strokeText(label, mid.x + 6 / z, mid.y - 6 / z);
+        ctx.fillStyle = color("text");
+        ctx.fillText(label, mid.x + 6 / z, mid.y - 6 / z);
+      }
+      // The point following the pointer is shown by the drawn crosshair cursor, not a marker.
+      const candidate = calibration.stage === "review" ? null : calibration.candidate;
+      for (const p of [p1, p2]) if (p && p !== candidate) drawPivotPoint(ctx, p, z, color("accent"));
+      ctx.restore();
+    }
     if (editor.pathCopy?.path) {
       const target = editor.document.shapes.find(s => s.id === editor.pathCopy!.path);
       if (target) try {
@@ -679,7 +714,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     }
     const drawingCursor =
       editor.pointerInside &&
-      editor.tool !== "select" &&
+      (editor.tool !== "select" || editor.calibrationPicking) &&
       editor.gesture?.kind !== "pan";
     const target = drawingCursor
       ? editor.cursor

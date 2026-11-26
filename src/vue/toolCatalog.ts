@@ -24,6 +24,7 @@ export const toolCatalog: [
   ["subtract", "Subtract", "", "difference cut out"],
   ["intersect", "Intersect", "", "overlap"],
   ["exclude", "Exclude", "", "xor symmetric difference"],
+  ["calibrate-image", "Calibrate image", "", "reference picture scale known distance trace"],
 ];
 
 export const defaultFavorites = toolCatalog.slice(0, 6).map((tool) => tool[0]);

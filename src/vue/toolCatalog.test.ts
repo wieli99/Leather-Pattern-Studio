@@ -9,7 +9,7 @@ test("default favorites have the requested order", () => {
     "corner",
     "trim",
   ]);
-  expect(new Set(toolCatalog.map((t) => t[0])).size).toBe(15);
+  expect(new Set(toolCatalog.map((t) => t[0])).size).toBe(16);
 });
 test("favorites preserve empty lists, sanitize IDs, and cap length", () => {
   expect(parseFavorites("[]")).toEqual([]);
