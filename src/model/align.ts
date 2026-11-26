@@ -68,17 +68,23 @@ export function gapsFit(list: Bounds[], axis: "x" | "y") {
   return first !== last && span - total >= -tolerance;
 }
 
+/** Whether an action places objects a fixed gap apart instead of equalizing their gaps. */
+const exactGap = (action: AlignAction, gap: number | null | undefined): gap is number =>
+  action.kind === "distribute" && action.mode.startsWith("gaps") && gap != null && Number.isFinite(gap);
+
 /** Minimum number of independent objects an action needs to change anything. */
-export const requiredUnits = (action: AlignAction, reference: AlignReference) =>
-  action.kind === "distribute" ? 3 : reference === "selection" ? 1 : 2;
+export const requiredUnits = (action: AlignAction, reference: AlignReference, gap?: number | null) =>
+  exactGap(action, gap) ? 2 : action.kind === "distribute" ? 3 : reference === "selection" ? 1 : 2;
 
 /**
  * Offsets that align or distribute units, in selection order. Alignment moves every unit
- * except a fixed reference; distribution keeps the two outermost units in place.
+ * except a fixed reference; distribution keeps the two outermost units in place. With an
+ * exact gap, units are placed that far apart in their order along the axis, and the
+ * reference unit (or, relative to the selection, the one furthest toward the start) stays.
  */
-export function alignOffsets(list: Bounds[], action: AlignAction, reference: AlignReference = "selection"): Point[] {
+export function alignOffsets(list: Bounds[], action: AlignAction, reference: AlignReference = "selection", gap?: number | null): Point[] {
   const zero = list.map(() => ({ x: 0, y: 0 }));
-  if (list.length < requiredUnits(action, reference)) return zero;
+  if (list.length < requiredUnits(action, reference, gap)) return zero;
   if (action.kind === "align") {
     const fixed = referenceIndex(list, reference);
     const { axis, value } = edgeValue(fixed === undefined ? union(list) : list[fixed], action.edge);
@@ -93,6 +99,21 @@ export function alignOffsets(list: Bounds[], action: AlignAction, reference: Ali
   const byCenter = (a: number, b: number) => centerOf(list[a]) - centerOf(list[b]) || a - b;
   let order = list.map((_, i) => i).sort(byCenter);
   const targets = new Map<number, number>();
+  if (exactGap(action, gap)) {
+    const fixed = referenceIndex(list, reference) ?? order[0];
+    const placed = new Map<number, number>();
+    let cursor = 0;
+    for (const index of order) {
+      placed.set(index, cursor);
+      cursor += size(list[index], axis) + gap;
+    }
+    const shift = start(list[fixed], axis) - placed.get(fixed)!;
+    return list.map((b, index) => {
+      let delta = index === fixed ? 0 : placed.get(index)! + shift - start(b, axis);
+      if (Math.abs(delta) < tolerance) delta = 0;
+      return axis === "x" ? { x: delta, y: 0 } : { x: 0, y: delta };
+    });
+  }
   if (action.mode.startsWith("centers")) {
     const from = centerOf(list[order[0]]), step = (centerOf(list[order.at(-1)!]) - from) / (order.length - 1);
     order.forEach((index, position) => targets.set(index, from + step * position - centerOf(list[index])));
@@ -101,11 +122,11 @@ export function alignOffsets(list: Bounds[], action: AlignAction, reference: Ali
     const { first, last, span } = gapEnds(list, axis);
     order = [first, ...order.filter((i) => i !== first && i !== last), last];
     const total = order.reduce((sum, index) => sum + size(list[index], axis), 0);
-    const gap = (span - total) / (order.length - 1);
+    const equal = (span - total) / (order.length - 1);
     let cursor = start(list[first], axis);
     for (const index of order) {
       targets.set(index, cursor - start(list[index], axis));
-      cursor += size(list[index], axis) + gap;
+      cursor += size(list[index], axis) + equal;
     }
   }
   return list.map((_, index) => {
@@ -142,12 +163,13 @@ export function alignShapes(
   actions: AlignAction[],
   reference: AlignReference,
   units: UnitMode,
+  gap?: number | null,
 ): Shape[] | null {
   const measured = measureUnits(shapes, unitsList, units);
   const boxes = measured.map((entry) => entry.box);
   const offsets = boxes.map(() => ({ x: 0, y: 0 }));
   for (const action of actions)
-    alignOffsets(boxes, action, reference).forEach((offset, index) => {
+    alignOffsets(boxes, action, reference, gap).forEach((offset, index) => {
       offsets[index].x += offset.x;
       offsets[index].y += offset.y;
     });

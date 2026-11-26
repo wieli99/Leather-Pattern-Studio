@@ -312,6 +312,8 @@ export class Controller {
     this.refreshOffset();
   }
   alignReference: AlignReference = "selection";
+  /** Fixed gap in millimetres for Equalize gaps, or null to share the existing span equally. */
+  alignGap: number | null = null;
   /** The open Align tool: its targets and up to one choice per axis. */
   align: AlignSession | null = null;
   get alignActive() { return !!this.align; }
@@ -329,6 +331,10 @@ export class Controller {
     this.alignReference = reference;
     this.refreshAlign();
   }
+  setAlignGap(gap: number | null) {
+    this.alignGap = gap === null || Number.isFinite(gap) && gap >= 0 ? gap : this.alignGap;
+    this.refreshAlign();
+  }
   /** Choose an action for its axis; choosing the selected action again clears that axis. */
   toggleAlign(action: AlignAction) {
     const align = this.align;
@@ -342,8 +348,8 @@ export class Controller {
   }
   /** Whether the current targets and reference support an action; busy state only disables controls. */
   private alignSupported(align: AlignSession, action: AlignAction) {
-    return align.units.length >= requiredUnits(action, this.alignReference) &&
-      (action.kind !== "distribute" || !action.mode.startsWith("gaps") || align.gapsFit[alignAxis(action)]);
+    return align.units.length >= requiredUnits(action, this.alignReference, this.alignGap) &&
+      (action.kind !== "distribute" || !action.mode.startsWith("gaps") || this.alignGap !== null || align.gapsFit[alignAxis(action)]);
   }
   alignAvailable(action: AlignAction) {
     return !!this.align && !this.busy && this.alignSupported(this.align, action);
@@ -362,7 +368,7 @@ export class Controller {
     if (align.y && !this.alignSupported(align, align.y)) align.y = null;
     const actions = [align.x, align.y].filter((a): a is AlignAction => !!a);
     const shapes = actions.length && !this.toolSelectionError
-      ? alignShapes(this.document.shapes, align.units, actions, this.alignReference, this.units) : null;
+      ? alignShapes(this.document.shapes, align.units, actions, this.alignReference, this.units, this.alignGap) : null;
     if (shapes) {
       // Unselected stitching follows its piece in the preview exactly as it will on Apply.
       align.draft = this.normalizeTree(reconcileStitches({ ...this.document, shapes }, this.document));
@@ -877,6 +883,7 @@ export class Controller {
       this.offsetActive ? this.version : 0,
       this.alignActive,
       this.alignReference,
+      this.alignGap,
       JSON.stringify([this.align?.x, this.align?.y]),
       this.align?.draft ? this.version : 0,
       this.revision,

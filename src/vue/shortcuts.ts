@@ -177,6 +177,11 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
       editor.activateOffset();
       return;
     }
+    if (k === "l") {
+      e.preventDefault();
+      editor.activateAlign();
+      return;
+    }
     if (transformShortcuts.some((item) => item[2].toLowerCase() === k)) {
       e.preventDefault();
       // Segments take every transform except Corners, which needs whole objects.

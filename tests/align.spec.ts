@@ -129,6 +129,56 @@ test('Enter applies after clicking a choice, and rail Undo ends an open session'
   expect(['a', 'b'].map(doc.top)).toEqual([0, 30]);
 });
 
+test('L opens Align, and an exact gap spaces two objects from the first along each axis', async ({ page }) => {
+  await openProject(page);
+  const objects = page.locator('.objects .object-select');
+  await objects.filter({ hasText: 'Strap' }).click();
+  await objects.filter({ hasText: 'Pocket' }).click({ modifiers: ['Shift'] });
+  const canvas = page.locator('canvas').first();
+  await canvas.focus();
+  await page.keyboard.press('l');
+  const panel = page.getByRole('region', { name: 'Align and distribute settings' });
+  await expect(panel).toBeVisible();
+  const gapsX = panel.getByRole('button', { name: 'Equalize horizontal gaps' });
+  // Equal gaps need three objects; an exact gap needs two.
+  await expect(gapsX).toBeDisabled();
+  await panel.getByLabel('Gap spacing').selectOption('exact');
+  const gap = panel.getByLabel('Exact gap');
+  await expect(gap).toHaveValue('5.00');
+  await expect(gapsX).toBeEnabled();
+  // Arrow keys step by 0.1 mm and stop at zero; typed values keep their precision.
+  await gap.focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(gap).toHaveValue('5.1');
+  await gap.fill('0.05');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(gap).toHaveValue('0');
+  // Alt+scroll steps whole millimetres (Shift: 5) and also stops at zero.
+  await gap.hover();
+  await page.keyboard.down('Alt');
+  await page.mouse.wheel(0, -100);
+  await expect(gap).toHaveValue('1');
+  await page.keyboard.down('Shift');
+  await page.mouse.wheel(0, 100);
+  await page.keyboard.up('Shift');
+  await page.keyboard.up('Alt');
+  await expect(gap).toHaveValue('0');
+  await gap.fill('-1');
+  await expect(gap).toHaveAttribute('aria-invalid', 'true');
+  await gap.fill('4.25');
+  await gap.press('Tab');
+  await gapsX.click();
+  await panel.getByRole('button', { name: 'Equalize vertical gaps' }).click();
+  await canvas.focus();
+  await page.keyboard.press('Enter');
+  await expect(panel).toHaveCount(0);
+  const doc = await saved(page);
+  // Strap (10–70, 0–15) stays; Pocket (30 × 40) follows 4.25 mm after it on both axes.
+  expect(['a', 'b'].map(doc.left)).toEqual([10, 74.25]);
+  expect(['a', 'b'].map(doc.top)).toEqual([0, 19.25]);
+});
+
 test('align panel combining a horizontal and a vertical arrangement @manual', async ({ page }) => {
   await openProject(page);
   const objects = page.locator('.objects .object-select');

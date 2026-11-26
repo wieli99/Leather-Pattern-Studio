@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ToolObjectPicker from "./ToolObjectPicker.vue";
 import ToolPopover from "./ToolPopover.vue";
+import LengthInput from "./LengthInput.vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { focusModelCanvas } from "./canvasFocus";
@@ -40,9 +41,16 @@ function choose(action: AlignAction, event: MouseEvent) {
 }
 function title(item: Item) {
   if (item.action.kind !== "distribute") return item.label;
+  if (item.action.mode.startsWith("gaps") && e.value.alignGap !== null) return `${item.label} (2+ objects)`;
   if (item.action.mode.startsWith("gaps") && e.value.align?.gapsFit[item.action.mode.endsWith("x") ? "x" : "y"] === false)
     return `${item.label}: objects are too wide to space between the outer ones`;
   return `${item.label} (3+ objects)`;
+}
+/** Last exact gap, offered again when switching back from Equal. */
+let lastGap = 5;
+function setGapMode(mode: string) {
+  if (e.value.alignGap !== null) lastGap = e.value.alignGap;
+  editor.setAlignGap(mode === "exact" ? lastGap : null);
 }
 </script>
 <template>
@@ -85,6 +93,28 @@ function title(item: Item) {
         </div>
       </div>
     </div>
+    <div class="align-gap">
+      <label>Gaps
+        <select
+          aria-label="Gap spacing"
+          title="Equal shares the space between the outer objects; Exact places objects a set distance apart"
+          :value="e.alignGap === null ? 'equal' : 'exact'"
+          @change="setGapMode(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="equal">Equal</option>
+          <option value="exact">Exact</option>
+        </select>
+      </label>
+      <label v-if="e.alignGap !== null">Gap ({{ e.unitSymbol }})<LengthInput
+        fixed
+        :step=".1"
+        aria-label="Exact gap"
+        title="The reference object, or the first along the axis, stays in place"
+        :value="e.alignGap"
+        :min="0"
+        @commit="editor.setAlignGap($event)"
+      /></label>
+    </div>
     <small v-if="(e.align?.x || e.align?.y) && !e.align?.draft && !e.objectPicker" role="status">Already arranged this way.</small>
   </ToolPopover>
 </template>
@@ -97,5 +127,7 @@ function title(item: Item) {
 .align-axis { display: grid; gap: 4px; align-content: start; }
 .align-axis > span { font-size: 12px; color: var(--muted); }
 .align-buttons { display: grid; grid-template-columns: repeat(3, 36px); gap: 2px; }
+.align-gap { display: flex; gap: 8px; align-items: end; }
+.align-gap input { width: 7em; }
 .align-buttons button { display: grid; place-items: center; width: 36px; height: 36px; padding: 6px; }
 </style>
