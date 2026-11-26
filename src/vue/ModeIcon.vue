@@ -18,11 +18,20 @@ const points = computed(() => {
     m === "image" ||
     m === "measurement" ||
     m === "select" ||
-    m === "segment-select" ||
-    m === "ellipse" ||
-    m.startsWith("polygon")
+    m === "segment-select"
   )
     return [];
+  // Box modes mark the two dragged corners of their bounding frame.
+  if (m === "polygon-box" || m === "ellipse")
+    return [
+      [2, 2],
+      [22, 22],
+    ];
+  if (m === "polygon")
+    return [
+      [12, 12],
+      [20.6, 9.2],
+    ];
   if (m === "control-curve")
     return [
       [3, 19],
@@ -56,17 +65,12 @@ const points = computed(() => {
             [4, 5],
             [20, 19],
           ];
-  if (m.startsWith("ellipse"))
-    return center.value
-      ? [
-          [12, 12],
-          [21, 12],
-          [12, 6],
-        ]
-      : [
-          [3, 6],
-          [21, 18],
-        ];
+  if (m === "ellipse-center")
+    return [
+      [12, 12],
+      [21, 12],
+      [12, 6],
+    ];
   if (m.startsWith("arc"))
     return center.value
       ? [
@@ -139,7 +143,7 @@ const points = computed(() => {
       <path d="M2 7V2H7M17 2H22V7M22 17V22H17M7 22H2V17" stroke-width="1" />
       <path d="M12 5L19 10L16.5 19H7.5L5 10Z" />
     </template>
-    <path v-else-if="mode === 'polygon'" d="M12 3L21 10L18 21H6L3 10Z" />
+    <path v-else-if="mode === 'polygon'" d="M12 3L20.6 9.2L17.3 19.3H6.7L3.4 9.2Z" />
     <path v-else-if="mode === 'polyline'" d="M3 18L9 6L16 15L21 5" />
     <path v-else-if="mode.startsWith('rectangle')" d="M4 5H20V19H4Z" />
     <template v-else-if="mode === 'ellipse'">
