@@ -15,8 +15,6 @@ const props = defineProps<{
   /** Accessible names that differ from the visible labels. */
   ariaLabels?: Partial<Record<Field, string>>;
   orientation?: "world" | "local";
-  /** Arrow-key step of the angle; Model keeps fine 0.01° steps, Print uses whole degrees. */
-  angleStep?: number;
 }>();
 const emit = defineEmits<{ commit: [Field, number]; invalid: [Field]; orientation: ["world" | "local"] }>();
 const fields = computed((): [Field, string][] =>
@@ -29,7 +27,7 @@ const fields = computed((): [Field, string][] =>
   <div v-if="fields.length" class="transform-inputs" data-hint-edit="transform">
     <label v-for="[field, label] in fields" :key="field">{{ label }}
       <LengthInput v-if="tool === 'move'" fixed :units="units" :aria-label="ariaLabels?.[field] ?? label" :value="values[field]" @invalid="emit('invalid', field)" @commit="emit('commit', field, $event)" />
-      <LengthInput v-else scalar :step="field === 'angle' ? angleStep : undefined" :precision="tool === 'scale' ? 2 : undefined" :aria-label="ariaLabels?.[field] ?? label" :value="values[field]" @invalid="emit('invalid', field)" @commit="emit('commit', field, $event)" />
+      <LengthInput v-else scalar :step="field === 'angle' ? 1 : undefined" :precision="tool === 'scale' ? 2 : undefined" :aria-label="ariaLabels?.[field] ?? label" :value="values[field]" @invalid="emit('invalid', field)" @commit="emit('commit', field, $event)" />
     </label>
   </div>
   <label v-if="orientation">Axes

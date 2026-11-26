@@ -306,16 +306,16 @@ test("panning keeps selection tools visible", async ({ page }) => {
   await expect(page.getByLabel("X factor", { exact: true })).toBeVisible();
 });
 
-test("Model rotation angle keeps fine arrow-key steps", async ({ page }) => {
+test("Model rotation angle steps by whole degrees like other angle fields", async ({ page }) => {
   await setup(page);
   await page.getByRole("button", { name: "Rotate", exact: true }).click();
   const angle = page.getByLabel("Angle (°)", { exact: true });
   await angle.fill("35");
   await angle.press("ArrowUp");
-  await expect(angle).toHaveValue("35.01");
+  await expect(angle).toHaveValue("36");
   await angle.press("ArrowDown");
   await angle.press("ArrowDown");
-  await expect(angle).toHaveValue("34.99");
+  await expect(angle).toHaveValue("34");
 });
 
 test("window blur preserves a pending rotation until Apply", async ({ page }) => {
