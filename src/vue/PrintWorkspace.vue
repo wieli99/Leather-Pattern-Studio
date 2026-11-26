@@ -3414,6 +3414,7 @@ defineExpose({
           :unit-symbol="layout.units === 'mm' ? 'mm' : 'in'"
           :units="layout.units"
           :aria-labels="{ x: 'Print move X', y: 'Print move Y', angle: 'Print rotation' }"
+          :angle-step="1"
           :orientation="axes"
           @commit="commitTransformField"
           @invalid="(field) => error = field === 'angle' ? 'Enter a finite rotation' : 'Enter a valid distance'"
