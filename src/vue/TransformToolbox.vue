@@ -190,15 +190,15 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     </ToolPopover>
     <StitchToolbox />
     <StitchToolbar />
-    <section v-if="e.segmentMode && !e.transformTool && e.segmentSelection.length" class="transform-options segment-options" aria-label="Segment selection">
-      <strong>{{ e.segmentSelection.length === 1 ? "1 segment" : `${e.segmentSelection.length} segments` }}</strong>
+    <ToolPopover v-if="e.segmentMode && !e.transformTool && e.segmentSelection.length" class="segment-options" aria-label="Segment selection"
+      :heading="e.segmentSelection.length === 1 ? '1 segment' : `${e.segmentSelection.length} segments`">
       <small>Press G to move, E to rotate, S to resize or M to mirror. Transforming or separating detaches segments from their shapes.</small>
-      <div class="actions tool-popup-footer">
+      <template #footer>
         <button :disabled="e.busy" title="Separate (Ctrl+Shift+D)" @click="editor.separateSegments()">Separate</button>
         <button :disabled="e.busy" title="Duplicate (Ctrl+D)" @click="editor.duplicateSegments()">Duplicate</button>
         <button :disabled="e.busy" title="Delete (Delete)" @click="editor.deleteSegments()">Delete</button>
-      </div>
-    </section>
+      </template>
+    </ToolPopover>
     <ToolPopover v-if="e.trimMode" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
       :heading="e.booleanOperation ? e.booleanLabel : e.mergeMode ? 'Join' : 'Trim'"
       :apply-disabled="!e.canApplyTrim" :apply="() => editor.applyTrim()" :cancel="cancel">
