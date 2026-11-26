@@ -1,4 +1,5 @@
-import type { Doc, Point } from "../model/project";
+import type { Doc, Point, Shape } from "../model/project";
+import type { BooleanOperation } from "../model/boolean";
 import type { ArraySettings } from "../model/array";
 import type { AlignAction, AlignUnit } from "../model/align";
 /**
@@ -33,4 +34,24 @@ export interface ArraySession {
   centerCandidate: Point | null;
   pointerPixel: Point | null;
   invalidDistances: Set<"vector1" | "vector2">;
+}
+export interface TrimSession {
+  draft: Doc | null;
+  /** The outline portion a click would cut. */
+  highlight: Point[] | null;
+  /** Pieces cut so far, mapped to the selected outline they came from. */
+  owners: Map<string, string>;
+  /** Set for Join and the boolean operations, which reuse the trim preview and Apply. */
+  boolean: BooleanSession | null;
+}
+export interface BooleanSession {
+  operation: BooleanOperation;
+  target: string;
+  cutters: string[];
+  picker: "target" | "cutters" | null;
+  error: string;
+  empty: boolean;
+  /** Selection restored on Cancel. */
+  selection: string[];
+  cache: { key: string; result: Shape | null } | null;
 }

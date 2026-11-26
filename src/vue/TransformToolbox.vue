@@ -204,21 +204,21 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       :apply-disabled="!e.canApplyTrim" :apply="() => editor.applyTrim()" :cancel="cancel">
       <template v-if="!e.booleanOperation"><ToolObjectPicker /></template>
       <template v-if="e.booleanOperation">
-        <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'target'"
-          :title="e.booleanPicker === 'target' ? 'Stop choosing a target' : 'Choose a target object'"
+        <button type="button" class="boolean-picker" :aria-pressed="e.boolean?.picker === 'target'"
+          :title="e.boolean?.picker === 'target' ? 'Stop choosing a target' : 'Choose a target object'"
           @click="editor.setBooleanPicker('target')">
           <span class="boolean-picker-label">Select Target</span>
-          <span>{{ e.booleanTarget ? '(1)' : 'Choose object' }}</span>
+          <span>{{ e.boolean?.target ? '(1)' : 'Choose object' }}</span>
         </button>
-        <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'cutters'"
-          :title="e.booleanPicker === 'cutters' ? 'Stop choosing other objects' : 'Choose other objects'"
+        <button type="button" class="boolean-picker" :aria-pressed="e.boolean?.picker === 'cutters'"
+          :title="e.boolean?.picker === 'cutters' ? 'Stop choosing other objects' : 'Choose other objects'"
           @click="editor.setBooleanPicker('cutters')">
           <span>{{ e.booleanOperation === 'subtract' ? 'Select subtract objects' : 'Select other objects' }}</span>
-          <span>({{ e.booleanCutters.length }})</span>
+          <span>({{ e.boolean?.cutters.length }})</span>
         </button>
-        <SelectionHint :active="e.booleanPicker === 'cutters'" />
-        <p v-if="e.booleanError" role="alert">{{ e.booleanError }}</p>
-        <p v-if="e.booleanEmpty" role="status">Result is empty. Apply removes the input objects.</p>
+        <SelectionHint :active="e.boolean?.picker === 'cutters'" />
+        <p v-if="e.boolean?.error" role="alert">{{ e.boolean.error }}</p>
+        <p v-if="e.boolean?.empty" role="status">Result is empty. Apply removes the input objects.</p>
       </template>
       <small v-else>{{ e.mergeMode ? "Apply to join the selected objects." : "Click a highlighted outline portion to trim it." }}</small>
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>

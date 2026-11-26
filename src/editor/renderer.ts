@@ -244,23 +244,23 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       const path = new Path2D(),
         m = shapeMatrix(s);
       path.addPath(primitive, new DOMMatrix([m.a, m.b, m.c, m.d, m.e, m.f]));
-      const selected = editor.pathCopy ? s.id === editor.pathCopy.source : editor.booleanOperation ? s.id === editor.booleanTarget : editor.selected.includes(s.id);
-      ctx.lineWidth = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? Math.max(s.strokeWidth ?? 0.35, 2/editor.zoom) : s.strokeWidth ?? 0.35;
-      ctx.strokeStyle = editor.pathCopy?.path === s.id ? "#e34646" : editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : preview
+      const selected = editor.pathCopy ? s.id === editor.pathCopy.source : editor.boolean ? s.id === editor.boolean.target : editor.selected.includes(s.id);
+      ctx.lineWidth = editor.boolean?.cutters.includes(s.id) ? Math.max(s.strokeWidth ?? 0.35, 2/editor.zoom) : s.strokeWidth ?? 0.35;
+      ctx.strokeStyle = editor.pathCopy?.path === s.id ? "#e34646" : editor.boolean?.cutters.includes(s.id) ? "#e34646" : preview
         ? color("preview")
         : selected
           ? color("accent")
           : editor.hover === s.id
             ? color("text")
             : color("shape");
-      if (!selected && !preview && editor.hover !== s.id && !(editor.booleanOperation && editor.booleanCutters.includes(s.id))) {
+      if (!selected && !preview && editor.hover !== s.id && !editor.boolean?.cutters.includes(s.id)) {
         ctx.strokeStyle = s.strokeColor ?? color("shape");
         ctx.globalAlpha = s.strokeOpacity ?? 1;
       }
       if (isClosedShape(s) && (!s.stitchOnly || selected || preview)) {
         ctx.save();
         ctx.globalAlpha = s.fillOpacity ?? (selected ? 0.12 : 0.05);
-        ctx.fillStyle = editor.booleanOperation && editor.booleanCutters.includes(s.id) ? "#e34646" : s.fillColor ?? (selected ? color("accent") : color("shape"));
+        ctx.fillStyle = editor.boolean?.cutters.includes(s.id) ? "#e34646" : s.fillColor ?? (selected ? color("accent") : color("shape"));
         ctx.fill(path, s.kind === "compound" ? "evenodd" : "nonzero");
         ctx.restore();
         if (s.fillMode === "skiving" || s.fillMode === "glueing" || s.fillMode === "cutout") {
@@ -414,17 +414,18 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     }
     if (editor.booleanOperation && editor.preview) {
       ctx.save(); ctx.globalAlpha = 0.65;
-      editor.document.shapes.filter(s => editor.booleanCutters.includes(s.id)).forEach(s => shape(s, true));
+      editor.document.shapes.filter(s => editor.boolean?.cutters.includes(s.id)).forEach(s => shape(s, true));
       ctx.restore();
     }
     drawStitches(ctx,editor,color);
-    if (editor.trimMode && editor.pointerInside && editor.trimHighlight) {
-      const [a] = editor.trimHighlight;
+    const trimHighlight = editor.trim?.highlight;
+    if (trimHighlight && editor.pointerInside) {
+      const [a] = trimHighlight;
       ctx.save();
       ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
-      for (const p of editor.trimHighlight.slice(1)) ctx.lineTo(p.x, p.y);
+      for (const p of trimHighlight.slice(1)) ctx.lineTo(p.x, p.y);
       ctx.strokeStyle = color("canvas");
       ctx.lineWidth = 9 / z;
       ctx.stroke();

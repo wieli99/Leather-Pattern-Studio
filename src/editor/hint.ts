@@ -23,7 +23,7 @@ export interface HintState {
   arrayStage?: "endpoint1" | "endpoint2" | "center" | "review";
   pathCopy?: { picker: "source" | "path" | null } | null;
   booleanOperation?: string | null;
-  booleanPicker?: "target" | "cutters" | null;
+  boolean?: { picker: "target" | "cutters" | null } | null;
   placingPivot: boolean;
   active?: readonly { kind: string }[];
   measurementFields?: readonly string[];
@@ -237,12 +237,12 @@ function buildHint(
   }
   if (s.booleanOperation) {
     action =
-      s.booleanPicker === "target"
+      s.boolean?.picker === "target"
         ? "Choose a target from the original objects."
-        : s.booleanPicker === "cutters"
+        : s.boolean?.picker === "cutters"
           ? "Choose objects to add or remove from the operation."
           : "Review the result, or activate a picker to change the objects.";
-    if (s.booleanPicker !== "target")
+    if (s.boolean?.picker !== "target")
       add("apply", "Enter on canvas / Right-click", "Apply");
     add("buttons", "Enter / Space on a button", "Activate button");
     add("fields", "Tab / Shift+Tab", "Next / previous control");

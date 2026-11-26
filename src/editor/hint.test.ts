@@ -131,14 +131,14 @@ test("boolean hints distinguish target picking, operands and keyboard button act
   const target = editorHint({
     ...base,
     booleanOperation: "union",
-    booleanPicker: "target",
+    boolean: { picker: "target" },
   });
   expect(target.action).toContain("original objects");
   expect(target.controls.some((c) => c.id === "apply")).toBe(false);
   const operands = editorHint({
     ...base,
     booleanOperation: "subtract",
-    booleanPicker: "cutters",
+    boolean: { picker: "cutters" },
   });
   expect(operands.action).toContain("add or remove");
   expect(operands.controls).toContainEqual({
@@ -217,12 +217,12 @@ const helpContexts: Partial<HintState>[] = [
   { transformTool: "corner" },
   { transformTool: "move", placingPivot:true },
   { transformTool: "move", objectPicker:true },
-  { booleanOperation:"subtract",booleanPicker:"target" },
+  { booleanOperation: "subtract", boolean: { picker: "target" } },
   { offsetActive: true },
   { alignActive: true },
   { array: { kind: "radial" }, arrayStage: "center" },
   { pathCopy: { picker: null } },
-  { booleanOperation: "subtract", booleanPicker: "cutters" },
+  { booleanOperation: "subtract", boolean: { picker: "cutters" } },
   { stitchMode: true, stitchTool: null },
   { stitchMode: true, stitchTool: "link" },
   { stitchMode: true, stitchTool: "continue" },

@@ -105,7 +105,7 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
-import type { AlignSession, ArraySession, OffsetSession } from "./toolSessions";
+import type { AlignSession, ArraySession, OffsetSession, TrimSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
@@ -854,12 +854,12 @@ export class Controller {
       this.placingPivot,
       this.objectPicker,
       this.booleanOperation,
-      this.booleanPicker,
-      this.booleanCutters.join(","),
-      this.booleanError,
-      this.booleanEmpty,
+      this.boolean?.picker,
+      this.boolean?.cutters.join(","),
+      this.boolean?.error,
+      this.boolean?.empty,
       this.trimMode,
-      JSON.stringify(this.trimDraft),
+      JSON.stringify(this.trim?.draft),
       this.trimMode ? this.transformError : "",
       this.stitchMode,
       this.stitchMode ? this.version : 0,
@@ -1470,7 +1470,7 @@ export class Controller {
     }
     this.notify();
   }
-  private trimOwners = new Map<string, string>();
+
   private numericTransformBasis: { document: Doc; values: { x: number; y: number; angle: number; sx: number; sy: number }; pivot: Point; angle: number } | null = null;
   pivotMode: PivotMode = "bounding-box";
   objectPicker = false;
@@ -1519,7 +1519,7 @@ export class Controller {
   }
   setToolSelection(ids: string[], groups: string[] = []) {
     if (!this.objectPicker || this.busy) return;
-    const previous = this.transformDraft ?? this.trimDraft ?? this.preview;
+    const previous = this.transformDraft ?? this.trim?.draft ?? this.preview;
     this.numericTransformBasis = null;
     const oldIds = new Set(this.selected);
     this.selectedGroups = groups;
@@ -1529,8 +1529,7 @@ export class Controller {
     this.previewId++;
     this.preview = null;
     this.transformDraft = null;
-    this.trimDraft = null;
-    this.trimHighlight = null;
+    if (this.trim) { this.trim.draft = null; this.trim.highlight = null; }
     this.transformError = "";
     this.selectedCorner = null;
     this.cornerStyleOverride = null;
@@ -1555,8 +1554,8 @@ export class Controller {
     } else if (previous) {
       const ids = new Set(this.selected);
       const next = reconcileStitches({...this.document, shapes: this.document.shapes.flatMap(shape =>
-        ids.has(shape.id) && oldIds.has(shape.id) ? previous.shapes.filter(part => part.id === shape.id || this.trimOwners.get(part.id) === shape.id) : [shape])}, this.document);
-      if (this.trimMode) this.trimDraft = next;
+        ids.has(shape.id) && oldIds.has(shape.id) ? previous.shapes.filter(part => part.id === shape.id || this.trim?.owners.get(part.id) === shape.id) : [shape])}, this.document);
+      if (this.trim) this.trim.draft = next;
       else this.transformDraft = next;
       this.preview = next;
     }
@@ -3315,14 +3314,13 @@ export class Controller {
     if (await this.commit(next)) { this.cancel(); this.selected = ids; this.notify(); }
     else if (this.pathCopy) { this.pathCopy.error = "Could not apply copies. Review the document and try again."; this.notify(); }
   }
-  booleanOperation: BooleanOperation | null = null;
-  booleanTarget = "";
-  booleanCutters: string[] = [];
-  booleanPicker: "target" | "cutters" | null = null;
-  booleanError = "";
-  booleanEmpty = false;
-  private booleanSelection: string[] = [];
-  private booleanCache: { key: string; result: Shape | null } | null = null;
+  /** The open Trim tool, or Join and the boolean operations, which share its preview and Apply. */
+  trim: TrimSession | null = null;
+  get trimMode() { return !!this.trim; }
+  get boolean() { return this.trim?.boolean ?? null; }
+  /** Join and the boolean operations; plain Trim cuts outline portions instead. */
+  get mergeMode() { return !!this.trim?.boolean; }
+  get booleanOperation() { return this.trim?.boolean?.operation ?? null; }
   get booleanLabel() {
     return (
       {
@@ -3364,13 +3362,15 @@ export class Controller {
     );
   }
   setBooleanPicker(picker: "target" | "cutters") {
-    if (!this.booleanOperation || this.busy) return;
-    this.booleanPicker = this.booleanPicker === picker ? null : picker;
+    const run = this.boolean;
+    if (!run || this.busy) return;
+    run.picker = run.picker === picker ? null : picker;
     this.refreshBoolean();
   }
   removeBooleanOperand(id: string) {
-    if (!this.booleanOperation || this.busy) return;
-    this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
+    const run = this.boolean;
+    if (!run || this.busy) return;
+    run.cutters = run.cutters.filter((x) => x !== id);
     this.refreshBoolean();
   }
   activateBoolean(operation: BooleanOperation) {
@@ -3381,55 +3381,61 @@ export class Controller {
       .filter((s) => this.selected.includes(s.id))
       .map((s) => s.id);
     this.cancel();
-    this.booleanSelection = [...this.selected];
-    this.booleanOperation = operation;
-    this.booleanTarget = ids[0] ?? "";
-    this.booleanCutters = ids.slice(1);
-    this.booleanPicker = !ids.length ? "target" : ids.length === 1 ? "cutters" : null;
+    this.trim = {
+      draft: null, highlight: null, owners: new Map(),
+      boolean: {
+        operation,
+        target: ids[0] ?? "",
+        cutters: ids.slice(1),
+        picker: !ids.length ? "target" : ids.length === 1 ? "cutters" : null,
+        error: "", empty: false, selection: [...this.selected], cache: null,
+      },
+    };
     this.tool = "select";
     this.mode = "select";
-    this.trimMode = true;
-    this.mergeMode = true;
     this.transformError = "";
     this.refreshBoolean();
   }
   pickBoolean(id: string) {
-    if (!this.booleanOperation || !this.booleanPicker) return;
-    if (!this.booleanEligible(id, this.booleanOperation === "union")) {
-      this.booleanError =
-        this.booleanOperation === "union"
+    const run = this.boolean;
+    if (!run?.picker) return;
+    if (!this.booleanEligible(id, run.operation === "union")) {
+      run.error =
+        run.operation === "union"
           ? "Choose a visible, unlocked closed outline or joinable path without active stitching."
           : "Choose a visible, unlocked closed outline without active stitching.";
       this.notify();
       return;
     }
-    if (this.booleanPicker === "target") {
-      if (this.booleanTarget && id !== this.booleanTarget)
-        this.booleanCutters.push(this.booleanTarget);
-      this.booleanTarget = id;
-      this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
-      this.booleanPicker = "cutters";
-    } else if (id !== this.booleanTarget) {
-      this.booleanCutters = this.booleanCutters.includes(id)
-        ? this.booleanCutters.filter((x) => x !== id)
-        : [...this.booleanCutters, id];
+    if (run.picker === "target") {
+      if (run.target && id !== run.target)
+        run.cutters.push(run.target);
+      run.target = id;
+      run.cutters = run.cutters.filter((x) => x !== id);
+      run.picker = "cutters";
+    } else if (id !== run.target) {
+      run.cutters = run.cutters.includes(id)
+        ? run.cutters.filter((x) => x !== id)
+        : [...run.cutters, id];
     }
     this.refreshBoolean();
   }
   refreshBoolean() {
-    this.trimDraft = null;
+    const trim = this.trim, run = trim?.boolean;
+    if (!trim || !run) return;
+    trim.draft = null;
     this.preview = null;
-    this.booleanError = "";
-    this.booleanEmpty = false;
-    const ids = [this.booleanTarget, ...this.booleanCutters];
-    if (!this.booleanTarget || !this.booleanCutters.length) {
+    run.error = "";
+    run.empty = false;
+    const ids = [run.target, ...run.cutters];
+    if (!run.target || !run.cutters.length) {
       this.notify();
       return;
     }
     try {
       if (
         !ids.every((id) =>
-          this.booleanEligible(id, this.booleanOperation === "union"),
+          this.booleanEligible(id, run.operation === "union"),
         )
       )
         throw Error(
@@ -3438,25 +3444,25 @@ export class Controller {
       const shapes = ids.map(
         (id) => this.document.shapes.find((s) => s.id === id)!,
       );
-      const key = JSON.stringify([this.revision, this.booleanOperation, ids]);
-      if (this.booleanCache?.key !== key) {
+      const key = JSON.stringify([this.revision, run.operation, ids]);
+      if (run.cache?.key !== key) {
         const openJoin =
-          this.booleanOperation === "union" && !shapes.every(isClosedShape);
+          run.operation === "union" && !shapes.every(isClosedShape);
         const result = openJoin
           ? mergeShapes(shapes)
-          : booleanShapes(this.booleanOperation!, shapes);
+          : booleanShapes(run.operation, shapes);
         if (openJoin && !result)
           throw Error(
             "Open paths must form one connected chain of straight paths or curves. Do not mix open and closed outlines.",
           );
-        this.booleanCache = { key, result };
+        run.cache = { key, result };
       }
-      const result = this.booleanCache.result;
-      this.booleanEmpty = !result;
-      this.trimDraft = this.normalizeTree({
+      const result = run.cache.result;
+      run.empty = !result;
+      trim.draft = this.normalizeTree({
         ...this.document,
         shapes: this.document.shapes.flatMap((s) =>
-          s.id === this.booleanTarget
+          s.id === run.target
             ? result
               ? [result]
               : []
@@ -3465,10 +3471,10 @@ export class Controller {
               : [s],
         ),
       });
-      parseProject(JSON.stringify(this.trimDraft));
-      this.preview = this.trimDraft;
+      parseProject(JSON.stringify(trim.draft));
+      this.preview = trim.draft;
     } catch (error) {
-      this.booleanError =
+      run.error =
         error instanceof Error ? error.message : String(error);
     }
     this.notify();
@@ -3476,21 +3482,15 @@ export class Controller {
   activateMerge() {
     this.activateBoolean("union");
   }
-  mergeMode = false;
-  trimHighlight: Point[] | null = null;
-  trimMode = false;
-  trimDraft: Doc | null = null;
   get canApplyTrim() {
-    return this.trimMode && !this.selectionLocked && !this.objectPicker && (!!this.booleanOperation || !this.toolSelectionError) &&
-      !!this.trimDraft && !this.transformError && !this.booleanError && !this.busy;
+    return !!this.trim?.draft && !this.selectionLocked && !this.objectPicker && (!!this.boolean || !this.toolSelectionError) &&
+      !this.transformError && !this.boolean?.error && !this.busy;
   }
   async applyTrim() {
     if (!this.canApplyTrim) return;
-    const next = this.trimDraft!;
-    const mergedId = this.mergeMode
-      ? next.shapes.find((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id))?.id
-      : undefined;
-    const boolean = !!this.booleanOperation;
+    const next = this.trim!.draft!, run = this.boolean;
+    const mergedId = run ? next.shapes.find((s) => s.id === run.target)?.id : undefined;
+    const boolean = !!run;
     this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
@@ -3498,6 +3498,10 @@ export class Controller {
       if (mergedId) this.selected = [mergedId];
       this.notify();
     }
+  }
+  /** A selected, unlocked outline, or a piece Trim has already cut from one. */
+  private trimmable(trim: TrimSession, shape: Shape) {
+    return (this.selected.includes(shape.id) || this.selected.includes(trim.owners.get(shape.id) ?? "")) && !this.isLocked(shape.id);
   }
   get canTrim() {
     return (
@@ -3509,7 +3513,7 @@ export class Controller {
   activateTrim() {
     if (!this.canTrim) return;
     this.beginToolSession();
-    this.trimMode = true;
+    this.trim = { draft: null, highlight: null, owners: new Map(), boolean: null };
     this.notify();
   }
   cancel() {
@@ -3526,7 +3530,7 @@ export class Controller {
     this.pivotMode = "bounding-box";
     this.pivotPlacement = null;
     this.numericTransformBasis = null;
-    this.trimOwners.clear();
+
     if (this.pathCopy) this.selected = this.pathCopySelection;
     this.pathCopy = null;
     this.arraySession = null;
@@ -3535,13 +3539,8 @@ export class Controller {
     this.mirrorAxis = null;
     this.mirrorLine = null;
     this.mirrorHover = null;
-    if (this.booleanOperation) this.selected = this.booleanSelection;
-    this.booleanOperation = null; this.booleanPicker = null; this.booleanCutters = [];
-    this.booleanError = ""; this.booleanEmpty = false;
-    this.mergeMode = false;
-    this.trimMode = false;
-    this.trimDraft = null;
-    this.trimHighlight = null;
+    if (this.boolean) this.selected = this.boolean.selection;
+    this.trim = null;
     if (this.stitchOriginal) {
       this.document = this.stitchOriginal;
       this.stitchOriginal = null;
@@ -3991,7 +3990,7 @@ export class Controller {
       this.preview ??
       this.pendingDocument ??
       this.document
-    ).shapes.filter((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id) || this.trimMode && this.selected.includes(this.trimOwners.get(s.id) ?? ""));
+    ).shapes.filter((s) => this.boolean ? s.id === this.boolean.target : this.selected.includes(s.id) || !!this.trim && this.selected.includes(this.trim.owners.get(s.id) ?? ""));
   }
   get selectionBounds() {
     return bounds(this.active, this.units);
@@ -4268,20 +4267,21 @@ export class Controller {
     }
     if (this.mergeMode && button === 0 && !this.space) return;
     if (this.trimMode && button === 2) { void this.applyTrim(); return; }
-    if (this.trimMode && !this.mergeMode && button === 0 && !this.space) {
-      const baseline = this.trimDraft ?? this.document;
+    const trim = this.trim;
+    if (trim && !trim.boolean && button === 0 && !this.space) {
+      const baseline = trim.draft ?? this.document;
       const visible = baseline.shapes.filter(s => !this.isHidden(s.id));
-      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
+      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => this.trimmable(trim, s));
       const shapes = trimmed ? [...trimmed, ...baseline.shapes.filter(s => this.isHidden(s.id))] : null;
-      this.trimHighlight = null;
+      trim.highlight = null;
       if (shapes) {
         try {
           const next = reconcileStitches({ ...baseline, shapes }, baseline);
           parseProject(JSON.stringify(this.normalizeTree(next)));
           const changed = baseline.shapes.find(shape => !next.shapes.some(part => part.id === shape.id && JSON.stringify(part) === JSON.stringify(shape)));
           if (changed) for (const part of next.shapes.filter(part => !baseline.shapes.some(old => old.id === part.id)))
-            this.trimOwners.set(part.id, this.trimOwners.get(changed.id) ?? changed.id);
-          this.trimDraft = next;
+            trim.owners.set(part.id, trim.owners.get(changed.id) ?? changed.id);
+          trim.draft = next;
           this.preview = next;
           this.transformError = "";
         } catch (error) { this.transformError = String(error); }
@@ -4531,12 +4531,13 @@ export class Controller {
       this.notify();
       return;
     }
-    if (this.trimMode && !this.mergeMode && !this.space && !this.gesture) {
+    const trim = this.trim;
+    if (trim && !trim.boolean && !this.space && !this.gesture) {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
-      this.trimHighlight = null;
-      trimAt((this.trimDraft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
-        span => { this.trimHighlight = span; }, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
+      trim.highlight = null;
+      trimAt((trim.draft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
+        span => { trim.highlight = span; }, s => this.trimmable(trim, s));
       this.notify();
       return;
     }
