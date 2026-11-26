@@ -196,11 +196,37 @@ test("paths finish, close and step back with on-screen buttons", async ({ page }
   await actions.getByRole("button", { name: "Remove last point" }).tap();
   await actions.getByRole("button", { name: "Close" }).tap();
   await expect(actions).toHaveCount(0);
-  for (const [x, y] of [[60, 380], [220, 400]]) await tapCanvas(page, x, y);
+  await tapCanvas(page, 60, 380);
+  await expect(actions.getByRole("button", { name: "Finish" })).toBeDisabled();
+  await tapCanvas(page, 220, 400);
+  await expect(actions.getByRole("button", { name: "Finish" })).toBeEnabled();
   await expect(actions.getByRole("button", { name: "Close" })).toBeDisabled();
   await actions.getByRole("button", { name: "Finish" }).tap();
   await openSidebar(page);
   await expect(page.locator(".objects .object-select")).toHaveCount(2);
+});
+
+test("a text tap keeps the keyboard on the new text box", async ({ page }) => {
+  await page.getByRole("button", { name: "Text (T)", exact: true }).tap();
+  await tapCanvas(page, 120, 200);
+  const editor = page.locator(".canvas-text-editor textarea");
+  await expect(editor).toBeFocused();
+  // The browser's follow-up mouse events must not move focus back to the canvas.
+  await page.waitForTimeout(400);
+  await expect(editor).toBeFocused();
+});
+
+// Slow taps (held past the hold delay) are covered by touchGestures.test.ts; browsers here can only
+// send instant taps, which exercise the same canvas wiring.
+test("a double tap closes a path", async ({ page }) => {
+  await page.getByRole("button", { name: /^Polyline|^Path/ }).first().tap();
+  for (const [x, y] of [[60, 100], [220, 120], [200, 300]]) await tapCanvas(page, x, y);
+  await expect(page.getByRole("toolbar", { name: "Path drawing" })).toBeVisible();
+  await tapCanvas(page, 120, 330);
+  await tapCanvas(page, 120, 330);
+  await expect(page.getByRole("toolbar", { name: "Path drawing" })).toHaveCount(0);
+  await openSidebar(page);
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
 });
 
 test("landscape phones keep a side rail and a usable canvas", async ({ page }) => {

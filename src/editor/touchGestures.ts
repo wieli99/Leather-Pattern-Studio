@@ -20,6 +20,7 @@ export interface TouchGestureHandlers<E extends TouchPointer> {
 export const TOUCH_SLOP = 8;
 /** A finger held this long without moving starts its interaction even before moving. */
 export const TOUCH_HOLD_MS = 150;
+/** Longest pause between releasing a tap and pressing the next one for a double tap. */
 export const DOUBLE_TAP_MS = 300;
 
 type State<E> =
@@ -27,7 +28,7 @@ type State<E> =
   /** One finger is down but its interaction is deferred so a second finger can still pinch. */
   | { kind: "pending"; id: number; start: Point; event: E; timer: ReturnType<typeof setTimeout> }
   /** One finger owns the canvas's normal interaction; events pass through. */
-  | { kind: "single"; id: number }
+  | { kind: "single"; id: number; start: Point; downAt: number; moved: boolean }
   /** Two or more fingers pan and zoom; further events are consumed until every finger lifts. */
   | { kind: "multi" };
 
@@ -85,6 +86,8 @@ export class TouchGestureRouter<E extends TouchPointer> {
     }
     if (state.kind !== "multi") {
       this.points.set(event.pointerId, pixel);
+      if (state.kind === "single" && Math.hypot(pixel.x - state.start.x, pixel.y - state.start.y) >= TOUCH_SLOP)
+        state.moved = true;
       return false;
     }
     const before = this.pair();
@@ -110,13 +113,16 @@ export class TouchGestureRouter<E extends TouchPointer> {
       clearTimeout(state.timer);
       this.state = { kind: "idle" };
       this.handlers.begin(state.event);
-      this.tap(event.timeStamp, pixel);
+      this.tap(state.event.timeStamp, event.timeStamp, pixel);
       return false;
     }
     if (state.kind === "single") {
       this.state = { kind: "idle" };
-      this.lastTap = undefined;
-      this.tapCount = 0;
+      // A finger held past the hold delay without moving is still a (slow) tap.
+      if (state.moved) {
+        this.lastTap = undefined;
+        this.tapCount = 0;
+      } else this.tap(state.downAt, event.timeStamp, pixel);
       return false;
     }
     if (!this.points.size) this.state = { kind: "idle" };
@@ -137,6 +143,22 @@ export class TouchGestureRouter<E extends TouchPointer> {
     return state.kind === "pending";
   }
 
+  /**
+   * Resets the router whenever the window loses focus or the page is hidden: fingers lifted while
+   * another app had focus send no pointerup, which would otherwise leave stale fingers forever.
+   * Returns a function that stops listening.
+   */
+  resetOnFocusLoss() {
+    const reset = () => this.reset();
+    const hidden = () => document.visibilityState === "hidden" && this.reset();
+    window.addEventListener("blur", reset);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("blur", reset);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }
+
   /** Forgets every finger, e.g. when the canvas unmounts or the window loses focus. */
   reset() {
     if (this.state.kind === "pending") clearTimeout(this.state.timer);
@@ -150,22 +172,28 @@ export class TouchGestureRouter<E extends TouchPointer> {
     const state = this.state;
     if (state.kind !== "pending") return;
     clearTimeout(state.timer);
-    this.state = { kind: "single", id: state.id };
+    // A drag commits once it leaves the slop; only a held finger commits without moving.
+    const moved = Math.hypot(
+      (this.points.get(state.id)?.x ?? state.start.x) - state.start.x,
+      (this.points.get(state.id)?.y ?? state.start.y) - state.start.y,
+    ) >= TOUCH_SLOP;
+    this.state = { kind: "single", id: state.id, start: state.start, downAt: state.event.timeStamp, moved };
     this.handlers.begin(state.event);
   }
 
-  private tap(at: number, pixel: Point) {
+  /** Pairs taps whose second press lands within DOUBLE_TAP_MS of the first release. */
+  private tap(downAt: number, upAt: number, pixel: Point) {
     const last = this.lastTap;
     if (
       last &&
-      at - last.at <= DOUBLE_TAP_MS &&
+      downAt - last.at <= DOUBLE_TAP_MS &&
       Math.hypot(pixel.x - last.pixel.x, pixel.y - last.pixel.y) <= TOUCH_SLOP * 3
     ) {
       this.lastTap = undefined;
       this.tapCount = 2;
       return;
     }
-    this.lastTap = { at, pixel };
+    this.lastTap = { at: upAt, pixel };
     this.tapCount = 1;
   }
 

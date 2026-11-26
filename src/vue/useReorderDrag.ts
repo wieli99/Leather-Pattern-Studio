@@ -42,6 +42,19 @@ export function useReorderDrag(options: {
   function blockScroll(event: TouchEvent) {
     if (armed && event.cancelable) event.preventDefault();
   }
+  /**
+   * Android fires contextmenu at its long-press timeout, shortly after the hold arms. While armed
+   * the press belongs to the drag, so the platform event is swallowed; a row's own context menu
+   * still opens from its longer touch timer if the finger keeps still.
+   */
+  function holdContextMenu(event: Event) {
+    if (!armed) {
+      cancel();
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }
   function cancel() {
     clearTimeout(holdTimer);
     holdTimer = undefined;
@@ -57,7 +70,7 @@ export function useReorderDrag(options: {
     window.removeEventListener("blur", cancel);
     window.removeEventListener("keydown", key);
     window.removeEventListener("touchmove", blockScroll);
-    window.removeEventListener("contextmenu", cancel);
+    window.removeEventListener("contextmenu", holdContextMenu, true);
     if (active) {
       delete document.documentElement.dataset.reorderDrag;
       document.body.style.cursor = previousCursor;
@@ -115,6 +128,11 @@ export function useReorderDrag(options: {
       return;
     }
     if (!state.value) {
+      // Holding still until a row's context menu opened chose the menu, not a drag.
+      if (armed && document.querySelector("[role='menu']")) {
+        cancel();
+        return;
+      }
       if (
         Math.hypot(
           event.clientX - startEvent.clientX,
@@ -174,10 +192,12 @@ export function useReorderDrag(options: {
     window.addEventListener("keydown", key);
     if (event.pointerType === "touch") {
       armed = false;
-      holdTimer = setTimeout(() => (armed = true), TOUCH_DRAG_HOLD_MS);
+      holdTimer = setTimeout(() => {
+        armed = true;
+        navigator.vibrate?.(10);
+      }, TOUCH_DRAG_HOLD_MS);
       window.addEventListener("touchmove", blockScroll, { passive: false });
-      // A long press that opens the browser's or a row's context menu is not a drag.
-      window.addEventListener("contextmenu", cancel);
+      window.addEventListener("contextmenu", holdContextMenu, true);
     }
     frame = requestAnimationFrame(tick);
   }

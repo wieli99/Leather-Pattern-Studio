@@ -15,7 +15,8 @@ if [[ -t 0 && -t 1 ]]; then flags+=(-it); fi
 # The -lan variants publish the server on every host interface for testing on phones and tablets.
 lan_url() {
   local address
-  address=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+  # Linux only; elsewhere (or offline) the message falls back to a placeholder instead of aborting.
+  address=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' || true)
   echo "Serving on the local network at http://${address:-LAN-IP}:5174 (the firewall may need TCP port 5174 open)" >&2
 }
 case "${1:-}" in

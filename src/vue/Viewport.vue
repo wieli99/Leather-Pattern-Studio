@@ -213,12 +213,16 @@ const touch = new TouchGestureRouter<PointerEvent>({
   cancel: () => editor.pauseGesture(),
   panZoom: (center, factor, delta) => editor.pinchZoom(center, factor, delta),
 });
-let pointerType = "mouse";
+let pointerType = "mouse",
+  stopTouchReset: (() => void) | undefined;
 function down(event: PointerEvent) {
   pointerType = event.pointerType;
   editor.setPointerType(event.pointerType);
   editor.setMeasurementModifier(event.ctrlKey);
   if (draft.value) return;
+  // A touch begins after this event; prevent it now so the browser's follow-up mousedown cannot
+  // take focus back from the text editor that the tap opens.
+  if (event.pointerType === "touch" && editor.tool === "text") event.preventDefault();
   if (!touch.down(event, pixel(event))) begin(event);
 }
 function begin(event: PointerEvent) {
@@ -290,12 +294,14 @@ onMounted(() => {
   editor.onTextRequested = beginText;
   if (!props.textOnly) detach = attachRenderer(canvas.value!, editor);
   canvas.value!.addEventListener("wheel", wheel, { passive: false });
+  stopTouchReset = touch.resetOnFocusLoss();
 });
 onUnmounted(() => {
   document.removeEventListener("pointerdown", outside, true);
   window.removeEventListener("keydown", updateModifiers);
   window.removeEventListener("keyup", updateModifiers);
   window.removeEventListener("blur", clearModifiers);
+  stopTouchReset?.();
   touch.reset();
   editor.editingTextId = undefined;
   editor.onTextRequested = undefined;

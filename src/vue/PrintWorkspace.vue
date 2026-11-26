@@ -2445,8 +2445,15 @@ const touch = new TouchGestureRouter<PointerEvent>({
   },
 });
 let pointerType = "mouse";
-/** Drops an in-progress canvas drag when a second finger starts navigating; the tool stays open. */
+/** The selection before the current press, restored if a pinch takes over that press. */
+let selectionBeforePress: string[] | undefined;
+/**
+ * Drops an in-progress canvas drag when a second finger starts navigating; the tool stays open and
+ * the selection returns to what it was before the finger landed.
+ */
 function interruptPointer() {
+  if (selectionBeforePress) selected.value = selectionBeforePress;
+  selectionBeforePress = undefined;
   if (moveFrame) cancelAnimationFrame(moveFrame);
   moveFrame = 0;
   pendingMove = undefined;
@@ -2469,10 +2476,14 @@ function setPointerType(type: string) {
 }
 function down(event: PointerEvent) {
   setPointerType(event.pointerType);
+  // A touch begins after this event; prevent it now so the browser's follow-up mousedown cannot
+  // take focus back from the text editor that the tap opens.
+  if (event.pointerType === "touch" && drawing.mode === "text") event.preventDefault();
   if (!touch.down(event, pixel(event))) downNow(event);
 }
 function downNow(event: PointerEvent) {
   if (busy.value || editor.busy) return;
+  selectionBeforePress = [...selected.value];
   if (event.button !== 0 && event.button !== 1) return;
   canvas.value!.focus();
   // A deferred touch can begin from its pointerup, after the pointer is no longer active.
@@ -3196,7 +3207,9 @@ watch(canvas, (el) => {
     void draw();
   }
 });
+const stopTouchReset = touch.resetOnFocusLoss();
 onUnmounted(() => {
+  stopTouchReset();
   touch.reset();
   stopDrawing();
   tabEnd();

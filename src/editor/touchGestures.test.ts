@@ -117,6 +117,20 @@ describe("TouchGestureRouter", () => {
     expect(router.tapCount).toBe(0);
   });
 
+  it("counts slow taps held past the hold delay towards double taps", () => {
+    const { router, handlers } = setup();
+    router.down(touch(1, 0), { x: 10, y: 10 });
+    vi.advanceTimersByTime(TOUCH_HOLD_MS + 30);
+    router.move(touch(1, 170), { x: 12, y: 11 });
+    expect(router.up(touch(1, 180), { x: 12, y: 11 })).toBe(false);
+    expect(handlers.begin).toHaveBeenCalledTimes(1);
+    expect(router.tapCount).toBe(1);
+    router.down(touch(2, 300), { x: 11, y: 10 });
+    vi.advanceTimersByTime(TOUCH_HOLD_MS + 30);
+    router.up(touch(2, 480), { x: 11, y: 10 });
+    expect(router.tapCount).toBe(2);
+  });
+
   it("drops cancelled fingers without beginning them", () => {
     const { router, handlers } = setup();
     router.down(touch(1), { x: 0, y: 0 });

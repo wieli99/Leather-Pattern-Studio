@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import RailButton from "./RailButton.vue";
-import { ref, computed, onUnmounted } from "vue";
+import { ref, computed, onUnmounted, watch } from "vue";
 import {
   Primitive,
   DropdownMenuRoot,
@@ -67,8 +67,14 @@ function down(event: PointerEvent) {
 function release() {
   clearTimeout(timer);
 }
+// Some touch browsers send no click after a long press; closing the variants ends it instead.
+watch(open, (value) => {
+  if (!value) long = false;
+});
 function click(event: MouseEvent) {
   if (long) {
+    // The long press already opened the variants; later keyboard context menus toggle again.
+    long = false;
     event.preventDefault();
     return;
   }

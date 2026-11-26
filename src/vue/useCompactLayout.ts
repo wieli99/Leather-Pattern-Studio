@@ -3,9 +3,10 @@ import { computed, ref, watch, type Ref, type WritableComputedRef } from "vue";
 /**
  * Phones: narrow portrait windows, and short landscape windows on touch screens. Keep in sync with
  * the compact media queries in `src/responsive.css`; CSS owns the layout, this flag only drives the
- * few behaviours CSS cannot express.
+ * few behaviours CSS cannot express. Below 760px: the desktop layout supports 760px and wider.
+ * (`max-width: 759.98px` rather than `width < 760px`: Safari before 16.4 lacks range syntax.)
  */
-export const compactLayoutQuery = "(width < 760px), (max-height: 500px) and (pointer: coarse)";
+export const compactLayoutQuery = "(max-width: 759.98px), (max-height: 500px) and (pointer: coarse)";
 
 const query = typeof matchMedia === "function" ? matchMedia(compactLayoutQuery) : undefined;
 const compact = ref(!!query?.matches);

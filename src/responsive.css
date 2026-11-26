@@ -88,7 +88,7 @@
 }
 
 /* ---------- Compact layout: phones in portrait and landscape ---------- */
-@media (width < 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 759.98px), (max-height: 500px) and (pointer: coarse) {
   main {
     min-width: 0;
     height: 100dvh;
@@ -275,7 +275,7 @@
 }
 
 /* ---------- Portrait phones: canvas, then the sidebar sheet, then the tool bar ---------- */
-@media (width < 760px) {
+@media (max-width: 759.98px) {
   .workspace,
   main .print-workspace {
     flex-direction: column;

@@ -11,6 +11,6 @@ const e = useEditor();
   <div v-if="e.pathInProgress" class="transform-toolbox path-drawing-actions" role="toolbar" aria-label="Path drawing">
     <button type="button" @click="editor.removeLastPendingPoint()">Remove last point</button>
     <button type="button" :disabled="e.pending.length < 3" @click="editor.closePolyline()">Close</button>
-    <button type="button" class="primary" @click="editor.finish()">Finish</button>
+    <button type="button" class="primary" :disabled="e.pending.length < 2" @click="editor.finish()">Finish</button>
   </div>
 </template>
