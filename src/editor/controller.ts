@@ -105,6 +105,7 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
+import type { OffsetSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
@@ -264,17 +265,15 @@ export class Controller {
   transformError = "";
   transformGeneration = 0;
   transformDraft: Doc | null = null;
-  offsetActive = false;
   offsetDistance = 3;
   offsetJoin: OffsetJoin = "sharp";
-  offsetError = "";
-  offsetDraft: Doc | null = null;
-  offsetIds: string[] = [];
-  offsetDrag: { start: Point; distance: number; normal: Point } | null = null;
+  /** The open Offset tool: its preview, the copies it adds and an outline being dragged. */
+  offset: OffsetSession | null = null;
+  get offsetActive() { return !!this.offset; }
   private offsetDragAt(raw: Point) {
     const originals = this.document.shapes.filter(s => this.selected.includes(s.id));
-    const index = this.offsetIds.findIndex(id => {
-      const shape = this.offsetDraft?.shapes.find(s => s.id === id);
+    const index = (this.offset?.ids ?? []).findIndex(id => {
+      const shape = this.offset?.draft?.shapes.find(s => s.id === id);
       return shape && hitTest(shape, raw, 8 / this.zoom, this.units);
     });
     const source = originals[index];
@@ -308,7 +307,7 @@ export class Controller {
     if (this.deferUntilSettled(() => this.activateOffset())) return;
     if (!this.canOffset) return;
     this.beginToolSession();
-    this.offsetActive = true;
+    this.offset = { draft: null, ids: [], error: "", drag: null };
     this.refreshOffset();
   }
   alignActive = false;
@@ -423,9 +422,10 @@ export class Controller {
     this.refreshOffset();
   }
   refreshOffset() {
-    if (!this.offsetActive) return;
-    this.offsetDraft = null;
-    this.offsetIds = [];
+    const offset = this.offset;
+    if (!offset) return;
+    offset.draft = null;
+    offset.ids = [];
     this.preview = null;
     if (!this.selected.length) { this.notify(); return; }
     try {
@@ -444,21 +444,21 @@ export class Controller {
       });
       const next = { ...this.document, shapes: [...this.document.shapes, ...copies.map(c => c.shape)], objectTree: insert(this.tree) };
       parseProject(JSON.stringify(this.normalizeTree(next)));
-      this.offsetDraft = next;
-      this.offsetIds = copies.map(c => c.shape.id);
-      this.offsetError = "";
+      offset.draft = next;
+      offset.ids = copies.map(c => c.shape.id);
+      offset.error = "";
       this.preview = next;
     } catch (error) {
-      this.offsetError = String(error).replace(/^Error: /, "");
+      offset.error = String(error).replace(/^Error: /, "");
     }
     this.notify();
   }
   get canApplyOffset() {
-    return this.offsetActive && !this.objectPicker && !this.toolSelectionError && !!this.offsetDraft && !this.offsetError && !this.busy;
+    return !!this.offset?.draft && !this.offset.error && !this.objectPicker && !this.toolSelectionError && !this.busy;
   }
   async applyOffset() {
     if (!this.canApplyOffset) return;
-    const next = this.offsetDraft!, ids = this.offsetIds;
+    const next = this.offset!.draft!, ids = this.offset!.ids;
     this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
@@ -483,10 +483,10 @@ export class Controller {
     return (Math.atan2(m.b, m.a) * 180) / Math.PI;
   }
   pauseGesture() {
-    if (this.offsetDrag) {
-      const startingDistance = this.offsetDrag.distance;
-      this.offsetDrag = null;
-      this.setOffsetDistance(startingDistance);
+    const offsetDrag = this.offset?.drag;
+    if (offsetDrag) {
+      this.offset!.drag = null;
+      this.setOffsetDistance(offsetDrag.distance);
     }
     const gesture = this.gesture;
     if (gesture && !this.transformTool && gesture.kind !== "pan") {
@@ -3540,16 +3540,12 @@ export class Controller {
     this.arrayStage = "review";
     this.arrayConfirmed = null;
     this.arrayInvalidDistances.clear();
-    this.offsetDrag = null;
-    this.offsetActive = false;
+    this.offset = null;
     this.alignActive = false;
     this.alignX = null;
     this.alignY = null;
     this.alignDraft = null;
     this.alignUnits = [];
-    this.offsetDraft = null;
-    this.offsetIds = [];
-    this.offsetError = "";
     this.mirrorAxis = null;
     this.mirrorLine = null;
     this.mirrorHover = null;
@@ -4266,9 +4262,9 @@ export class Controller {
     if (this.alignActive && button === 2) { void this.applyAlign(); return; }
     // Align changes its targets through Select Objects; plain canvas clicks keep them.
     if (this.alignActive && button === 0 && !this.space) return;
-    if (this.offsetActive && button === 0 && !this.space) {
+    if (this.offset && button === 0 && !this.space) {
       const raw = this.world(pixel), normal = this.offsetDragAt(raw);
-      if (normal) this.offsetDrag = { start: raw, distance: this.offsetDistance, normal };
+      if (normal) this.offset.drag = { start: raw, distance: this.offsetDistance, normal };
       this.notify();
       return;
     }
@@ -4533,8 +4529,9 @@ export class Controller {
       return;
     }
     if (this.objectPicker && !this.space && !this.gesture) return;
-    if (this.offsetDrag) {
-      const drag = this.offsetDrag, raw = this.snap(this.world(pixel), alt, this.selected);
+    const drag = this.offset?.drag;
+    if (drag) {
+      const raw = this.snap(this.world(pixel), alt, this.selected);
       this.setOffsetDistance(drag.distance + (raw.x - drag.start.x) * drag.normal.x + (raw.y - drag.start.y) * drag.normal.y);
       return;
     }
@@ -4913,9 +4910,9 @@ export class Controller {
     this.notifyPointer();
   }
   pointerUp(pixel?: Point, alt = false, shift = false, ctrl = false) {
-    if (this.offsetDrag) {
+    if (this.offset?.drag) {
       if (pixel) this.pointerMove(pixel, alt, ctrl, shift);
-      this.offsetDrag = null;
+      this.offset.drag = null;
       this.notify();
       return;
     }

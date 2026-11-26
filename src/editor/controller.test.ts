@@ -73,11 +73,11 @@ test("Offset previews copies, commits one undo step, and leaves the source uncha
   expect(e.offsetActive).toBe(true);
   expect(e.preview?.shapes).toHaveLength(2);
   e.setOffsetDistance(-3);
-  expect(e.offsetError).toBe("");
+  expect(e.offset?.error).toBe("");
   expect(e.preview?.shapes[1].points[0]).toEqual({x:3,y:3});
   e.setOffsetDistance(-30);
-  expect(e.offsetDraft).toBeNull();
-  expect(e.offsetError).toMatch(/Piece:/);
+  expect(e.offset?.draft).toBeNull();
+  expect(e.offset?.error).toMatch(/Piece:/);
   e.setOffsetDistance(-3);
   await e.applyOffset();
   expect(e.document.shapes).toHaveLength(2);
@@ -148,7 +148,7 @@ test("dragging an offset preview changes the shared distance and release keeps i
   e.pointerMove(end, false);
   e.pointerUp(end);
   expect(e.offsetDistance).toBeCloseTo(7);
-  expect(e.offsetDraft?.shapes).toHaveLength(4);
+  expect(e.offset?.draft?.shapes).toHaveLength(4);
   expect(e.document.shapes).toHaveLength(2);
   e.pointerDown(e.screen({x:40,y:-7}), 0, false, false);
   e.pointerMove(e.screen({x:40,y:-9}), false);
@@ -3078,7 +3078,7 @@ test("compound Offset activation creates a preview and cancellation leaves the o
   const e=editor();await e.commit({...e.document,shapes:[shape]});e.selected=[shape.id];
   const before=JSON.stringify(e.document);
   expect(e.canOffset).toBe(true);e.activateOffset();
-  expect(e.offsetError).toBe("");expect(e.preview!.shapes).toHaveLength(2);
+  expect(e.offset?.error).toBe("");expect(e.preview!.shapes).toHaveLength(2);
   expect(e.preview!.shapes[1].kind).toBe("compound");
   e.cancel();expect(JSON.stringify(e.document)).toBe(before);
 });

@@ -237,7 +237,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
           <option value="sharp">Sharp</option><option value="rounded">Rounded</option>
         </select>
       </label>
-      <p v-if="e.offsetError" role="alert">{{ e.offsetError }}</p>
+      <p v-if="e.offset?.error" role="alert">{{ e.offset.error }}</p>
     </ToolPopover>
     <ToolPopover
       v-if="e.transformTool && !e.stitchMode"
