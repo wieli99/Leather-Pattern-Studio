@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /** Icon for a tool catalog entry (see `toolCatalog.ts`). */
-defineProps<{ id: string }>();
+withDefaults(defineProps<{ id: string; size?: number }>(), { size: 22 });
 </script>
 <template>
   <svg
     viewBox="0 0 24 24"
-    width="22"
-    height="22"
+    :width="size"
+    :height="size"
     fill="none"
     stroke="currentColor"
     stroke-width="1.7"

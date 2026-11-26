@@ -8,6 +8,8 @@ import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
 import AlignToolbox from "./AlignToolbox.vue";
 import ToolPopover from "./ToolPopover.vue";
+import TransformFields from "./TransformFields.vue";
+import { transformHeading, transformHelp } from "./transformText";
 import { computed } from "vue";
 import { polygonFillets } from "../model/geometry";
 import { editor } from "../editor/instance";
@@ -26,7 +28,6 @@ const selectedChamfer = computed(() => e.value.cornerStyleOverride ??
 const bulkCorners = computed(() => e.value.active.flatMap(s => polygonFillets(s).corners));
 const bulkValues = computed(() => bulkCorners.value.map(c => c.chamfer || c.radius));
 const bulkMixed = computed(() => e.value.bulkCornerStyle === null || !bulkValues.value.every(v => Math.abs(v - bulkValues.value[0]) < 1e-9));
-const transformHeading = { scale: "Resize", mirror: "Mirror", corner: "Corners", move: "Move", rotate: "Rotate" } as const;
 const squareSelection = computed(() => e.value.active.some(s => s.kind === "size-square"));
 </script>
 <template>
@@ -250,13 +251,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     >
       <template v-if="e.segmentMoveActive"><small>Transforming detached segments.</small><hr></template>
       <template v-else><ToolObjectPicker /><hr></template>
-      <small>{{ {
-        move: "Drag the gizmo or enter X/Y distances to move the selection.",
-        rotate: "Drag the rotation ring or enter an angle to rotate the selection.",
-        scale: "Drag the gizmo or enter X/Y factors to resize the selection.",
-        mirror: "Click an axis or straight outline edge on the canvas to mirror.",
-        corner: "Drag inward to round; drag outward through zero to chamfer. Click a corner for exact values."
-      }[e.transformTool] }}</small>
+      <small>{{ transformHelp[e.transformTool] }}</small>
       <div v-if="e.transformTool === 'corner'" class="transform-inputs corner-inputs">
         <template v-if="bulkCorners.length">
           <label>All corners style <select :disabled="e.objectPicker" :value="e.bulkCornerStyle === null ? 'mixed' : e.bulkCornerStyle ? 'chamfer' : 'round'" @change="editor.setAllCornerStyle(($event.target as HTMLSelectElement).value === 'chamfer')"><option disabled value="mixed">Mixed</option><option value="round">Round</option><option value="chamfer">Chamfer</option></select></label>
@@ -267,41 +262,16 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
           <label>{{ selectedChamfer ? 'Setback' : 'Radius' }} ({{ e.unitSymbol }})<LengthInput clamp :value="radii[e.selectedCorner!.index]" :min="0" @invalid="editor.setCornerValue(NaN)" @commit="editor.setCornerValue($event)" /></label>
         </template>
       </div>
-      <div v-else-if="e.transformTool !== 'mirror'" class="transform-inputs" data-hint-edit="transform">
-        <template
-          v-for="item in e.transformTool === 'move'
-            ? [
-                ['x', `X (${e.unitSymbol})`],
-                ['y', `Y (${e.unitSymbol})`],
-              ]
-            : e.transformTool === 'rotate'
-              ? [['angle', 'Angle (°)']]
-              : [
-                  ['sx', 'X factor'],
-                  ['sy', 'Y factor'],
-                ]"
-          :key="item[0]"
-        >
-          <label>{{ item[1] }}
-            <LengthInput fixed v-if="e.transformTool === 'move'" :aria-label="item[1]" :value="e.transformValues[item[0] as 'x' | 'y']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
-            <LengthInput v-else scalar :precision="e.transformTool === 'scale' ? 2 : undefined" :aria-label="item[1]" :value="e.transformValues[item[0] as 'angle' | 'sx' | 'sy']" @invalid="editor.setTransformValues({ [item[0]]: NaN })" @commit="editor.setTransformValues({ [item[0]]: $event })" />
-          </label>
-        </template>
-      </div>
-      <label v-if="e.active.length === 1 && e.transformTool !== 'corner'"
-        >Axes
-        <select
-          :value="e.transformOrientation"
-          @change="
-            editor.setOrientation(
-              ($event.target as HTMLSelectElement).value as 'world' | 'local',
-            )
-          "
-        >
-          <option value="world">World</option>
-          <option value="local">Local</option>
-        </select></label
-      >
+      <TransformFields
+        v-if="e.transformTool !== 'corner' && (e.transformTool !== 'mirror' || e.active.length === 1)"
+        :tool="e.transformTool === 'mirror' ? null : e.transformTool"
+        :values="e.transformValues"
+        :unit-symbol="e.unitSymbol"
+        :orientation="e.active.length === 1 ? e.transformOrientation : undefined"
+        @commit="(field, value) => editor.setTransformValues({ [field]: value })"
+        @invalid="(field) => editor.setTransformValues({ [field]: NaN })"
+        @orientation="editor.setOrientation($event)"
+      />
       <PivotSelector v-if="e.transformTool !== 'corner'" :disabled="e.objectPicker" :mode="e.pivotMode" :placing="e.placingPivot" @change="editor.setPivotMode($event)" @cancel="editor.cancelPivotPlacement()" />
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
     </ToolPopover>
