@@ -30,10 +30,6 @@ const references: { id: AlignReference; label: string }[] = [
   { id: "largest", label: "Largest object" },
   { id: "smallest", label: "Smallest object" },
 ];
-function cancel() {
-  editor.cancel();
-  focusModelCanvas();
-}
 /**
  * Pointer choices return focus to the canvas so Enter applies, as the tool hint says.
  * Keyboard activation (detail 0) keeps focus on the button for further choices.
@@ -48,10 +44,6 @@ function title(item: Item) {
     return `${item.label}: objects are too wide to space between the outer ones`;
   return `${item.label} (3+ objects)`;
 }
-async function apply() {
-  await editor.applyAlign();
-  if (!editor.alignActive) focusModelCanvas();
-}
 </script>
 <template>
   <ToolPopover
@@ -59,9 +51,8 @@ async function apply() {
     heading="Align and distribute"
     aria-label="Align and distribute settings"
     :apply-disabled="!e.canApplyAlign"
-    @keydown.esc.stop.prevent="cancel()"
-    @apply="apply()"
-    @cancel="cancel()"
+    :apply="() => editor.applyAlign()"
+    :cancel="() => editor.cancel()"
   >
     <ToolObjectPicker /><hr />
     <label>Relative to
@@ -107,10 +98,4 @@ async function apply() {
 .align-axis > span { font-size: 12px; color: var(--muted); }
 .align-buttons { display: grid; grid-template-columns: repeat(3, 36px); gap: 2px; }
 .align-buttons button { display: grid; place-items: center; width: 36px; height: 36px; padding: 6px; }
-.align-buttons button[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.align-buttons button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

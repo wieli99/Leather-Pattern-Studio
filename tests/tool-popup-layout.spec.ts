@@ -94,3 +94,39 @@ test("all selection tool popups align with the right canvas edge", async ({
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
   }
 });
+test("tool popups return focus to the canvas when Escape, Cancel or Apply ends the tool", async ({ page }) => {
+  await page.goto("/");
+  const rectangle = page.getByRole("button", { name: "Rectangle (R)", exact: true });
+  await expect(rectangle).toBeEnabled();
+  await rectangle.click();
+  const canvas = page.getByLabel("Pattern drawing canvas");
+  await canvas.click({ position: { x: 230, y: 180 } });
+  await canvas.click({ position: { x: 330, y: 260 } });
+  await expect(page.locator(".objects .object-select")).toHaveCount(1);
+  const popup = page.locator(".transform-options");
+  for (const [key, field] of [["o", "Offset distance"], ["g", "X (mm)"]] as const) {
+    // Escape from a settings field.
+    await canvas.press(key);
+    await page.getByLabel(field, { exact: true }).focus();
+    await page.keyboard.press("Escape");
+    await expect(popup).toHaveCount(0);
+    await expect(canvas).toBeFocused();
+    // Cancel and Apply buttons.
+    for (const button of ["Cancel", "Apply"]) {
+      await canvas.press(key);
+      if (key === "g") await page.getByLabel(field, { exact: true }).fill("5");
+      await popup.getByRole("button", { name: button, exact: true }).click();
+      await expect(popup).toHaveCount(0);
+      await expect(canvas).toBeFocused();
+    }
+  }
+  // Escape first ends pivot placement and keeps the tool open.
+  await canvas.press("g");
+  await page.getByRole("group", { name: "Pivot", exact: true }).getByRole("button", { name: "Custom", exact: true }).click();
+  await page.getByLabel("X (mm)", { exact: true }).focus();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Click to place the custom pivot. Escape cancels placement.")).toHaveCount(0);
+  await expect(popup).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popup).toHaveCount(0);
+});

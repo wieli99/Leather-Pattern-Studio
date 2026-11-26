@@ -34,10 +34,4 @@ function escape(event: KeyboardEvent, placing: boolean) {
 .pivot-control { display:flex; align-items:center; gap:8px; }
 .pivot-modes { display:flex; gap:2px; }
 .pivot-modes button { display:grid; place-items:center; width:36px; height:36px; padding:6px; }
-.pivot-modes button[aria-pressed="true"] {
-  background:color-mix(in srgb, var(--accent) 12%, var(--panel));
-  border-color:var(--accent);
-  color:var(--accent);
-}
-.pivot-modes button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 </style>

@@ -1154,12 +1154,17 @@ select:disabled { opacity: .5; }
   min-height: 36px;
 }
 .boolean-picker-label { flex-shrink: 0; }
-.boolean-picker[aria-pressed="true"] {
+/* Pressed choices in tool popovers: object pickers, pivot modes and align actions. */
+.boolean-picker[aria-pressed="true"],
+.pivot-modes button[aria-pressed="true"],
+.align-buttons button[aria-pressed="true"] {
   background: color-mix(in srgb, var(--accent) 12%, var(--panel));
   border-color: var(--accent);
   color: var(--accent);
 }
-.boolean-picker:focus-visible {
+.boolean-picker:focus-visible,
+.pivot-modes button:focus-visible,
+.align-buttons button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

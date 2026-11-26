@@ -65,12 +65,9 @@ function fixedCount(event: Event) {
   }
   editor.setStitchSettings({ ...settings.value, holeCount:value==="auto" ? undefined : Math.max(1,count) });
 }
-function applyFromKeyboard(event: KeyboardEvent) {
-  const target=event.target as HTMLElement;
-  if (target.closest("button,select,summary,form")) return;
-  event.preventDefault();
-  if(!editor.canApplyStitchTool)return;
-  void editor.applyStitch();
+/** Enter only applies a ready draft; placing transferred stitching stays on the canvas. */
+function applyDraft() {
+  if (editor.canApplyStitchTool) return editor.applyStitch();
 }
 function cancelDraft() {
   invalidFields.clear();
@@ -135,12 +132,10 @@ const warnings = computed(() =>
     class="stitch-options"
     :heading="e.stitchToolInfo?.label ?? ''"
     :apply-disabled="!e.canApplyStitchTool"
-    @apply="editor.applyStitch()"
-    @cancel="cancelDraft()"
+    :apply="applyDraft"
+    :cancel="cancelDraft"
     aria-label="Stitch line settings"
     data-hint-edit="stitch"
-    @keydown.esc.stop.prevent="cancelDraft()"
-    @keydown.enter="applyFromKeyboard"
   >
     <div v-if="e.stitchTransferPlacement" class="transfer-guide">
       <strong>{{ e.stitchTransferPlacement.phase==='placed' ? 'Review transferred stitching' : 'Place transferred stitching' }}</strong>

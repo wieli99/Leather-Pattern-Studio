@@ -3410,10 +3410,10 @@ defineExpose({
         class="print-transform"
         :heading="tool === 'move' ? 'Move' : tool === 'rotate' ? 'Rotate' : 'Mirror'"
         :apply-disabled="choosingObjects || !selected.length || busy || !!error || !preview"
-        @keydown.enter.prevent="applyTransform"
-        @keydown.esc.stop.prevent="cancelPivotPlacement() || cancel()"
-        @apply="applyTransform"
-        @cancel="cancel"
+        :apply="applyTransform"
+        :cancel="cancel"
+        :back="cancelPivotPlacement"
+        :refocus="() => canvas?.focus({ preventScroll: true })"
       >
         <ToolObjectPicker :count="toolObjectCount" :choosing="choosingObjects" :error="choosingObjects ? printSelectionError : undefined" @toggle="toggleObjects" /><hr>
         <p v-if="error" role="alert">{{ error }}</p>

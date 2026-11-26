@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { handleToolEnter } from "./toolKeyboard";
 import ToolSearch from "./ToolSearch.vue";
 import SelectionHint from "./SelectionHint.vue";
 import PivotSelector from "./PivotSelector.vue";
@@ -15,23 +14,7 @@ import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
 import { focusModelCanvas } from "./canvasFocus";
 const e = useEditor();
-async function applyArray() {
-  await editor.applyArray();
-  if (!editor.array) focusModelCanvas();
-}
-async function applyPathCopy() {
-  await editor.applyPathCopy();
-  if (!editor.pathCopy) focusModelCanvas();
-}
-function cancelPathCopy() { editor.cancel(); focusModelCanvas(); }
-async function applyOutline() {
-  await editor.applyTrim();
-  if (!editor.trimMode) focusModelCanvas();
-}
-function cancelOutline() {
-  editor.cancel();
-  focusModelCanvas();
-}
+const cancel = () => editor.cancel();
 const cornerShape = computed(() =>
   e.value.active.find((s) => s.id === e.value.selectedCorner?.shapeId),
 );
@@ -55,16 +38,15 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       v-if="e.array"
       class="array-options"
       :heading="e.array.kind === 'rectangular' ? 'Rectangular Array' : 'Radial Array'"
-      :apply-disabled="!e.preview || !!e.array.error || e.busy || e.objectPicker || e.arrayStage !== 'review'"
+      :apply-disabled="!e.canApplyArray"
       :aria-label="
         e.array.kind === 'rectangular'
           ? 'Rectangular Array settings'
           : 'Radial Array settings'
       "
-      @keydown.enter="handleToolEnter($event, applyArray)"
-      @keydown.esc.stop.prevent="editor.cancelArrayPoint() || cancelPathCopy()"
-      @apply="applyArray()"
-      @cancel="cancelPathCopy()"
+      :apply="() => editor.applyArray()"
+      :cancel="cancel"
+      :back="() => editor.cancelArrayPoint()"
     >
       <ToolObjectPicker />
       <hr />
@@ -192,8 +174,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <p v-if="e.array.error" role="alert">{{ e.array.error }}</p>
     </ToolPopover>
     <ToolPopover v-if="e.pathCopy" class="path-copy-options" heading="Copy along path" aria-label="Copy along path settings"
-      :apply-disabled="!e.preview || !!e.pathCopy.error || e.busy"
-      @keydown.esc.stop.prevent="cancelPathCopy()" @apply="applyPathCopy()" @cancel="cancelPathCopy()">
+      :apply-disabled="!e.canApplyPathCopy" :apply="() => editor.applyPathCopy()" :cancel="cancel">
       <button v-for="role in (['source', 'path'] as const)" :key="role" class="boolean-picker" :aria-pressed="e.pathCopy.picker === role" @click="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()">
         <span class="boolean-picker-label">{{ role === 'source' ? 'Select Source' : 'Select Path' }}</span><span class="boolean-object-name">{{ e.pathCopy![role] ? '(1)' : 'Choose object' }}</span>
       </button>
@@ -220,8 +201,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     </section>
     <ToolPopover v-if="e.trimMode" :aria-label="e.booleanOperation ? e.booleanLabel + ' settings' : e.mergeMode ? 'Join settings' : 'Trim settings'"
       :heading="e.booleanOperation ? e.booleanLabel : e.mergeMode ? 'Join' : 'Trim'"
-      :apply-disabled="e.objectPicker || (!e.booleanOperation && !!e.toolSelectionError) || !e.trimDraft || !!e.transformError || !!e.booleanError || e.busy"
-      @keydown.esc.stop.prevent="cancelOutline()" @apply="applyOutline()" @cancel="cancelOutline()">
+      :apply-disabled="!e.canApplyTrim" :apply="() => editor.applyTrim()" :cancel="cancel">
       <template v-if="!e.booleanOperation"><ToolObjectPicker /></template>
       <template v-if="e.booleanOperation">
         <button type="button" class="boolean-picker" :aria-pressed="e.booleanPicker === 'target'"
@@ -245,9 +225,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     </ToolPopover>
     <AlignToolbox v-if="e.alignActive" />
     <ToolPopover v-if="e.offsetActive" heading="Offset" aria-label="Offset settings"
-      :apply-disabled="e.objectPicker || !!e.toolSelectionError || !e.offsetDraft || !!e.offsetError || e.busy"
-      @keydown.enter="handleToolEnter($event, () => editor.applyOffset())" @keydown.esc.stop.prevent="editor.cancel()"
-      @apply="editor.applyOffset()" @cancel="editor.cancel()">
+      :apply-disabled="!e.canApplyOffset" :apply="() => editor.applyOffset()" :cancel="cancel">
       <ToolObjectPicker /><hr>
       <small>Positive expands closed outlines; negative insets. On open paths, positive goes left from start to end.</small>
       <div class="transform-inputs" data-hint-edit="transform">
@@ -265,11 +243,10 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       v-if="e.transformTool && !e.stitchMode"
       tag="div"
       :heading="transformHeading[e.transformTool]"
-      :apply-disabled="!e.transformValid || e.busy"
-      @keydown.enter="handleToolEnter($event, () => editor.applyTransform())"
-      @keydown.esc.stop="editor.cancelPivotPlacement() || editor.cancel()"
-      @apply="editor.applyTransform()"
-      @cancel="editor.cancel()"
+      :apply-disabled="!e.canApplyTransform"
+      :apply="() => editor.applyTransform()"
+      :cancel="cancel"
+      :back="() => editor.cancelPivotPlacement()"
     >
       <template v-if="e.segmentMoveActive"><small>Transforming detached segments.</small><hr></template>
       <template v-else><ToolObjectPicker /><hr></template>
