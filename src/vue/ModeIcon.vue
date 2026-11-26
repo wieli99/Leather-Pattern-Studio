@@ -15,6 +15,7 @@ const points = computed(() => {
   if (
     ["arrow", "arrow-head", "crosshair", "size-square", "size-ruler"].includes(m) ||
     m === "text" ||
+    m === "image" ||
     m === "measurement" ||
     m === "select" ||
     m === "segment-select" ||
