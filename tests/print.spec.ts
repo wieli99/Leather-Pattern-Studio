@@ -2006,6 +2006,13 @@ test("Print aligns and spaces placed objects from the rail or L, as one undo ste
   await expect(popup.getByRole("status")).toHaveText("Already arranged this way.");
   await page.keyboard.press("Escape");
   await expect(popup).toHaveCount(0);
+  // V leaves Align for the Select tool; Align has no pivot to place.
+  await page.keyboard.press("l");
+  await expect(popup).toBeVisible();
+  await canvas.focus();
+  await page.keyboard.press("v");
+  await expect(popup).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Select (V)", exact: true })).toHaveAttribute("aria-pressed", "true");
 
   // Each Apply was one undo step.
   await canvas.focus();

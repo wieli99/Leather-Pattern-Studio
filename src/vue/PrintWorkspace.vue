@@ -501,10 +501,12 @@ const printAlignBoxes = computed<Bounds[]>(() => {
   return tool.value === "align" && layout.value ? printAlignUnits(layout.value).map((u) => u.box) : [];
 });
 const printAlignGapsFit = computed(() => ({ x: gapsFit(printAlignBoxes.value, "x"), y: gapsFit(printAlignBoxes.value, "y") }));
-function printAlignAvailable(action: AlignAction) {
-  return !busy.value && printAlignBoxes.value.length >= requiredUnits(action, e.value.alignReference, e.value.alignGap) &&
+/** Whether the targets and settings support an action; busy state only disables controls. */
+function printAlignSupported(action: AlignAction) {
+  return printAlignBoxes.value.length >= requiredUnits(action, e.value.alignReference, e.value.alignGap) &&
     (action.kind !== "distribute" || !action.mode.startsWith("gaps") || e.value.alignGap !== null || printAlignGapsFit.value[alignAxis(action)]);
 }
+const printAlignAvailable = (action: AlignAction) => !busy.value && printAlignSupported(action);
 const printAlignChosen = (action: AlignAction) =>
   JSON.stringify(printAlign.value[alignAxis(action)]) === JSON.stringify(action);
 function togglePrintAlign(action: AlignAction, event: MouseEvent) {
@@ -520,8 +522,8 @@ function refreshPrintAlign() {
   if (l && !printSelectionError.value) {
     const choice = { ...printAlign.value };
     // Choices the current targets or settings cannot use are dropped rather than kept hidden.
-    if (choice.x && !printAlignAvailable(choice.x)) choice.x = null;
-    if (choice.y && !printAlignAvailable(choice.y)) choice.y = null;
+    if (choice.x && !printAlignSupported(choice.x)) choice.x = null;
+    if (choice.y && !printAlignSupported(choice.y)) choice.y = null;
     if (choice.x !== printAlign.value.x || choice.y !== printAlign.value.y) printAlign.value = choice;
     const actions = [choice.x, choice.y].filter((a): a is AlignAction => !!a);
     const units = printAlignUnits(l);
@@ -535,7 +537,7 @@ function refreshPrintAlign() {
   }
   draw();
 }
-watch(() => [e.value.alignReference, e.value.alignGap], refreshPrintAlign);
+watch([() => e.value.alignReference, () => e.value.alignGap], refreshPrintAlign);
 const renameId = ref(""),
   renameValue = ref("");
 const moveX = ref("0"),
@@ -3083,8 +3085,8 @@ function keyboard(event: KeyboardEvent) {
   if (!mod && !event.shiftKey && key === "m") chooseTool("mirror");
   if (!mod && !event.shiftKey && key === "l") chooseTool("align");
   if (!mod && !event.shiftKey && key === "v") {
-    if (tool.value === "align") return;
-    if (tool.value !== "select") beginPivotPlacement();
+    // Align has no pivot, so V returns to the Select tool as it does from Select.
+    if (tool.value !== "select" && tool.value !== "align") beginPivotPlacement();
     else chooseTool("select");
   }
   if (["arrowleft", "arrowright", "arrowup", "arrowdown"].includes(key)) {

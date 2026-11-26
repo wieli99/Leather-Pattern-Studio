@@ -100,10 +100,12 @@ export function alignOffsets(list: Bounds[], action: AlignAction, reference: Ali
   let order = list.map((_, i) => i).sort(byCenter);
   const targets = new Map<number, number>();
   if (exactGap(action, gap)) {
-    const fixed = referenceIndex(list, reference) ?? order[0];
+    // Placed in order of their start edges, so the object starting first stays when no reference is chosen.
+    const byStart = list.map((_, i) => i).sort((a, b) => start(list[a], axis) - start(list[b], axis) || byCenter(a, b));
+    const fixed = referenceIndex(list, reference) ?? byStart[0];
     const placed = new Map<number, number>();
     let cursor = 0;
-    for (const index of order) {
+    for (const index of byStart) {
       placed.set(index, cursor);
       cursor += size(list[index], axis) + gap;
     }

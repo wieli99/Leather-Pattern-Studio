@@ -130,3 +130,9 @@ test("An exact vertical gap moves objects along y only", () => {
   expect(ys(offsets)).toEqual([0, -37]);
   expect(xs(offsets)).toEqual([0, 0]);
 });
+
+test("An exact gap keeps the object that starts first, even when its center is later", () => {
+  // A wide object starting at 0 stays; the narrow one inside its span follows after it.
+  const list = [box(0, 0, 100, 10), box(10, 0, 10, 10)];
+  expect(xs(alignOffsets(list, { kind: "distribute", mode: "gaps-x" }, "selection", 5))).toEqual([0, 95]);
+});
