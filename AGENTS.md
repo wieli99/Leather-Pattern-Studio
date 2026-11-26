@@ -9,13 +9,14 @@
 Prefer the provided **Podman** workflow for a reproducible Node.js, Rust/Wasm, and browser-test environment matching CI. It requires Bash and a working Podman installation. Contributors may use an equivalent local environment; use `tools/dev/Containerfile` and `package-lock.json` as the toolchain and dependency references. Do not assume a particular operating system or install system tools without the contributor's agreement.
 
 - `tools/dev/run.sh dev`: install locked dependencies, generate Wasm, and serve at `http://127.0.0.1:5174`.
+- `tools/dev/run.sh dev-lan`: like `dev`, but also reachable from phones and tablets on the local network at `http://<LAN-IP>:5174` (the host firewall may need TCP port 5174 open). Use it only on trusted networks.
 - `tools/dev/run.sh fast`: install locked dependencies, check TypeScript, and run unit tests using existing generated Wasm/contracts. Run `tools/dev/run.sh npm run wasm` first on a fresh checkout or after Rust/contract changes.
 - `tools/dev/run.sh check`: run Rust tests, production build, unit tests, and three-engine browser tests.
 - `tools/dev/run.sh manual-check`: verify all manual screenshots against an existing production build in the reference browser container.
 - `tools/dev/run.sh npm run build`: generate contracts and release-optimized Wasm, check TypeScript, and build offline assets.
 - `tools/dev/run.sh npm run wasm`: generate contracts and development Wasm; used by the development runner.
 - `tools/dev/run.sh npm run wasm:release`: generate contracts and release-optimized Wasm; used by production builds.
-- `tools/dev/run.sh preview`: serve an existing production build, including offline support.
+- `tools/dev/run.sh preview`: serve an existing production build, including offline support. `tools/dev/run.sh preview-lan` serves it on the local network; offline support requires HTTPS or localhost, so it is unavailable there.
 
 ## Coding Style & Architecture
 
