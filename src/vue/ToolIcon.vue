@@ -17,9 +17,8 @@ withDefaults(defineProps<{ id: string; size?: number }>(), { size: 22 });
     <path v-if="id === 'rectangular-array'" d="M3 3h6v6H3ZM15 3h6v6h-6ZM3 15h6v6H3ZM15 15h6v6h-6Z" />
     <template v-else-if="id === 'radial-array'">
       <circle cx="12" cy="12" r="7.5" stroke-dasharray="2 3" stroke-width="1" />
-      <circle cx="12" cy="12" r="1" fill="currentColor" />
-      <path d="M10 2h4v4h-4Z" fill="currentColor" />
-      <path d="M18 10h4v4h-4ZM10 18h4v4h-4ZM2 10h4v4H2Z" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="var(--panel)" stroke-width=".6" />
+      <path d="M10 2h4v4h-4ZM18 10h4v4h-4ZM10 18h4v4h-4ZM2 10h4v4H2Z" />
     </template>
     <path v-else-if="id === 'rotate'" d="M20 10a8 8 0 1 0-2 8M20 4v6h-6" />
     <path v-else-if="id === 'move'" d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4" />
