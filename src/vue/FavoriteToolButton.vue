@@ -1,329 +1,75 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
-import { transformShortcuts } from "./tools";
+import { toolCatalog } from "./toolCatalog";
+import ToolIcon from "./ToolIcon.vue";
 import type { SegmentTransformTool } from "../editor/controller";
-defineProps<{ id: string; label?: string; shortcut?: string }>();
+const props = defineProps<{ id: string; label?: string; shortcut?: string }>();
 const emit = defineEmits<{ activated: [] }>();
 const e = useEditor();
+type Transform = "move" | "rotate" | "scale" | "mirror" | "corner";
+type Operation = "subtract" | "intersect" | "exclude";
+const operationTitles: Record<Operation, string> = {
+  subtract: "Subtract: remove other objects from the target",
+  intersect: "Intersect: keep the area shared by all objects",
+  exclude: "Exclude (XOR): keep areas covered an odd number of times",
+};
+/** How each catalog tool is enabled, shown as pressed and started. */
+const behavior = computed((): { disabled: boolean; pressed: boolean; activate: () => unknown; title?: string } | null => {
+  const ed = e.value, id = props.id;
+  switch (id) {
+    case "rectangular-array": case "radial-array": {
+      const kind = id === "rectangular-array" ? "rectangular" : "radial";
+      return { disabled: !ed.canStartTransform("move"), pressed: ed.array?.kind === kind, activate: () => editor.activateArray(kind) };
+    }
+    case "move": case "rotate": case "scale": case "mirror": case "corner": {
+      const tool: Transform = id;
+      return ed.segmentMode
+        ? { disabled: tool === "corner" || !(ed.canEditSegments || ed.segmentMoveActive), pressed: ed.transformTool === tool, activate: () => editor.transformSegments(tool as SegmentTransformTool) }
+        : { disabled: !ed.canStartTransform(tool), pressed: ed.transformTool === tool, activate: () => editor.activateTransform(tool) };
+    }
+    case "path-copy": return { disabled: !ed.canCopyAlongPath, pressed: !!ed.pathCopy, activate: () => editor.activatePathCopy() };
+    case "offset": return { disabled: !ed.canOffset, pressed: ed.offsetActive, activate: () => editor.activateOffset() };
+    case "align": return { disabled: !ed.canAlign, pressed: ed.alignActive, activate: () => editor.activateAlign() };
+    case "trim": return { disabled: !ed.canTrim, pressed: ed.trimMode && !ed.mergeMode, activate: () => editor.activateTrim() };
+    case "join": return {
+      disabled: !ed.canJoin || ed.busy,
+      pressed: ed.mergeMode && (!ed.booleanOperation || ed.booleanOperation === "union"),
+      activate: () => editor.activateMerge(),
+      title: ed.canJoin
+        ? "Join (J): combine closed outlines or join compatible open paths"
+        : "Join (J) requires an unlocked closed outline or joinable path without stitches",
+    };
+    case "subtract": case "intersect": case "exclude": {
+      const operation: Operation = id;
+      return {
+        disabled: !ed.canBoolean || ed.busy,
+        pressed: ed.booleanOperation === operation,
+        activate: () => editor.activateBoolean(operation),
+        title: ed.canBoolean ? operationTitles[operation] : "Requires closed, unlocked outlines without active stitching",
+      };
+    }
+  }
+  return null;
+});
+const entry = computed(() => toolCatalog.find((tool) => tool[0] === props.id));
+function activate() {
+  emit("activated");
+  behavior.value?.activate();
+}
 </script>
 <template>
   <button
-    v-if="id === 'rectangular-array' || id === 'radial-array'"
-    :disabled="!e.canStartTransform('move')"
-    :aria-pressed="
-      e.array?.kind === (id === 'rectangular-array' ? 'rectangular' : 'radial')
-    "
-    :title="id === 'rectangular-array' ? 'Rectangular Array' : 'Radial Array'"
-    :aria-label="
-      id === 'rectangular-array' ? 'Rectangular Array' : 'Radial Array'
-    "
-    @click="
-      emit('activated');
-      editor.activateArray(
-        id === 'rectangular-array' ? 'rectangular' : 'radial',
-      );
-    "
+    v-if="behavior && entry"
+    :disabled="behavior.disabled"
+    :aria-label="entry[1]"
+    :title="behavior.title ?? (entry[2] ? `${entry[1]} (${entry[2]})` : entry[1])"
+    :aria-pressed="behavior.pressed"
+    :aria-keyshortcuts="entry[2] ? entry[2].toLowerCase() : undefined"
+    @click="activate"
   >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      aria-hidden="true"
-    >
-      <path
-        v-if="id === 'rectangular-array'"
-        d="M3 3h6v6H3ZM15 3h6v6h-6ZM3 15h6v6H3ZM15 15h6v6h-6Z"
-      />
-      <template v-else>
-        <circle
-          cx="12"
-          cy="12"
-          r="7.5"
-          stroke-dasharray="2 3"
-          stroke-width="1"
-        />
-        <circle cx="12" cy="12" r="1" fill="currentColor" />
-        <path d="M10 2h4v4h-4Z" fill="currentColor" />
-        <path d="M18 10h4v4h-4ZM10 18h4v4h-4ZM2 10h4v4H2Z" />
-      </template></svg
-    ><span v-if="label">{{ label }}</span>
-  </button>
-  <button
-    v-for="item in transformShortcuts.filter((t) => t[0] === id)"
-    :key="item[0]"
-    :disabled="e.segmentMode ? item[0] === 'corner' || !(e.canEditSegments || e.segmentMoveActive) : !e.canStartTransform(item[0])"
-    :aria-label="item[1]"
-    :title="`${item[1]} (${item[2]})`"
-    :aria-pressed="e.transformTool === item[0]"
-    :aria-keyshortcuts="item[2].toLowerCase()"
-    @click="
-      emit('activated');
-      e.segmentMode ? editor.transformSegments(item[0] as SegmentTransformTool) : editor.activateTransform(item[0]);
-    "
-  >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      aria-hidden="true"
-    >
-      <path v-if="item[0] === 'rotate'" d="M20 10a8 8 0 1 0-2 8M20 4v6h-6" />
-      <path
-        v-else-if="item[0] === 'move'"
-        d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"
-      />
-      <path
-        v-else-if="item[0] === 'mirror'"
-        d="M12 2v20M9 6 3 18h6ZM15 6l6 12h-6Z"
-      />
-      <path
-        v-else-if="item[0] === 'corner'"
-        d="M4 20V12a8 8 0 0 1 8-8h8M4 4h4M4 4v4"
-      />
-      <path
-        v-else
-        d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M4 4l6 6M20 20l-6-6M20 4l-6 6M4 20l6-6"
-      />
-    </svg>
-    <template v-if="label"
-      ><span>{{ label }}</span
-      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
-    >
-  </button>
-  <button
-    v-if="id === 'path-copy'"
-    :disabled="!e.canCopyAlongPath"
-    title="Copy along path"
-    aria-label="Copy along path"
-    @click="
-      emit('activated');
-      editor.activatePathCopy();
-    "
-    :aria-pressed="!!e.pathCopy"
-  >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4.5 16c.4-2.5 1.4-4.5 3-6M12.5 7.5c1.5-1 3-1.5 4.5-1.5" />
-      <rect
-        x="2"
-        y="16"
-        width="5"
-        height="5"
-        rx=".5"
-        fill="currentColor"
-        fill-opacity=".2"
-      />
-      <rect x="7.5" y="6.5" width="5" height="5" rx=".5" />
-      <rect x="17" y="3.5" width="5" height="5" rx=".5" />
-    </svg>
-    <template v-if="label"
-      ><span>{{ label }}</span
-      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
-    >
-  </button>
-  <button
-    v-if="id === 'offset'"
-    :disabled="!e.canOffset"
-    aria-label="Offset"
-    title="Offset (O)"
-    aria-keyshortcuts="o"
-    :aria-pressed="e.offsetActive"
-    @click="
-      emit('activated');
-      editor.activateOffset();
-    "
-  >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      aria-hidden="true"
-    >
-      <rect x="3" y="3" width="18" height="18" rx="5" />
-      <rect x="7" y="7" width="10" height="10" rx="1" />
-    </svg>
-    <template v-if="label"
-      ><span>{{ label }}</span
-      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
-    >
-  </button>
-  <button
-    v-if="id === 'align'"
-    :disabled="!e.canAlign"
-    aria-label="Align and distribute"
-    title="Align and distribute"
-    :aria-pressed="e.alignActive"
-    @click="
-      emit('activated');
-      editor.activateAlign();
-    "
-  >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      aria-hidden="true"
-    >
-      <path d="M3 2v20" />
-      <rect x="6" y="5" width="14" height="5" rx="1" />
-      <rect x="6" y="14" width="8" height="5" rx="1" />
-    </svg>
-    <template v-if="label"
-      ><span>{{ label }}</span
-      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
-    >
-  </button>
-  <button
-    v-if="id === 'join'"
-    aria-label="Join"
-    aria-keyshortcuts="j"
-    :title="
-      e.canJoin
-        ? 'Join (J): combine closed outlines or join compatible open paths'
-        : 'Join (J) requires an unlocked closed outline or joinable path without stitches'
-    "
-    :disabled="!e.canJoin || e.busy"
-    :aria-pressed="
-      e.mergeMode && (!e.booleanOperation || e.booleanOperation === 'union')
-    "
-    @click="
-      emit('activated');
-      editor.activateMerge();
-    "
-  >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      aria-hidden="true"
-    >
-      <path d="M3 3h11v6h7v12H9v-7H3Z" />
-    </svg>
-    <template v-if="label"
-      ><span>{{ label }}</span
-      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
-    >
-  </button>
-  <button
-    v-for="operation in (['subtract', 'intersect', 'exclude'] as const).filter(
-      (t) => t === id,
-    )"
-    :key="operation"
-    :aria-label="
-      operation === 'subtract'
-        ? 'Subtract'
-        : operation === 'intersect'
-          ? 'Intersect'
-          : 'Exclude'
-    "
-    :title="
-      e.canBoolean
-        ? {
-            subtract: 'Subtract: remove other objects from the target',
-            intersect: 'Intersect: keep the area shared by all objects',
-            exclude: 'Exclude (XOR): keep areas covered an odd number of times',
-          }[operation]
-        : 'Requires closed, unlocked outlines without active stitching'
-    "
-    :disabled="!e.canBoolean || e.busy"
-    :aria-pressed="e.booleanOperation === operation"
-    @click="
-      emit('activated');
-      editor.activateBoolean(operation);
-    "
-  >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      aria-hidden="true"
-    >
-      <template v-if="operation === 'subtract'">
-        <path d="M3 3h12v6H9v6H3Z" fill="currentColor" fill-opacity=".2" />
-        <rect
-          x="9"
-          y="9"
-          width="12"
-          height="12"
-          stroke-dasharray="2 2"
-          stroke-dashoffset="1"
-        />
-      </template>
-      <template v-else-if="operation === 'exclude'">
-        <path
-          d="M3 3h12v6H9v6H3ZM15 9h6v12H9v-6h6Z"
-          fill="currentColor"
-          fill-opacity=".2"
-        />
-        <path d="M9 9h6v6H9Z" stroke-dasharray="2 2" />
-      </template>
-      <template v-else>
-        <rect x="3" y="3" width="12" height="12" />
-        <rect x="9" y="9" width="12" height="12" />
-        <path d="M9 9h6v6H9Z" fill="currentColor" />
-      </template>
-    </svg>
-    <template v-if="label"
-      ><span>{{ label }}</span
-      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
-    >
-  </button>
-  <button
-    v-if="id === 'trim'"
-    :disabled="!e.canTrim"
-    aria-label="Trim"
-    title="Trim (K)"
-    aria-keyshortcuts="k"
-    :aria-pressed="e.trimMode && !e.mergeMode"
-    @click="
-      emit('activated');
-      editor.activateTrim();
-    "
-  >
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      aria-hidden="true"
-    >
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <path d="M8.2 8.2 20 20M8.2 15.8 20 4" />
-    </svg>
-    <template v-if="label"
-      ><span>{{ label }}</span
-      ><kbd v-if="shortcut">{{ shortcut }}</kbd></template
-    >
+    <ToolIcon :id="id" />
+    <template v-if="label"><span>{{ label }}</span><kbd v-if="shortcut">{{ shortcut }}</kbd></template>
   </button>
 </template>
