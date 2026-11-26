@@ -56,3 +56,9 @@ export function closeSidebarForTools(panel: Ref<boolean>, toolOpen: () => boolea
     if (open && compact.value) panel.value = false;
   });
 }
+
+const toolSettingsCollapsed = ref(false);
+/** Whether phone tool settings are collapsed; shared by every tool for the session. */
+export function sharedCollapse(): Ref<boolean> {
+  return toolSettingsCollapsed;
+}

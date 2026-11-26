@@ -42,7 +42,7 @@ The footer shows the application version. Include it when [reporting a problem](
 
 ## Phones and tablets
 
-The editor also runs in a phone's web browser. On a narrow screen the tools move to a scrolling bar below the canvas, and the header keeps **Save** with the other project actions in the **⋯** menu. The panel button at the top right of the canvas opens Model objects, Properties and Tool help in a sheet below the canvas; tap it again to close the sheet. Tool settings open full width above the tools and close the sheet to keep the canvas visible; reopen the sheet at any time while the tool stays open. Turning a phone sideways keeps the tools at the left edge.
+The editor also runs in a phone's web browser. On a narrow screen the tools move to a scrolling bar below the canvas, and the header keeps **Save** with the other project actions in the **⋯** menu. The panel button at the top right of the canvas opens Model objects, Properties and Tool help in a sheet below the canvas; tap it again to close the sheet. Tool settings open full width above the tools and close the sheet to keep the canvas visible; reopen the sheet at any time while the tool stays open. Tap the arrow at the top right of tool settings to collapse them to their heading, **Apply** and **Cancel**, for example to tap edges while stitching; the choice applies to every tool until you expand them again. Turning a phone sideways keeps the tools at the left edge.
 
 ![Phone layout with the object sheet open](/manual/images/phone-layout.png)
 

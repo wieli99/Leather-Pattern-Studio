@@ -132,6 +132,40 @@ test("opening a tool closes the sidebar sheet, which can reopen without covering
   await page.getByRole("button", { name: "Cancel", exact: true }).tap();
 });
 
+test("stitching works by tapping edges with its settings collapsed", async ({ page }) => {
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).tap();
+  await tapCanvas(page, 80, 120);
+  await tapCanvas(page, 300, 400);
+  await page.getByRole("button", { name: "Stitch line" }).tap();
+  const settings = page.getByRole("region", { name: "Stitch line settings", exact: true });
+  await expect(settings).toBeVisible();
+  // Settings and their toolbar sit at the bottom of the canvas, within a third of the screen.
+  const canvas = (await canvasOf(page).boundingBox())!;
+  const panel = (await settings.boundingBox())!;
+  expect(panel.height).toBeLessThanOrEqual(844 * 0.35 + 1);
+  const toolbar = (await page.locator(".stitch-toolbar").boundingBox())!;
+  expect(toolbar.y).toBeGreaterThan(panel.y + panel.height - 1);
+  expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(canvas.y + canvas.height);
+  // Collapsing keeps the heading and Apply/Cancel and uncovers the canvas for tapping an edge.
+  await page.getByRole("button", { name: "Collapse tool settings" }).tap();
+  await expect(settings.getByLabel("Reverse iron")).toBeHidden();
+  await expect(settings.getByRole("button", { name: "Apply", exact: true })).toBeVisible();
+  await tapCanvas(page, 81, 260);
+  await expect(page.locator(".stitch-options")).toContainText("1 selected");
+  await settings.getByRole("button", { name: "Apply", exact: true }).tap();
+  await expect(settings).toBeHidden();
+  // Tapping Select leaves stitching. The collapse applies to every tool for the session.
+  await page.getByRole("button", { name: "Select (V)", exact: true }).tap();
+  await expect(page.locator(".stitch-toolbar")).toHaveCount(0);
+  // The top edge has no stitching; tapping it selects the rectangle rather than its stitching.
+  await tapCanvas(page, 190, 121);
+  await page.getByRole("button", { name: /^Move/ }).first().tap();
+  await expect(page.getByRole("button", { name: "Expand tool settings" })).toBeVisible();
+  await page.getByRole("button", { name: "Expand tool settings" }).tap();
+  await expect(page.getByLabel("X (mm)")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel", exact: true }).tap();
+});
+
 test("two fingers pan and pinch-zoom without drawing", async ({ page }) => {
   const canvas = canvasOf(page);
   await page.getByRole("button", { name: "Rectangle (R)", exact: true }).tap();

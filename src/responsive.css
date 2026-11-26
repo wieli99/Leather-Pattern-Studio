@@ -201,6 +201,39 @@
   .transform-overlay > .transform-toolbox {
     flex-shrink: 0;
   }
+  /* A corner button collapses tool settings to heading and footer to uncover the canvas. */
+  .transform-overlay .transform-options {
+    position: relative;
+  }
+  .transform-options > .tool-popup-collapse {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: transparent;
+    color: var(--muted);
+  }
+  .transform-options > strong {
+    padding-right: 36px;
+  }
+  .transform-options.collapsed > :not(strong, .tool-popup-collapse, .tool-popup-footer) {
+    display: none !important;
+  }
+  /* Stitching: its settings above its toolbar, both at the bottom of the canvas. */
+  .transform-overlay:has(.stitch-toolbar) {
+    justify-content: flex-start;
+    flex-direction: column-reverse;
+  }
+  .transform-overlay > .stitch-toolbar {
+    flex-shrink: 0;
+  }
+  main .stitch-panel-anchor > .stitch-options {
+    max-height: 35dvh;
+  }
   /* The canvas edge toggles stay reachable above open tool settings. */
   .edge-tab {
     z-index: 11;
