@@ -526,7 +526,6 @@ footer,
 }
 .field input,
 .transform-inputs input,
-select,
 .settings input[type="number"] {
   background-color: var(--input);
   color: var(--text);
@@ -914,13 +913,15 @@ footer:has(.measurements-hidden-notice) .status-message {
   overflow: auto;
   box-shadow: 0 4px 20px #0005;
 }
+/* ToolFieldPair: related values side by side in equal columns, labels above controls. */
 .transform-inputs {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .transform-inputs label {
   min-width: 0;
-  flex: 1;
 }
 .transform-inputs input {
   width: 100%;
@@ -1130,6 +1131,10 @@ select {
   appearance: none;
   -webkit-appearance: none;
   font: inherit;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px;
   padding-right: 28px !important;
   background-color: var(--input);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4l3 3 3-3' stroke='%2395a5b4' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
@@ -1147,7 +1152,8 @@ select:disabled { opacity: .5; }
 
 .boolean-operand, .objects .object-select.boolean-operand { color: #e34646; }
 
-.boolean-picker {
+/* ObjectPickButton: a role on the left and the current object choice on the right. */
+.object-pick {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1155,29 +1161,27 @@ select:disabled { opacity: .5; }
   text-align: left;
   min-height: 36px;
 }
-.boolean-picker-label { flex-shrink: 0; }
+/* Long labels wrap in narrow popovers so the short choice value always stays visible. */
+.object-pick-label { min-width: 0; }
 /* Pressed choices in tool popovers: object pickers, pivot modes and align actions. */
-.boolean-picker[aria-pressed="true"],
+.object-pick[aria-pressed="true"],
 .pivot-modes button[aria-pressed="true"],
 .align-buttons button[aria-pressed="true"] {
   background: color-mix(in srgb, var(--accent) 12%, var(--panel));
   border-color: var(--accent);
   color: var(--accent);
 }
-.boolean-picker:focus-visible,
+.object-pick:focus-visible,
 .pivot-modes button:focus-visible,
 .align-buttons button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.boolean-object-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.object-pick-value {
+  flex-shrink: 0;
   white-space: nowrap;
+  text-align: right;
 }
-.boolean-picker .boolean-object-name { text-align: right; }
-.path-copy-options > label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 .tool-object-picker {
   display: flex;
@@ -1193,9 +1197,7 @@ select:disabled { opacity: .5; }
 
 .corner-inputs { display: grid; gap: 6px; }
 
-.array-options .transform-inputs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-.array-options .transform-inputs label { min-width:0; }
-.array-options .transform-inputs input { width:100%; box-sizing:border-box; }
+.array-options .transform-inputs { gap:8px; }
 .array-options { max-height:min(72vh,calc(100dvh - 180px)); }
 
 /* ToolField: one labelled tool setting with the label left and a fixed-width control right. */

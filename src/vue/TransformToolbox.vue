@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import ToolField from "./ToolField.vue";
+import ToolFieldPair from "./ToolFieldPair.vue";
+import ObjectPickButton from "./ObjectPickButton.vue";
 import ToolSearch from "./ToolSearch.vue";
 import SelectionHint from "./SelectionHint.vue";
 import PivotSelector from "./PivotSelector.vue";
@@ -88,39 +90,28 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
             <option value="extent">Extent</option>
             <option value="spacing">Spacing</option>
           </select></ToolField>
-        <div class="transform-inputs" data-hint-edit="array">
-          <label
-            v-for="(field,i) in (['vector1','vector2'] as const)"
-            :key="field"
-            >Distance {{ i + 1 }} ({{ e.unitSymbol }})
-            <LengthInput
-              :step="1"
-              :min="0.01"
-              :value="Math.hypot(e.array[field]?.x ?? 0, e.array[field]?.y ?? 0)"
-              @invalid="editor.setArrayDistance(field, NaN)"
-              @commit="editor.setArrayDistance(field, $event)"
-            />
-          </label>
-        </div>
-        <div class="transform-inputs" data-hint-edit="array">
-          <label v-for="field in (['columns','rows'] as const)" :key="field"
-            >{{ field === "columns" ? "Number" : "Repeat" }}
-            <LengthInput
-              scalar
-              integer
-              :min="field === 'columns' ? 2 : 1"
-              :max="
-                Math.floor(
-                  1001 / (field === 'columns' ? e.array.rows : e.array.columns),
-                )
-              "
-              :step="1"
-              :value="e.array[field]"
-              @invalid="editor.setArrayValue(field, NaN)"
-              @commit="editor.setArrayValue(field, $event)"
-            />
-          </label>
-        </div>
+        <ToolFieldPair v-slot="{ field }" hint="array"
+          :fields="([['vector1', `Distance 1 (${e.unitSymbol})`], ['vector2', `Distance 2 (${e.unitSymbol})`]] as const)">
+          <LengthInput
+            :step="1"
+            :min="0.01"
+            :value="Math.hypot(e.array[field]?.x ?? 0, e.array[field]?.y ?? 0)"
+            @invalid="editor.setArrayDistance(field, NaN)"
+            @commit="editor.setArrayDistance(field, $event)"
+          />
+        </ToolFieldPair>
+        <ToolFieldPair v-slot="{ field }" hint="array" :fields="([['columns', 'Number'], ['rows', 'Repeat']] as const)">
+          <LengthInput
+            scalar
+            integer
+            :min="field === 'columns' ? 2 : 1"
+            :max="Math.floor(1001 / (field === 'columns' ? e.array.rows : e.array.columns))"
+            :step="1"
+            :value="e.array[field]"
+            @invalid="editor.setArrayValue(field, NaN)"
+            @commit="editor.setArrayValue(field, $event)"
+          />
+        </ToolFieldPair>
       </template>
       <template v-else>
         <button
@@ -140,27 +131,12 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
             <option value="total">Total</option>
             <option value="spacing">Spacing</option>
           </select></ToolField>
-        <div class="transform-inputs" data-hint-edit="array">
-          <label
-            >Degrees<LengthInput
-              scalar
-              :step="1"
-              :value="e.array.angle"
-              @invalid="editor.setArrayValue('angle', NaN)"
-              @commit="editor.setArrayValue('angle', $event)"
-          /></label>
-          <label
-            >Number<LengthInput
-              scalar
-              integer
-              :min="2"
-              :max="1001"
-              :step="1"
-              :value="e.array.count"
-              @invalid="editor.setArrayValue('count', NaN)"
-              @commit="editor.setArrayValue('count', $event)"
-          /></label>
-        </div>
+        <ToolFieldPair v-slot="{ field }" hint="array" :fields="([['angle', 'Degrees'], ['count', 'Number']] as const)">
+          <LengthInput v-if="field === 'angle'" scalar :step="1" :value="e.array.angle"
+            @invalid="editor.setArrayValue('angle', NaN)" @commit="editor.setArrayValue('angle', $event)" />
+          <LengthInput v-else scalar integer :min="2" :max="1001" :step="1" :value="e.array.count"
+            @invalid="editor.setArrayValue('count', NaN)" @commit="editor.setArrayValue('count', $event)" />
+        </ToolFieldPair>
         <ToolField label="Rotate copies"><input
             type="checkbox"
             v-model="e.array.rotate"
@@ -172,9 +148,9 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
     </ToolPopover>
     <ToolPopover v-if="e.pathCopy" class="path-copy-options" heading="Copy along path" aria-label="Copy along path settings"
       :apply-disabled="!e.canApplyPathCopy" :apply="() => editor.applyPathCopy()" :cancel="cancel">
-      <button v-for="role in (['source', 'path'] as const)" :key="role" class="boolean-picker" :aria-pressed="e.pathCopy.picker === role" @click="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()">
-        <span class="boolean-picker-label">{{ role === 'source' ? 'Select Source' : 'Select Path' }}</span><span class="boolean-object-name">{{ e.pathCopy![role] ? '(1)' : 'Choose object' }}</span>
-      </button>
+      <ObjectPickButton v-for="role in (['source', 'path'] as const)" :key="role" :pressed="e.pathCopy.picker === role"
+        :label="role === 'source' ? 'Select Source' : 'Select Path'" :value="e.pathCopy[role] ? '(1)' : 'Choose object'"
+        @toggle="e.pathCopy.picker = e.pathCopy.picker === role ? null : role; editor.refreshPathCopy()" />
       <hr>
       <ToolField label="Distribution"><select v-model="e.pathCopy.mode" @change="editor.refreshPathCopy()"><option value="spacing">Spacing</option><option value="count">Count</option></select></ToolField>
       <ToolField v-if="e.pathCopy.mode === 'spacing'" :label="`Spacing (${e.unitSymbol})`" data-hint-edit="path-copy"><LengthInput :min="0.01" :value="e.pathCopy.spacing" @invalid="e.pathCopy.spacing = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.spacing = $event; editor.refreshPathCopy()" /></ToolField>
@@ -199,18 +175,13 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       :apply-disabled="!e.canApplyTrim" :apply="() => editor.applyTrim()" :cancel="cancel">
       <template v-if="!e.booleanOperation"><ToolObjectPicker /></template>
       <template v-if="e.booleanOperation">
-        <button type="button" class="boolean-picker" :aria-pressed="e.boolean?.picker === 'target'"
+        <ObjectPickButton :pressed="e.boolean?.picker === 'target'" label="Select Target" :value="e.boolean?.target ? '(1)' : 'Choose object'"
           :title="e.boolean?.picker === 'target' ? 'Stop choosing a target' : 'Choose a target object'"
-          @click="editor.setBooleanPicker('target')">
-          <span class="boolean-picker-label">Select Target</span>
-          <span>{{ e.boolean?.target ? '(1)' : 'Choose object' }}</span>
-        </button>
-        <button type="button" class="boolean-picker" :aria-pressed="e.boolean?.picker === 'cutters'"
+          @toggle="editor.setBooleanPicker('target')" />
+        <ObjectPickButton :pressed="e.boolean?.picker === 'cutters'" :value="`(${e.boolean?.cutters.length ?? 0})`"
+          :label="e.booleanOperation === 'subtract' ? 'Select subtract objects' : 'Select other objects'"
           :title="e.boolean?.picker === 'cutters' ? 'Stop choosing other objects' : 'Choose other objects'"
-          @click="editor.setBooleanPicker('cutters')">
-          <span>{{ e.booleanOperation === 'subtract' ? 'Select subtract objects' : 'Select other objects' }}</span>
-          <span>({{ e.boolean?.cutters.length }})</span>
-        </button>
+          @toggle="editor.setBooleanPicker('cutters')" />
         <SelectionHint :active="e.boolean?.picker === 'cutters'" />
         <p v-if="e.boolean?.error" role="alert">{{ e.boolean.error }}</p>
         <p v-if="e.boolean?.empty" role="status">Result is empty. Apply removes the input objects.</p>
