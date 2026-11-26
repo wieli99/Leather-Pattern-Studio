@@ -1,3 +1,4 @@
+import { createId } from "./id";
 import { stitchingOnPiece, resolvedStitchGroups } from "./stitchLayers";
 import { stitchGeometry, type StitchGroup } from "./stitchGeometry";
 import { stitchMarks } from "./stitch";
@@ -341,7 +342,7 @@ export function importPrintNode(
     : { x: 0, y: 0, width: 0, height: 0 };
   const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   function build(node: ObjectNode): PrintNode {
-    const id = crypto.randomUUID();
+    const id = createId();
     if (node.kind === "object") {
       const shape = doc.shapes.find((s) => s.id === node.id)!;
       const p = center(shape),
@@ -694,7 +695,7 @@ export function reconcilePrintLayouts(doc: Doc): Doc {
               angle = (node.rotation * Math.PI) / 180;
             const dx = p.x - box.x - box.width / 2,
               dy = (p.y - box.y - box.height / 2) * (node.mirrored ? -1 : 1);
-            const id = crypto.randomUUID(),
+            const id = createId(),
               m = shapeMatrix(shape);
             layout.instances.push({
               id,

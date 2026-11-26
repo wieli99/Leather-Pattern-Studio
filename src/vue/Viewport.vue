@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createId } from "../model/id";
 import { measureText, textFamily } from "../model/text";
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { editor as defaultEditor } from "../editor/instance";
@@ -56,7 +57,7 @@ async function saveText() {
     const layout = measureText(d.text, size, d.original ?? {});
     const shape: Shape = {
       ...(d.original ?? {}),
-      id: d.original?.id ?? crypto.randomUUID(),
+      id: d.original?.id ?? createId(),
       name: d.original?.name ?? "Text",
       kind: "text",
       text: layout.text,

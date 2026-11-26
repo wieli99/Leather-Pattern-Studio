@@ -1,3 +1,4 @@
+import { createId } from "./id";
 import { isIndicator } from "./indicators";
 import type { Point, Shape } from "./project";
 import { boundary, distanceToSegment, worldCubics } from "./geometry";
@@ -466,7 +467,7 @@ export function splitSegments(
     }
     let keepId = !copy;
     const named = (shape: Shape) => {
-      const id = keepId ? source.id : crypto.randomUUID();
+      const id = keepId ? source.id : createId();
       if (!keepId) origin.set(id, source.id);
       keepId = false;
       return { ...shape, id };

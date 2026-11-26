@@ -1,3 +1,4 @@
+import { createId } from "../model/id";
 import { isSvgCssValue, prepareSvgXml, rejectSvgGeometryCss, svgClassStyles, svgCondition, svgDeclarations, svgSwitchBranch, truncateSvgName } from "./svgImportCompatibility";
 import paper from "paper/dist/paper-core";
 import {
@@ -468,7 +469,7 @@ export function parseVectorSvg(text: string): VectorImport {
       else if (nodes.length)
         children.push({
           kind: "group",
-          id: crypto.randomUUID(),
+          id: createId(),
           name: safeLabel || "Imported group",
           children: nodes,
         });
@@ -673,7 +674,7 @@ export function parseVectorSvg(text: string): VectorImport {
       )
         compound = [curves];
       const shape: Shape = {
-        id: crypto.randomUUID(),
+        id: createId(),
         name: truncateSvgName(safeLabel || "Imported " + tag, 200 - suffix.length) + suffix,
         kind: compound ? "compound" : "control-curve",
         radius: 0,
@@ -741,7 +742,7 @@ export function parseVectorSvg(text: string): VectorImport {
         make(sourceClosed[0], sourceClosed, true, { fillOpacity: 0 }, layers, " (stroke)");
       for (const contour of open) make(contour.curves, undefined, false, {}, layers);
       if (layers.length) children.push({
-        kind: "group", id: crypto.randomUUID(), name: safeLabel || "Imported " + tag, children: layers,
+        kind: "group", id: createId(), name: safeLabel || "Imported " + tag, children: layers,
       });
     } else {
       if (closed.length > 1) make(closed[0], closed);

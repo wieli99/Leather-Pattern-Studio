@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createId } from "../model/id";
 import { reconcilePrintTargets } from "../model/printLayout";
 import ToolObjectPicker from "./ToolObjectPicker.vue";
 import ToolPopover from "./ToolPopover.vue";
@@ -845,7 +846,7 @@ async function create() {
       });
       if (error.value) return;
     } else {
-      const id = crypto.randomUUID(),
+      const id = createId(),
         base = format.value;
       let label = name.value.trim() || base;
       let count = 2;
@@ -894,7 +895,7 @@ async function openDefaultLayout() {
   if (!defaultTab.value || busy.value || editor.busy || !e.value.ready) return;
   error.value = "";
   const [width, height] = paperFormats.A4;
-  await addLayout(crypto.randomUUID(), "A4", width, height, 10, editor.units);
+  await addLayout(createId(), "A4", width, height, 10, editor.units);
 }
 async function deleteLayout(id = active.value) {
   const l = layouts.value.find((l) => l.id === id);
@@ -1373,7 +1374,7 @@ function duplicate() {
     instances = [...l.instances],
     newIds: string[] = [];
   function copy(node: PrintNode): PrintNode {
-    const id = crypto.randomUUID();
+    const id = createId();
     if (node.kind === "instance") {
       const old = l!.instances.find((i) => i.id === node.id)!;
       instances.push({ ...old, id, x: old.x + 10, y: old.y + 10 });
@@ -1405,7 +1406,7 @@ function newGroup() {
   const l = layout.value;
   if (!l) return;
   const ids = new Set(movableSelection());
-  const id = crypto.randomUUID();
+  const id = createId();
   let grouped = false;
   function group(nodes: PrintNode[]): PrintNode[] {
     const chosen = nodes.filter((n) => ids.has(n.id));

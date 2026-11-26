@@ -1,3 +1,4 @@
+import { createId } from "./id";
 import { contourShape } from "./compound";
 import { booleanShapes } from "./booleanShapes";
 import { contains } from "./geometry";
@@ -24,7 +25,7 @@ function similarityScale(shape: Shape) {
 }
 
 function primitive(source: Shape, kind: "circle" | "rectangle", points: Point[], radius: number): Shape {
-  return { id: crypto.randomUUID(), name: `${source.name.slice(0, 193)} offset`, kind, points, radius,
+  return { id: createId(), name: `${source.name.slice(0, 193)} offset`, kind, points, radius,
     rotation: source.rotation, transform: source.transform, strokeColor: source.strokeColor,
     strokeOpacity: source.strokeOpacity, strokeStyle: source.strokeStyle, strokeWidth: source.strokeWidth, fillOpacity: 0,
     excludeFromDxf: source.excludeFromDxf };
@@ -63,7 +64,7 @@ export function offsetShape(source: Shape, distance: number, join: OffsetJoin): 
     let result: Shape | null = records[0].shape;
     for (const record of records.slice(1)) result = result ? booleanShapes(record.depth % 2 ? "subtract" : "union",[result,record.shape]) : record.shape;
     if (!result) throw Error("Offset collapses the outline.");
-    return {...result,id:crypto.randomUUID(),name:`${source.name.slice(0,193)} offset`,fillOpacity:0};
+    return {...result,id:createId(),name:`${source.name.slice(0,193)} offset`,fillOpacity:0};
   }
   if (!Number.isFinite(distance) || Math.abs(distance) < EPS) throw Error("Enter a non-zero finite offset distance.");
   if (join !== "sharp" && join !== "rounded") throw Error("Invalid corner style.");
@@ -90,7 +91,7 @@ export function offsetShape(source: Shape, distance: number, join: OffsetJoin): 
     const side=Math.abs(source.sweep ?? 0)===360 ? 1 : Math.sign(source.sweep ?? 0)*Math.sign(determinant);
     const nextRadius=oldRadius+distance*side/scale;
     if (nextRadius <= EPS) throw Error("Offset collapses the outline.");
-    return {...source,id:crypto.randomUUID(),name:`${source.name.slice(0,193)} offset`,
+    return {...source,id:createId(),name:`${source.name.slice(0,193)} offset`,
       points:[center,add(center,mul(radial,nextRadius/oldRadius))],radius:0,fillOpacity:0};
   }
   if (["circle", "ellipse", "arc", "curve", "control-curve"].includes(source.kind))
@@ -165,7 +166,7 @@ export function offsetShape(source: Shape, distance: number, join: OffsetJoin): 
   const points = closed ? [...result, result[0]] : result;
   if (points.length > 10000) throw Error("Offset exceeds document point limit.");
   return {
-    id: crypto.randomUUID(), name: `${source.name.slice(0, 193)} offset`, kind: points.length === 2 ? "line" : "polyline",
+    id: createId(), name: `${source.name.slice(0, 193)} offset`, kind: points.length === 2 ? "line" : "polyline",
     points, radius: 0, rotation: 0, strokeColor: source.strokeColor, strokeOpacity: source.strokeOpacity,
     strokeStyle: source.strokeStyle, strokeWidth: source.strokeWidth, fillOpacity: 0,
   };

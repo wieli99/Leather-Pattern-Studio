@@ -1,3 +1,4 @@
+import { createId } from "../model/id";
 import { arrayPlacements, type ArrayKind, type ArraySettings } from "../model/array";
 import { objectSelection } from "../model/objectSelection";
 import { automaticPivot, type PivotMode } from "../model/pivot";
@@ -942,7 +943,7 @@ export class Controller {
   snapTarget: Point | null = null;
   snapKind: SnapKind | null = null;
   pointerInside = false;
-  private clipboardOrigin=crypto.randomUUID();
+  private clipboardOrigin=createId();
   private clipboardPixel: Point | null = null;
   smartGuides: SmartGuide[] = [];
   grid = true;
@@ -1237,7 +1238,7 @@ export class Controller {
           await this.core.request(operation, this.revision, document),
         );
         if (operation === "load") {
-          this.clipboardOrigin=crypto.randomUUID();
+          this.clipboardOrigin=createId();
           this.projectEpoch++;
           this.printLayoutActive = false;
         }
@@ -1426,7 +1427,7 @@ export class Controller {
     this.stitch.tool="transfer";
     this.stitch.operationSelection=[...this.stitchSelected];
     this.stitch.editingHoles=false; this.stitch.addingRun=false;
-    this.stitch.transferPlacement={placementId:crypto.randomUUID(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
+    this.stitch.transferPlacement={placementId:createId(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
     this.stitch.hover=null; this.stitch.error=""; this.notify();
   }
   get transferSourceCenter(): Point {
@@ -1570,7 +1571,7 @@ export class Controller {
   async continueStitchRun() {
     const previous = this.stitchGroups.find(g => g.id === this.stitchSelected[0]);
     if (!previous || previous.holes || this.busy || this.stitch.draft) return;
-    const next: StitchGroup = { ...previous, id: crypto.randomUUID(), holeOverrides: undefined, closed: false, continuation: { previousId: previous.id, gap: previous.settings.spacing }, settings: { ...previous.settings, holeCount: 1, alignment: "start", startClearance: 0, endClearance: 0 } };
+    const next: StitchGroup = { ...previous, id: createId(), holeOverrides: undefined, closed: false, continuation: { previousId: previous.id, gap: previous.settings.spacing }, settings: { ...previous.settings, holeCount: 1, alignment: "start", startClearance: 0, endClearance: 0 } };
     try {
       if (await this.commit({ ...this.document, stitchGroups: [...this.stitchGroups,next] })) {
         this.stitchSelected=[next.id]; this.stitchHoleNumber=1; this.stitchHoleNumbers=[1]; this.stitch.editingHoles=false; this.stitch.addingRun=false;
@@ -1611,7 +1612,7 @@ export class Controller {
     }
     try {
       const group: StitchGroup = {
-        id: crypto.randomUUID(),
+        id: createId(),
         shapeId: shape.id,
         edges: stitchEdges(shape).map((e) => e.key),
         side: 1,
@@ -1832,7 +1833,7 @@ export class Controller {
     return target;
   }
   stitchPlacement(target: StitchGroup, shift: boolean) {
-    let next: StitchGroup = { ...target, id: crypto.randomUUID() };
+    let next: StitchGroup = { ...target, id: createId() };
     let absorbed: string[] = [];
     const onOccupiedEdge=this.stitchGroups.some(g=>g.shapeId===target.shapeId && g.edges.some(e=>target.edges.includes(e)));
     if (this.stitch.addingRun || onOccupiedEdge) {
@@ -2232,7 +2233,7 @@ export class Controller {
       );
     const groups = runs.map((edges, i) => ({
       ...g,
-      id: i ? crypto.randomUUID() : g.id,
+      id: i ? createId() : g.id,
       edges,
       closed: false,
     }));
@@ -2240,7 +2241,7 @@ export class Controller {
     catch (error) { this.stitch.error = String(error); this.notify(); return; }
     await this.commit({
       ...this.document,
-      stitchTransfers: this.document.stitchTransfers?.flatMap(t => t.masterId === g.id ? groups.map((run,index) => ({ ...t, id:index ? crypto.randomUUID() : t.id, masterId:run.id })) : [t]),
+      stitchTransfers: this.document.stitchTransfers?.flatMap(t => t.masterId === g.id ? groups.map((run,index) => ({ ...t, id:index ? createId() : t.id, masterId:run.id })) : [t]),
       stitchLinks: (this.document.stitchLinks ?? []).map(l => ({...l, members: l.members.filter(id => id !== g.id)})).filter(l => l.members.length >= 2),
       stitchGroups: [
         ...this.stitchGroups.filter((x) => x.id !== g.id),
@@ -2306,7 +2307,7 @@ export class Controller {
         contour.map(cubic => cubic.map(move) as [Point, Point, Point, Point]),
       ),
     }));
-    const id = crypto.randomUUID();
+    const id = createId();
     if (!await this.commit({
       ...this.document,
       shapes: [...this.document.shapes, ...shapes],
@@ -2329,7 +2330,7 @@ export class Controller {
     const width = image.width * scale, height = image.height * scale;
     const x = (this.width / 2 - this.pan.x) / this.zoom;
     const y = (this.height / 2 - this.pan.y) / this.zoom;
-    const id = crypto.randomUUID();
+    const id = createId();
     const shape: Shape = {
       id, name: image.name, kind: "image", image: image.data,
       points: [{ x: x - width / 2, y: y - height / 2 },
@@ -3025,7 +3026,7 @@ export class Controller {
       ),
       ...data.shapes,
     ];
-    const ids = new Map(originals.map((s) => [s.id, crypto.randomUUID()]));
+    const ids = new Map(originals.map((s) => [s.id, createId()]));
     const copies = originals.map((s) => ({
       ...transformShape(s, matrix),
       id: ids.get(s.id)!,
@@ -3044,7 +3045,7 @@ export class Controller {
         ? { ...n, id: ids.get(n.id)! }
         : {
             ...n,
-            id: crypto.randomUUID(),
+            id: createId(),
             name: `${n.name} copy`,
             locked: false,
             children: n.children.map(copyNode),
@@ -3062,7 +3063,7 @@ export class Controller {
       );
     }
     const { groups, transfers } = data;
-    const groupIds = new Map(groups.map((g) => [g.id, crypto.randomUUID()]));
+    const groupIds = new Map(groups.map((g) => [g.id, createId()]));
     return {
       ...document,
       shapes: [...document.shapes, ...copies],
@@ -3110,7 +3111,7 @@ export class Controller {
           document.stitchTransfers ?? [],
           transfers.map((t) => ({
             ...t,
-            id: crypto.randomUUID(),
+            id: createId(),
             masterId: groupIds.get(t.masterId) ?? t.masterId,
             targetId: ids.get(t.targetId)!,
           })),
@@ -4085,7 +4086,7 @@ export class Controller {
   }
   async newGroup(fromSelection = !!(this.selected.length || this.selectedGroups.length)): Promise<string | undefined> {
     if (!this.canToggleObjectState) return;
-    const id = crypto.randomUUID();
+    const id = createId();
     let tree = this.tree;
     const selected = new Set([...this.selectedGroups, ...this.selected]);
     if (fromSelection && !selected.size) return;
@@ -4494,7 +4495,7 @@ export class Controller {
       if (axis || existing) {
         this.guideDrag = existing
           ? { ...existing }
-          : { id: crypto.randomUUID(), axis: axis!, coordinate: raw[axis!] };
+          : { id: createId(), axis: axis!, coordinate: raw[axis!] };
         this.updateGuide(pixel, alt, ctrl, shift);
         return;
       }
@@ -5229,7 +5230,7 @@ export class Controller {
       );
       if (this.mode === "control-curve")
         shape.handles = this.pendingHandles.slice(0, points.length);
-      shape.id = crypto.randomUUID();
+      shape.id = createId();
       shape.name = `${isCurveMode(this.mode) || isIndicator(this.mode) ? labels[this.mode] : shape.kind[0].toUpperCase() + shape.kind.slice(1)} ${this.document.shapes.length + 1}`;
       const linked = this.linkConstruction(shape);
       const next = {
@@ -5605,14 +5606,14 @@ export class Controller {
         source.stitchGroups=source.stitchGroups?.filter(g=>!fallbackIds.has(g.shapeId));
         source.objectTree=filterObjectTree(source.objectTree ?? [],new Set(source.shapes.map(s=>s.id)),new Set());
       }
-      const ids = new Map(source.shapes.map(s => [s.id, crypto.randomUUID()]));
-      const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, crypto.randomUUID()]));
+      const ids = new Map(source.shapes.map(s => [s.id, createId()]));
+      const groupIds = new Map((source.stitchGroups ?? []).map(g => [g.id, createId()]));
       const copies = source.shapes.map(s => ({
         ...moveShape(s, anchor.x - payload.anchor.x, anchor.y - payload.anchor.y),
         id: ids.get(s.id)!, name: `${s.name} copy`, locked: false,stitchParentId:s.stitchParentId ? ids.get(s.stitchParentId) : undefined,
       }));
       const remap = (nodes: ObjectNode[]): ObjectNode[] => nodes.map(n => n.kind === "object"
-        ? { ...n, id: ids.get(n.id)! } : { ...n, id: crypto.randomUUID(), locked: false, children: remap(n.children) });
+        ? { ...n, id: ids.get(n.id)! } : { ...n, id: createId(), locked: false, children: remap(n.children) });
       const copiedTree = remap(source.objectTree ?? objectTreeFromShapes(source.shapes));
       let linkId = Math.max(0, ...(this.document.stitchLinks ?? []).map(l => l.id));
       const success = await this.commit({
@@ -5620,7 +5621,7 @@ export class Controller {
         stitchGroups: [...this.stitchGroups, ...(source.stitchGroups ?? []).map(g => ({
           ...g, id: groupIds.get(g.id)!, shapeId: ids.get(g.shapeId)!, continuation:g.continuation ? { ...g.continuation, previousId:groupIds.get(g.continuation.previousId)! } : undefined,
         }))],
-        stitchTransfers:[...(this.document.stitchTransfers ?? []), ...copyTransferPlacements(this.document.stitchTransfers ?? [],[...(source.stitchTransfers ?? []),...(liveExternal ? external : [])].map((t:StitchTransfer) => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
+        stitchTransfers:[...(this.document.stitchTransfers ?? []), ...copyTransferPlacements(this.document.stitchTransfers ?? [],[...(source.stitchTransfers ?? []),...(liveExternal ? external : [])].map((t:StitchTransfer) => ({ ...t,id:createId(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
         stitchLinks: [...(this.document.stitchLinks ?? []), ...(source.stitchLinks ?? []).map(l => ({
           ...l, id: ++linkId, members: l.members.map(id => groupIds.get(id)!),
         }))],
@@ -5639,25 +5640,25 @@ export class Controller {
     const initialIds=new Set(this.active.map(s=>s.id));
     const data=copyStitchData(this.document,initialIds,true);
     const originals=[...this.document.shapes.filter(s=>initialIds.has(s.id) || !!s.stitchParentId && initialIds.has(s.stitchParentId)),...data.shapes];
-    const ids=new Map(originals.map(s=>[s.id,crypto.randomUUID()]));
+    const ids=new Map(originals.map(s=>[s.id,createId()]));
     const copies=originals.map(s=>({...moveShape(s,10,10),id:ids.get(s.id)!,name:`${s.name} copy`,locked:false,stitchParentId:s.stitchParentId ? ids.get(s.stitchParentId) : undefined}));
     if(!copies.length && !this.selectedGroups.length)return;
     const chosen = new Set([...this.selectedGroups, ...this.selected,...originals.filter(s=>s.stitchParentId).map(s=>s.id)]);
     function copyNode(n: ObjectNode): ObjectNode {
       return n.kind === "object" ? { ...n, id: ids.get(n.id)! } :
-        { ...n, id: crypto.randomUUID(), name: `${n.name} copy`, locked: false, children: n.children.map(copyNode) };
+        { ...n, id: createId(), name: `${n.name} copy`, locked: false, children: n.children.map(copyNode) };
     }
     function duplicateNodes(nodes: ObjectNode[]): ObjectNode[] {
       return nodes.flatMap(n => chosen.has(n.id) ? [copyNode(n), n] :
         [n.kind === "group" ? { ...n, children: duplicateNodes(n.children) } : n]);
     }
     const {groups,transfers}=data;
-    const groupIds = new Map(groups.map(g => [g.id,crypto.randomUUID()]));
+    const groupIds = new Map(groups.map(g => [g.id,createId()]));
     const success = await this.commit({
       ...this.document, shapes:[...this.document.shapes,...copies], objectTree:[...duplicateNodes(this.tree),...data.shapes.map(s=>({kind:"object" as const,id:ids.get(s.id)!}))],
       stitchLinks:[...(this.document.stitchLinks ?? []),...(this.document.stitchLinks ?? []).map((l,index)=>({...l,id:Math.max(0,...(this.document.stitchLinks ?? []).map(l=>l.id))+index+1,members:l.members.filter(id=>groupIds.has(id)).map(id=>groupIds.get(id)!)})).filter(l=>l.members.length>=2)],
       stitchGroups:[...this.stitchGroups,...groups.map(g => ({ ...g,id:groupIds.get(g.id)!,shapeId:ids.get(g.shapeId)!,continuation:g.continuation ? { ...g.continuation,previousId:groupIds.get(g.continuation.previousId)! } : undefined }))],
-      stitchTransfers:[...(this.document.stitchTransfers ?? []),...copyTransferPlacements(this.document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:crypto.randomUUID(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
+      stitchTransfers:[...(this.document.stitchTransfers ?? []),...copyTransferPlacements(this.document.stitchTransfers ?? [],transfers.map(t => ({ ...t,id:createId(),masterId:groupIds.get(t.masterId) ?? t.masterId,targetId:ids.get(t.targetId)! })))],
     });
     if (success) {
       this.selectedGroups = [];

@@ -1,3 +1,4 @@
+import { createId } from "./id";
 import { cubicAt, flattenCubic, type Cubic } from "./curves";
 import { applyMatrix, shapeMatrix, worldCubics } from "./geometry";
 import { isClosedShape } from "./closedShape";
@@ -295,7 +296,7 @@ export function compactOffset(source: Shape, distance: number, join: OffsetJoin)
   }
   const fillOnly = (source.fillOpacity ?? 0) > 0 &&
     (source.strokeOpacity === 0 || source.strokeWidth === 0);
-  return {id:crypto.randomUUID(),name:`${source.name.slice(0,193)} offset`,kind:"control-curve",points,handles,
+  return {id:createId(),name:`${source.name.slice(0,193)} offset`,kind:"control-curve",points,handles,
     radius:0,rotation:0,strokeColor:fillOnly ? source.fillColor : source.strokeColor,
     strokeOpacity:fillOnly ? 1 : source.strokeOpacity,
     strokeWidth:fillOnly ? undefined : source.strokeWidth,
