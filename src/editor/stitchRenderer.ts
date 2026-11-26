@@ -12,7 +12,7 @@ export function drawStitches(
   color: (name: string) => string,
 ) {
   const doc=editor.stitchTransferRenderDocument;
-  const preview=editor.stitchTransferPlacement ? editor.stitchTransferPreview : null;
+  const preview=editor.stitch.transferPlacement ? editor.stitchTransferPreview : null;
   const previews=new Map(preview?.transfers.map((t,i)=>[t.id,preview.results[i]]) ?? []);
   const painted=new Set<string>();
   function draw(g: StitchGroup, preview = false) {
@@ -81,7 +81,7 @@ export function drawStitches(
           ctx.strokeStyle = "#dc2626"; ctx.lineWidth = 2 / editor.zoom;
           ctx.beginPath(); ctx.arc(0,0,Math.max(holeMark.width,holeMark.height)/2+3/editor.zoom,0,Math.PI*2); ctx.stroke();
         }
-        if (selected && editor.editingStitchHoles && editor.stitchHoleSelection.some(h=>h.groupId===g.id && h.number===index+1)) {
+        if (selected && editor.stitch.editingHoles && editor.stitch.holeSelection.some(h=>h.groupId===g.id && h.number===index+1)) {
           ctx.beginPath(); ctx.arc(0, 0, Math.max(holeMark.width, holeMark.height) / 2 + 4 / editor.zoom, 0, Math.PI * 2);
           ctx.lineWidth = 2 / editor.zoom; ctx.stroke();
         }
@@ -139,7 +139,7 @@ export function drawStitches(
     }
   }
   for(const group of resolvedStitchGroups(doc)) {
-    if(editor.stitchMode && editor.stitchHover && editor.stitchAbsorbed.includes(group.id))continue;
+    if(editor.stitchMode && editor.stitch.hover && editor.stitch.absorbed.includes(group.id))continue;
     const projected=previews.get(group.id);
     if(projected) {
       const shape=doc.shapes.find(s=>s.id===group.shapeId)!;
@@ -147,7 +147,7 @@ export function drawStitches(
       if(painted.has(key))continue;
       painted.add(key);
     }
-    draw(editor.stitchDraft?.id===group.id && !editor.stitchError ? editor.stitchDraft : group);
+    draw(editor.stitch.draft?.id===group.id && !editor.stitch.error ? editor.stitch.draft : group);
   }
   for (const warning of receivingWarnings(doc)) {
     const transfer=doc.stitchTransfers?.find(t=>t.id===warning.id);
@@ -157,7 +157,7 @@ export function drawStitches(
     ctx.save(); ctx.fillStyle=color("accent"); ctx.font=`${13/editor.zoom}px sans-serif`;
     ctx.fillText("⚠ Transfer needs attention",point.x,point.y-8/editor.zoom); ctx.restore();
   }
-  const placement=editor.stitchTransferPlacement,ghost=editor.stitchTransferGhost;
+  const placement=editor.stitch.transferPlacement,ghost=editor.stitchTransferGhost;
   if(placement && ghost && (editor.pointerInside || placement.phase==="placed")) {
     ctx.save();ctx.strokeStyle=color("accent");ctx.lineWidth=1.5/editor.zoom;ctx.globalAlpha=.6;ctx.setLineDash([6/editor.zoom,4/editor.zoom]);
     for(const ghost of editor.stitchTransferGhosts)for(const edge of stitchEdges(ghost)){ctx.beginPath();edge.points.forEach((p,index)=>index ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));ctx.stroke();}
@@ -200,7 +200,7 @@ export function drawStitches(
       const shape = doc.shapes.find(s => s.id === g?.shapeId);
       if (!g || !shape || editor.isHidden(shape.id)) return null;
       try {
-        const geometry = stitchGeometry(shape, editor.stitchDraft?.id === id ? editor.stitchDraft : g);
+        const geometry = stitchGeometry(shape, editor.stitch.draft?.id === id ? editor.stitch.draft : g);
         let remaining = geometry.points.slice(1).reduce((total, p, i) =>
           total + Math.hypot(p.x - geometry.points[i].x, p.y - geometry.points[i].y), 0) / 2;
         let point = geometry.points[0];
@@ -238,8 +238,8 @@ export function drawStitches(
   }
   if (
     editor.stitchMode &&
-    editor.stitchHover?.id === "preview" &&
-    !editor.stitchDraft
+    editor.stitch.hover?.id === "preview" &&
+    !editor.stitch.draft
   )
-    draw(editor.stitchHover, true);
+    draw(editor.stitch.hover, true);
 }

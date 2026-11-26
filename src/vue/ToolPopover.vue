@@ -12,24 +12,29 @@ import { handleToolEnter } from "./toolKeyboard";
  * button or Escape; `back` may first undo a sub-step (such as pivot placement) and return
  * true to keep the tool open. When either ends the tool, focus returns to the canvas so
  * its shortcuts keep working.
+ *
+ * A panel without Apply / Cancel (such as the segment selection) passes neither and fills
+ * the `footer` slot instead; Enter and Escape then keep their global meaning.
  */
 const props = withDefaults(defineProps<{
   heading: string;
   applyDisabled?: boolean;
   tag?: "section" | "div";
-  apply: () => unknown;
-  cancel: () => unknown;
+  apply?: () => unknown;
+  cancel?: () => unknown;
   back?: () => boolean;
   refocus?: () => void;
 }>(), { tag: "section", refocus: focusModelCanvas });
 let closed = false;
 onBeforeUnmount(() => { closed = true; });
-async function settle(action: () => unknown) {
+async function settle(action?: () => unknown) {
+  if (!action) return;
   await action();
   await nextTick();
   if (closed) props.refocus();
 }
 function escape(event: KeyboardEvent) {
+  if (!props.cancel) return;
   event.preventDefault();
   event.stopPropagation();
   if (props.back?.()) return;
@@ -37,12 +42,14 @@ function escape(event: KeyboardEvent) {
 }
 </script>
 <template>
-  <component :is="tag" class="transform-options" @keydown.enter="handleToolEnter($event, () => settle(props.apply))" @keydown.esc="escape">
+  <component :is="tag" class="transform-options" @keydown.enter="props.apply && handleToolEnter($event, () => settle(props.apply))" @keydown.esc="escape">
     <strong>{{ heading }}</strong>
     <slot />
     <div class="actions tool-popup-footer">
-      <button :disabled="applyDisabled" @click="settle(props.apply)">Apply</button>
-      <button @click="settle(props.cancel)">Cancel</button>
+      <slot name="footer">
+        <button :disabled="applyDisabled" @click="settle(props.apply)">Apply</button>
+        <button @click="settle(props.cancel)">Cancel</button>
+      </slot>
     </div>
   </component>
 </template>

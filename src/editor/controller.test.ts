@@ -42,6 +42,7 @@ vi.mock("./persistence", () => ({
   recovery: vi.fn(async () => undefined),
 }));
 import { Controller } from "./controller";
+import type { TransformTool } from "./toolSessions";
 import { worldPoints } from "../model/geometry";
 function editor() {
   const e = new Controller();
@@ -49,6 +50,10 @@ function editor() {
   e.grid = false;
   e.objects = false;
   return e;
+}
+/** Open a transform session directly, without the selection checks of activateTransform. */
+function openTransform(e: Controller, tool: TransformTool) {
+  e.transform = { tool, original: e.document, draft: null, numericBasis: null, mirror: { axis: null, line: null, hover: null } };
 }
 afterEach(() => vi.useRealTimers());
 test("a competing commit cancels Offset and preserves the property edit", async () => {
@@ -73,11 +78,11 @@ test("Offset previews copies, commits one undo step, and leaves the source uncha
   expect(e.offsetActive).toBe(true);
   expect(e.preview?.shapes).toHaveLength(2);
   e.setOffsetDistance(-3);
-  expect(e.offsetError).toBe("");
+  expect(e.offset?.error).toBe("");
   expect(e.preview?.shapes[1].points[0]).toEqual({x:3,y:3});
   e.setOffsetDistance(-30);
-  expect(e.offsetDraft).toBeNull();
-  expect(e.offsetError).toMatch(/Piece:/);
+  expect(e.offset?.draft).toBeNull();
+  expect(e.offset?.error).toMatch(/Piece:/);
   e.setOffsetDistance(-3);
   await e.applyOffset();
   expect(e.document.shapes).toHaveLength(2);
@@ -148,7 +153,7 @@ test("dragging an offset preview changes the shared distance and release keeps i
   e.pointerMove(end, false);
   e.pointerUp(end);
   expect(e.offsetDistance).toBeCloseTo(7);
-  expect(e.offsetDraft?.shapes).toHaveLength(4);
+  expect(e.offset?.draft?.shapes).toHaveLength(4);
   expect(e.document.shapes).toHaveLength(2);
   e.pointerDown(e.screen({x:40,y:-7}), 0, false, false);
   e.pointerMove(e.screen({x:40,y:-9}), false);
@@ -1187,7 +1192,7 @@ test("corner drag previews independently, survives Ctrl release and cancels", ()
   };
   e.selected = ["r"];
   expect(e.cornerHandles()).toHaveLength(0);
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0];
   e.pointerDown(e.screen(h.point), 0, false, false, true);
   expect(e.gesture?.kind).toBe("corner");
@@ -1232,7 +1237,7 @@ test("selecting a corner preserves a fractional radius without dragging", () => 
     ],
   };
   e.selected = ["r"];
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0];
   e.pointerDown(e.screen(h.point), 0, false, false, true);
   e.updateCornerModifiers(false, false, false);
@@ -1295,7 +1300,7 @@ test("corner tool uses Ctrl over Shift and combines Alt with coarse steps", () =
     ],
   };
   e.selected = ["r"];
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0],
     p = e.screen({ x: h.point.x + 2, y: h.point.y + 2 });
   e.pointerDown(e.screen(h.point), 0, false, false);
@@ -1333,7 +1338,7 @@ test("stitch previews, master settings, split, deletion and undo use document tr
   e.selected = ["stitched"];
   e.activateStitch();
   e.pointerMove(e.screen({ x: 0, y: 15 }), false);
-  expect(e.stitchHover?.edges).toEqual(["rectangle:2:edge:0"]);
+  expect(e.stitch.hover?.edges).toEqual(["rectangle:2:edge:0"]);
   expect(e.stitchGroups).toHaveLength(0);
   e.stitchClick({ x: 0, y: 15 }, false);
   await vi.waitFor(() => expect(e.stitchGroups).toHaveLength(1));
@@ -1715,7 +1720,7 @@ test("mirror activation waits for a target and cancellation clears the preview",
   expect(JSON.stringify(e.document)).toBe(original);
   e.cancel();
   expect(e.preview).toBeNull();
-  expect(e.mirrorAxis).toBeNull();
+  expect(e.transform).toBeNull();
   expect(JSON.stringify(e.document)).toBe(original);
 });
 
@@ -1758,7 +1763,7 @@ test("linking rejects unequal hole counts without changing memberships", async (
   e.stitchSelected = ["a", "b"];
   expect(e.stitchLinkReason).toContain("same number");
   await e.linkStitches();
-  expect(e.stitchError).toContain("same number");
+  expect(e.stitch.error).toContain("same number");
   expect(e.document.stitchLinks).toEqual([]);
 });
 
@@ -1890,12 +1895,12 @@ test("curved trim previews cancel, accumulate and commit as one undo step", asyn
   e.selected = [circle.id];
   e.activateTrim();
   e.pointerMove(e.screen({ x: 60, y: 40 }), false);
-  expect(e.trimHighlight!.length).toBeGreaterThan(2);
+  expect(e.trim!.highlight!.length).toBeGreaterThan(2);
   const beforeCut = e.uiSnapshot();
   e.pointerDown(e.screen({ x: 60, y: 40 }), 0, false, false);
   expect(e.uiSnapshot()).not.toBe(beforeCut);
-  expect(e.trimDraft!.shapes[0].kind).toBe("arc");
-  expect(e.trimDraft!.stitchGroups ?? []).toHaveLength(0);
+  expect(e.trim!.draft!.shapes[0].kind).toBe("arc");
+  expect(e.trim!.draft!.stitchGroups ?? []).toHaveLength(0);
   const validDraft = e.uiSnapshot();
   e.transformError = "Invalid geometry";
   expect(e.uiSnapshot()).not.toBe(validDraft);
@@ -1906,7 +1911,7 @@ test("curved trim previews cancel, accumulate and commit as one undo step", asyn
   e.activateTrim();
   e.pointerDown(e.screen({ x: 60, y: 40 }), 0, false, false);
   e.pointerDown(e.screen({ x: 20, y: 40 }), 0, false, false);
-  expect(e.trimDraft!.shapes).toHaveLength(1);
+  expect(e.trim!.draft!.shapes).toHaveLength(1);
   await e.applyTrim();
   expect(e.document.shapes).toHaveLength(1);
   await e.transact("undo");
@@ -2085,9 +2090,11 @@ test("hidden group outlines are excluded from mirror references", async () => {
   await e.commit({ version: 13, shapes: [{ id: "r", name: "Rectangle", kind: "rectangle", points: [{x: 20,y: 20}, {x: 100,y: 70}], radius: 0, rotation: 0 }] });
   e.selected = ["r"];
   const group = await e.newGroup(true);
-  e.transformOriginal = e.document;
+  openTransform(e, "mirror");
   expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).toBe("edge");
+  e.cancel();
   await e.toggleGroupState(group!, "hidden");
+  openTransform(e, "mirror");
   expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).not.toBe("edge");
 });
 
@@ -2095,7 +2102,7 @@ test("outline tools reject text without cancelling; Trim requires compatible tar
   const e = editor();
   e.document.shapes = [{ ...shape, id: "text", kind: "text", text: "Label" }, shape];
   e.selected = ["text"];
-  e.transformTool = "move";
+  openTransform(e, "move");
   expect(e.canTrim).toBe(false);
   expect(e.canStitch).toBe(false);
   e.activateTrim();
@@ -2358,7 +2365,7 @@ test("receiving-layer registration, detach, save and undo preserve hole position
  e.activateStitch(); e.stitchSelected=[group.id];
  e.beginStitchTransfer();
  e.updateStitchTransfer({x:250,y:5},true);
- e.stitchTransferPlacement!.phase="placed";
+ e.stitch.transferPlacement!.phase="placed";
  await e.placeStitchTransfer();
  expect(e.document.stitchTransfers).toHaveLength(1);
  const id=e.document.stitchTransfers![0].id;
@@ -2392,14 +2399,14 @@ test("a failed Apply retains the staged stitching session for correction",async(
  await e.commit({version:20,shapes:[shape],stitchGroups:[group]});
  e.activateStitch(); e.stitchSelected=[group.id];
  e.setStitchSettings({...group.settings,holeCount:3});
- const baseline=e.stitchOriginal;
+ const baseline=e.stitch.original;
  e.message="Worker refused the operation";
  vi.spyOn(e,"commit").mockResolvedValueOnce(false);
  await e.applyStitch();
  expect(e.stitchMode).toBe(true);
- expect(e.stitchOriginal).toBe(baseline);
+ expect(e.stitch.original).toBe(baseline);
  expect(e.stitchGroups[0].settings.holeCount).toBe(3);
- expect(e.stitchError).toContain("Worker refused");
+ expect(e.stitch.error).toContain("Worker refused");
 });
 
 test("Alt replaces, Alt+Shift adds object stitching, and transfer accepts multiple source pieces",async()=>{
@@ -2425,16 +2432,16 @@ test("transfer preview rotates with shared modifiers and places all eligible pie
  e.updateStitchTransfer({x:250,y:10},true);
  const pixel=e.screen({x:250,y:10});
  e.wheel(pixel,0,-100,true,{ctrlKey:true,altKey:true});
- expect(e.stitchTransferPlacement?.angle).toBe(0);
+ expect(e.stitch.transferPlacement?.angle).toBe(0);
  expect(e.zoom).toBeGreaterThan(3);
  e.wheel(pixel,0,100,true,{ctrlKey:true,altKey:true});
- expect(e.stitchTransferPlacement?.angle).toBe(0);
+ expect(e.stitch.transferPlacement?.angle).toBe(0);
  expect(e.stitchTransferPreview.transfers).toHaveLength(2);
- e.stitchTransferPlacement!.phase="placed";
+ e.stitch.transferPlacement!.phase="placed";
  await e.placeStitchTransfer();
  expect(e.document.stitchTransfers).toHaveLength(2);
  expect(e.revision).toBe(revision+1);
- expect(e.stitchTransferPlacement).toBeNull();
+ expect(e.stitch.transferPlacement).toBeNull();
  expect(e.message).toContain("backing");expect(e.message).toContain("lining");
  await e.transact("undo");expect(e.document.stitchTransfers ?? []).toHaveLength(0);
 });
@@ -2443,7 +2450,7 @@ test("Ctrl-click picks the painted area of a large hole at high zoom",async()=>{
  const e=editor(),{shape,group}=runFixture();group.settings.roundDiameter=5;
  await e.commit({version:21,shapes:[shape],stitchGroups:[group]});e.zoom=100;
  e.activateStitch();e.stitchClick({x:-2.4,y:5},false,false,true);
- expect(e.stitchHoleSelection).toEqual([{groupId:group.id,number:1}]);
+ expect(e.stitch.holeSelection).toEqual([{groupId:group.id,number:1}]);
 });
 
 test("a rejected transfer keeps staged edits and the preview without committing history",async()=>{
@@ -2454,13 +2461,13 @@ test("a rejected transfer keeps staged edits and the preview without committing 
  e.activateStitch();e.stitchSelected=[group.id];e.setStitchSettings({...group.settings,holeCount:3});
  e.beginStitchTransfer();e.updateStitchTransfer({x:250,y:10},true);
  expect(e.stitchTransferPreview.transfers.map(t=>t.masterId)).toEqual([group.id]);
- const revision=e.revision,baseline=e.stitchOriginal;
+ const revision=e.revision,baseline=e.stitch.original;
  const request=e.core.request.bind(e.core);
  vi.spyOn(e.core,"request").mockImplementation((op,...args)=>op==="commit" ? Promise.reject(Error("Worker refused")) : request(op,...args));
- e.stitchTransferPlacement!.phase="placed";
+ e.stitch.transferPlacement!.phase="placed";
  await e.placeStitchTransfer();
- expect(e.revision).toBe(revision);expect(e.stitchTransferPlacement).not.toBeNull();
- expect(e.stitchOriginal).toBe(baseline);expect(e.stitchGroups[0].settings.holeCount).toBe(3);
+ expect(e.revision).toBe(revision);expect(e.stitch.transferPlacement).not.toBeNull();
+ expect(e.stitch.original).toBe(baseline);expect(e.stitchGroups[0].settings.holeCount).toBe(3);
  expect(e.document.stitchTransfers ?? []).toHaveLength(0);
 });
 
@@ -2492,15 +2499,15 @@ test("contextual tools preview, switch without history, and apply once",async()=
  const revision=e.revision;
  e.activateStitch();e.stitchSelected=[group.id,second.id];
  await e.activateStitchTool("link");
- expect(e.stitchTool).toBe("link");expect(e.document.stitchLinks).toHaveLength(1);
+ expect(e.stitch.tool).toBe("link");expect(e.document.stitchLinks).toHaveLength(1);
  expect(e.revision).toBe(revision);
  await e.activateStitchTool("delete");
  expect(e.document.stitchLinks ?? []).toHaveLength(0);expect(e.stitchGroups).toHaveLength(0);
  expect(e.revision).toBe(revision);
- e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(2);expect(e.stitchTool).toBeNull();
+ e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(2);expect(e.stitch.tool).toBeNull();
  expect(e.stitchSelected).toEqual([group.id,second.id]);
  await e.activateStitchTool("link");await e.applyStitch();
- expect(e.revision).toBe(revision+1);expect(e.stitchTool).toBeNull();
+ expect(e.revision).toBe(revision+1);expect(e.stitch.tool).toBeNull();
  expect(e.stitchMode).toBe(true);expect(e.document.stitchLinks).toHaveLength(1);
  await e.transact("undo");expect(e.document.stitchLinks ?? []).toHaveLength(0);
 });
@@ -2511,7 +2518,7 @@ test("switching tools drops dimensions, while selecting an active tool keeps its
  e.activateStitch();e.stitchSelected=[group.id];e.setStitchSettings({...group.settings,spacing:4});
  await e.activateStitchTool("line");expect(e.stitchGroups[0].settings.spacing).toBe(4);
  await e.activateStitchTool("continue");expect(e.stitchGroups[0].settings.spacing).toBe(3.38);
- expect(e.stitchGroups).toHaveLength(2);expect(e.stitchTool).toBe("continue");
+ expect(e.stitchGroups).toHaveLength(2);expect(e.stitch.tool).toBe("continue");
  e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(1);
  expect(e.stitchToolReason("split")).toContain("full-length");
 });
@@ -2529,8 +2536,8 @@ test("split preview changes rebuild from the unsplit baseline and failed Apply r
  expect(e.stitchGroups).toHaveLength(2);
  const request=e.core.request.bind(e.core);
  vi.spyOn(e.core,"request").mockImplementation((op,...args)=>op==="commit" ? Promise.reject(Error("Refused")) : request(op,...args));
- await e.applyStitch();expect(e.stitchTool).toBe("split");expect(e.stitchGroups).toHaveLength(2);
- expect(e.stitchError).toContain("Refused");
+ await e.applyStitch();expect(e.stitch.tool).toBe("split");expect(e.stitchGroups).toHaveLength(2);
+ expect(e.stitch.error).toContain("Refused");
  e.cancelStitchOperation();expect(e.stitchGroups).toHaveLength(1);
 });
 
@@ -2540,10 +2547,10 @@ test("a geometry exception leaves the contextual operation cancellable without p
  const revision=e.revision;e.activateStitch();e.stitchSelected=[group.id];
  vi.spyOn(e,"deleteStitches").mockRejectedValueOnce(Error("Invalid continuation geometry"));
  await e.activateStitchTool("delete");
- expect(e.stitchError).toContain("Invalid continuation geometry");
- expect(e.stitchTool).toBe("delete");expect(e.stitchToolPending).toBe(false);
+ expect(e.stitch.error).toContain("Invalid continuation geometry");
+ expect(e.stitch.tool).toBe("delete");expect(e.stitchToolPending).toBe(false);
  expect(e.canApplyStitchTool).toBe(false);expect(e.stitchGroups).toHaveLength(1);expect(e.revision).toBe(revision);
- e.cancelStitchOperation();expect(e.stitchError).toBe("");expect(e.stitchSelected).toEqual([group.id]);
+ e.cancelStitchOperation();expect(e.stitch.error).toBe("");expect(e.stitchSelected).toEqual([group.id]);
 });
 
 test("merge accepts three lines in selection order and refuses a disconnected intermediate chain",async()=>{
@@ -2554,9 +2561,9 @@ test("merge accepts three lines in selection order and refuses a disconnected in
  const groups=stitchEdges(shape).map((edge,i)=>({id:`line${i}`,shapeId:shape.id,edges:[edge.key],side:1 as const,closed:false,settings:{...defaultStitchSettings,inset:0}}));
  await e.commit({version:21,shapes:[shape],stitchGroups:groups});
  e.activateStitch();e.stitchSelected=groups.map(g=>g.id);await e.activateStitchTool("merge");
- expect(e.stitchError).toBe("");expect(e.stitchGroups).toHaveLength(1);expect(e.stitchGroups[0].edges).toHaveLength(3);
+ expect(e.stitch.error).toBe("");expect(e.stitchGroups).toHaveLength(1);expect(e.stitchGroups[0].edges).toHaveLength(3);
  e.cancelStitchOperation();e.stitchSelected=[groups[0].id,groups[2].id,groups[1].id];
- await e.activateStitchTool("merge");expect(e.stitchError).toMatch(/connected/);expect(e.stitchGroups).toHaveLength(3);
+ await e.activateStitchTool("merge");expect(e.stitch.error).toMatch(/connected/);expect(e.stitchGroups).toHaveLength(3);
 });
 
 test("transfer preview and render document reuse one immutable result per pose",async()=>{
@@ -2575,10 +2582,10 @@ test("Continue run stages an invalid default gap for correction and keeps Auto a
  group.settings.spacing=40;
  await e.commit({version:21,shapes:[shape],stitchGroups:[group]});e.activateStitch();e.stitchSelected=[group.id];
  await e.activateStitchTool("continue");
- expect(e.stitchGroups).toHaveLength(2);e.setContinuationGap(100);expect(e.stitchError).not.toBe("");
- e.setContinuationGap(5);await vi.waitFor(()=>expect(e.stitchError).toBe(""));
+ expect(e.stitchGroups).toHaveLength(2);e.setContinuationGap(100);expect(e.stitch.error).not.toBe("");
+ e.setContinuationGap(5);await vi.waitFor(()=>expect(e.stitch.error).toBe(""));
  const continued=e.stitchGroups[1];e.setStitchSettings({...continued.settings,spacing:5,holeCount:undefined});
- expect(e.stitchError).toBe("");expect(e.stitchGeometry(shape,e.stitchGroups[1]).holes.length).toBeGreaterThan(1);
+ expect(e.stitch.error).toBe("");expect(e.stitchGeometry(shape,e.stitchGroups[1]).holes.length).toBeGreaterThan(1);
 });
 
 test("pointer bursts coalesce and a cancelled placement rejects queued input",async()=>{
@@ -2587,8 +2594,8 @@ test("pointer bursts coalesce and a cancelled placement rejects queued input",as
  const callbacks:FrameRequestCallback[]=[];vi.stubGlobal("requestAnimationFrame",(cb:FrameRequestCallback)=>{callbacks.push(cb);return 1;});
  try {
   e.queueStitchTransferPointer({x:20,y:20},true);e.queueStitchTransferPointer({x:30,y:30},true);
-  expect(callbacks).toHaveLength(1);callbacks.shift()!(0);expect(e.stitchTransferPlacement?.center).toEqual({x:30,y:30});
-  e.queueStitchTransferPointer({x:40,y:40},true);e.cancelStitchOperation();callbacks.shift()!(0);expect(e.stitchTransferPlacement).toBeNull();
+  expect(callbacks).toHaveLength(1);callbacks.shift()!(0);expect(e.stitch.transferPlacement?.center).toEqual({x:30,y:30});
+  e.queueStitchTransferPointer({x:40,y:40},true);e.cancelStitchOperation();callbacks.shift()!(0);expect(e.stitch.transferPlacement).toBeNull();
  }finally{vi.unstubAllGlobals();}
 });
 
@@ -2598,13 +2605,13 @@ test("transfer left-click stages, freezes and repositions without history until 
  await e.commit({version:21,shapes:[shape,receiver],stitchGroups:[group]});const revision=e.revision;
  e.activateStitch();e.stitchSelected=[group.id];e.beginStitchTransfer();
  expect(e.canApplyStitchTool).toBe(false);
- await e.placeStitchTransfer();expect(e.revision).toBe(revision);expect(e.stitchTransferPlacement?.phase).toBe("hover");
- e.stitchClick({x:250,y:10},false,true);expect(e.stitchTransferPlacement?.phase).toBe("placed");
+ await e.placeStitchTransfer();expect(e.revision).toBe(revision);expect(e.stitch.transferPlacement?.phase).toBe("hover");
+ e.stitchClick({x:250,y:10},false,true);expect(e.stitch.transferPlacement?.phase).toBe("placed");
  expect(e.revision).toBe(revision);expect(e.document.stitchTransfers ?? []).toHaveLength(0);
- e.queueStitchTransferPointer({x:50,y:50},true);expect(e.stitchTransferPlacement?.center).toEqual({x:250,y:10});
- e.wheel({x:10,y:10},0,100,false,{altKey:true});expect(e.stitchTransferPlacement?.center).toEqual({x:250,y:10});
- const angle=e.stitchTransferPlacement!.angle;e.wheel({x:50,y:50},0,-100,true);
- expect(e.stitchTransferPlacement?.angle).toBe(angle);expect(e.stitchTransferPlacement?.center).toEqual({x:250,y:10});
+ e.queueStitchTransferPointer({x:50,y:50},true);expect(e.stitch.transferPlacement?.center).toEqual({x:250,y:10});
+ e.wheel({x:10,y:10},0,100,false,{altKey:true});expect(e.stitch.transferPlacement?.center).toEqual({x:250,y:10});
+ const angle=e.stitch.transferPlacement!.angle;e.wheel({x:50,y:50},0,-100,true);
+ expect(e.stitch.transferPlacement?.angle).toBe(angle);expect(e.stitch.transferPlacement?.center).toEqual({x:250,y:10});
  e.stitchClick({x:255,y:15},false,true);expect(e.document.stitchTransfers ?? []).toHaveLength(0);
  await e.applyStitch();expect(e.revision).toBe(revision+1);expect(e.document.stitchTransfers).toHaveLength(1);
 });
@@ -2638,12 +2645,12 @@ test("focus loss preserves construction points and locks without committing", ()
 test("focus loss preserves stitching sessions and their draft", () => {
   const e = editor();
   e.activateStitch();
-  const original = e.stitchOriginal;
-  const draft = e.stitchDraft;
+  const original = e.stitch.original;
+  const draft = e.stitch.draft;
   e.pauseGesture();
   expect(e.stitchMode).toBe(true);
-  expect(e.stitchOriginal).toBe(original);
-  expect(e.stitchDraft).toBe(draft);
+  expect(e.stitch.original).toBe(original);
+  expect(e.stitch.draft).toBe(draft);
 });
 
 test("a rejected property preview cannot overwrite the status after its field commits", async () => {
@@ -2753,7 +2760,7 @@ test("multi-source transfers preserve hole distances under shared rotation and u
  await e.commit({...emptyDocument(),shapes:[shape,other,receiver],stitchGroups:[group,second]});
  const before=[e.stitchGeometry(shape,group).holes[0].point,e.stitchGeometry(other,second).holes[0].point];
  e.activateStitch();e.stitchSelected=[group.id,second.id];e.beginStitchTransfer();
- e.stitchTransferPlacement!.angle=47;e.updateStitchTransfer({x:300,y:50},true);
+ e.stitch.transferPlacement!.angle=47;e.updateStitchTransfer({x:300,y:50},true);
  const transfers=e.stitchTransferPreview.transfers;
  expect(transfers).toHaveLength(2);
  const after=transfers.map(t=>receivingStitches(e.document,t).geometry.holes[0].point);
@@ -2951,7 +2958,7 @@ test("subtract single target picks cutters, cancels, commits holes, and undoes a
  await e.commit({...e.document,shapes:[rect("base",0,30),rect("cut",10,5),rect("other",50,10)]});
  e.selected=["base"];const revision=e.revision;
  e.activateBoolean("subtract");
- expect(e.booleanPicker).toBe("cutters");expect(e.trimDraft).toBeNull();
+ expect(e.boolean?.picker).toBe("cutters");expect(e.trim?.draft).toBeNull();
  e.pointerDown(e.screen({x:12,y:12}),0,false,false);expect(e.preview!.shapes[0].contours).toHaveLength(2);
  expect(e.revision).toBe(revision);
  e.cancel();expect(e.selected).toEqual(["base"]);expect(e.document.shapes).toHaveLength(3);
@@ -2967,10 +2974,10 @@ test("empty intersection consumes inputs and target picking retains the new targ
  const rect=(id:string,x:number)=>({id,name:id,kind:"rectangle" as const,points:[{x,y:0},{x:x+10,y:10}],radius:0,rotation:0});
  await e.commit({...e.document,shapes:[rect("a",0),rect("b",20)]});
  e.selected=["b","a"];e.activateBoolean("intersect");
- expect(e.booleanTarget).toBe("a");expect(e.booleanEmpty).toBe(true);
+ expect(e.boolean?.target).toBe("a");expect(e.boolean?.empty).toBe(true);
  await e.applyTrim();expect(e.document.shapes).toHaveLength(0);expect(e.selected).toEqual([]);
  await e.transact("undo");e.selected=["a","b"];e.activateBoolean("subtract");
- e.booleanPicker="target";e.pickBoolean("b");expect(e.booleanCutters).toEqual(["a"]);
+ e.boolean!.picker="target";e.pickBoolean("b");expect(e.boolean?.cutters).toEqual(["a"]);
  await e.applyTrim();expect(e.selected).toEqual(["b"]);expect(e.document.shapes[0].id).toBe("b");
 });
 
@@ -2999,11 +3006,11 @@ test("Join starts from one open path and previews additions without committing",
   const revision=e.revision;
   e.activateMerge();
   expect(e.booleanLabel).toBe("Join");
-  expect(e.booleanPicker).toBe("cutters");
-  expect(e.booleanError).toBe("");
+  expect(e.boolean?.picker).toBe("cutters");
+  expect(e.boolean?.error).toBe("");
   e.pickBoolean("c");
-  expect(e.booleanError).toContain("connected chain");
-  expect(e.trimDraft).toBeNull();
+  expect(e.boolean?.error).toContain("connected chain");
+  expect(e.trim?.draft).toBeNull();
   e.removeBooleanOperand("c");
   e.pickBoolean("b");
   expect(e.preview!.shapes[0].kind).toBe("polyline");
@@ -3020,13 +3027,13 @@ test("target picker keeps its live preview and permits applying",async()=>{
   e.selected=["a","b"];e.activateMerge();
   const before=e.revision, preview=JSON.stringify(e.preview);
   e.setBooleanPicker("target");
-  expect(e.booleanPicker).toBe("target");
+  expect(e.boolean?.picker).toBe("target");
   expect(JSON.stringify(e.preview)).toBe(preview);
   expect(e.revision).toBe(before);
   e.pickBoolean("b");
-  expect(e.booleanTarget).toBe("b");expect(e.booleanCutters).toEqual(["a"]);
+  expect(e.boolean?.target).toBe("b");expect(e.boolean?.cutters).toEqual(["a"]);
   expect(e.active.map(s=>s.id)).toEqual(["b"]);
-  expect(e.booleanPicker).toBe("cutters");expect(e.preview).not.toBeNull();
+  expect(e.boolean?.picker).toBe("cutters");expect(e.preview).not.toBeNull();
   await e.applyTrim();expect(e.selected).toEqual(["b"]);
   await e.transact("undo");expect(e.document.shapes).toHaveLength(2);
 });
@@ -3078,7 +3085,7 @@ test("compound Offset activation creates a preview and cancellation leaves the o
   const e=editor();await e.commit({...e.document,shapes:[shape]});e.selected=[shape.id];
   const before=JSON.stringify(e.document);
   expect(e.canOffset).toBe(true);e.activateOffset();
-  expect(e.offsetError).toBe("");expect(e.preview!.shapes).toHaveLength(2);
+  expect(e.offset?.error).toBe("");expect(e.preview!.shapes).toHaveLength(2);
   expect(e.preview!.shapes[1].kind).toBe("compound");
   e.cancel();expect(JSON.stringify(e.document)).toBe(before);
 });
@@ -3181,10 +3188,10 @@ test("Trim only highlights selected outlines and keeps unselected crossings", as
   e.selected=["a"];
   e.activateTrim();
   e.pointerMove(e.screen({x:50,y:20}),false);
-  expect(e.trimHighlight).toBeNull();
+  expect(e.trim?.highlight).toBeNull();
   e.pointerDown(e.screen({x:25,y:0}),0,false,false);
-  expect(e.trimDraft!.shapes.find(s=>s.id==="b")).toEqual(b);
-  expect(e.trimDraft!.shapes.find(s=>s.id==="a")!.points[0].x).toBeCloseTo(50);
+  expect(e.trim!.draft!.shapes.find(s=>s.id==="b")).toEqual(b);
+  expect(e.trim!.draft!.shapes.find(s=>s.id==="a")!.points[0].x).toBeCloseTo(50);
   e.cancel();
   expect(e.selected).toEqual(["a"]);
 });
@@ -3212,10 +3219,10 @@ test("canvas selection uses plain replacement and Shift toggling while operation
   e.selected=["a","b"];
   e.activateTrim();
   e.pointerDown(e.screen({x:50,y:0}),0,false,false);
-  expect(e.trimDraft!.shapes.map(s=>s.id)).toEqual(["b"]);
+  expect(e.trim!.draft!.shapes.map(s=>s.id)).toEqual(["b"]);
   e.toggleObjectPicker();
   e.pickToolObject("a",true);
-  expect(e.trimDraft!.shapes.map(s=>s.id)).toEqual(["a","b"]);
+  expect(e.trim!.draft!.shapes.map(s=>s.id)).toEqual(["a","b"]);
   e.pickToolObject("b");
   expect(e.selected).toEqual(["b"]);
   e.pickToolObject("a",true);
@@ -3380,7 +3387,7 @@ test("outward corner dragging crosses rounding through zero into chamfer and can
   const e = editor();
   e.document = {version:23, shapes:[{id:"r",name:"Rectangle",kind:"rectangle",points:[{x:0,y:0},{x:40,y:20}],radius:3,rotation:0}]};
   e.selected = ["r"];
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0];
   e.pointerDown(e.screen(h.point),0,false,false,false);
   e.pointerMove(e.screen({x:h.point.x-8,y:h.point.y-8}),false,false,false);
@@ -4091,18 +4098,18 @@ describe("Align and distribute", () => {
     e.toggleAlign({ kind: "align", edge: "left" });
     e.toggleAlign({ kind: "align", edge: "top" });
     expect(e.document).toBe(original);
-    expect(lefts(e.alignDraft!, ids)).toEqual([0, 0, 0]);
-    expect(tops(e.alignDraft!, ids)).toEqual([0, 0, 0]);
+    expect(lefts(e.align!.draft!, ids)).toEqual([0, 0, 0]);
+    expect(tops(e.align!.draft!, ids)).toEqual([0, 0, 0]);
     // Changing the reference recomputes from the original positions, not the preview.
     e.setAlignReference("largest");
-    expect(lefts(e.alignDraft!, ids)).toEqual([40, 40, 40]);
-    expect(tops(e.alignDraft!, ids)).toEqual([20, 20, 20]);
+    expect(lefts(e.align!.draft!, ids)).toEqual([40, 40, 40]);
+    expect(tops(e.align!.draft!, ids)).toEqual([20, 20, 20]);
     // A second choice on the same axis replaces the first; choosing it again clears the axis.
     e.toggleAlign({ kind: "align", edge: "right" });
-    expect(lefts(e.alignDraft!, ids)).toEqual([50, 40, 55]);
+    expect(lefts(e.align!.draft!, ids)).toEqual([50, 40, 55]);
     e.toggleAlign({ kind: "align", edge: "right" });
-    expect(e.alignX).toBeNull();
-    expect(lefts(e.alignDraft!, ids)).toEqual([10, 40, 0]);
+    expect(e.align?.x).toBeNull();
+    expect(lefts(e.align!.draft!, ids)).toEqual([10, 40, 0]);
     expect(e.revision).toBe(revision);
     expect(await e.applyAlign()).toBe(true);
     expect(e.alignActive).toBe(false);
@@ -4123,8 +4130,8 @@ describe("Align and distribute", () => {
     expect(e.selected).toEqual(["b", "a"]);
     e.setAlignReference("first");
     e.toggleAlign({ kind: "align", edge: "right" });
-    expect(lefts(e.alignDraft!, ["b", "a"])).toEqual([40, 50]);
-    expect(e.preview).toBe(e.alignDraft);
+    expect(lefts(e.align!.draft!, ["b", "a"])).toEqual([40, 50]);
+    expect(e.preview).toBe(e.align?.draft);
     e.cancel();
     expect(e.alignActive).toBe(false);
     expect(e.preview).toBeNull();
@@ -4138,12 +4145,12 @@ describe("Align and distribute", () => {
     e.selected = ["a", "b"];
     e.activateAlign();
     e.toggleAlign({ kind: "align", edge: "left" });
-    expect(e.alignX).not.toBeNull();
-    expect(e.alignDraft).toBeNull();
+    expect(e.align?.x).not.toBeNull();
+    expect(e.align?.draft).toBeNull();
     expect(e.canApplyAlign).toBe(false);
     expect(e.alignAvailable({ kind: "distribute", mode: "gaps-x" })).toBe(false);
     e.toggleAlign({ kind: "distribute", mode: "gaps-y" });
-    expect(e.alignY).toBeNull();
+    expect(e.align?.y).toBeNull();
   });
 
   test("selected groups move as one object when distributing", async () => {
@@ -4156,7 +4163,7 @@ describe("Align and distribute", () => {
     e.selectGroup(group);
     e.selected = [...e.selected, "m"];
     e.activateAlign();
-    expect(e.alignUnits.map(u => [...u.ids].sort())).toEqual([["g1", "g2"], ["m"]]);
+    expect(e.align!.units.map(u => [...u.ids].sort())).toEqual([["g1", "g2"], ["m"]]);
     expect(e.alignAvailable({ kind: "distribute", mode: "gaps-x" })).toBe(false);
     e.cancel();
     e.selected = [...e.selected, "z"];
@@ -4177,7 +4184,7 @@ describe("Align and distribute", () => {
     expect(e.canApplyAlign).toBe(true);
     await e.transact("undo");
     expect(e.alignActive).toBe(false);
-    expect(e.alignDraft).toBeNull();
+    expect(e.align).toBeNull();
     expect(await e.applyAlign()).toBe(false);
     expect(e.document.shapes.find(s => s.id === "x")!.name).toBe("x");
     e.activateAlign();
@@ -4196,8 +4203,8 @@ describe("Align and distribute", () => {
     expect(e.alignAvailable({ kind: "align", edge: "left" })).toBe(false);
     expect(e.canApplyAlign).toBe(false);
     e.setAlignReference("largest");
-    expect(e.alignX).toEqual({ kind: "align", edge: "left" });
-    expect(e.alignY).toEqual({ kind: "align", edge: "top" });
+    expect(e.align?.x).toEqual({ kind: "align", edge: "left" });
+    expect(e.align?.y).toEqual({ kind: "align", edge: "top" });
     e.busy = false;
     expect(e.canApplyAlign).toBe(true);
   });
@@ -4212,8 +4219,8 @@ describe("Align and distribute", () => {
     e.activateAlign();
     e.toggleAlign({ kind: "align", edge: "left" });
     // The piece moves 40 mm left; its unselected seam follows in the preview, not only after Apply.
-    expect(seamLeft(e.alignDraft!)).toBeCloseTo(5);
-    const previewed = e.alignDraft!.shapes.find(s => s.id === "seam");
+    expect(seamLeft(e.align!.draft!)).toBeCloseTo(5);
+    const previewed = e.align!.draft!.shapes.find(s => s.id === "seam");
     await e.applyAlign();
     expect(e.document.shapes.find(s => s.id === "seam")).toEqual(previewed);
   });

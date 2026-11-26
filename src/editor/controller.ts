@@ -105,6 +105,7 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
+import { idleStitchOperation, idleStitchSession, type AlignSession, type ArraySession, type OffsetSession, type StitchSession, type TransformSession, type TransformTool, type TrimSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
@@ -254,8 +255,9 @@ export class Controller {
   busy = false;
   dirty = false;
   savedBaseline = fingerprint(emptyDocument());
-  transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null = null;
-  transformOriginal: Doc | null = null;
+  /** The open Move, Rotate, Resize, Mirror or Corners tool. Pivot and values are shared with gestures. */
+  transform: TransformSession | null = null;
+  get transformTool() { return this.transform?.tool ?? null; }
   transformPivot: Point = { x: 0, y: 0 };
   placingPivot = false;
   transformOrientation: "world" | "local" = "local";
@@ -263,18 +265,16 @@ export class Controller {
   transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
   transformError = "";
   transformGeneration = 0;
-  transformDraft: Doc | null = null;
-  offsetActive = false;
+
   offsetDistance = 3;
   offsetJoin: OffsetJoin = "sharp";
-  offsetError = "";
-  offsetDraft: Doc | null = null;
-  offsetIds: string[] = [];
-  offsetDrag: { start: Point; distance: number; normal: Point } | null = null;
+  /** The open Offset tool: its preview, the copies it adds and an outline being dragged. */
+  offset: OffsetSession | null = null;
+  get offsetActive() { return !!this.offset; }
   private offsetDragAt(raw: Point) {
     const originals = this.document.shapes.filter(s => this.selected.includes(s.id));
-    const index = this.offsetIds.findIndex(id => {
-      const shape = this.offsetDraft?.shapes.find(s => s.id === id);
+    const index = (this.offset?.ids ?? []).findIndex(id => {
+      const shape = this.offset?.draft?.shapes.find(s => s.id === id);
       return shape && hitTest(shape, raw, 8 / this.zoom, this.units);
     });
     const source = originals[index];
@@ -308,15 +308,13 @@ export class Controller {
     if (this.deferUntilSettled(() => this.activateOffset())) return;
     if (!this.canOffset) return;
     this.beginToolSession();
-    this.offsetActive = true;
+    this.offset = { draft: null, ids: [], error: "", drag: null };
     this.refreshOffset();
   }
-  alignActive = false;
   alignReference: AlignReference = "selection";
-  /** One horizontal and one vertical choice, previewed together from the unchanged document. */
-  alignX: AlignAction | null = null;
-  alignY: AlignAction | null = null;
-  alignDraft: Doc | null = null;
+  /** The open Align tool: its targets and up to one choice per axis. */
+  align: AlignSession | null = null;
+  get alignActive() { return !!this.align; }
   get canAlign() {
     return this.canStartTransform("move");
   }
@@ -324,9 +322,7 @@ export class Controller {
     if (this.deferUntilSettled(() => this.activateAlign())) return;
     if (!this.canAlign) return;
     this.beginToolSession();
-    this.alignActive = true;
-    this.alignX = null;
-    this.alignY = null;
+    this.align = { x: null, y: null, draft: null, units: [], gapsFit: { x: true, y: true } };
     this.refreshAlign();
   }
   setAlignReference(reference: AlignReference) {
@@ -335,40 +331,42 @@ export class Controller {
   }
   /** Choose an action for its axis; choosing the selected action again clears that axis. */
   toggleAlign(action: AlignAction) {
-    if (!this.alignActive) return;
-    const key = alignAxis(action) === "x" ? "alignX" : "alignY";
-    this[key] = JSON.stringify(this[key]) === JSON.stringify(action) ? null : action;
+    const align = this.align;
+    if (!align) return;
+    const key = alignAxis(action);
+    align[key] = JSON.stringify(align[key]) === JSON.stringify(action) ? null : action;
     this.refreshAlign();
   }
   isAlignChosen(action: AlignAction) {
-    return JSON.stringify(alignAxis(action) === "x" ? this.alignX : this.alignY) === JSON.stringify(action);
+    return !!this.align && JSON.stringify(this.align[alignAxis(action)]) === JSON.stringify(action);
   }
   /** Whether the current targets and reference support an action; busy state only disables controls. */
-  private alignSupported(action: AlignAction) {
-    return this.alignUnits.length >= requiredUnits(action, this.alignReference) &&
-      (action.kind !== "distribute" || !action.mode.startsWith("gaps") || this.alignGapsFit[alignAxis(action)]);
+  private alignSupported(align: AlignSession, action: AlignAction) {
+    return align.units.length >= requiredUnits(action, this.alignReference) &&
+      (action.kind !== "distribute" || !action.mode.startsWith("gaps") || align.gapsFit[alignAxis(action)]);
   }
   alignAvailable(action: AlignAction) {
-    return this.alignActive && !this.busy && this.alignSupported(action);
+    return !!this.align && !this.busy && this.alignSupported(this.align, action);
   }
   refreshAlign() {
-    if (!this.alignActive) return;
-    this.alignDraft = null;
+    const align = this.align;
+    if (!align) return;
+    align.draft = null;
     this.preview = null;
     // Targets only change through Select Objects, which refreshes here; undo and redo end the session.
-    this.alignUnits = this.computeAlignUnits();
-    const boxes = unitBoxes(this.document.shapes, this.alignUnits, this.units);
-    this.alignGapsFit = { x: gapsFit(boxes, "x"), y: gapsFit(boxes, "y") };
+    align.units = this.computeAlignUnits();
+    const boxes = unitBoxes(this.document.shapes, align.units, this.units);
+    align.gapsFit = { x: gapsFit(boxes, "x"), y: gapsFit(boxes, "y") };
     // Choices the current targets or reference cannot use are dropped rather than kept hidden.
-    if (this.alignX && !this.alignSupported(this.alignX)) this.alignX = null;
-    if (this.alignY && !this.alignSupported(this.alignY)) this.alignY = null;
-    const actions = [this.alignX, this.alignY].filter((a): a is AlignAction => !!a);
+    if (align.x && !this.alignSupported(align, align.x)) align.x = null;
+    if (align.y && !this.alignSupported(align, align.y)) align.y = null;
+    const actions = [align.x, align.y].filter((a): a is AlignAction => !!a);
     const shapes = actions.length && !this.toolSelectionError
-      ? alignShapes(this.document.shapes, this.alignUnits, actions, this.alignReference, this.units) : null;
+      ? alignShapes(this.document.shapes, align.units, actions, this.alignReference, this.units) : null;
     if (shapes) {
       // Unselected stitching follows its piece in the preview exactly as it will on Apply.
-      this.alignDraft = this.normalizeTree(reconcileStitches({ ...this.document, shapes }, this.document));
-      this.preview = this.alignDraft;
+      align.draft = this.normalizeTree(reconcileStitches({ ...this.document, shapes }, this.document));
+      this.preview = align.draft;
     }
     this.notify();
   }
@@ -376,8 +374,6 @@ export class Controller {
    * Independent objects for alignment, in selection order. A selected group moves as one
    * unit with its nested groups, and selected stitching moves with its selected parent.
    */
-  alignUnits: AlignUnit[] = [];
-  alignGapsFit = { x: true, y: true };
   private computeAlignUnits(): AlignUnit[] {
     const selected = new Set(this.selected);
     const groups = this.selectedGroups.flatMap(id => {
@@ -404,12 +400,12 @@ export class Controller {
     return units.filter(ids => ids.length).sort((a, b) => first(a) - first(b)).map(ids => ({ ids }));
   }
   get canApplyAlign() {
-    return this.alignActive && !this.objectPicker && !this.toolSelectionError && !this.busy && !!this.alignDraft;
+    return !!this.align?.draft && !this.objectPicker && !this.toolSelectionError && !this.busy;
   }
   /** Commit the previewed alignment as one undo step and keep the aligned objects selected. */
   async applyAlign() {
     if (!this.canApplyAlign) return false;
-    const next = this.alignDraft!;
+    const next = this.align!.draft!;
     this.toolSelection = null;
     this.cancel();
     return this.commit(next);
@@ -423,9 +419,10 @@ export class Controller {
     this.refreshOffset();
   }
   refreshOffset() {
-    if (!this.offsetActive) return;
-    this.offsetDraft = null;
-    this.offsetIds = [];
+    const offset = this.offset;
+    if (!offset) return;
+    offset.draft = null;
+    offset.ids = [];
     this.preview = null;
     if (!this.selected.length) { this.notify(); return; }
     try {
@@ -444,21 +441,21 @@ export class Controller {
       });
       const next = { ...this.document, shapes: [...this.document.shapes, ...copies.map(c => c.shape)], objectTree: insert(this.tree) };
       parseProject(JSON.stringify(this.normalizeTree(next)));
-      this.offsetDraft = next;
-      this.offsetIds = copies.map(c => c.shape.id);
-      this.offsetError = "";
+      offset.draft = next;
+      offset.ids = copies.map(c => c.shape.id);
+      offset.error = "";
       this.preview = next;
     } catch (error) {
-      this.offsetError = String(error).replace(/^Error: /, "");
+      offset.error = String(error).replace(/^Error: /, "");
     }
     this.notify();
   }
   get canApplyOffset() {
-    return this.offsetActive && !this.objectPicker && !this.toolSelectionError && !!this.offsetDraft && !this.offsetError && !this.busy;
+    return !!this.offset?.draft && !this.offset.error && !this.objectPicker && !this.toolSelectionError && !this.busy;
   }
   async applyOffset() {
     if (!this.canApplyOffset) return;
-    const next = this.offsetDraft!, ids = this.offsetIds;
+    const next = this.offset!.draft!, ids = this.offset!.ids;
     this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
@@ -468,7 +465,7 @@ export class Controller {
     }
   }
   get transformAngle() {
-    const s = (this.transformOriginal?.shapes.filter((s) =>
+    const s = (this.transform?.original.shapes.filter((s) =>
       this.selected.includes(s.id),
     ) ?? this.active)[0];
     if (this.transformOrientation !== "local" || this.active.length !== 1)
@@ -483,10 +480,10 @@ export class Controller {
     return (Math.atan2(m.b, m.a) * 180) / Math.PI;
   }
   pauseGesture() {
-    if (this.offsetDrag) {
-      const startingDistance = this.offsetDrag.distance;
-      this.offsetDrag = null;
-      this.setOffsetDistance(startingDistance);
+    const offsetDrag = this.offset?.drag;
+    if (offsetDrag) {
+      this.offset!.drag = null;
+      this.setOffsetDistance(offsetDrag.distance);
     }
     const gesture = this.gesture;
     if (gesture && !this.transformTool && gesture.kind !== "pan") {
@@ -518,7 +515,7 @@ export class Controller {
 
   get transformValid() {
     if (this.objectPicker || this.toolSelectionError) return false;
-    if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
+    if (this.transform?.tool === "mirror" && !this.transform.mirror.axis) return false;
     if (!this.preview) return !this.transformError;
     try {
       parseProject(JSON.stringify(this.normalizeTree(this.preview)));
@@ -528,11 +525,12 @@ export class Controller {
     }
   }
   private captureNumericBasis() {
-    if (!this.transformTool || ["mirror", "corner"].includes(this.transformTool) || this.transformError) return;
+    const transform = this.transform;
+    if (!transform || ["mirror", "corner"].includes(transform.tool) || this.transformError) return;
     // Numeric inputs are absolute within this basis; the displayed automatic
     // pivot can follow preview bounds without changing the calculation pivot.
-    const document = this.transformDraft ?? this.preview ?? this.transformOriginal;
-    if (document) this.numericTransformBasis = {
+    const document = transform.draft ?? this.preview ?? transform.original;
+    transform.numericBasis = {
       document,
       values: {...this.transformValues},
       pivot: {...this.transformPivot},
@@ -540,9 +538,10 @@ export class Controller {
     };
   }
   rebaseTransform() {
-    this.numericTransformBasis = null;
-    if (this.transformTool && this.preview && !this.transformError)
-      this.transformOriginal = this.preview;
+    if (this.transform) {
+      this.transform.numericBasis = null;
+      if (this.preview && !this.transformError) this.transform.original = this.preview;
+    }
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
     this.captureNumericBasis();
   }
@@ -651,7 +650,8 @@ export class Controller {
   }
 
   setTransformValues(values: Partial<typeof this.transformValues>) {
-    if (!this.transformOriginal) return;
+    const original = this.transform?.original;
+    if (!original) return;
     const previous = { ...this.transformValues };
     this.transformValues = { ...this.transformValues, ...values };
     if (this.transformTool === "mirror") { this.refreshMirror(); return; }
@@ -683,7 +683,7 @@ export class Controller {
         y: this.transformPivot.y + dx * Math.sin(t) + dy * Math.cos(t),
       };
     }
-    const basis = this.numericTransformBasis;
+    const basis = this.transform?.numericBasis;
     if (basis && this.transformTool !== "corner") {
       const old = basis.values;
       this.updateTransformPreview({
@@ -698,8 +698,8 @@ export class Controller {
       return;
     }
     const next = {
-      ...this.transformOriginal,
-      shapes: this.transformOriginal.shapes.map((s) =>
+      ...original,
+      shapes: original.shapes.map((s) =>
         !this.selected.includes(s.id)
           ? s
           : this.transformTool === "move"
@@ -716,11 +716,11 @@ export class Controller {
     this.updateTransformPreview(next);
   }
   updateTransformPreview(next: Doc) {
-    const baseline = this.transformOriginal ?? this.document;
+    const baseline = this.transform?.original ?? this.document;
     if (this.transformTool === "corner")
       next = { ...next, stitchGroups: baseline.stitchGroups };
     next = reconcileStitches(next, baseline);
-    this.transformDraft = next;
+    if (this.transform) this.transform.draft = next;
     try {
       parseProject(JSON.stringify(this.normalizeTree(next)));
       this.transformError = "";
@@ -858,27 +858,27 @@ export class Controller {
       this.placingPivot,
       this.objectPicker,
       this.booleanOperation,
-      this.booleanPicker,
-      this.booleanCutters.join(","),
-      this.booleanError,
-      this.booleanEmpty,
+      this.boolean?.picker,
+      this.boolean?.cutters.join(","),
+      this.boolean?.error,
+      this.boolean?.empty,
       this.trimMode,
-      JSON.stringify(this.trimDraft),
+      JSON.stringify(this.trim?.draft),
       this.trimMode ? this.transformError : "",
       this.stitchMode,
       this.stitchMode ? this.version : 0,
       this.stitchSelected.join(","),
-      JSON.stringify(this.stitchDraft),
+      JSON.stringify(this.stitch.draft),
       JSON.stringify(this.stitchSettings),
-      this.stitchError,
+      this.stitch.error,
       this.transformTool,
       this.transformTool ? this.version : 0,
       this.offsetActive,
       this.offsetActive ? this.version : 0,
       this.alignActive,
       this.alignReference,
-      JSON.stringify([this.alignX, this.alignY]),
-      this.alignDraft ? this.version : 0,
+      JSON.stringify([this.align?.x, this.align?.y]),
+      this.align?.draft ? this.version : 0,
       this.revision,
       this.ready,
       this.message,
@@ -948,7 +948,7 @@ export class Controller {
     return point;
   }
   leavePointer() {
-    this.stitchHover = null;
+    this.stitch.hover = null;
     this.pointerInside = false;
     this.smartGuides = [];
     this.snapTarget = null;
@@ -960,7 +960,7 @@ export class Controller {
     const source =
       this.propertySession?.next ??
       this.pendingDocument ??
-      this.stitchOriginal ??
+      this.stitch.original ??
       this.document;
     if (
       source !== this.dirtySource ||
@@ -1041,7 +1041,7 @@ export class Controller {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       void recovery({
-        document: this.stitchOriginal ?? this.document,
+        document: this.stitch.original ?? this.document,
         name: this.name,
         time: Date.now(),
         collapsedGroupIds: [...this.collapsedGroups],
@@ -1091,20 +1091,21 @@ export class Controller {
   stitchGeometry(shape: Shape, group: StitchGroup) {
     return computeStitches(shape, group, this.stitchGroups.map(g => g.id === group.id ? group : g));
   }
-  stitchTool: StitchTool | null = null;
+  /** Stitch mode and its current operation; reset rather than cleared, as it is read outside the mode. */
+  stitch: StitchSession = idleStitchSession();
+  get stitchMode() { return this.stitch.active; }
   stitchToolPending = false;
-  stitchOperationSelection: string[] = [];
   stitchSplitMethod: "all" | "junction" = "all";
-  get stitchToolInfo() { return stitchTools.find(t=>t.id===this.stitchTool); }
+  get stitchToolInfo() { return stitchTools.find(t=>t.id===this.stitch.tool); }
   get stitchOperationGroups() {
-    const doc=this.stitchOriginal ?? this.document;
-    return this.stitchOperationSelection.flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
+    const doc=this.stitch.original ?? this.document;
+    return this.stitch.operationSelection.flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
   }
   stitchToolReason(tool: StitchTool): string {
     if(this.busy || this.stitchToolPending) return "Wait for the current operation.";
     if(this.selectionLocked) return "Unlock the selection first.";
-    const doc=this.stitchOriginal ?? this.document;
-    const ids=this.stitchTool && !["line","add","continue","convert"].includes(this.stitchTool) ? this.stitchOperationSelection : this.stitchSelected;
+    const doc=this.stitch.original ?? this.document;
+    const ids=this.stitch.tool && !["line","add","continue","convert"].includes(this.stitch.tool) ? this.stitch.operationSelection : this.stitchSelected;
     const selectedIds=new Set(ids);
     if(tool==="link")for(const link of doc.stitchLinks ?? [])if(link.members.some(id=>selectedIds.has(id)))link.members.forEach(id=>selectedIds.add(id));
     const groups=[...selectedIds].flatMap(id=>{const group=doc.stitchGroups?.find(g=>g.id===id);return group ? [group] : [];});
@@ -1139,32 +1140,30 @@ export class Controller {
     }catch{return "Select at least two connected lines on the same piece, in connection order.";}
   }
   resetStitchOperation() {
-    if(this.stitchOriginal)this.document=this.stitchOriginal;
-    if(this.stitchOriginalSettings)this.stitchSettings={...this.stitchOriginalSettings};
+    if(this.stitch.original)this.document=this.stitch.original;
+    if(this.stitch.originalSettings)this.stitchSettings={...this.stitch.originalSettings};
     const ids=new Set(resolvedStitchGroups(this.document).map(g=>g.id));
-    const previousSelection=this.stitchOperationSelection.filter(id=>ids.has(id));
+    const previousSelection=this.stitch.operationSelection.filter(id=>ids.has(id));
     const currentSelection=this.stitchSelected.filter(id=>ids.has(id));
-    this.stitchSelected=this.stitchTool && ["link","unlink","merge","split","delete","transfer"].includes(this.stitchTool) ? previousSelection : currentSelection.length ? currentSelection : previousSelection;
-    this.stitchOperationSelection=[];this.stitchTool=null;
-    this.stitchDraft=null;this.stitchHover=null;this.stitchAbsorbed=[];
-    this.stitchTransferPlacement=null;this.editingStitchHoles=false;this.stitchHoleSelection=[];
-    this.addingStitchRun=false;this.stitchError="";this.smartGuides=[];this.snapTarget=null;
+    this.stitchSelected=this.stitch.tool && ["link","unlink","merge","split","delete","transfer"].includes(this.stitch.tool) ? previousSelection : currentSelection.length ? currentSelection : previousSelection;
+    Object.assign(this.stitch, idleStitchOperation());
+    this.smartGuides=[];this.snapTarget=null;
   }
   cancelStitchOperation() {
     if(this.busy || this.stitchToolPending)return;
     this.resetStitchOperation();this.notify();
   }
   async activateStitchTool(tool: StitchTool) {
-    if(this.stitchTool===tool || this.stitchToolReason(tool))return;
+    if(this.stitch.tool===tool || this.stitchToolReason(tool))return;
     this.resetStitchOperation();
     // Recheck against committed state after dropping the previous preview.
     const reason=this.stitchToolReason(tool);
-    if(reason){this.stitchError=reason;this.notify();return;}
+    if(reason){this.stitch.error=reason;this.notify();return;}
     if(tool==="path"){await this.editStitchPath();return;}
-    this.stitchTool=tool;this.stitchOperationSelection=[...this.stitchSelected];
+    this.stitch.tool=tool;this.stitch.operationSelection=[...this.stitchSelected];
     this.stitchSplitMethod="all";
     this.stitchSplitJunction=this.stitchOperationGroups[0]?.closed ? 0 : 1;
-    if(tool==="add")this.addingStitchRun=true;
+    if(tool==="add")this.stitch.addingRun=true;
     if(tool==="transfer")this.beginStitchTransfer();
     else if(tool==="continue"){this.stitchToolPending=true;await this.continueStitchRun();this.stitchToolPending=false;}
     else if(tool==="convert"){this.stitchToolPending=true;await this.convertPathToStitch();this.stitchToolPending=false;}
@@ -1172,13 +1171,13 @@ export class Controller {
     this.notify();
   }
   async previewStitchOperation() {
-    const tool=this.stitchTool;
+    const tool=this.stitch.tool;
     if(!tool || !["link","unlink","merge","split","delete"].includes(tool) || this.busy || this.stitchToolPending)return;
-    this.document=this.stitchOriginal!;this.stitchSelected=[...this.stitchOperationSelection];this.stitchError="";
+    this.document=this.stitch.original!;this.stitchSelected=[...this.stitch.operationSelection];this.stitch.error="";
     const reason=this.stitchToolReason(tool);
-    if(reason){this.stitchError=reason;this.notify();return;}
+    if(reason){this.stitch.error=reason;this.notify();return;}
     if(tool==="split" && this.stitchSplitMethod==="junction") {
-      const group=this.stitchGroups.find(g=>g.id===this.stitchOperationSelection[0])!;
+      const group=this.stitchGroups.find(g=>g.id===this.stitch.operationSelection[0])!;
       this.stitchSplitJunction=Math.max(group.closed ? 0 : 1,Math.min(this.stitchSplitJunction,group.edges.length-1));
     }
     this.stitchToolPending=true;
@@ -1188,61 +1187,50 @@ export class Controller {
       else if(tool==="split")await this.splitStitches(this.stitchSplitMethod==="junction" ? this.stitchSplitJunction : undefined);
       else await this.deleteStitches();
     } catch(reason) {
-      this.document=this.stitchOriginal!;
-      this.stitchSelected=[...this.stitchOperationSelection];
-      this.stitchError=String(reason);
+      this.document=this.stitch.original!;
+      this.stitchSelected=[...this.stitch.operationSelection];
+      this.stitch.error=String(reason);
     } finally {this.stitchToolPending=false;this.notify();}
   }
   focusStitchLine(id: string) {
     if(this.busy || this.stitchToolPending)return;
     this.resetStitchOperation();
     if(resolvedStitchGroups(this.document).some(g=>g.id===id)) {
-      this.stitchTool="line";this.stitchSelected=[id];
+      this.stitch.tool="line";this.stitchSelected=[id];
     }
     this.notify();
   }
   get canApplyStitchTool() {
-    return !!this.stitchTool && !this.busy && !this.stitchToolPending && !this.stitchError && (!this.stitchTransferPlacement || this.stitchTransferPlacement.phase==="placed" && this.stitchTransferPreview.transfers.length>0);
+    return !!this.stitch.tool && !this.busy && !this.stitchToolPending && !this.stitch.error && (!this.stitch.transferPlacement || this.stitch.transferPlacement.phase==="placed" && this.stitchTransferPreview.transfers.length>0);
   }
-  stitchOriginal: Doc | null = null;
-  stitchOriginalSettings: StitchSettings | null = null;
-  stitchMode = false;
-  editingStitchHoles = false;
   stitchHoleNumber = 1;
   stitchHoleNumbers: number[] = [1];
-  addingStitchRun = false;
   stitchTransferHighlight: string | null = null;
-  stitchHoleSelection: { groupId:string; number:number }[] = [];
-  stitchTransferPlacement: { placementId:string; groupIds:string[]; center:Point; angle:number; rawAngle:number; phase?:"hover"|"placed" } | null = null;
   stitchSplitJunction = 1;
   stitchSelected: string[] = [];
   stitchSettings: StitchSettings = { ...defaultStitchSettings };
-  stitchDraft: StitchGroup | null = null;
-  stitchHover: StitchGroup | null = null;
-  stitchAbsorbed: string[] = [];
   updateStitchHover() {
-    if (!this.stitchTool || !["line","add"].includes(this.stitchTool)) {this.stitchHover=null;return;}
-    if (this.stitchDraft) {
-      this.stitchHover = null;
+    if (!this.stitch.tool || !["line","add"].includes(this.stitch.tool)) {this.stitch.hover=null;return;}
+    if (this.stitch.draft) {
+      this.stitch.hover = null;
       return;
     }
-    this.stitchAbsorbed = [];
-    if (this.stitchTransferPlacement) return;
+    this.stitch.absorbed = [];
+    if (this.stitch.transferPlacement) return;
     const target = this.stitchTarget(this.anchorPointer);
-    this.stitchHover = target;
+    this.stitch.hover = target;
     if (target?.id === "preview") {
       try {
         const result = this.stitchPlacement(target, this.drawingShift);
-        this.stitchHover = { ...result.next, id: "preview" };
-        this.stitchAbsorbed = result.absorbed;
-        this.stitchError = "";
+        this.stitch.hover = { ...result.next, id: "preview" };
+        this.stitch.absorbed = result.absorbed;
+        this.stitch.error = "";
       } catch (error) {
-        this.stitchHover = null;
-        this.stitchError = String(error);
+        this.stitch.hover = null;
+        this.stitch.error = String(error);
       }
     }
   }
-  stitchError = "";
   updateStitchTransferHighlight(raw: Point) {
     this.stitchTransferHighlight=null;
     if(!this.stitchMode && !this.measurementsVisible)return;
@@ -1258,18 +1246,18 @@ export class Controller {
   get selectedTransfer() { return this.document.stitchTransfers?.find(t=>this.stitchSelected.includes(t.id)); }
   get transferStitchReason() {
     if (!this.stitchSelected.length) return "Select the stitch lines to transfer.";
-    if (this.editingStitchHoles) return "Select stitch lines rather than individual holes.";
+    if (this.stitch.editingHoles) return "Select stitch lines rather than individual holes.";
     if (this.stitchSelected.some(id=>!this.stitchGroups.some(g=>g.id===id))) return "Detach linked transfers before transferring them again.";
 
     return "";
   }
   beginStitchTransfer() {
-    if (this.transferStitchReason || this.busy || this.stitchDraft || this.stitchError) return;
-    this.stitchTool="transfer";
-    this.stitchOperationSelection=[...this.stitchSelected];
-    this.editingStitchHoles=false; this.addingStitchRun=false;
-    this.stitchTransferPlacement={placementId:crypto.randomUUID(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
-    this.stitchHover=null; this.stitchError=""; this.notify();
+    if (this.transferStitchReason || this.busy || this.stitch.draft || this.stitch.error) return;
+    this.stitch.tool="transfer";
+    this.stitch.operationSelection=[...this.stitchSelected];
+    this.stitch.editingHoles=false; this.stitch.addingRun=false;
+    this.stitch.transferPlacement={placementId:crypto.randomUUID(),groupIds:[...this.stitchSelected],center:{...this.anchorPointer},angle:0,rawAngle:0,phase:"hover"};
+    this.stitch.hover=null; this.stitch.error=""; this.notify();
   }
   get transferSourceCenter(): Point {
     const ids=new Set(this.selectedTransferSources.map(s=>s.id));
@@ -1277,11 +1265,11 @@ export class Controller {
     return {x:box.x+box.width/2,y:box.y+box.height/2};
   }
   get selectedTransferSources(): Shape[] {
-    const ids=new Set((this.stitchTransferPlacement?.groupIds ?? []).map(id=>this.stitchGroups.find(g=>g.id===id)).filter((g): g is StitchGroup=>!!g).map(g=>stitchPiece(this.document,g).id));
+    const ids=new Set((this.stitch.transferPlacement?.groupIds ?? []).map(id=>this.stitchGroups.find(g=>g.id===id)).filter((g): g is StitchGroup=>!!g).map(g=>stitchPiece(this.document,g).id));
     return this.document.shapes.filter(s=>ids.has(s.id));
   }
   get stitchTransferGhosts(): Shape[] {
-    const placement=this.stitchTransferPlacement;
+    const placement=this.stitch.transferPlacement;
     if(!placement)return [];
     const center=this.transferSourceCenter,angle=placement.angle*Math.PI/180,c=Math.cos(angle),sn=Math.sin(angle);
     const matrix={a:c,b:sn,c:-sn,d:c,e:placement.center.x-c*center.x+sn*center.y,f:placement.center.y-sn*center.x-c*center.y};
@@ -1290,7 +1278,7 @@ export class Controller {
   get stitchTransferGhost(): Shape | null { return this.stitchTransferGhosts[0] ?? null; }
   updateStitchTransfer(raw: Point,alt=false) {
     this.queuedTransferPointer=null;
-    const placement=this.stitchTransferPlacement;
+    const placement=this.stitch.transferPlacement;
     if (!placement) return;
     placement.center={...raw};
     this.smartGuides=[];this.snapTarget=null;
@@ -1301,29 +1289,29 @@ export class Controller {
       this.smartGuides=result.guides;
       if ("target" in result) this.snapTarget=result.target!;
     }
-    this.stitchError=""; this.notify();
+    this.stitch.error=""; this.notify();
   }
   private transferPreviewCache: {doc:Doc;key:string;value:ReturnType<Controller["computeTransferPreview"]>} | null=null;
   private transferRenderCache: {doc:Doc;preview:ReturnType<Controller["computeTransferPreview"]>;value:Doc} | null=null;
   get stitchTransferPreview() {
-    const p=this.stitchTransferPlacement;
+    const p=this.stitch.transferPlacement;
     const key=p ? JSON.stringify([p.placementId,p.groupIds,p.center.x,p.center.y,p.angle]) : "";
     if(this.transferPreviewCache?.doc===this.document && this.transferPreviewCache.key===key)return this.transferPreviewCache.value;
     const value=this.computeTransferPreview();this.transferPreviewCache={doc:this.document,key,value};return value;
   }
   get stitchTransferRenderDocument():Doc {
-    if(!this.stitchTransferPlacement)return this.preview ?? this.document;
+    if(!this.stitch.transferPlacement)return this.preview ?? this.document;
     const preview=this.stitchTransferPreview;
     if(this.transferRenderCache?.doc===this.document && this.transferRenderCache.preview===preview)return this.transferRenderCache.value;
     const value={...this.document,stitchTransfers:[...(this.document.stitchTransfers ?? []),...preview.transfers]};
     shareReceivingGeometry(this.document,value,preview.transfers);
     this.transferRenderCache={doc:this.document,preview,value};return value;
   }
-  private queuedTransferPointer: {placement:NonNullable<Controller["stitchTransferPlacement"]>;point:Point;alt:boolean}|null=null;
+  private queuedTransferPointer: {placement:NonNullable<StitchSession["transferPlacement"]>;point:Point;alt:boolean}|null=null;
   private transferPointerFrame=false;
   queueStitchTransferPointer(point:Point,alt:boolean) {
-    if(!this.stitchTransferPlacement || this.stitchTransferPlacement.phase==="placed")return;
-    this.queuedTransferPointer={placement:this.stitchTransferPlacement,point,alt};
+    if(!this.stitch.transferPlacement || this.stitch.transferPlacement.phase==="placed")return;
+    this.queuedTransferPointer={placement:this.stitch.transferPlacement,point,alt};
     if(this.transferPointerFrame)return;
     if(typeof requestAnimationFrame==="undefined"){this.flushTransferPointer();return;}
     this.transferPointerFrame=true;
@@ -1331,16 +1319,16 @@ export class Controller {
   }
   private flushTransferPointer() {
     const pending=this.queuedTransferPointer;this.queuedTransferPointer=null;
-    if(pending?.placement===this.stitchTransferPlacement && pending?.placement.phase!=="placed")this.updateStitchTransfer(pending.point,pending.alt);
+    if(pending?.placement===this.stitch.transferPlacement && pending?.placement.phase!=="placed")this.updateStitchTransfer(pending.point,pending.alt);
   }
   private transferGroupCenter(groupId:string): Point {
-    const placement=this.stitchTransferPlacement!,pivot=this.transferSourceCenter;
+    const placement=this.stitch.transferPlacement!,pivot=this.transferSourceCenter;
     const source=pieceFrame(stitchPiece(this.document,this.stitchGroups.find(g=>g.id===groupId)!)).center;
     const a=placement.angle*Math.PI/180,c=Math.cos(a),sn=Math.sin(a),dx=source.x-pivot.x,dy=source.y-pivot.y;
     return {x:placement.center.x+c*dx-sn*dy,y:placement.center.y+sn*dx+c*dy};
   }
   private computeTransferPreview() {
-    const placement=this.stitchTransferPlacement;
+    const placement=this.stitch.transferPlacement;
     if (!placement) return {transfers:[] as StitchTransfer[],results:[] as ReturnType<typeof receivingStitches>[],skipped:[] as string[]};
     const transfers:StitchTransfer[]=[],results:ReturnType<typeof receivingStitches>[]=[],skipped:string[]=[];
     const sourceIds=new Set(this.selectedTransferSources.map(s=>s.id)),box=bounds(this.stitchTransferGhosts);
@@ -1364,17 +1352,17 @@ export class Controller {
   }
   async placeStitchTransfer() {
     this.flushTransferPointer();
-    if (!this.stitchTransferPlacement || this.busy) return;
-    if(this.stitchTransferPlacement.phase!=="placed"){this.message="Left-click to place the preview first.";this.notify();return;}
+    if (!this.stitch.transferPlacement || this.busy) return;
+    if(this.stitch.transferPlacement.phase!=="placed"){this.message="Left-click to place the preview first.";this.notify();return;}
     const preview=this.stitchTransferPreview;
-    if (!preview.transfers.length) { this.stitchError=preview.skipped.join("; ") || "No receiving piece contains the selected stitching. Move the preview onto an unlocked closed piece.";this.notify();return; }
-    const placement=this.stitchTransferPlacement;
+    if (!preview.transfers.length) { this.stitch.error=preview.skipped.join("; ") || "No receiving piece contains the selected stitching. Move the preview onto an unlocked closed piece.";this.notify();return; }
+    const placement=this.stitch.transferPlacement;
     const next={...this.document,stitchTransfers:[...(this.document.stitchTransfers ?? []),...preview.transfers]};
-    const before=this.document,baseline=this.stitchOriginal,originalSettings=this.stitchOriginalSettings;
+    const before=this.document,baseline=this.stitch.original,originalSettings=this.stitch.originalSettings;
     if (!(await this.commit(next))) return;
-    this.stitchTransferPlacement=null;
+    this.stitch.transferPlacement=null;
     await this.applyStitch();
-    if(this.stitchError) {this.document=before;this.stitchOriginal=baseline;this.stitchOriginalSettings=originalSettings;this.stitchSelected=[...placement.groupIds];this.stitchTransferPlacement=placement;this.stitchTool="transfer";this.notify();return;}
+    if(this.stitch.error) {this.document=before;this.stitch.original=baseline;this.stitch.originalSettings=originalSettings;this.stitchSelected=[...placement.groupIds];this.stitch.transferPlacement=placement;this.stitch.tool="transfer";this.notify();return;}
     this.stitchSelected=[...placement.groupIds];
     const names=[...new Set(preview.results.map(r=>r.target.name))];
     this.message=`Transferred stitching to ${names.join(", ")}.${preview.skipped.length ? ` Skipped: ${preview.skipped.join("; ")}.` : ""}`;
@@ -1383,23 +1371,27 @@ export class Controller {
   async removeStitchTransfer(id: string,detach=false) {
     const transfer=this.document.stitchTransfers?.find(t=>t.id===id);
     if(!transfer || this.busy || this.isLocked(transfer.targetId))return;
-    if(this.stitchMode && !this.stitchTool)this.stitchTool="line";
+    if(this.stitchMode && !this.stitch.tool)this.stitch.tool="line";
     try {
       const data=detach ? detachTransfer(this.document,transfer) : {shapes:[],groups:[]};
       if(await this.commit({...this.document,shapes:[...this.document.shapes,...data.shapes],objectTree:[...this.tree,...data.shapes.map(shape=>({kind:"object" as const,id:shape.id}))],stitchTransfers:this.document.stitchTransfers?.filter(t=>t.id!==id),stitchGroups:[...this.stitchGroups,...data.groups]})) this.stitchSelected=data.groups.map(g=>g.id);
-    } catch(reason) {this.stitchError=String(reason);}
+    } catch(reason) {this.stitch.error=String(reason);}
     this.notify();
   }
   async editStitchPath() {
     const group=this.stitchGroups.find(g=>g.id===this.stitchSelected[0]);
     const shape=this.document.shapes.find(s=>s.id===group?.shapeId);
-    if(!shape?.stitchOnly || this.busy || this.stitchError)return;
+    if(!shape?.stitchOnly || this.busy || this.stitch.error)return;
     this.cancel();this.selected=[shape.id];this.notify();
+  }
+  /** Leave hole editing and show the settings of the selected line again. */
+  stopEditingStitchHoles() {
+    this.stitch.editingHoles=false;this.stitch.holeSelection=[];this.notify();
   }
   escapeStitch() {
     if(this.busy || this.stitchToolPending)return;
-    if(this.editingStitchHoles){this.editingStitchHoles=false;this.stitchHoleSelection=[];this.notify();return;}
-    if(this.stitchTool || this.stitchTransferPlacement){this.cancelStitchOperation();return;}
+    if(this.stitch.editingHoles){this.stopEditingStitchHoles();return;}
+    if(this.stitch.tool || this.stitch.transferPlacement){this.cancelStitchOperation();return;}
     this.cancel();this.notify();
   }
   validateRunHoles(groups: StitchGroup[]) {
@@ -1407,26 +1399,26 @@ export class Controller {
   }
   async continueStitchRun() {
     const previous = this.stitchGroups.find(g => g.id === this.stitchSelected[0]);
-    if (!previous || previous.holes || this.busy || this.stitchDraft) return;
+    if (!previous || previous.holes || this.busy || this.stitch.draft) return;
     const next: StitchGroup = { ...previous, id: crypto.randomUUID(), holeOverrides: undefined, closed: false, continuation: { previousId: previous.id, gap: previous.settings.spacing }, settings: { ...previous.settings, holeCount: 1, alignment: "start", startClearance: 0, endClearance: 0 } };
     try {
       if (await this.commit({ ...this.document, stitchGroups: [...this.stitchGroups,next] })) {
-        this.stitchSelected=[next.id]; this.stitchHoleNumber=1; this.stitchHoleNumbers=[1]; this.editingStitchHoles=false; this.addingStitchRun=false;
-        try {this.validateRunHoles(this.stitchGroups);}catch(reason){this.stitchError=String(reason);}
+        this.stitchSelected=[next.id]; this.stitchHoleNumber=1; this.stitchHoleNumbers=[1]; this.stitch.editingHoles=false; this.stitch.addingRun=false;
+        try {this.validateRunHoles(this.stitchGroups);}catch(reason){this.stitch.error=String(reason);}
       }
-    } catch (error) { this.stitchError = String(error); }
+    } catch (error) { this.stitch.error = String(error); }
     this.notify();
   }
   setContinuationGap(gap: number) {
     const g = this.stitchGroups.find(g => g.id === this.stitchSelected[0]);
     if (!g?.continuation) return;
-    if (!Number.isFinite(gap) || gap <= 0) { this.stitchError = "Gap to next hole must be positive."; this.notify(); return; }
+    if (!Number.isFinite(gap) || gap <= 0) { this.stitch.error = "Gap to next hole must be positive."; this.notify(); return; }
     const next = { ...g, continuation: { ...g.continuation, gap } };
     try {
       this.validateRunHoles(this.stitchGroups.map(p => p.id === g.id ? next : p));
       void this.commit({ ...this.document, stitchGroups: this.stitchGroups.map(p => p.id === g.id ? next : p) });
-      this.stitchError = "";
-    } catch (error) { this.stitchError = String(error); }
+      this.stitch.error = "";
+    } catch (error) { this.stitch.error = String(error); }
     this.notify();
   }
   get convertiblePath() {
@@ -1440,9 +1432,9 @@ export class Controller {
   }
   async convertPathToStitch() {
     const shape = this.convertiblePath;
-    if (!this.stitchMode || !shape || this.busy || this.stitchDraft) return;
+    if (!this.stitchMode || !shape || this.busy || this.stitch.draft) return;
     if (this.stitchGroups.some((g) => g.shapeId === shape.id)) {
-      this.stitchError =
+      this.stitch.error =
         "Remove existing stitching before converting this path.";
       this.notify();
       return;
@@ -1466,16 +1458,16 @@ export class Controller {
       });
       if (ok) {
         this.stitchSelected = [group.id];
-        this.stitchHover = null;
-        this.stitchError = "";
+        this.stitch.hover = null;
+        this.stitch.error = "";
       }
     } catch (error) {
-      this.stitchError = String(error);
+      this.stitch.error = String(error);
     }
     this.notify();
   }
-  private trimOwners = new Map<string, string>();
-  private numericTransformBasis: { document: Doc; values: { x: number; y: number; angle: number; sx: number; sy: number }; pivot: Point; angle: number } | null = null;
+
+
   pivotMode: PivotMode = "bounding-box";
   objectPicker = false;
   toggleObjectPicker() {
@@ -1523,8 +1515,8 @@ export class Controller {
   }
   setToolSelection(ids: string[], groups: string[] = []) {
     if (!this.objectPicker || this.busy) return;
-    const previous = this.transformDraft ?? this.trimDraft ?? this.preview;
-    this.numericTransformBasis = null;
+    const previous = this.transform?.draft ?? this.trim?.draft ?? this.preview;
+    if (this.transform) this.transform.numericBasis = null;
     const oldIds = new Set(this.selected);
     this.selectedGroups = groups;
     this.selected = [...new Set(ids)];
@@ -1532,9 +1524,8 @@ export class Controller {
     this.queuedPreview = null;
     this.previewId++;
     this.preview = null;
-    this.transformDraft = null;
-    this.trimDraft = null;
-    this.trimHighlight = null;
+    if (this.transform) this.transform.draft = null;
+    if (this.trim) { this.trim.draft = null; this.trim.highlight = null; }
     this.transformError = "";
     this.selectedCorner = null;
     this.cornerStyleOverride = null;
@@ -1542,11 +1533,11 @@ export class Controller {
     if (this.array) { this.refreshArray(); }
     else if (this.offsetActive) this.refreshOffset();
     else if (this.alignActive) this.refreshAlign();
-    else if (this.transformTool && this.transformTool !== "corner") {
+    else if (this.transform && this.transform.tool !== "corner") {
       if (!oldIds.size) this.centerAutomaticPivot();
       const values = { ...this.transformValues };
       const pivot = { ...this.transformPivot };
-      this.transformOriginal = this.document;
+      this.transform.original = this.document;
       this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
       this.setTransformValues(values);
       this.transformPivot = pivot;
@@ -1559,14 +1550,14 @@ export class Controller {
     } else if (previous) {
       const ids = new Set(this.selected);
       const next = reconcileStitches({...this.document, shapes: this.document.shapes.flatMap(shape =>
-        ids.has(shape.id) && oldIds.has(shape.id) ? previous.shapes.filter(part => part.id === shape.id || this.trimOwners.get(part.id) === shape.id) : [shape])}, this.document);
-      if (this.trimMode) this.trimDraft = next;
-      else this.transformDraft = next;
+        ids.has(shape.id) && oldIds.has(shape.id) ? previous.shapes.filter(part => part.id === shape.id || this.trim?.owners.get(part.id) === shape.id) : [shape])}, this.document);
+      if (this.trim) this.trim.draft = next;
+      else if (this.transform) this.transform.draft = next;
       this.preview = next;
     }
     this.centerAutomaticPivot();
-    if (this.preview && this.transformTool && !["mirror","corner"].includes(this.transformTool))
-      this.numericTransformBasis = { document: this.preview, values: {...this.transformValues}, pivot: {...this.transformPivot}, angle: this.transformAngle };
+    if (this.preview && this.transform && !["mirror","corner"].includes(this.transform.tool))
+      this.transform.numericBasis = { document: this.preview, values: {...this.transformValues}, pivot: {...this.transformPivot}, angle: this.transformAngle };
     this.notify();
   }
   get selectionToolsAvailable() {
@@ -1588,19 +1579,14 @@ export class Controller {
     );
   }
   activateStitch() {
-    if (this.stitchMode) {if(!this.stitchTool)void this.activateStitchTool("line");return;}
+    if (this.stitchMode) {if(!this.stitch.tool)void this.activateStitchTool("line");return;}
     if (this.deferUntilSettled(() => this.activateStitch())) return;
     if (!this.canStitch) return;
     this.cancel();
     this.tool = "select";
     this.mode = "select";
-    this.editingStitchHoles = false;
-    this.stitchHoleSelection=[];this.stitchHoleNumbers=[1];this.stitchTransferHighlight=null;
-    this.stitchOriginal = this.document;
-    this.stitchOriginalSettings = { ...this.stitchSettings };
-    this.stitchMode = true;
-    this.stitchTool = "line";
-    this.stitchOperationSelection=[];
+    this.stitchHoleNumbers=[1];
+    this.stitch = { ...idleStitchSession(), active: true, original: this.document, originalSettings: { ...this.stitchSettings }, tool: "line" };
     this.stitchSelected = [];
     this.notify();
   }
@@ -1635,8 +1621,8 @@ export class Controller {
   }
   stitchTarget(raw: Point): StitchGroup | null {
     const line = this.stitchLineAt(raw);
-    if (line && !this.addingStitchRun) return line;
-    const freeSection=this.stitchTool==="line";
+    if (line && !this.stitch.addingRun) return line;
+    const freeSection=this.stitch.tool==="line";
     let best = 24 / this.zoom,
       target: StitchGroup | null = null;
     for (const s of this.document.shapes.filter((s) =>
@@ -1653,10 +1639,10 @@ export class Controller {
             (g) => g.shapeId === s.id && g.edges.includes(edge.key),
           );
           let occupied: StitchGroup | undefined;
-          if(freeSection && !this.addingStitchRun)occupied=this.stitchGroups.filter(g=>g.shapeId===s.id && g.edges.includes(edge.key)).find(g=>{
+          if(freeSection && !this.stitch.addingRun)occupied=this.stitchGroups.filter(g=>g.shapeId===s.id && g.edges.includes(edge.key)).find(g=>{
             try {const points=this.stitchGeometry(s,g).points;return points.slice(1).some((b,index)=>{const a=points[index],dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy,t=((raw.x-a.x)*dx+(raw.y-a.y)*dy)/(length || 1);return length>1e-12 && t>=0 && t<=1 && distanceToSegment(raw,a,b)<=24/this.zoom;});}catch{return true;}
           });
-          target = occupied ?? (this.addingStitchRun || freeSection ? undefined : existing) ?? {
+          target = occupied ?? (this.stitch.addingRun || freeSection ? undefined : existing) ?? {
             id: "preview",
             shapeId: s.id,
             edges: [edge.key],
@@ -1668,7 +1654,7 @@ export class Controller {
                     ? 1
                     : -1,
                 ),
-            settings: { ...this.stitchSettings, ...(this.addingStitchRun || existing ? { holeCount: 1, alignment: "start" as const } : {}) },
+            settings: { ...this.stitchSettings, ...(this.stitch.addingRun || existing ? { holeCount: 1, alignment: "start" as const } : {}) },
             closed: stitchClosed(s) && stitchEdges(s).length === 1,
           };
         }
@@ -1679,7 +1665,7 @@ export class Controller {
     let next: StitchGroup = { ...target, id: crypto.randomUUID() };
     let absorbed: string[] = [];
     const onOccupiedEdge=this.stitchGroups.some(g=>g.shapeId===target.shapeId && g.edges.some(e=>target.edges.includes(e)));
-    if (this.addingStitchRun || onOccupiedEdge) {
+    if (this.stitch.addingRun || onOccupiedEdge) {
       const shape = this.document.shapes.find(s => s.id === next.shapeId)!;
       const path = computeStitches(shape,{...next,settings:{...next.settings,holeCount:undefined,startClearance:0,endClearance:0}}).points;
       let traversed = 0, best = Infinity, start = 0;
@@ -1766,24 +1752,24 @@ export class Controller {
   stitchClick(raw: Point,shift: boolean,alt=false,ctrl=false) {
     this.anchorPointer={...raw};
     if(this.busy || this.stitchToolPending)return;
-    const tool=this.stitchTool;
+    const tool=this.stitch.tool;
     if(tool && ["link","unlink","merge","split","delete"].includes(tool)) {
-      this.document=this.stitchOriginal!;this.stitchSelected=[...this.stitchOperationSelection];
+      this.document=this.stitch.original!;this.stitchSelected=[...this.stitch.operationSelection];
       if(alt)this.stitchLineClick(raw,shift,true,false);
       else {
         const hit=this.stitchLineAt(raw);
         if(hit)this.stitchSelected=shift ? (this.stitchSelected.includes(hit.id) ? this.stitchSelected.filter(id=>id!==hit.id) : [...this.stitchSelected,hit.id]) : [hit.id];
       }
-      this.stitchOperationSelection=[...this.stitchSelected];
+      this.stitch.operationSelection=[...this.stitchSelected];
       void this.previewStitchOperation();return;
     }
     if(tool==="continue" || tool==="convert")return;
-    if(!tool)this.stitchTool="line";
+    if(!tool)this.stitch.tool="line";
     this.stitchLineClick(raw,shift,alt,ctrl);
   }
   private stitchLineClick(raw: Point,shift: boolean,alt=false,ctrl=false) {
-    if (this.stitchTransferPlacement) { this.updateStitchTransfer(raw,alt);this.stitchTransferPlacement.phase="placed";this.notify();return; }
-    if (this.stitchDraft) { this.stitchError="Apply or cancel invalid settings before changing selection.";this.notify();return; }
+    if (this.stitch.transferPlacement) { this.updateStitchTransfer(raw,alt);this.stitch.transferPlacement.phase="placed";this.notify();return; }
+    if (this.stitch.draft) { this.stitch.error="Apply or cancel invalid settings before changing selection.";this.notify();return; }
     if (alt) {
       const hit=this.stitchLineAt(raw);
       const piece=hit ? (this.document.stitchTransfers?.find(t=>t.id===hit.id) ? this.document.shapes.find(s=>s.id===hit.shapeId) : stitchPiece(this.document,hit)) : [...this.document.shapes].reverse().find(s=>!s.stitchParentId && !this.isHidden(s.id) && !this.isLocked(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || (stitchClosed(s) && materialContains(s,raw))));
@@ -1793,7 +1779,7 @@ export class Controller {
           return (shape.id===piece.id || shape.stitchParentId===piece.id) && !this.isHidden(shape.id) && !this.isLocked(shape.id);
         }).map(g=>g.id);
         this.stitchSelected=shift ? [...new Set([...this.stitchSelected,...ids])] : ids;
-        this.editingStitchHoles=false;this.stitchHoleSelection=[];
+        this.stitch.editingHoles=false;this.stitch.holeSelection=[];
       }
       this.notify();return;
     }
@@ -1806,19 +1792,19 @@ export class Controller {
         try {this.stitchGeometry(shape,group).holes.forEach((hole,index)=>{const d=distance(raw,hole.point);if(hitStitchHole(group,index,hole,raw,10/this.zoom) && d<nearest){nearest=d;picked={groupId:group.id,number:index+1};}});}catch{continue;}
       }
       if(picked && this.document.stitchTransfers?.some(t=>t.id===picked!.groupId)) {
-        this.stitchSelected=[picked.groupId];this.editingStitchHoles=false;this.stitchHoleSelection=[];this.message="This transferred hole follows its source. Detach to edit it independently.";
+        this.stitchSelected=[picked.groupId];this.stitch.editingHoles=false;this.stitch.holeSelection=[];this.message="This transferred hole follows its source. Detach to edit it independently.";
       } else if(picked) {
         const pickedHole=picked;
-        this.stitchHoleSelection=shift ? (this.stitchHoleSelection.some(h=>h.groupId===pickedHole.groupId && h.number===pickedHole.number) ? this.stitchHoleSelection.filter(h=>h.groupId!==pickedHole.groupId || h.number!==pickedHole.number) : [...this.stitchHoleSelection,pickedHole]) : [pickedHole];
-        this.editingStitchHoles=this.stitchHoleSelection.length>0;
-        this.stitchSelected=[...new Set(this.stitchHoleSelection.map(h=>h.groupId))];
-        this.stitchHoleNumber=picked.number;this.stitchHoleNumbers=this.stitchHoleSelection.filter(h=>h.groupId===pickedHole.groupId).map(h=>h.number);
+        this.stitch.holeSelection=shift ? (this.stitch.holeSelection.some(h=>h.groupId===pickedHole.groupId && h.number===pickedHole.number) ? this.stitch.holeSelection.filter(h=>h.groupId!==pickedHole.groupId || h.number!==pickedHole.number) : [...this.stitch.holeSelection,pickedHole]) : [pickedHole];
+        this.stitch.editingHoles=this.stitch.holeSelection.length>0;
+        this.stitchSelected=[...new Set(this.stitch.holeSelection.map(h=>h.groupId))];
+        this.stitchHoleNumber=picked.number;this.stitchHoleNumbers=this.stitch.holeSelection.filter(h=>h.groupId===pickedHole.groupId).map(h=>h.number);
       }
       this.notify();return;
     }
-    this.editingStitchHoles=false;this.stitchHoleSelection=[];
-    if (this.stitchDraft) {
-      this.stitchError =
+    this.stitch.editingHoles=false;this.stitch.holeSelection=[];
+    if (this.stitch.draft) {
+      this.stitch.error =
         "Apply or cancel settings before selecting another line.";
       this.notify();
       return;
@@ -1832,12 +1818,12 @@ export class Controller {
           ? this.stitchSelected.filter((id) => id !== target.id)
           : [...this.stitchSelected, target.id]
         : [target.id];
-      this.stitchError = "";
+      this.stitch.error = "";
       this.notify();
       return;
     }
     try {
-      const { next, absorbed } = this.stitchPlacement(target, shift && !this.addingStitchRun);
+      const { next, absorbed } = this.stitchPlacement(target, shift && !this.stitch.addingRun);
       this.validateRunHoles([...this.stitchGroups.filter(g => !absorbed.includes(g.id)),next]);
       void this.commit({
         ...this.document,
@@ -1848,33 +1834,33 @@ export class Controller {
       }).then((ok) => {
         if (ok) {
           this.stitchSelected = [next.id];
-          this.addingStitchRun = false;
-          this.stitchHover = null;
-          this.stitchAbsorbed = [];
+          this.stitch.addingRun = false;
+          this.stitch.hover = null;
+          this.stitch.absorbed = [];
         }
         this.notify();
       });
-      this.stitchError = "";
+      this.stitch.error = "";
     } catch (e) {
-      this.stitchError = String(e);
+      this.stitch.error = String(e);
       this.notify();
     }
   }
   setStitchSettings(settings: StitchSettings) {
-    this.stitchError = "";
+    this.stitch.error = "";
     const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
-    if (g) { const placementChanged=["spacing","inset","alignment","holeCount","startClearance","endClearance"].some(key=>settings[key as keyof StitchSettings]!==g.settings[key as keyof StitchSettings]); this.stitchDraft={...g,holes:placementChanged ? undefined : g.holes,settings:{...settings}}; }
+    if (g) { const placementChanged=["spacing","inset","alignment","holeCount","startClearance","endClearance"].some(key=>settings[key as keyof StitchSettings]!==g.settings[key as keyof StitchSettings]); this.stitch.draft={...g,holes:placementChanged ? undefined : g.holes,settings:{...settings}}; }
     try {
       validateStitchSettings(settings, this.units);
       if (!g) this.stitchSettings = { ...settings };
-      if (this.stitchDraft)
+      if (this.stitch.draft)
         this.stitchGeometry(
           this.document.shapes.find((s) => s.id === g!.shapeId)!,
-          this.stitchDraft,
+          this.stitch.draft,
         );
-      if (this.stitchDraft) this.validateRunHoles(this.stitchGroups.map(p => p.id === this.stitchDraft!.id ? this.stitchDraft! : p));
-      if (this.stitchOriginal && this.stitchDraft) {
-        const draft = this.stitchDraft;
+      if (this.stitch.draft) this.validateRunHoles(this.stitchGroups.map(p => p.id === this.stitch.draft!.id ? this.stitch.draft! : p));
+      if (this.stitch.original && this.stitch.draft) {
+        const draft = this.stitch.draft;
         this.stitchSettings = { ...draft.settings };
         this.document = parseProject(
           JSON.stringify({
@@ -1884,19 +1870,19 @@ export class Controller {
             ),
           }),
         );
-        this.stitchDraft = null;
+        this.stitch.draft = null;
       }
     } catch (e) {
-      this.stitchError = String(e);
+      this.stitch.error = String(e);
     }
     this.notify();
   }
   async applyStitch() {
-    if(this.stitchTransferPlacement){await this.placeStitchTransfer();return;}
-    if (this.selectionLocked || this.stitchToolPending || !this.stitchTool) return;
-    if (this.stitchOriginal) {
-      if (this.busy || this.stitchError) return;
-      const draft = this.stitchDraft;
+    if(this.stitch.transferPlacement){await this.placeStitchTransfer();return;}
+    if (this.selectionLocked || this.stitchToolPending || !this.stitch.tool) return;
+    if (this.stitch.original) {
+      if (this.busy || this.stitch.error) return;
+      const draft = this.stitch.draft;
       const next = draft
         ? {
             ...this.document,
@@ -1912,21 +1898,21 @@ export class Controller {
             draft,
           );
       } catch (error) {
-        this.stitchError = String(error);
+        this.stitch.error = String(error);
         this.notify();
         return;
       }
       const defaults = { ...(draft?.settings ?? this.stitchSettings) };
-      const original=this.stitchOriginal, originalSettings=this.stitchOriginalSettings, selected=[...this.stitchSelected], operation=this.stitchTool, operationSelection=[...this.stitchOperationSelection];
+      const original=this.stitch.original, originalSettings=this.stitch.originalSettings, selected=[...this.stitchSelected], operation=this.stitch.tool, operationSelection=[...this.stitch.operationSelection];
       this.cancel();
       if (!(await this.commit(next))) {
-        this.document=next; this.stitchOriginal=original; this.stitchOriginalSettings=originalSettings;
-        this.stitchMode=true; this.stitchTool=operation;this.stitchOperationSelection=operationSelection;this.stitchSelected=selected; this.stitchError=this.message || "The stitching session could not be applied.";
+        this.document=next; this.stitch.original=original; this.stitch.originalSettings=originalSettings;
+        this.stitch.active = true; this.stitch.tool=operation;this.stitch.operationSelection=operationSelection;this.stitchSelected=selected; this.stitch.error=this.message || "The stitching session could not be applied.";
         this.notify(); return;
       }
       this.stitchSettings = defaults;
       this.activateStitch();
-      this.stitchTool=null;this.stitchSelected=selected.filter(id=>resolvedStitchGroups(this.document).some(g=>g.id===id));
+      this.stitch.tool=null;this.stitchSelected=selected.filter(id=>resolvedStitchGroups(this.document).some(g=>g.id===id));
       this.notify();
       return;
     }
@@ -1939,7 +1925,7 @@ export class Controller {
     const id = this.stitchSelected[0];
     if (!id) return "";
     const count = (member: string) => {
-      const group = this.stitchDraft?.id === member ? this.stitchDraft : this.stitchGroups.find(g => g.id === member);
+      const group = this.stitch.draft?.id === member ? this.stitch.draft : this.stitchGroups.find(g => g.id === member);
       if (!group) throw Error("Missing stitch line");
       const shape = (this.preview ?? this.document).shapes.find(s => s.id === group.shapeId);
       if (!shape) throw Error("Missing shape");
@@ -1976,7 +1962,7 @@ export class Controller {
     }
   }
   async linkStitches(unlink = false) {
-    if (this.busy || this.stitchDraft || (unlink && !this.canUnlinkStitches)) return;
+    if (this.busy || this.stitch.draft || (unlink && !this.canUnlinkStitches)) return;
     const selected = new Set(this.stitchSelected);
     const links = this.document.stitchLinks ?? [];
     const touched = links.filter(l => l.members.some(id => selected.has(id)));
@@ -1998,9 +1984,9 @@ export class Controller {
         });
       }
       if (!(await this.commit({ ...this.document, stitchLinks: remaining }))) return;
-      this.stitchError = "";
+      this.stitch.error = "";
     } catch (error) {
-      this.stitchError = String(error);
+      this.stitch.error = String(error);
     }
     this.notify();
   }
@@ -2024,7 +2010,7 @@ export class Controller {
     }
   }
   async mergeStitches() {
-    if (this.stitchSelected.length < 2 || this.stitchDraft || this.busy)
+    if (this.stitchSelected.length < 2 || this.stitch.draft || this.busy)
       return;
     try {
       const sources = this.stitchSelected.map((id) =>
@@ -2056,16 +2042,16 @@ export class Controller {
           .map((g) => (g.id === master.id ? merged : g)),
       });
       this.stitchSelected = [master.id];
-      this.stitchError = "";
+      this.stitch.error = "";
     } catch (e) {
-      this.stitchError = String(e);
+      this.stitch.error = String(e);
     }
     this.notify();
   }
   async splitStitches(junction?: number) {
     const g = this.stitchGroups.find((g) => g.id === this.stitchSelected[0]);
-    if (!g || this.stitchDraft || this.busy) return;
-    if (g.settings.holeCount || g.holes) { this.stitchError = "Only full-length edge lines can be split."; this.notify(); return; }
+    if (!g || this.stitch.draft || this.busy) return;
+    if (g.settings.holeCount || g.holes) { this.stitch.error = "Only full-length edge lines can be split."; this.notify(); return; }
     let runs: string[][];
     if (junction === undefined) runs = g.edges.map((k) => [k]);
     else if (g.closed)
@@ -2081,7 +2067,7 @@ export class Controller {
       closed: false,
     }));
     try { this.remapHoleOverrides(this.document.shapes.find(s => s.id === g.shapeId)!, [g], groups); }
-    catch (error) { this.stitchError = String(error); this.notify(); return; }
+    catch (error) { this.stitch.error = String(error); this.notify(); return; }
     await this.commit({
       ...this.document,
       stitchTransfers: this.document.stitchTransfers?.flatMap(t => t.masterId === g.id ? groups.map((run,index) => ({ ...t, id:index ? crypto.randomUUID() : t.id, masterId:run.id })) : [t]),
@@ -2096,17 +2082,17 @@ export class Controller {
   }
   async deleteStitchSelection() {
     if(this.busy || this.stitchToolPending)return;
-    if(this.editingStitchHoles){this.message="Select a stitch line before deleting stitching.";this.notify();return;}
+    if(this.stitch.editingHoles){this.message="Select a stitch line before deleting stitching.";this.notify();return;}
     const selected=[...this.stitchSelected];
     this.resetStitchOperation();
     this.stitchSelected=selected.filter(id=>this.stitchGroups.some(g=>g.id===id));
     if(!this.stitchSelected.length){this.notify();return;}
-    this.stitchTool="line";
+    this.stitch.tool="line";
     try {await this.deleteStitches();await this.applyStitch();}
-    catch(reason){this.stitchError=String(reason);this.notify();}
+    catch(reason){this.stitch.error=String(reason);this.notify();}
   }
   async deleteStitches() {
-    if(this.stitchTransferPlacement){this.escapeStitch();return;}
+    if(this.stitch.transferPlacement){this.escapeStitch();return;}
     if (this.busy) return;
     let remaining = this.stitchGroups.filter(g => !this.stitchSelected.includes(g.id));
     remaining = remaining.map(g => {
@@ -2121,7 +2107,7 @@ export class Controller {
       stitchGroups: remaining,
     });
     this.stitchSelected = [];
-    this.stitchDraft = null;
+    this.stitch.draft = null;
     this.notify();
   }
   async insertVector(
@@ -2205,7 +2191,7 @@ export class Controller {
   }
   async commit(document: Doc) {
     if ((this.pathCopy || this.array) && document !== this.preview) this.cancel();
-    if (this.offsetActive || this.alignActive && document !== this.alignDraft) this.cancel();
+    if (this.offsetActive || this.align && document !== this.align.draft) this.cancel();
     try {
       if (!this.canCommitFromView(document)) return false;
       document = reconcilePrintLayouts(this.normalizeTree(reconcileStitches(document,this.document)));
@@ -2214,7 +2200,7 @@ export class Controller {
       this.fail(error);
       return false;
     }
-    if (this.stitchOriginal) {
+    if (this.stitch.original) {
       try {
         this.document = parseProject(
           JSON.stringify(this.normalizeTree(reconcileStitches(document, this.document))),
@@ -2222,7 +2208,7 @@ export class Controller {
         this.notify();
         return true;
       } catch (error) {
-        this.stitchError = String(error);
+        this.stitch.error = String(error);
         this.notify();
         return false;
       }
@@ -2765,13 +2751,10 @@ export class Controller {
   get canEditCorners() {
     return this.active.some((s) => cornerPoints(s).length > 0);
   }
-  mirrorAxis: string | null = null;
-  mirrorHover: { axis: string; line: [Point, Point] } | null = null;
-  mirrorLine: [Point, Point] | null = null;
   mirrorTargetAt(point: Point) {
     const pivot = this.transformPivot;
     const candidates: { axis: string; line: [Point, Point]; distance: number }[] = [];
-    for (const shape of [...(this.transformOriginal?.shapes ?? [])].filter(s => !this.isHidden(s.id)).reverse()) {
+    for (const shape of [...(this.transform?.original.shapes ?? [])].filter(s => !this.isHidden(s.id)).reverse()) {
       for (const line of boundary(shape).lines) {
         if (distance(...line) > 1e-9)
           candidates.push({ axis: "edge", line, distance: distanceToSegment(point, ...line) });
@@ -2788,45 +2771,46 @@ export class Controller {
     return candidates.filter(c => c.distance <= 8 / this.zoom).sort((a,b) => a.distance-b.distance)[0] ?? null;
   }
   setMirrorAxis(axis: string) {
-    this.mirrorAxis = axis;
-    this.mirrorLine = null;
+    if (!this.transform) return;
+    this.transform.mirror.axis = axis;
+    this.transform.mirror.line = null;
     this.refreshMirror();
   }
   refreshMirror() {
-    if (!this.transformOriginal || !this.mirrorAxis) return;
-    if (this.mirrorAxis === "edge" && !this.mirrorLine) {
+    const transform = this.transform, axis = transform?.mirror.axis;
+    if (!transform || !axis) return;
+    if (axis === "edge" && !transform.mirror.line) {
       this.preview = null;
-      this.transformDraft = null;
+      transform.draft = null;
       this.transformError = "Choose a straight edge.";
       this.notify();
       return;
     }
-    const line = this.mirrorLine;
+    const line = transform.mirror.line;
     const angle = line
       ? Math.atan2(line[1].y - line[0].y, line[1].x - line[0].x) * 180 / Math.PI
-      : this.transformAngle + ({ x: 0, y: 90, positive: 45, negative: -45 }[this.mirrorAxis] ?? 0);
+      : this.transformAngle + ({ x: 0, y: 90, positive: 45, negative: -45 }[axis] ?? 0);
     const pivot = line ? line[0] : this.transformPivot;
     this.updateTransformPreview({
-      ...this.transformOriginal,
-      shapes: this.transformOriginal.shapes.map(s => this.selected.includes(s.id)
+      ...transform.original,
+      shapes: transform.original.shapes.map(s => this.selected.includes(s.id)
         ? stretchShape(s, 1, -1, pivot, angle) : s),
     });
   }
-  canStartTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+  canStartTransform(tool: TransformTool) {
     return !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length &&
       !this.selectionLocked && this.selected.every(id=>!this.isHidden(id)) &&
       (tool !== "corner" || this.active.every(shape=>cornerPoints(shape).length > 0));
   }
-  async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+  async activateTransform(tool: TransformTool) {
     if (this.unsettled) await this.settled();
     if (!this.canStartTransform(tool)) return;
     this.beginToolSession();
-    this.transformTool = tool;
-    this.transformOriginal = this.document;
+    this.transform = { tool, original: this.document, draft: null, numericBasis: null, mirror: { axis: null, line: null, hover: null } };
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
     if (tool !== "corner") this.resetPivot();
     else { this.selectedCorner = null; this.cornerStyleOverride = null; this.bulkCornerStyleOverride = null; }
-    if (tool === "mirror") { this.mirrorAxis = null; this.mirrorLine = null; this.mirrorHover = null; }
+
     this.notify();
   }
   get canApplyTransform() {
@@ -2834,12 +2818,12 @@ export class Controller {
   }
   async applyTransform() {
     if (!this.canApplyTransform) return;
-    const next = this.transformDraft ?? this.preview;
+    const next = this.transform?.draft ?? this.preview;
     if (this.segmentTransform) {
       const v = this.transformValues;
       // An identity transform leaves the segments attached.
       const identity = this.transformTool === "mirror"
-        ? !this.mirrorAxis
+        ? !this.transform?.mirror.axis
         : v.x === 0 && v.y === 0 && v.angle === 0 && v.sx === 1 && v.sy === 1;
       if (identity) { this.cancel(); return; }
       const ids = [...this.selected];
@@ -2962,73 +2946,73 @@ export class Controller {
       ],
     };
   }
-  arrayCenterCandidate: Point | null = null;
-  private arrayPointerPixel: Point | null = null;
   private arrayModifiers = { alt: false, shift: false, ctrl: false };
   get arrayPreviewCenter() {
     return this.arrayStage === "center"
-      ? this.arrayCenterCandidate
+      ? this.arraySession!.centerCandidate
       : this.array
         ? { x: this.array.cx, y: this.array.cy }
         : null;
   }
   updateArrayModifiers(alt: boolean, ctrl: boolean, shift: boolean) {
     this.arrayModifiers = { alt, ctrl, shift };
+    const pixel = this.arraySession?.pointerPixel;
     if (
-      this.array &&
+      pixel &&
       this.arrayStage !== "review" &&
-      this.arrayPointerPixel &&
       this.pointerInside &&
       !this.objectPicker &&
       !this.gesture &&
       !this.space
     )
-      this.moveArray(this.arrayPointerPixel, alt, shift, ctrl);
+      this.moveArray(pixel, alt, shift, ctrl);
   }
   refreshArrayConstraint() {
     const m = this.arrayModifiers;
     this.updateArrayModifiers(m.alt, m.ctrl, m.shift);
   }
-  arrayStage: "endpoint1" | "endpoint2" | "center" | "review" = "review";
-  private arrayConfirmed: ArraySettings | null = null;
-  get arrayHasConfirmedPlacement() { return this.arrayConfirmed !== null; }
-  private arrayInvalidDistances = new Set<"vector1" | "vector2">();
+  get arrayStage() { return this.arraySession?.stage ?? "review"; }
+  get arrayHasConfirmedPlacement() { return !!this.arraySession?.confirmed; }
   pickArrayPoint(stage: "endpoint1" | "endpoint2" | "center") {
-    if (!this.array || this.objectPicker) return;
-    if (this.arrayStage === "review")
-      this.arrayConfirmed = structuredClone(this.array);
+    const run = this.arraySession;
+    if (!run || this.objectPicker) return;
+    if (run.stage === "review")
+      run.confirmed = structuredClone(run.settings);
     this.transformAxis = undefined;
-    if (stage === "endpoint2" && this.array.rows === 1) this.array.rows = 2;
-    this.arrayCenterCandidate = null;
-    this.arrayStage = stage;
+    if (stage === "endpoint2" && run.settings.rows === 1) run.settings.rows = 2;
+    run.centerCandidate = null;
+    run.stage = stage;
     this.refreshArray();
   }
   confirmArrayPoint() {
-    if (this.arrayStage === "review") return false;
-    if (this.array?.error && this.arrayStage !== "center") return true;
-    if (this.arrayStage === "center" && this.array) {
-      if (!this.arrayCenterCandidate) return true;
-      this.array.cx = this.arrayCenterCandidate.x;
-      this.array.cy = this.arrayCenterCandidate.y;
+    const run = this.arraySession;
+    if (!run || run.stage === "review") return false;
+    const state = run.settings;
+    if (state.error && run.stage !== "center") return true;
+    if (run.stage === "center") {
+      if (!run.centerCandidate) return true;
+      state.cx = run.centerCandidate.x;
+      state.cy = run.centerCandidate.y;
     }
-    this.arrayStage = "review";
-    this.arrayCenterCandidate = null;
+    run.stage = "review";
+    run.centerCandidate = null;
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
-    this.arrayConfirmed = this.array ? structuredClone(this.array) : null;
+    run.confirmed = structuredClone(state);
     this.refreshArray();
     return true;
   }
   cancelArrayPoint() {
-    if (this.arrayStage === "review") return false;
-    if (!this.arrayConfirmed) {
+    const run = this.arraySession;
+    if (!run || run.stage === "review") return false;
+    if (!run.confirmed) {
       this.cancel();
       return true;
     }
-    this.array = structuredClone(this.arrayConfirmed);
-    this.arrayStage = "review";
-    this.arrayCenterCandidate = null;
+    run.settings = structuredClone(run.confirmed);
+    run.stage = "review";
+    run.centerCandidate = null;
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
@@ -3056,11 +3040,11 @@ export class Controller {
     const state = this.array;
     if (!state) return;
     if (!Number.isFinite(value) || value <= 0) {
-      this.arrayInvalidDistances.add(field);
+      this.arraySession!.invalidDistances.add(field);
       this.refreshArray();
       return;
     }
-    this.arrayInvalidDistances.delete(field);
+    this.arraySession!.invalidDistances.delete(field);
     const v = state[field],
       length = Math.hypot(v.x, v.y);
     state[field] = {
@@ -3112,10 +3096,10 @@ export class Controller {
     this.refreshArray();
   }
   private moveArray(pixel: Point, alt: boolean, shift: boolean, ctrl = false) {
-    const state = this.array;
-    if (!state || this.objectPicker || this.busy) return;
+    const run = this.arraySession, state = run?.settings;
+    if (!run || !state || this.objectPicker || this.busy) return;
     this.pointerInside = true;
-    this.arrayPointerPixel = { ...pixel };
+    run.pointerPixel = { ...pixel };
     if (this.arrayStage === "review") {
       this.cursor = this.world(pixel);
       this.notifyPointer();
@@ -3160,7 +3144,7 @@ export class Controller {
     }
     this.cursor = point;
     if (this.arrayCenterPicking) {
-      this.arrayCenterCandidate = point;
+      run.centerCandidate = point;
       this.refreshArray();
       return;
     }
@@ -3181,14 +3165,16 @@ export class Controller {
     }
     this.refreshArray();
   }
-  array: ArraySettings | null = null;
+  /** The open array tool: its settings and which point, if any, is being placed. */
+  private arraySession: ArraySession | null = null;
+  get array(): ArraySettings | null { return this.arraySession?.settings ?? null; }
   async activateArray(kind: ArrayKind) {
     if (this.unsettled) await this.settled();
     if (!this.canStartTransform("move")) return;
     this.cancel();
     this.beginToolSelection();
     const box = bounds(this.active);
-    this.array = {
+    const settings: ArraySettings = {
       kind,
       extent: true,
       vector1: { x: 10, y: 0 },
@@ -3205,31 +3191,28 @@ export class Controller {
     };
     this.tool = "select";
     this.mode = "select";
-    this.arrayConfirmed = null;
-    this.arrayStage = kind === "radial" ? "center" : "endpoint1";
+    this.arraySession = {
+      settings, stage: kind === "radial" ? "center" : "endpoint1",
+      confirmed: null, centerCandidate: null, pointerPixel: null, invalidDistances: new Set(),
+    };
     this.refreshArray();
   }
   refreshArray() {
     this.preview = null;
-    const state = this.array;
-    if (!state) return;
+    const run = this.arraySession;
+    if (!run) return;
+    const state = run.settings, center = run.stage === "center" ? run.centerCandidate : null;
     state.error = "";
-    if (this.arrayStage === "center" && !this.arrayCenterCandidate) {
+    if (run.stage === "center" && !center) {
       this.notify();
       return;
     }
     try {
       if (this.toolSelectionError) throw Error(this.toolSelectionError);
-      if (this.arrayInvalidDistances.size)
+      if (run.invalidDistances.size)
         throw Error("Enter positive, finite distances.");
       const matrices = arrayPlacements(
-        this.arrayStage === "center" && this.arrayCenterCandidate
-          ? {
-              ...state,
-              cx: this.arrayCenterCandidate.x,
-              cy: this.arrayCenterCandidate.y,
-            }
-          : state,
+        center ? { ...state, cx: center.x, cy: center.y } : state,
         bounds(this.active),
       );
       let next = this.document;
@@ -3320,14 +3303,13 @@ export class Controller {
     if (await this.commit(next)) { this.cancel(); this.selected = ids; this.notify(); }
     else if (this.pathCopy) { this.pathCopy.error = "Could not apply copies. Review the document and try again."; this.notify(); }
   }
-  booleanOperation: BooleanOperation | null = null;
-  booleanTarget = "";
-  booleanCutters: string[] = [];
-  booleanPicker: "target" | "cutters" | null = null;
-  booleanError = "";
-  booleanEmpty = false;
-  private booleanSelection: string[] = [];
-  private booleanCache: { key: string; result: Shape | null } | null = null;
+  /** The open Trim tool, or Join and the boolean operations, which share its preview and Apply. */
+  trim: TrimSession | null = null;
+  get trimMode() { return !!this.trim; }
+  get boolean() { return this.trim?.boolean ?? null; }
+  /** Join and the boolean operations; plain Trim cuts outline portions instead. */
+  get mergeMode() { return !!this.trim?.boolean; }
+  get booleanOperation() { return this.trim?.boolean?.operation ?? null; }
   get booleanLabel() {
     return (
       {
@@ -3369,13 +3351,15 @@ export class Controller {
     );
   }
   setBooleanPicker(picker: "target" | "cutters") {
-    if (!this.booleanOperation || this.busy) return;
-    this.booleanPicker = this.booleanPicker === picker ? null : picker;
+    const run = this.boolean;
+    if (!run || this.busy) return;
+    run.picker = run.picker === picker ? null : picker;
     this.refreshBoolean();
   }
   removeBooleanOperand(id: string) {
-    if (!this.booleanOperation || this.busy) return;
-    this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
+    const run = this.boolean;
+    if (!run || this.busy) return;
+    run.cutters = run.cutters.filter((x) => x !== id);
     this.refreshBoolean();
   }
   activateBoolean(operation: BooleanOperation) {
@@ -3386,55 +3370,61 @@ export class Controller {
       .filter((s) => this.selected.includes(s.id))
       .map((s) => s.id);
     this.cancel();
-    this.booleanSelection = [...this.selected];
-    this.booleanOperation = operation;
-    this.booleanTarget = ids[0] ?? "";
-    this.booleanCutters = ids.slice(1);
-    this.booleanPicker = !ids.length ? "target" : ids.length === 1 ? "cutters" : null;
+    this.trim = {
+      draft: null, highlight: null, owners: new Map(),
+      boolean: {
+        operation,
+        target: ids[0] ?? "",
+        cutters: ids.slice(1),
+        picker: !ids.length ? "target" : ids.length === 1 ? "cutters" : null,
+        error: "", empty: false, selection: [...this.selected], cache: null,
+      },
+    };
     this.tool = "select";
     this.mode = "select";
-    this.trimMode = true;
-    this.mergeMode = true;
     this.transformError = "";
     this.refreshBoolean();
   }
   pickBoolean(id: string) {
-    if (!this.booleanOperation || !this.booleanPicker) return;
-    if (!this.booleanEligible(id, this.booleanOperation === "union")) {
-      this.booleanError =
-        this.booleanOperation === "union"
+    const run = this.boolean;
+    if (!run?.picker) return;
+    if (!this.booleanEligible(id, run.operation === "union")) {
+      run.error =
+        run.operation === "union"
           ? "Choose a visible, unlocked closed outline or joinable path without active stitching."
           : "Choose a visible, unlocked closed outline without active stitching.";
       this.notify();
       return;
     }
-    if (this.booleanPicker === "target") {
-      if (this.booleanTarget && id !== this.booleanTarget)
-        this.booleanCutters.push(this.booleanTarget);
-      this.booleanTarget = id;
-      this.booleanCutters = this.booleanCutters.filter((x) => x !== id);
-      this.booleanPicker = "cutters";
-    } else if (id !== this.booleanTarget) {
-      this.booleanCutters = this.booleanCutters.includes(id)
-        ? this.booleanCutters.filter((x) => x !== id)
-        : [...this.booleanCutters, id];
+    if (run.picker === "target") {
+      if (run.target && id !== run.target)
+        run.cutters.push(run.target);
+      run.target = id;
+      run.cutters = run.cutters.filter((x) => x !== id);
+      run.picker = "cutters";
+    } else if (id !== run.target) {
+      run.cutters = run.cutters.includes(id)
+        ? run.cutters.filter((x) => x !== id)
+        : [...run.cutters, id];
     }
     this.refreshBoolean();
   }
   refreshBoolean() {
-    this.trimDraft = null;
+    const trim = this.trim, run = trim?.boolean;
+    if (!trim || !run) return;
+    trim.draft = null;
     this.preview = null;
-    this.booleanError = "";
-    this.booleanEmpty = false;
-    const ids = [this.booleanTarget, ...this.booleanCutters];
-    if (!this.booleanTarget || !this.booleanCutters.length) {
+    run.error = "";
+    run.empty = false;
+    const ids = [run.target, ...run.cutters];
+    if (!run.target || !run.cutters.length) {
       this.notify();
       return;
     }
     try {
       if (
         !ids.every((id) =>
-          this.booleanEligible(id, this.booleanOperation === "union"),
+          this.booleanEligible(id, run.operation === "union"),
         )
       )
         throw Error(
@@ -3443,25 +3433,25 @@ export class Controller {
       const shapes = ids.map(
         (id) => this.document.shapes.find((s) => s.id === id)!,
       );
-      const key = JSON.stringify([this.revision, this.booleanOperation, ids]);
-      if (this.booleanCache?.key !== key) {
+      const key = JSON.stringify([this.revision, run.operation, ids]);
+      if (run.cache?.key !== key) {
         const openJoin =
-          this.booleanOperation === "union" && !shapes.every(isClosedShape);
+          run.operation === "union" && !shapes.every(isClosedShape);
         const result = openJoin
           ? mergeShapes(shapes)
-          : booleanShapes(this.booleanOperation!, shapes);
+          : booleanShapes(run.operation, shapes);
         if (openJoin && !result)
           throw Error(
             "Open paths must form one connected chain of straight paths or curves. Do not mix open and closed outlines.",
           );
-        this.booleanCache = { key, result };
+        run.cache = { key, result };
       }
-      const result = this.booleanCache.result;
-      this.booleanEmpty = !result;
-      this.trimDraft = this.normalizeTree({
+      const result = run.cache.result;
+      run.empty = !result;
+      trim.draft = this.normalizeTree({
         ...this.document,
         shapes: this.document.shapes.flatMap((s) =>
-          s.id === this.booleanTarget
+          s.id === run.target
             ? result
               ? [result]
               : []
@@ -3470,10 +3460,10 @@ export class Controller {
               : [s],
         ),
       });
-      parseProject(JSON.stringify(this.trimDraft));
-      this.preview = this.trimDraft;
+      parseProject(JSON.stringify(trim.draft));
+      this.preview = trim.draft;
     } catch (error) {
-      this.booleanError =
+      run.error =
         error instanceof Error ? error.message : String(error);
     }
     this.notify();
@@ -3481,21 +3471,15 @@ export class Controller {
   activateMerge() {
     this.activateBoolean("union");
   }
-  mergeMode = false;
-  trimHighlight: Point[] | null = null;
-  trimMode = false;
-  trimDraft: Doc | null = null;
   get canApplyTrim() {
-    return this.trimMode && !this.selectionLocked && !this.objectPicker && (!!this.booleanOperation || !this.toolSelectionError) &&
-      !!this.trimDraft && !this.transformError && !this.booleanError && !this.busy;
+    return !!this.trim?.draft && !this.selectionLocked && !this.objectPicker && (!!this.boolean || !this.toolSelectionError) &&
+      !this.transformError && !this.boolean?.error && !this.busy;
   }
   async applyTrim() {
     if (!this.canApplyTrim) return;
-    const next = this.trimDraft!;
-    const mergedId = this.mergeMode
-      ? next.shapes.find((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id))?.id
-      : undefined;
-    const boolean = !!this.booleanOperation;
+    const next = this.trim!.draft!, run = this.boolean;
+    const mergedId = run ? next.shapes.find((s) => s.id === run.target)?.id : undefined;
+    const boolean = !!run;
     this.toolSelection = null;
     this.cancel();
     if (await this.commit(next)) {
@@ -3503,6 +3487,10 @@ export class Controller {
       if (mergedId) this.selected = [mergedId];
       this.notify();
     }
+  }
+  /** A selected, unlocked outline, or a piece Trim has already cut from one. */
+  private trimmable(trim: TrimSession, shape: Shape) {
+    return (this.selected.includes(shape.id) || this.selected.includes(trim.owners.get(shape.id) ?? "")) && !this.isLocked(shape.id);
   }
   get canTrim() {
     return (
@@ -3514,7 +3502,7 @@ export class Controller {
   activateTrim() {
     if (!this.canTrim) return;
     this.beginToolSession();
-    this.trimMode = true;
+    this.trim = { draft: null, highlight: null, owners: new Map(), boolean: null };
     this.notify();
   }
   cancel() {
@@ -3530,64 +3518,31 @@ export class Controller {
     this.objectPicker = false;
     this.pivotMode = "bounding-box";
     this.pivotPlacement = null;
-    this.numericTransformBasis = null;
-    this.trimOwners.clear();
+    // Tools that replace the selection or document restore them before their session is dropped.
     if (this.pathCopy) this.selected = this.pathCopySelection;
-    this.pathCopy = null;
-    this.array = null;
-    this.arrayCenterCandidate = null;
-    this.arrayPointerPixel = null;
-    this.arrayStage = "review";
-    this.arrayConfirmed = null;
-    this.arrayInvalidDistances.clear();
-    this.offsetDrag = null;
-    this.offsetActive = false;
-    this.alignActive = false;
-    this.alignX = null;
-    this.alignY = null;
-    this.alignDraft = null;
-    this.alignUnits = [];
-    this.offsetDraft = null;
-    this.offsetIds = [];
-    this.offsetError = "";
-    this.mirrorAxis = null;
-    this.mirrorLine = null;
-    this.mirrorHover = null;
-    if (this.booleanOperation) this.selected = this.booleanSelection;
-    this.booleanOperation = null; this.booleanPicker = null; this.booleanCutters = [];
-    this.booleanError = ""; this.booleanEmpty = false;
-    this.mergeMode = false;
-    this.trimMode = false;
-    this.trimDraft = null;
-    this.trimHighlight = null;
-    if (this.stitchOriginal) {
-      this.document = this.stitchOriginal;
-      this.stitchOriginal = null;
-      if (this.stitchOriginalSettings)
-        this.stitchSettings = this.stitchOriginalSettings;
-      this.stitchOriginalSettings = null;
+    if (this.boolean) this.selected = this.boolean.selection;
+    if (this.stitch.original) {
+      this.document = this.stitch.original;
+      if (this.stitch.originalSettings)
+        this.stitchSettings = this.stitch.originalSettings;
     }
-    this.stitchMode = false;
-    this.stitchTool=null;this.stitchOperationSelection=[];
-    this.editingStitchHoles=false;this.stitchHoleSelection=[];this.stitchTransferHighlight=null;
-    this.stitchTransferPlacement=null;
-    this.addingStitchRun = false;
-
-    this.stitchDraft = null;
-    this.stitchHover = null;
-    this.stitchError = "";
+    this.pathCopy = null;
+    this.arraySession = null;
+    this.offset = null;
+    this.align = null;
+    this.trim = null;
+    this.transform = null;
+    this.stitch = idleStitchSession();
+    this.stitchTransferHighlight = null;
     this.guideDrag = null;
     this.measurementLocks = {};
     this.measurementFormulas = {};
     this.constructionFormulas = [];
     this.transformGeneration++;
-    this.transformDraft = null;
     this.transformError = "";
     this.placingPivot = false;
     this.transformAxis = undefined;
     this.hoverHandle = "";
-    this.transformTool = null;
-    this.transformOriginal = null;
     this.drawingDown = null;
     this.arcSweep = 0;
     this.arcRawSweep = 0;
@@ -3716,7 +3671,7 @@ export class Controller {
     this.segmentTransform = refs;
     // The segment tool stays active; only the detached shapes are transformed.
     this.mode = "segment-select";
-    this.transformOriginal = document;
+    this.transform!.original = document;
     this.preview = document;
     this.resetPivot();
     this.notify();
@@ -4009,7 +3964,7 @@ export class Controller {
       this.preview ??
       this.pendingDocument ??
       this.document
-    ).shapes.filter((s) => this.booleanOperation ? s.id === this.booleanTarget : this.selected.includes(s.id) || this.trimMode && this.selected.includes(this.trimOwners.get(s.id) ?? ""));
+    ).shapes.filter((s) => this.boolean ? s.id === this.boolean.target : this.selected.includes(s.id) || !!this.trim && this.selected.includes(this.trim.owners.get(s.id) ?? ""));
   }
   get selectionBounds() {
     return bounds(this.active, this.units);
@@ -4266,9 +4221,9 @@ export class Controller {
     if (this.alignActive && button === 2) { void this.applyAlign(); return; }
     // Align changes its targets through Select Objects; plain canvas clicks keep them.
     if (this.alignActive && button === 0 && !this.space) return;
-    if (this.offsetActive && button === 0 && !this.space) {
+    if (this.offset && button === 0 && !this.space) {
       const raw = this.world(pixel), normal = this.offsetDragAt(raw);
-      if (normal) this.offsetDrag = { start: raw, distance: this.offsetDistance, normal };
+      if (normal) this.offset.drag = { start: raw, distance: this.offsetDistance, normal };
       this.notify();
       return;
     }
@@ -4286,20 +4241,21 @@ export class Controller {
     }
     if (this.mergeMode && button === 0 && !this.space) return;
     if (this.trimMode && button === 2) { void this.applyTrim(); return; }
-    if (this.trimMode && !this.mergeMode && button === 0 && !this.space) {
-      const baseline = this.trimDraft ?? this.document;
+    const trim = this.trim;
+    if (trim && !trim.boolean && button === 0 && !this.space) {
+      const baseline = trim.draft ?? this.document;
       const visible = baseline.shapes.filter(s => !this.isHidden(s.id));
-      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
+      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => this.trimmable(trim, s));
       const shapes = trimmed ? [...trimmed, ...baseline.shapes.filter(s => this.isHidden(s.id))] : null;
-      this.trimHighlight = null;
+      trim.highlight = null;
       if (shapes) {
         try {
           const next = reconcileStitches({ ...baseline, shapes }, baseline);
           parseProject(JSON.stringify(this.normalizeTree(next)));
           const changed = baseline.shapes.find(shape => !next.shapes.some(part => part.id === shape.id && JSON.stringify(part) === JSON.stringify(shape)));
           if (changed) for (const part of next.shapes.filter(part => !baseline.shapes.some(old => old.id === part.id)))
-            this.trimOwners.set(part.id, this.trimOwners.get(changed.id) ?? changed.id);
-          this.trimDraft = next;
+            trim.owners.set(part.id, trim.owners.get(changed.id) ?? changed.id);
+          trim.draft = next;
           this.preview = next;
           this.transformError = "";
         } catch (error) { this.transformError = String(error); }
@@ -4390,11 +4346,11 @@ export class Controller {
       this.setPivot(this.snap(raw, alt));
       return;
     }
-    if (this.transformTool === "mirror") {
+    if (this.transform?.tool === "mirror") {
       const target = this.mirrorTargetAt(raw);
       if (target) {
-        this.mirrorAxis = target.axis;
-        this.mirrorLine = target.axis === "edge" ? target.line : null;
+        this.transform.mirror.axis = target.axis;
+        this.transform.mirror.line = target.axis === "edge" ? target.line : null;
         this.refreshMirror();
       }
       return;
@@ -4527,33 +4483,35 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
-    if (this.array) this.arrayPointerPixel = { ...pixel };
+    if (this.arraySession) this.arraySession.pointerPixel = { ...pixel };
     if (this.array && !this.objectPicker && !this.space && !this.gesture) {
       this.moveArray(pixel, alt, shift, ctrl);
       return;
     }
     if (this.objectPicker && !this.space && !this.gesture) return;
-    if (this.offsetDrag) {
-      const drag = this.offsetDrag, raw = this.snap(this.world(pixel), alt, this.selected);
+    const drag = this.offset?.drag;
+    if (drag) {
+      const raw = this.snap(this.world(pixel), alt, this.selected);
       this.setOffsetDistance(drag.distance + (raw.x - drag.start.x) * drag.normal.x + (raw.y - drag.start.y) * drag.normal.y);
       return;
     }
-    if(!this.stitchTransferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
+    if(!this.stitch.transferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
     this.clipboardPixel = { ...pixel };
-    this.mirrorHover = null;
-    if (this.transformTool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
+    if (this.transform) this.transform.mirror.hover = null;
+    if (this.transform?.tool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
-      this.mirrorHover = this.mirrorTargetAt(this.anchorPointer);
+      this.transform.mirror.hover = this.mirrorTargetAt(this.anchorPointer);
       this.notify();
       return;
     }
-    if (this.trimMode && !this.mergeMode && !this.space && !this.gesture) {
+    const trim = this.trim;
+    if (trim && !trim.boolean && !this.space && !this.gesture) {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
-      this.trimHighlight = null;
-      trimAt((this.trimDraft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
-        span => { this.trimHighlight = span; }, s => (this.selected.includes(s.id) || this.selected.includes(this.trimOwners.get(s.id) ?? "")) && !this.isLocked(s.id));
+      trim.highlight = null;
+      trimAt((trim.draft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
+        span => { trim.highlight = span; }, s => this.trimmable(trim, s));
       this.notify();
       return;
     }
@@ -4561,7 +4519,7 @@ export class Controller {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
       this.drawingShift = shift;
-      if(this.stitchTransferPlacement){this.queueStitchTransferPointer(this.anchorPointer,alt);return;}else this.updateStitchHover();
+      if(this.stitch.transferPlacement){this.queueStitchTransferPointer(this.anchorPointer,alt);return;}else this.updateStitchHover();
       this.notify();
       return;
     }
@@ -4913,9 +4871,9 @@ export class Controller {
     this.notifyPointer();
   }
   pointerUp(pixel?: Point, alt = false, shift = false, ctrl = false) {
-    if (this.offsetDrag) {
+    if (this.offset?.drag) {
       if (pixel) this.pointerMove(pixel, alt, ctrl, shift);
-      this.offsetDrag = null;
+      this.offset.drag = null;
       this.notify();
       return;
     }
@@ -5541,11 +5499,11 @@ export class Controller {
     this.notify();
   }
   wheel(pixel: Point, dx: number, dy: number, zoom: boolean, modifiers: {ctrlKey?:boolean;shiftKey?:boolean;altKey?:boolean}={}) {
-    if(this.stitchTransferPlacement && !this.space && !zoom) {
-      const placement=this.stitchTransferPlacement,step=modifiers.shiftKey ? 5 : 1;
+    if(this.stitch.transferPlacement && !this.space && !zoom) {
+      const placement=this.stitch.transferPlacement,step=modifiers.shiftKey ? 5 : 1;
       placement.rawAngle-=dy/100*step;
       placement.angle=snapRotation(placement.rawAngle,{shiftKey:modifiers.shiftKey,altKey:modifiers.altKey});
-      if(placement.phase==="placed"){this.queuedTransferPointer=null;this.stitchError="";this.notify();}
+      if(placement.phase==="placed"){this.queuedTransferPointer=null;this.stitch.error="";this.notify();}
       else this.updateStitchTransfer(this.world(pixel),!!modifiers.altKey);return;
     }
     if (zoom) {

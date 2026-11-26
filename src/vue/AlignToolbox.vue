@@ -40,7 +40,7 @@ function choose(action: AlignAction, event: MouseEvent) {
 }
 function title(item: Item) {
   if (item.action.kind !== "distribute") return item.label;
-  if (item.action.mode.startsWith("gaps") && !e.value.alignGapsFit[item.action.mode.endsWith("x") ? "x" : "y"])
+  if (item.action.mode.startsWith("gaps") && e.value.align?.gapsFit[item.action.mode.endsWith("x") ? "x" : "y"] === false)
     return `${item.label}: objects are too wide to space between the outer ones`;
   return `${item.label} (3+ objects)`;
 }
@@ -85,7 +85,7 @@ function title(item: Item) {
         </div>
       </div>
     </div>
-    <small v-if="(e.alignX || e.alignY) && !e.alignDraft && !e.objectPicker" role="status">Already arranged this way.</small>
+    <small v-if="(e.align?.x || e.align?.y) && !e.align?.draft && !e.objectPicker" role="status">Already arranged this way.</small>
   </ToolPopover>
 </template>
 <style scoped>

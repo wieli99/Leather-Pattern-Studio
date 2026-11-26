@@ -4,6 +4,9 @@ import ToolObjectPicker from "./ToolObjectPicker.vue";
 import ToolPopover from "./ToolPopover.vue";
 import { objectSelection } from "../model/objectSelection";
 import PivotSelector from "./PivotSelector.vue";
+import ToolIcon from "./ToolIcon.vue";
+import TransformFields from "./TransformFields.vue";
+import { transformHeading, transformHelp } from "./transformText";
 import { automaticPivot, type PivotMode } from "../model/pivot";
 import ToolRail from "./ToolRail.vue";
 import RailButton from "./RailButton.vue";
@@ -461,6 +464,16 @@ const renameId = ref(""),
 const moveX = ref("0"),
   moveY = ref("0"),
   turn = ref("0");
+const railToolKeys = { select: "V", move: "G", rotate: "E", mirror: "M" } as const;
+function railToolLabel(value: keyof typeof railToolKeys) {
+  return `${value === "select" ? "Select" : transformHeading[value]} (${railToolKeys[value]})`;
+}
+function commitTransformField(field: "x" | "y" | "angle" | "sx" | "sy", value: number) {
+  error.value = "";
+  if (field === "angle") turn.value = String(value);
+  else if (field === "x" && layout.value) moveX.value = editableLength(value, layout.value.units);
+  else if (field === "y" && layout.value) moveY.value = editableLength(value, layout.value.units);
+}
 let numericBase: PrintLayout | undefined,
   numericPivot: Point = { x: 0, y: 0 },
   numericOrientation = 0,
@@ -3246,39 +3259,17 @@ defineExpose({
       <RailButton
         v-for="value in ['select', 'move', 'rotate', 'mirror'] as const"
         :key="value"
-        :shortcut="({ select: 'V', move: 'G', rotate: 'E', mirror: 'M' })[value]"
-        :aria-keyshortcuts="({ select: 'v', move: 'g', rotate: 'e', mirror: 'm' })[value]"
+        :shortcut="railToolKeys[value]"
+        :aria-keyshortcuts="railToolKeys[value].toLowerCase()"
         :aria-pressed="drawingState.mode === 'select' && tool === value"
-        :title="
-          value === 'select'
-            ? 'Select (V)'
-            : value === 'move'
-              ? 'Move (G)'
-              : value === 'rotate'
-                ? 'Rotate (E)'
-                : 'Mirror (M)'
-        "
-        :aria-label="
-          value === 'select'
-            ? 'Select (V)'
-            : value === 'move'
-              ? 'Move (G)'
-              : value === 'rotate'
-                ? 'Rotate (E)'
-                : 'Mirror (M)'
-        "
+        :title="railToolLabel(value)"
+        :aria-label="railToolLabel(value)"
         :disabled="value !== 'select' && !!printSelectionError"
         @click="chooseTool(value)"
       >
         <span class="tool-icon">
           <ModeIcon v-if="value === 'select'" mode="select" />
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <path :d="value === 'move'
-              ? 'M3 12H21M12 3V21M3 12L7 8M3 12L7 16M21 12L17 8M21 12L17 16M12 3L8 7M12 3L16 7M12 21L8 17M12 21L16 17'
-              : value === 'rotate'
-                ? 'M19 8A8 8 0 1 0 20 16M19 3V9H13'
-                : 'M12 2V22M9 5L3 19H9ZM15 5L21 19H15Z'" />
-          </svg>
+          <ToolIcon v-else :id="value" :size="24" />
         </span>
       </RailButton>
       <div class="rail-divider" role="separator" />
@@ -3408,7 +3399,7 @@ defineExpose({
         v-if="tool !== 'select'"
         tag="div"
         class="print-transform"
-        :heading="tool === 'move' ? 'Move' : tool === 'rotate' ? 'Rotate' : 'Mirror'"
+        :heading="transformHeading[tool]"
         :apply-disabled="choosingObjects || !selected.length || busy || !!error || !preview"
         :apply="applyTransform"
         :cancel="cancel"
@@ -3416,44 +3407,21 @@ defineExpose({
         :refocus="() => canvas?.focus({ preventScroll: true })"
       >
         <ToolObjectPicker :count="toolObjectCount" :choosing="choosingObjects" :error="choosingObjects ? printSelectionError : undefined" @toggle="toggleObjects" /><hr>
-        <p v-if="error" role="alert">{{ error }}</p>
-        <small>{{
-          tool === "move"
-            ? "Drag the gizmo or enter X/Y distances to move the selection."
-            : tool === "rotate"
-              ? "Drag the rotation ring or enter an angle to rotate the selection."
-              : "Click an axis or straight outline edge on the canvas to mirror."
-        }}</small>
-        <div class="transform-inputs">
-          <label v-if="tool === 'move'"
-            >Move X
-            <LengthInput
-              fixed
-              :units="layout.units"
-              :value="parseLength(moveX, layout.units) ?? 0"
-              aria-label="Print move X"
-              @commit="error = ''; moveX = editableLength($event, layout.units)"
-              @invalid="error = 'Enter a valid distance'" /></label
-          ><label v-if="tool === 'move'"
-            >Move Y
-            <LengthInput
-              fixed
-              :units="layout.units"
-              :value="parseLength(moveY, layout.units) ?? 0"
-              aria-label="Print move Y"
-              @commit="error = ''; moveY = editableLength($event, layout.units)"
-              @invalid="error = 'Enter a valid distance'" /></label
-          ><label v-if="tool === 'rotate'"
-            >Rotate °
-            <LengthInput scalar :step="1" :value="Number(turn)" aria-label="Print rotation" @commit="error = ''; turn = String($event)" @invalid="error = 'Enter a finite rotation'" /></label>
-        </div>
-        <label
-          >Axes<select v-model="axes">
-            <option value="local">Local</option>
-            <option value="world">World</option>
-          </select></label
-        >
+        <small>{{ transformHelp[tool] }}</small>
+        <TransformFields
+          :tool="tool === 'mirror' ? null : tool"
+          :values="{ x: parseLength(moveX, layout.units) ?? 0, y: parseLength(moveY, layout.units) ?? 0, angle: Number(turn), sx: 1, sy: 1 }"
+          :unit-symbol="layout.units === 'mm' ? 'mm' : 'in'"
+          :units="layout.units"
+          :aria-labels="{ x: 'Print move X', y: 'Print move Y', angle: 'Print rotation' }"
+
+          :orientation="axes"
+          @commit="commitTransformField"
+          @invalid="(field) => error = field === 'angle' ? 'Enter a finite rotation' : 'Enter a valid distance'"
+          @orientation="axes = $event"
+        />
         <PivotSelector :disabled="choosingObjects" :mode="pivotMode" :placing="placingPivot" @change="setPivotMode" @cancel="cancelPivotPlacement" />
+        <p v-if="error" role="alert">{{ error }}</p>
       </ToolPopover>
       <div v-if="bottom" class="print-status">
         <span

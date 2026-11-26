@@ -87,7 +87,7 @@ test("imported visual fill layers survive saving but do not duplicate DXF cuts",
     editor.selected = editor.document.shapes.filter(shape => shape.name.startsWith("paired")).map(shape => shape.id);
     editor.activateOffset();
     editor.setOffsetDistance(3);
-    if (editor.offsetError) throw Error(editor.offsetError);
+    if (editor.offset?.error) throw Error(editor.offset.error);
     await editor.applyOffset();
     const doc = parseProject(JSON.stringify(editor.document));
     const layout = {
@@ -189,7 +189,7 @@ test("imported straight and filled shapes can be offset and exported", async ({ 
     editor.selected = sources.map(shape => shape.id);
     editor.activateOffset();
     editor.setOffsetDistance(3);
-    if (editor.offsetError) throw Error(editor.offsetError);
+    if (editor.offset?.error) throw Error(editor.offset.error);
     await editor.applyOffset();
     editor.selected = [];
     const shapes = editor.document.shapes;

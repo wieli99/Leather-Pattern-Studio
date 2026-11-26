@@ -17,10 +17,10 @@ const props = defineProps<{ shape: Shape; selected: boolean }>();
 const inheritedState = useEditorSelector(
   editor,
   () =>
-    `${editor.isObjectHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}|${editor.booleanOperation}|${editor.booleanCutters.join(",")}`,
+    `${editor.isObjectHidden(props.shape.id)}|${editor.isLocked(props.shape.id)}|${editor.revision}|${editor.booleanOperation}|${editor.boolean?.cutters.join(",")}`,
 );
-const booleanRole = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.source === props.shape.id ? "target" : "other" : editor.booleanOperation ? editor.booleanTarget === props.shape.id ? "target" : "other" : null);
-const booleanOperand = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.path === props.shape.id : !!editor.booleanOperation && editor.booleanCutters.includes(props.shape.id));
+const booleanRole = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.source === props.shape.id ? "target" : "other" : editor.boolean ? editor.boolean.target === props.shape.id ? "target" : "other" : null);
+const booleanOperand = useEditorSelector(editor, () => editor.pathCopy ? editor.pathCopy.path === props.shape.id : !!editor.boolean?.cutters.includes(props.shape.id));
 const canToggleObjectState = useEditorSelector(
   editor,
   () => editor.canToggleObjectState,

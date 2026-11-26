@@ -172,8 +172,8 @@ function editText(event: MouseEvent) {
 const canvas = ref<HTMLCanvasElement | null>(null),
   hover = useEditorSelector(editor, editor.hoverSnapshot);
 const cursor = computed(() => {
-  if (e.value.transformTool === "mirror" && e.value.mirrorHover) return "pointer";
-  if (e.value.offsetDrag) return "grabbing";
+  if (e.value.transformTool === "mirror" && e.value.transform?.mirror.hover) return "pointer";
+  if (e.value.offset?.drag) return "grabbing";
   hover.value;
   if (editor.tool === "text") return "none";
   if (editor.array && !editor.objectPicker) return editor.arrayFollowing || editor.arrayCenterPicking ? "crosshair" : "default";
@@ -302,7 +302,7 @@ defineExpose({ beginText, cancelText });
     @click="editor.polylineClick($event.detail)"
     @pointerleave="editor.leavePointer()"
     @pointercancel="editor.pauseGesture()"
-    @lostpointercapture="(editor.gesture || editor.offsetDrag) && editor.pauseGesture()"
+    @lostpointercapture="(editor.gesture || editor.offset?.drag) && editor.pauseGesture()"
     @contextmenu.prevent
   />
   <div

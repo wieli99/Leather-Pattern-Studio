@@ -5,10 +5,12 @@ export interface HintState {
   mode: Mode;
   units?: string;
   stitchMode?: boolean;
-  stitchTool?: string | null;
-  stitchTransferPlacement?: { phase?: "hover" | "placed" } | null;
-  editingStitchHoles?: boolean;
-  addingStitchRun?: boolean;
+  stitch?: {
+    tool?: string | null;
+    transferPlacement?: { phase?: "hover" | "placed" } | null;
+    editingHoles?: boolean;
+    addingRun?: boolean;
+  };
 
   pending: readonly unknown[];
   selected: readonly string[];
@@ -23,7 +25,7 @@ export interface HintState {
   arrayStage?: "endpoint1" | "endpoint2" | "center" | "review";
   pathCopy?: { picker: "source" | "path" | null } | null;
   booleanOperation?: string | null;
-  booleanPicker?: "target" | "cutters" | null;
+  boolean?: { picker: "target" | "cutters" | null } | null;
   placingPivot: boolean;
   active?: readonly { kind: string }[];
   measurementFields?: readonly string[];
@@ -79,7 +81,7 @@ function canvasHelp(s: HintState, hint: EditorHint): EditorHint {
   }
   controls.push(
     { id: "pan", gesture: "Space+drag / Middle-drag", action: "Pan" },
-    ...(!s.stitchTransferPlacement
+    ...(!s.stitch?.transferPlacement
       ? [{ id: "scroll", gesture: "Scroll", action: "Pan" }]
       : []),
     { id: "zoom", gesture: "Ctrl/⌘+scroll", action: "Zoom" },
@@ -237,12 +239,12 @@ function buildHint(
   }
   if (s.booleanOperation) {
     action =
-      s.booleanPicker === "target"
+      s.boolean?.picker === "target"
         ? "Choose a target from the original objects."
-        : s.booleanPicker === "cutters"
+        : s.boolean?.picker === "cutters"
           ? "Choose objects to add or remove from the operation."
           : "Review the result, or activate a picker to change the objects.";
-    if (s.booleanPicker !== "target")
+    if (s.boolean?.picker !== "target")
       add("apply", "Enter on canvas / Right-click", "Apply");
     add("buttons", "Enter / Space on a button", "Activate button");
     add("fields", "Tab / Shift+Tab", "Next / previous control");
@@ -250,7 +252,7 @@ function buildHint(
     return { action, controls };
   }
   if (s.stitchMode) {
-    if (s.stitchTool === null)
+    if (s.stitch?.tool === null)
       return {
         action: "Select a stitching tool below, or click a line to edit it.",
         controls: [
@@ -278,8 +280,8 @@ function buildHint(
         ],
       };
     if (
-      s.stitchTool &&
-      ["link", "unlink", "merge", "split", "delete"].includes(s.stitchTool)
+      s.stitch?.tool &&
+      ["link", "unlink", "merge", "split", "delete"].includes(s.stitch?.tool)
     )
       return {
         action:
@@ -298,7 +300,7 @@ function buildHint(
           { id: "stitch-cancel", gesture: "Esc", action: "Discard preview" },
         ],
       };
-    if (s.stitchTool === "continue")
+    if (s.stitch?.tool === "continue")
       return {
         action:
           "Continue the selected section; review its spacing.",
@@ -320,7 +322,7 @@ function buildHint(
           },
         ],
       };
-    if (s.stitchTransferPlacement)
+    if (s.stitch?.transferPlacement)
       return {
         action:
           "Click to place the transfer preview, then confirm it.",
@@ -340,9 +342,9 @@ function buildHint(
         ],
       };
     return {
-      action: s.editingStitchHoles
+      action: s.stitch?.editingHoles
         ? "Ctrl-click a hole; Ctrl+Shift-click to add or remove holes."
-        : s.addingStitchRun
+        : s.stitch?.addingRun
           ? "Click the edge where the new run starts."
           : "Hover an edge to preview stitching; click to place or select.",
       controls: [
@@ -363,8 +365,8 @@ function buildHint(
         },
         {
           id: "stitch-merge",
-          gesture: s.editingStitchHoles ? "Ctrl+Shift+click" : "Shift+click",
-          action: s.editingStitchHoles
+          gesture: s.stitch?.editingHoles ? "Ctrl+Shift+click" : "Shift+click",
+          action: s.stitch?.editingHoles
             ? "Add or remove holes from the selection"
             : "Toggle lines; Shift-click a free part of the same edge to continue",
         },
