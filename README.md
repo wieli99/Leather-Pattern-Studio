@@ -4,91 +4,61 @@
 
 # Leather Pattern Studio
 
-**Draw accurate leather patterns, plan your stitching, and print at actual size — in your browser.**
+**Pattern design made for leatherwork, from first outline to a paper pattern printed at actual size.**
 
-Go from an idea to a paper pattern with precise dimensions, stitch-hole placement, and linked print layouts. No account or installation required. Your projects stay on your device, and you can keep working offline after the first online load finishes caching.
+General drawing apps don't know what a stitching iron is, and CAD tools take a weekend to learn. Leather Pattern Studio sits in between. You draw to exact dimensions, the stitch holes land where your irons will punch them, and the printout matches your ruler.
 
-**[Open Leather Pattern Studio](https://leather.wieli.at)** · [User manual](https://leather.wieli.at/manual/index.html) · [Release notes](CHANGELOG.md)
+It's free and open source. It runs in your browser without an account, also comes as a desktop app, and works offline.
+
+**[Open Leather Pattern Studio](https://leather.wieli.at)** · [User manual](https://leather.wieli.at/manual/index.html) · [Desktop downloads](https://github.com/wieli99/Leather-Pattern-Studio/releases)
 
 ![A rounded pattern piece selected in the editor, with exact width and height controls](public/manual/images/workspace.png)
 
-## From outline to finished pattern
+## Draw it once, draw it right
 
-- **Draw to real dimensions.** Use numeric inputs, grid and object snapping, and measurements in millimetres or inches. Zoom in for detail without changing the size of your pattern.
-- **Continue an existing pattern.** Import editable SVG outlines at physical size, review unsupported content, then edit curves and add LPS stitching. [Supported SVG subset](docs/manual/files.md#editable-svg-import).
-- **Refine your pieces.** Edit curves, round corners, move, rotate, resize, mirror, trim, and merge geometry. Group related objects and add labels, measurements, and reference images.
-- **Plan for leatherwork.** Mark skiving, glueing, and cutout areas, and add stitching with spacing and inset matched to your tools.
-- **Keep paper layouts in sync.** Arrange linked copies of your pieces on print tabs. Source edits update the artwork while preserving its placement on the page.
-- **Take your work with you.** Save editable `.leather.json` files and export print layouts as PDF, SVG, PNG, or outline-only DXF. The editor, manual, and exports work offline after caching completes.
+Type in the dimensions you want and the shape follows. Every field takes formulas. Define a variable such as a strap width or a card slot depth, and every piece that uses it updates when you change it. That makes it easy to scale a wallet design to a new card size or a belt to a new length.
 
-### Stitching that follows your pattern
+Rounded and chamfered corners, offsets, joins, cutouts, mirroring, arrays and alignment are all built in. Snapping and guidelines keep pieces lined up, and you can always zoom in for detail without the real size changing.
 
-Choose French, Japanese, round, or flat hole marks, set spacing and distance from the edge, and merge adjacent stitch lines for continuous spacing around corners. Stitching follows edits to the source geometry. Link stitch lines to flag mismatched hole counts as you revise mating pieces.
+## Stitching that keeps up with your edits
+
+Choose French, Japanese, round or flat holes and set the spacing and edge distance to match your irons. When you reshape a piece, its stitching follows the new outline. Merge stitch lines to keep the spacing even around corners. Link mating pieces, such as a gusset and its panel, and the editor tells you as soon as their hole counts drift apart.
 
 ![Stitch-line settings and hole placement on a rounded rectangle](public/manual/images/stitch-lines.png)
 
-[Explore stitching tools](docs/manual/stitching.md)
+Skiving, glueing and cutout areas get their own markings, so the pattern carries everything you need at the bench.
 
-### Paper patterns ready for the workbench
+## Bring what you already have
 
-Arrange pieces on standard or custom paper sizes, add labels and size guides, and spread larger patterns across sheets with assembly marks. Preview your export before downloading it. Print at **Actual size / 100%**, disable “Fit to page,” and check a printed size guide with a ruler before cutting material.
+Open an existing SVG pattern as editable outlines, with its stitch lines detected automatically. Got a photo or scan of an old pattern instead? Drop it in, mark two points a known distance apart, and trace over it at true scale.
+
+## Print and cut
+
+Lay your pieces out on print tabs as linked copies. When you change the pattern, the printout updates and your page layout stays as it is. Big pieces split across several sheets with assembly marks, and a size guide lets you confirm the scale at a glance. Export to PDF, SVG or PNG for printing, or to DXF for laser and plotter cutting.
 
 ![Print layout with linked pattern pieces, dimensions, labels, and size guides](public/manual/images/print-layout.png)
 
-[Learn about print layouts and export](docs/manual/printing.md)
+## Get started
 
-## Make your first pattern
+[Open the app](https://leather.wieli.at) and follow [Your first pattern](https://leather.wieli.at/manual/index.html#getting-started). In a few minutes you go from a blank canvas to a rounded, stitched piece ready to print. The full manual is one click away on the **?** button, offline included.
 
-1. [Open the app](https://leather.wieli.at) in a desktop browser and choose your units in Settings.
-2. Draw a rectangle with exact dimensions, round its corners, and add stitch lines.
-3. **Save** your editable project file.
-4. Create a print tab with **+**, import your piece, add a size guide, and export a PDF.
+Projects are saved as `.leather` files on your own computer. Nothing is uploaded and you don't need an account.
 
-Follow [your first pattern](https://leather.wieli.at/manual/index.html#getting-started) for a step-by-step walkthrough. The **?** link in the editor opens the bundled, searchable manual, which is also available offline. Manual sources live in [docs/manual](docs/manual/home.md).
+Prefer a desktop app? Grab the build for Linux (Flatpak), Windows or macOS from [Releases](https://github.com/wieli99/Leather-Pattern-Studio/releases). It's available for both x64 and ARM64, and it tells you when a new version is out.
 
-## Project files and recovery
+Ideas or feedback? Join the [Discussions](https://github.com/wieli99/Leather-Pattern-Studio/discussions), or use **Report a bug** right in the editor.
 
-Projects save as version 21, including linked print layouts, embedded images, text, object groups, indicators, measurements, and attached stitch groups. Versions 1–20 migrate on open; older application builds cannot open version-21 files. Keep backup copies before upgrading.
+## Development
 
-New project files use `.leather` and contain JSON. Existing `.leather.json` and `.json` projects remain readable. Save uses native file dialogs on desktop and browser file pickers where supported; other browsers download copies. Recovery is separate from saved files and can be cleared or evicted. Save before accepting an application update.
-
-## Desktop builds
-
-The Tauri 2 desktop builds share the website’s Vue editor and Rust/Wasm engine. Packages target Linux (Flatpak), Windows (NSIS) and macOS (DMG), each for x64 and ARM64. Development packages are attached to the Desktop packages GitHub Actions runs; release downloads are published through GitHub Releases separately.
-
-Desktop launches check for updates automatically. **Settings → Check for updates** retries manually; installation is through GitHub. Windows packages are unsigned, and macOS packages use ad-hoc signing without notarization. See [desktop packaging and installation](docs/deployment.md#desktop-packages) for platform restrictions and release instructions.
-
-## Current limitations
-
-Browser CI exercises Chromium, Firefox, and WebKit in Linux containers. Desktop CI builds packages and runs native Rust tests on both CPU architectures for each target OS. These checks do not certify physical Windows/macOS devices, native file dialogs, or touch/mobile editing. General-purpose booleans and offsets are outside the supported workflow. Browser offline use requires an initial successful online load and completed cache installation; desktop builds bundle the editor and manual.
-
-Bug reports may include project contents and system information. Review attachments before submitting a public GitHub issue. See the bundled manual for current procedures and limitations.
-
-## Develop and contribute
-
-Built with Vue 3, TypeScript, Canvas 2D, and Rust/Wasm, with a focused 2D workspace inspired by Plasticity.
-
-### Run with Podman
+Leather Pattern Studio is built with Vue 3, TypeScript and Canvas 2D. A Rust document engine compiled to WebAssembly handles validation and undo history, and Tauri 2 powers the desktop app. Everything runs through Podman, so Bash and Podman are all you need:
 
 ```bash
-tools/dev/run.sh dev
+tools/dev/run.sh dev     # serve the editor at http://127.0.0.1:5174
+tools/dev/run.sh fast    # type check and unit tests
+tools/dev/run.sh check   # Rust tests, production build and browser tests
 ```
 
-Open **http://127.0.0.1:5174/**. This builds the Node/Rust toolchain image, installs locked dependencies, generates Wasm, and starts Vite. Stop another server using port 5174 first. Source changes reload; Rust changes require rerunning `npm run wasm` in the container.
-
-```bash
-tools/dev/run.sh check
-```
-
-Runs Rust tests, generated TypeScript contracts, production build, unit tests, and Chromium/Firefox/WebKit acceptance tests. Browser system libraries are baked into the cached development image, using the locked Playwright version, so individual test containers retain the required libraries. Browser binaries use a persistent Podman volume; `check` installs any missing binaries. To test offline behavior, build and run `tools/dev/run.sh preview`; development mode intentionally does not register a service worker. Offline use starts after the first successful online load and cache installation. Serve deployments over HTTPS (localhost also works).
-
-For a quicker TypeScript and unit-test pass between commits, run `tools/dev/run.sh fast` after generating Wasm/contracts with `tools/dev/run.sh npm run wasm` (or starting development). Run the full check once before preparing a PR for editor changes, rather than before every commit. CI keeps full coverage with parallel browser jobs; see the [validation cadence](docs/deployment.md#validation-cadence).
-
-See the [contributor guidelines](AGENTS.md) and [development and release workflow](docs/deployment.md) for contribution and pull request guidance.
-
-### Code organization
-
-`src/editor/` contains the controller, renderer, worker client and persistence; `src/model/` contains migration and geometry helpers; `crates/document/` owns validated documents and history in Rust/Wasm. `src/generated/` contains Rust-generated TypeScript contracts; `src/wasm/` is generated and ignored. `src-tauri/` owns the native desktop shell and file access; `packaging/` contains Flatpak metadata. Desktop packaging is not required for browser delivery.
+See the [contributor guidelines](AGENTS.md), [architecture notes](docs/architecture.md) and [development workflow](docs/deployment.md) for more. Pull requests go to `dev`.
 
 ## License
 
