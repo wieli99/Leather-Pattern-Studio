@@ -149,6 +149,8 @@ nav small {
   font-size: 9px;
   color: #8996a4;
 }
+/* Like Model's wrapped tool buttons, Print rail buttons keep their size; a short window scrolls the rail. */
+.print-rail > button { flex-shrink: 0; }
 .rail-divider {
   flex: 0 0 1px;
   min-height: 1px;

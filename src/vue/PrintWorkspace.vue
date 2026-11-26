@@ -3342,7 +3342,7 @@ defineExpose({
     ></DialogRoot
   >
   <section v-if="layout" class="print-workspace" aria-label="Print workspace">
-    <ToolRail v-if="left" aria-label="Print tools">
+    <ToolRail v-if="left" class="print-rail" aria-label="Print tools">
       <RailButton
         v-for="value in ['select', 'move', 'rotate', 'mirror', 'align'] as const"
         :key="value"
