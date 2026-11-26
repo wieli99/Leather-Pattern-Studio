@@ -4091,18 +4091,18 @@ describe("Align and distribute", () => {
     e.toggleAlign({ kind: "align", edge: "left" });
     e.toggleAlign({ kind: "align", edge: "top" });
     expect(e.document).toBe(original);
-    expect(lefts(e.alignDraft!, ids)).toEqual([0, 0, 0]);
-    expect(tops(e.alignDraft!, ids)).toEqual([0, 0, 0]);
+    expect(lefts(e.align!.draft!, ids)).toEqual([0, 0, 0]);
+    expect(tops(e.align!.draft!, ids)).toEqual([0, 0, 0]);
     // Changing the reference recomputes from the original positions, not the preview.
     e.setAlignReference("largest");
-    expect(lefts(e.alignDraft!, ids)).toEqual([40, 40, 40]);
-    expect(tops(e.alignDraft!, ids)).toEqual([20, 20, 20]);
+    expect(lefts(e.align!.draft!, ids)).toEqual([40, 40, 40]);
+    expect(tops(e.align!.draft!, ids)).toEqual([20, 20, 20]);
     // A second choice on the same axis replaces the first; choosing it again clears the axis.
     e.toggleAlign({ kind: "align", edge: "right" });
-    expect(lefts(e.alignDraft!, ids)).toEqual([50, 40, 55]);
+    expect(lefts(e.align!.draft!, ids)).toEqual([50, 40, 55]);
     e.toggleAlign({ kind: "align", edge: "right" });
-    expect(e.alignX).toBeNull();
-    expect(lefts(e.alignDraft!, ids)).toEqual([10, 40, 0]);
+    expect(e.align?.x).toBeNull();
+    expect(lefts(e.align!.draft!, ids)).toEqual([10, 40, 0]);
     expect(e.revision).toBe(revision);
     expect(await e.applyAlign()).toBe(true);
     expect(e.alignActive).toBe(false);
@@ -4123,8 +4123,8 @@ describe("Align and distribute", () => {
     expect(e.selected).toEqual(["b", "a"]);
     e.setAlignReference("first");
     e.toggleAlign({ kind: "align", edge: "right" });
-    expect(lefts(e.alignDraft!, ["b", "a"])).toEqual([40, 50]);
-    expect(e.preview).toBe(e.alignDraft);
+    expect(lefts(e.align!.draft!, ["b", "a"])).toEqual([40, 50]);
+    expect(e.preview).toBe(e.align?.draft);
     e.cancel();
     expect(e.alignActive).toBe(false);
     expect(e.preview).toBeNull();
@@ -4138,12 +4138,12 @@ describe("Align and distribute", () => {
     e.selected = ["a", "b"];
     e.activateAlign();
     e.toggleAlign({ kind: "align", edge: "left" });
-    expect(e.alignX).not.toBeNull();
-    expect(e.alignDraft).toBeNull();
+    expect(e.align?.x).not.toBeNull();
+    expect(e.align?.draft).toBeNull();
     expect(e.canApplyAlign).toBe(false);
     expect(e.alignAvailable({ kind: "distribute", mode: "gaps-x" })).toBe(false);
     e.toggleAlign({ kind: "distribute", mode: "gaps-y" });
-    expect(e.alignY).toBeNull();
+    expect(e.align?.y).toBeNull();
   });
 
   test("selected groups move as one object when distributing", async () => {
@@ -4156,7 +4156,7 @@ describe("Align and distribute", () => {
     e.selectGroup(group);
     e.selected = [...e.selected, "m"];
     e.activateAlign();
-    expect(e.alignUnits.map(u => [...u.ids].sort())).toEqual([["g1", "g2"], ["m"]]);
+    expect(e.align!.units.map(u => [...u.ids].sort())).toEqual([["g1", "g2"], ["m"]]);
     expect(e.alignAvailable({ kind: "distribute", mode: "gaps-x" })).toBe(false);
     e.cancel();
     e.selected = [...e.selected, "z"];
@@ -4177,7 +4177,7 @@ describe("Align and distribute", () => {
     expect(e.canApplyAlign).toBe(true);
     await e.transact("undo");
     expect(e.alignActive).toBe(false);
-    expect(e.alignDraft).toBeNull();
+    expect(e.align).toBeNull();
     expect(await e.applyAlign()).toBe(false);
     expect(e.document.shapes.find(s => s.id === "x")!.name).toBe("x");
     e.activateAlign();
@@ -4196,8 +4196,8 @@ describe("Align and distribute", () => {
     expect(e.alignAvailable({ kind: "align", edge: "left" })).toBe(false);
     expect(e.canApplyAlign).toBe(false);
     e.setAlignReference("largest");
-    expect(e.alignX).toEqual({ kind: "align", edge: "left" });
-    expect(e.alignY).toEqual({ kind: "align", edge: "top" });
+    expect(e.align?.x).toEqual({ kind: "align", edge: "left" });
+    expect(e.align?.y).toEqual({ kind: "align", edge: "top" });
     e.busy = false;
     expect(e.canApplyAlign).toBe(true);
   });
@@ -4212,8 +4212,8 @@ describe("Align and distribute", () => {
     e.activateAlign();
     e.toggleAlign({ kind: "align", edge: "left" });
     // The piece moves 40 mm left; its unselected seam follows in the preview, not only after Apply.
-    expect(seamLeft(e.alignDraft!)).toBeCloseTo(5);
-    const previewed = e.alignDraft!.shapes.find(s => s.id === "seam");
+    expect(seamLeft(e.align!.draft!)).toBeCloseTo(5);
+    const previewed = e.align!.draft!.shapes.find(s => s.id === "seam");
     await e.applyAlign();
     expect(e.document.shapes.find(s => s.id === "seam")).toEqual(previewed);
   });

@@ -105,7 +105,7 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
-import type { OffsetSession } from "./toolSessions";
+import type { AlignSession, OffsetSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
@@ -310,12 +310,10 @@ export class Controller {
     this.offset = { draft: null, ids: [], error: "", drag: null };
     this.refreshOffset();
   }
-  alignActive = false;
   alignReference: AlignReference = "selection";
-  /** One horizontal and one vertical choice, previewed together from the unchanged document. */
-  alignX: AlignAction | null = null;
-  alignY: AlignAction | null = null;
-  alignDraft: Doc | null = null;
+  /** The open Align tool: its targets and up to one choice per axis. */
+  align: AlignSession | null = null;
+  get alignActive() { return !!this.align; }
   get canAlign() {
     return this.canStartTransform("move");
   }
@@ -323,9 +321,7 @@ export class Controller {
     if (this.deferUntilSettled(() => this.activateAlign())) return;
     if (!this.canAlign) return;
     this.beginToolSession();
-    this.alignActive = true;
-    this.alignX = null;
-    this.alignY = null;
+    this.align = { x: null, y: null, draft: null, units: [], gapsFit: { x: true, y: true } };
     this.refreshAlign();
   }
   setAlignReference(reference: AlignReference) {
@@ -334,40 +330,42 @@ export class Controller {
   }
   /** Choose an action for its axis; choosing the selected action again clears that axis. */
   toggleAlign(action: AlignAction) {
-    if (!this.alignActive) return;
-    const key = alignAxis(action) === "x" ? "alignX" : "alignY";
-    this[key] = JSON.stringify(this[key]) === JSON.stringify(action) ? null : action;
+    const align = this.align;
+    if (!align) return;
+    const key = alignAxis(action);
+    align[key] = JSON.stringify(align[key]) === JSON.stringify(action) ? null : action;
     this.refreshAlign();
   }
   isAlignChosen(action: AlignAction) {
-    return JSON.stringify(alignAxis(action) === "x" ? this.alignX : this.alignY) === JSON.stringify(action);
+    return !!this.align && JSON.stringify(this.align[alignAxis(action)]) === JSON.stringify(action);
   }
   /** Whether the current targets and reference support an action; busy state only disables controls. */
-  private alignSupported(action: AlignAction) {
-    return this.alignUnits.length >= requiredUnits(action, this.alignReference) &&
-      (action.kind !== "distribute" || !action.mode.startsWith("gaps") || this.alignGapsFit[alignAxis(action)]);
+  private alignSupported(align: AlignSession, action: AlignAction) {
+    return align.units.length >= requiredUnits(action, this.alignReference) &&
+      (action.kind !== "distribute" || !action.mode.startsWith("gaps") || align.gapsFit[alignAxis(action)]);
   }
   alignAvailable(action: AlignAction) {
-    return this.alignActive && !this.busy && this.alignSupported(action);
+    return !!this.align && !this.busy && this.alignSupported(this.align, action);
   }
   refreshAlign() {
-    if (!this.alignActive) return;
-    this.alignDraft = null;
+    const align = this.align;
+    if (!align) return;
+    align.draft = null;
     this.preview = null;
     // Targets only change through Select Objects, which refreshes here; undo and redo end the session.
-    this.alignUnits = this.computeAlignUnits();
-    const boxes = unitBoxes(this.document.shapes, this.alignUnits, this.units);
-    this.alignGapsFit = { x: gapsFit(boxes, "x"), y: gapsFit(boxes, "y") };
+    align.units = this.computeAlignUnits();
+    const boxes = unitBoxes(this.document.shapes, align.units, this.units);
+    align.gapsFit = { x: gapsFit(boxes, "x"), y: gapsFit(boxes, "y") };
     // Choices the current targets or reference cannot use are dropped rather than kept hidden.
-    if (this.alignX && !this.alignSupported(this.alignX)) this.alignX = null;
-    if (this.alignY && !this.alignSupported(this.alignY)) this.alignY = null;
-    const actions = [this.alignX, this.alignY].filter((a): a is AlignAction => !!a);
+    if (align.x && !this.alignSupported(align, align.x)) align.x = null;
+    if (align.y && !this.alignSupported(align, align.y)) align.y = null;
+    const actions = [align.x, align.y].filter((a): a is AlignAction => !!a);
     const shapes = actions.length && !this.toolSelectionError
-      ? alignShapes(this.document.shapes, this.alignUnits, actions, this.alignReference, this.units) : null;
+      ? alignShapes(this.document.shapes, align.units, actions, this.alignReference, this.units) : null;
     if (shapes) {
       // Unselected stitching follows its piece in the preview exactly as it will on Apply.
-      this.alignDraft = this.normalizeTree(reconcileStitches({ ...this.document, shapes }, this.document));
-      this.preview = this.alignDraft;
+      align.draft = this.normalizeTree(reconcileStitches({ ...this.document, shapes }, this.document));
+      this.preview = align.draft;
     }
     this.notify();
   }
@@ -375,8 +373,6 @@ export class Controller {
    * Independent objects for alignment, in selection order. A selected group moves as one
    * unit with its nested groups, and selected stitching moves with its selected parent.
    */
-  alignUnits: AlignUnit[] = [];
-  alignGapsFit = { x: true, y: true };
   private computeAlignUnits(): AlignUnit[] {
     const selected = new Set(this.selected);
     const groups = this.selectedGroups.flatMap(id => {
@@ -403,12 +399,12 @@ export class Controller {
     return units.filter(ids => ids.length).sort((a, b) => first(a) - first(b)).map(ids => ({ ids }));
   }
   get canApplyAlign() {
-    return this.alignActive && !this.objectPicker && !this.toolSelectionError && !this.busy && !!this.alignDraft;
+    return !!this.align?.draft && !this.objectPicker && !this.toolSelectionError && !this.busy;
   }
   /** Commit the previewed alignment as one undo step and keep the aligned objects selected. */
   async applyAlign() {
     if (!this.canApplyAlign) return false;
-    const next = this.alignDraft!;
+    const next = this.align!.draft!;
     this.toolSelection = null;
     this.cancel();
     return this.commit(next);
@@ -877,8 +873,8 @@ export class Controller {
       this.offsetActive ? this.version : 0,
       this.alignActive,
       this.alignReference,
-      JSON.stringify([this.alignX, this.alignY]),
-      this.alignDraft ? this.version : 0,
+      JSON.stringify([this.align?.x, this.align?.y]),
+      this.align?.draft ? this.version : 0,
       this.revision,
       this.ready,
       this.message,
@@ -2205,7 +2201,7 @@ export class Controller {
   }
   async commit(document: Doc) {
     if ((this.pathCopy || this.array) && document !== this.preview) this.cancel();
-    if (this.offsetActive || this.alignActive && document !== this.alignDraft) this.cancel();
+    if (this.offsetActive || this.align && document !== this.align.draft) this.cancel();
     try {
       if (!this.canCommitFromView(document)) return false;
       document = reconcilePrintLayouts(this.normalizeTree(reconcileStitches(document,this.document)));
@@ -3541,11 +3537,7 @@ export class Controller {
     this.arrayConfirmed = null;
     this.arrayInvalidDistances.clear();
     this.offset = null;
-    this.alignActive = false;
-    this.alignX = null;
-    this.alignY = null;
-    this.alignDraft = null;
-    this.alignUnits = [];
+    this.align = null;
     this.mirrorAxis = null;
     this.mirrorLine = null;
     this.mirrorHover = null;
