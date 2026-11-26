@@ -1191,17 +1191,31 @@ select:disabled { opacity: .5; }
   margin: 4px 0;
 }
 
-.corner-inputs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.corner-inputs select { width: 100%; }
-.corner-inputs label:has(> select) { display:block; }
+.corner-inputs { display: grid; gap: 6px; }
 
 .array-options .transform-inputs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .array-options .transform-inputs label { min-width:0; }
 .array-options .transform-inputs input { width:100%; box-sizing:border-box; }
 .array-options { max-height:min(72vh,calc(100dvh - 180px)); }
+
+/* ToolField: one labelled tool setting with the label left and a fixed-width control right. */
+.tool-field { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0; }
+.tool-field > span { min-width:0; }
+.tool-field > input:not([type="checkbox"]),
+.tool-field > select,
+.tool-field > .tool-field-control { flex:0 0 135px; width:135px; box-sizing:border-box; }
+.tool-field input:not([type="checkbox"]),
+.tool-field select {
+  background-color: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px;
+}
+.tool-field input[aria-invalid="true"] { border-color: #ed907f; }
+/* A value with attached buttons, such as stitch spacing with its presets menu. */
+.tool-field-control { display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.tool-field .tool-field-control input { width:0; min-width:0; flex:1; border:0; border-radius:0; }
 
 /* Shared spacing for inline select labels; stronger stacked layouts retain their display. */
 label:has(> select) { display:flex; align-items:center; column-gap:8px !important; row-gap:6px; }

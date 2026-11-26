@@ -153,17 +153,21 @@ test("radial center hover and modifier changes render previews before confirmati
     panel.getByRole("button", { name: "Apply", exact: true }),
   ).toBeEnabled();
 });
-test("shared select spacing retains stacked full-width corner controls", async ({
+test("corner controls use the shared tool field rows", async ({
   page,
 }) => {
   const { panel } = await setup(page, "Rectangular Array");
   await panel.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Corners", exact: true }).click();
-  const label = page.locator(".corner-inputs label:has(> select)").first();
-  await expect(label).toBeVisible();
-  expect(await label.evaluate((el) => getComputedStyle(el).display)).toBe(
-    "block",
-  );
+  const rows = page.locator(".corner-inputs .tool-field");
+  await expect(rows.first()).toBeVisible();
+  // Label left and a 135 px control right, on one line, as in the stitch panel.
+  for (const row of await rows.all()) {
+    const [label, control] = await row.evaluate((el) => [el.children[0], el.children[1]].map((c) => c.getBoundingClientRect().toJSON()));
+    expect(control.width).toBeCloseTo(135, 0);
+    expect(Math.abs(label.y + label.height / 2 - (control.y + control.height / 2))).toBeLessThan(2);
+    expect(label.right).toBeLessThanOrEqual(control.left);
+  }
 });
 for (const [tool, action] of [
   ["Rectangular Array", "Cancel"],

@@ -114,7 +114,7 @@ test("E rotates a selected segment by an exact angle", async ({ page }) => {
   await page.getByLabel("Pattern drawing canvas").focus();
   await page.keyboard.press("k");
   await expect(page.getByRole("button", { name: "Rotate", exact: true })).toHaveAttribute("aria-pressed", "true");
-  const angle = page.locator(".transform-inputs input").first();
+  const angle = page.getByLabel("Angle (°)", { exact: true });
   await angle.fill("90");
   // Enter in the angle field applies the rotation.
   await angle.press("Enter");

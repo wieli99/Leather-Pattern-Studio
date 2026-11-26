@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ToolField from "./ToolField.vue";
 import ToolSearch from "./ToolSearch.vue";
 import SelectionHint from "./SelectionHint.vue";
 import PivotSelector from "./PivotSelector.vue";
@@ -79,16 +80,14 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         >
           Select endpoint 2
         </button>
-        <label
-          >Mode<select
+        <ToolField label="Mode"><select
             aria-label="Mode"
             :value="e.array.extent ? 'extent' : 'spacing'"
             @change="editor.setArrayExtent(($event.target as HTMLSelectElement).value === 'extent')"
           >
             <option value="extent">Extent</option>
             <option value="spacing">Spacing</option>
-          </select></label
-        >
+          </select></ToolField>
         <div class="transform-inputs" data-hint-edit="array">
           <label
             v-for="(field,i) in (['vector1','vector2'] as const)"
@@ -133,16 +132,14 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         >
           Select center point
         </button>
-        <label
-          >Mode<select
+        <ToolField label="Mode"><select
             aria-label="Mode"
             :value="e.array.step ? 'spacing' : 'total'"
             @change="editor.setArrayDistribution(($event.target as HTMLSelectElement).value === 'spacing')"
           >
             <option value="total">Total</option>
             <option value="spacing">Spacing</option>
-          </select></label
-        >
+          </select></ToolField>
         <div class="transform-inputs" data-hint-edit="array">
           <label
             >Degrees<LengthInput
@@ -164,12 +161,11 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
               @commit="editor.setArrayValue('count', $event)"
           /></label>
         </div>
-        <label class="stitch-toggle"
-          >Rotate copies<input
+        <ToolField label="Rotate copies"><input
             type="checkbox"
             v-model="e.array.rotate"
             @change="editor.refreshArray()"
-        /></label>
+        /></ToolField>
       </template>
       <small>Shift+wheel changes count. Counts include the original.</small>
       <p v-if="e.array.error" role="alert">{{ e.array.error }}</p>
@@ -180,12 +176,10 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
         <span class="boolean-picker-label">{{ role === 'source' ? 'Select Source' : 'Select Path' }}</span><span class="boolean-object-name">{{ e.pathCopy![role] ? '(1)' : 'Choose object' }}</span>
       </button>
       <hr>
-      <label>Distribution<select v-model="e.pathCopy.mode" @change="editor.refreshPathCopy()"><option value="spacing">Spacing</option><option value="count">Count</option></select></label>
-      <div class="transform-inputs" data-hint-edit="path-copy">
-      <label v-if="e.pathCopy.mode === 'spacing'">Spacing ({{ e.unitSymbol }})<LengthInput :min="0.01" :value="e.pathCopy.spacing" @invalid="e.pathCopy.spacing = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.spacing = $event; editor.refreshPathCopy()" /></label>
-      <label v-else>New copies<LengthInput scalar integer :min="1" :max="1000" :step="1" :value="e.pathCopy.count" @invalid="e.pathCopy.count = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.count = $event; editor.refreshPathCopy()" /></label>
-      </div>
-      <label class="stitch-toggle">Rotate with path<input v-model="e.pathCopy.rotate" type="checkbox" @change="editor.refreshPathCopy()" /></label>
+      <ToolField label="Distribution"><select v-model="e.pathCopy.mode" @change="editor.refreshPathCopy()"><option value="spacing">Spacing</option><option value="count">Count</option></select></ToolField>
+      <ToolField v-if="e.pathCopy.mode === 'spacing'" :label="`Spacing (${e.unitSymbol})`" data-hint-edit="path-copy"><LengthInput :min="0.01" :value="e.pathCopy.spacing" @invalid="e.pathCopy.spacing = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.spacing = $event; editor.refreshPathCopy()" /></ToolField>
+      <ToolField v-else label="New copies" data-hint-edit="path-copy"><LengthInput scalar integer :min="1" :max="1000" :step="1" :value="e.pathCopy.count" @invalid="e.pathCopy.count = NaN; editor.refreshPathCopy()" @commit="e.pathCopy.count = $event; editor.refreshPathCopy()" /></ToolField>
+      <ToolField label="Rotate with path"><input v-model="e.pathCopy.rotate" type="checkbox" @change="editor.refreshPathCopy()" /></ToolField>
       <small v-if="e.preview && !e.pathCopy.picker">{{ e.preview.shapes.filter(s => !e.document.shapes.some(o => o.id === s.id) && !s.stitchParentId).length }} new objects</small>
       <p v-if="e.pathCopy.error" role="alert">{{ e.pathCopy.error }}</p>
     </ToolPopover>
@@ -229,15 +223,13 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       :apply-disabled="!e.canApplyOffset" :apply="() => editor.applyOffset()" :cancel="cancel">
       <ToolObjectPicker /><hr>
       <small>Positive expands closed outlines; negative insets. On open paths, positive goes left from start to end.</small>
-      <div class="transform-inputs" data-hint-edit="transform">
-        <label>Distance ({{ e.unitSymbol }})<LengthInput fixed non-zero aria-label="Offset distance" :value="e.offsetDistance"
-          @invalid="editor.setOffsetDistance(NaN)" @commit="editor.setOffsetDistance($event)" /></label>
-      </div>
-      <label>Corner style
+      <ToolField :label="`Distance (${e.unitSymbol})`" data-hint-edit="transform"><LengthInput fixed non-zero aria-label="Offset distance" :value="e.offsetDistance"
+          @invalid="editor.setOffsetDistance(NaN)" @commit="editor.setOffsetDistance($event)" /></ToolField>
+      <ToolField label="Corner style">
         <select :value="e.offsetJoin" @change="editor.setOffsetJoin(($event.target as HTMLSelectElement).value as 'sharp' | 'rounded')">
           <option value="sharp">Sharp</option><option value="rounded">Rounded</option>
         </select>
-      </label>
+      </ToolField>
       <p v-if="e.offset?.error" role="alert">{{ e.offset.error }}</p>
     </ToolPopover>
     <ToolPopover
@@ -252,14 +244,14 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <template v-if="e.segmentMoveActive"><small>Transforming detached segments.</small><hr></template>
       <template v-else><ToolObjectPicker /><hr></template>
       <small>{{ transformHelp[e.transformTool] }}</small>
-      <div v-if="e.transformTool === 'corner'" class="transform-inputs corner-inputs">
+      <div v-if="e.transformTool === 'corner'" class="corner-inputs" data-hint-edit="transform">
         <template v-if="bulkCorners.length">
-          <label>All corners style <select :disabled="e.objectPicker" :value="e.bulkCornerStyle === null ? 'mixed' : e.bulkCornerStyle ? 'chamfer' : 'round'" @change="editor.setAllCornerStyle(($event.target as HTMLSelectElement).value === 'chamfer')"><option disabled value="mixed">Mixed</option><option value="round">Round</option><option value="chamfer">Chamfer</option></select></label>
-          <label :title="e.bulkCornerStyle === null ? 'Choose a style first' : e.bulkCornerStyle ? 'Equal edge setback' : 'Radius'">All corners ({{ e.unitSymbol }})<LengthInput clamp placeholder="Mixed" :disabled="e.objectPicker || e.bulkCornerStyle === null" :mixed="bulkMixed" :value="bulkValues[0] ?? 0" :min="0" @invalid="editor.setAllCornerValue(NaN)" @commit="editor.setAllCornerValue($event)" /></label>
+          <ToolField label="All corners style"><select :disabled="e.objectPicker" :value="e.bulkCornerStyle === null ? 'mixed' : e.bulkCornerStyle ? 'chamfer' : 'round'" @change="editor.setAllCornerStyle(($event.target as HTMLSelectElement).value === 'chamfer')"><option disabled value="mixed">Mixed</option><option value="round">Round</option><option value="chamfer">Chamfer</option></select></ToolField>
+          <ToolField :title="e.bulkCornerStyle === null ? 'Choose a style first' : e.bulkCornerStyle ? 'Equal edge setback' : 'Radius'" :label="`All corners (${e.unitSymbol})`"><LengthInput clamp placeholder="Mixed" :disabled="e.objectPicker || e.bulkCornerStyle === null" :mixed="bulkMixed" :value="bulkValues[0] ?? 0" :min="0" @invalid="editor.setAllCornerValue(NaN)" @commit="editor.setAllCornerValue($event)" /></ToolField>
         </template>
         <template v-if="cornerShape">
-          <label>Style <select :value="selectedChamfer ? 'chamfer' : 'round'" @change="editor.setCornerStyle(($event.target as HTMLSelectElement).value === 'chamfer')"><option value="round">Round</option><option value="chamfer">Chamfer</option></select></label>
-          <label>{{ selectedChamfer ? 'Setback' : 'Radius' }} ({{ e.unitSymbol }})<LengthInput clamp :value="radii[e.selectedCorner!.index]" :min="0" @invalid="editor.setCornerValue(NaN)" @commit="editor.setCornerValue($event)" /></label>
+          <ToolField label="Style"><select :value="selectedChamfer ? 'chamfer' : 'round'" @change="editor.setCornerStyle(($event.target as HTMLSelectElement).value === 'chamfer')"><option value="round">Round</option><option value="chamfer">Chamfer</option></select></ToolField>
+          <ToolField :label="`${selectedChamfer ? 'Setback' : 'Radius'} (${e.unitSymbol})`"><LengthInput clamp :value="radii[e.selectedCorner!.index]" :min="0" @invalid="editor.setCornerValue(NaN)" @commit="editor.setCornerValue($event)" /></ToolField>
         </template>
       </div>
       <TransformFields

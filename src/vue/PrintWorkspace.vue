@@ -2989,7 +2989,7 @@ function keyboard(event: KeyboardEvent) {
   if (key === "tab" && !event.shiftKey && !mod && !event.altKey && target === canvas.value) {
     const field = target.parentElement?.querySelector<HTMLInputElement>(
       tool.value !== "select"
-        ? ".print-transform .transform-inputs input"
+        ? ".print-transform .transform-inputs input, .print-transform .tool-field input:not([type=checkbox])"
         : ".construction-measurements input",
     );
     if (field) {

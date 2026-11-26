@@ -151,7 +151,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if (e.key === "Tab" && !e.shiftKey && canvas) {
     const field = document.querySelector<HTMLInputElement>(
       editor.stitchMode ? ".stitch-options input, .stitch-options select"
-        : editor.toolSession ? ".transform-inputs input"
+        : editor.toolSession ? ".transform-inputs input, .tool-field input:not([type=checkbox])"
         : ".construction-measurements input",
     );
     if (field) {

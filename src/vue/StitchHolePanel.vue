@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ToolField from "./ToolField.vue";
 import { computed } from "vue";
 import { editor } from "../editor/instance";
 import { useEditor } from "./useEditor";
@@ -31,12 +32,12 @@ async function change(changes:Partial<StitchSettings>|null) {
 <template>
   <div class="hole-settings" data-stitch-holes>
     <strong>{{ selected.length }} {{ selected.length===1 ? 'hole selected' : 'holes selected' }}</strong>
-    <label>Hole type<select aria-label="Hole type" :value="style" :disabled="e.busy" @change="change({style:($event.target as HTMLSelectElement).value as StitchSettings['style']})"><option v-if="!style" value="" disabled>Mixed</option><option value="round">Round</option><option value="french">French</option><option value="japanese">Japanese</option><option value="flat">Flat</option></select></label>
-    <label v-if="style==='round' || style==='flat'">{{ style==='round' ? 'Diameter' : 'Length' }} ({{ e.unitSymbol }})<LengthInput aria-label="Hole size" :value="selected[0] ? size(selected[0].appearance) : .8" :mixed="mixedSize" placeholder="Mixed" :min=".1" :max="5" :disabled="e.busy" @commit="change(style==='round' ? {roundDiameter:$event} : {flatLength:$event})" /></label>
+    <ToolField label="Hole type"><select aria-label="Hole type" :value="style" :disabled="e.busy" @change="change({style:($event.target as HTMLSelectElement).value as StitchSettings['style']})"><option v-if="!style" value="" disabled>Mixed</option><option value="round">Round</option><option value="french">French</option><option value="japanese">Japanese</option><option value="flat">Flat</option></select></ToolField>
+    <ToolField v-if="style==='round' || style==='flat'" :label="`${style==='round' ? 'Diameter' : 'Length'} (${e.unitSymbol})`"><LengthInput aria-label="Hole size" :value="selected[0] ? size(selected[0].appearance) : .8" :mixed="mixedSize" placeholder="Mixed" :min=".1" :max="5" :disabled="e.busy" @commit="change(style==='round' ? {roundDiameter:$event} : {flatLength:$event})" /></ToolField>
     <button type="button" :disabled="e.busy" @click="change(null)">Reset to line settings</button>
     <button type="button" @click="editor.stopEditingStitchHoles()">Line settings</button>
   </div>
 </template>
 <style scoped>
-.hole-settings{display:grid;gap:8px;}label{display:flex;align-items:center;justify-content:space-between;gap:8px;}select,input{width:135px;box-sizing:border-box;background-color:var(--input);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px;}
+.hole-settings{display:grid;gap:8px;}
 </style>

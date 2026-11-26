@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LengthInput from "./LengthInput.vue";
+import ToolField from "./ToolField.vue";
 import type { AlignAction, AlignReference } from "../model/align";
 import type { UnitMode } from "../model/units";
 /** Align and distribute controls shared by the Model and Print panels. */
@@ -38,11 +39,11 @@ const columns: { axis: string; items: Item[] }[] = [
   ] },
 ];
 const references: { id: AlignReference; label: string }[] = [
-  { id: "selection", label: "Selection bounds" },
+  { id: "selection", label: "Selection" },
   { id: "first", label: "First selected" },
   { id: "last", label: "Last selected" },
-  { id: "largest", label: "Largest object" },
-  { id: "smallest", label: "Smallest object" },
+  { id: "largest", label: "Largest" },
+  { id: "smallest", label: "Smallest" },
 ];
 function title(item: Item) {
   if (item.action.kind !== "distribute") return item.label;
@@ -59,7 +60,7 @@ function setGapMode(mode: string) {
 }
 </script>
 <template>
-  <label>Relative to
+  <ToolField label="Relative to">
     <select
       aria-label="Align relative to"
       title="A reference object stays in place"
@@ -68,7 +69,7 @@ function setGapMode(mode: string) {
     >
       <option v-for="item in references" :key="item.id" :value="item.id">{{ item.label }}</option>
     </select>
-  </label>
+  </ToolField>
   <div class="align-axes">
     <div v-for="column in columns" :key="column.axis" class="align-axis" role="group" :aria-label="column.axis">
       <span>{{ column.axis }}</span>
@@ -89,19 +90,19 @@ function setGapMode(mode: string) {
       </div>
     </div>
   </div>
-  <div class="align-gap">
-    <label>Gaps
-      <select
-        aria-label="Gap spacing"
-        title="Equal shares the space between the outer objects; Exact places objects a set distance apart"
-        :value="gap === null ? 'equal' : 'exact'"
-        @change="setGapMode(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="equal">Equal</option>
-        <option value="exact">Exact</option>
-      </select>
-    </label>
-    <label v-if="gap !== null">Gap ({{ unitSymbol }})<LengthInput
+  <ToolField label="Gaps">
+    <select
+      aria-label="Gap spacing"
+      title="Equal shares the space between the outer objects; Exact places objects a set distance apart"
+      :value="gap === null ? 'equal' : 'exact'"
+      @change="setGapMode(($event.target as HTMLSelectElement).value)"
+    >
+      <option value="equal">Equal</option>
+      <option value="exact">Exact</option>
+    </select>
+  </ToolField>
+  <ToolField v-if="gap !== null" :label="`Gap (${unitSymbol})`">
+    <LengthInput
       fixed
       :units="units"
       :step=".1"
@@ -110,8 +111,8 @@ function setGapMode(mode: string) {
       :value="gap"
       :min="0"
       @commit="emit('gap', $event)"
-    /></label>
-  </div>
+    />
+  </ToolField>
 </template>
 <style scoped>
 .align-axes { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; }
@@ -123,6 +124,4 @@ function setGapMode(mode: string) {
 .align-axis > span { font-size: 12px; color: var(--muted); }
 .align-buttons { display: grid; grid-template-columns: repeat(3, 36px); gap: 2px; }
 .align-buttons button { display: grid; place-items: center; width: 36px; height: 36px; padding: 6px; }
-.align-gap { display: flex; gap: 8px; align-items: end; }
-.align-gap input { width: 7em; }
 </style>
