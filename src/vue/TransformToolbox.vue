@@ -3,6 +3,7 @@ import ToolField from "./ToolField.vue";
 import ToolFieldPair from "./ToolFieldPair.vue";
 import ObjectPickButton from "./ObjectPickButton.vue";
 import ToolSearch from "./ToolSearch.vue";
+import PathDrawingActions from "./PathDrawingActions.vue";
 import SelectionHint from "./SelectionHint.vue";
 import PivotSelector from "./PivotSelector.vue";
 import ToolObjectPicker from "./ToolObjectPicker.vue";
@@ -240,6 +241,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <PivotSelector v-if="e.transformTool !== 'corner'" :disabled="e.objectPicker" :mode="e.pivotMode" :placing="e.placingPivot" @change="editor.setPivotMode($event)" @cancel="editor.cancelPivotPlacement()" />
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
     </ToolPopover>
+    <PathDrawingActions />
     <ToolSearch v-if="!e.stitchMode" />
   </div>
 </template>

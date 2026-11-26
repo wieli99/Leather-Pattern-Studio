@@ -191,15 +191,6 @@ aside {
   overflow: auto;
   padding: 18px 16px;
 }
-.panel-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.panel-heading > span {
-  color: #82909d;
-  font-size: 11px;
-}
 h2 {
   font-size: 11px;
   text-transform: uppercase;
@@ -300,35 +291,6 @@ summary {
   cursor: pointer;
   margin-bottom: 12px;
 }
-.drawing-input {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: end;
-  gap: 10px;
-  background: #252d35;
-  border: 1px solid #48555f;
-  border-radius: 8px;
-  padding: 14px;
-  box-shadow: 0 8px 30px #0005;
-}
-.drawing-input strong {
-  font-size: 11px;
-  position: absolute;
-  top: -24px;
-  left: 0;
-  text-transform: capitalize;
-  color: #a7b9c3;
-}
-.drawing-input .field {
-  width: 95px;
-  margin: 0;
-}
-.drawing-input button {
-  height: 34px;
-}
 .loading {
   position: absolute;
   inset: 0;
@@ -377,29 +339,6 @@ input[type="checkbox"] {
 .notice span {
   flex: 1;
 }
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: #0009;
-  z-index: 10;
-}
-.modal-backdrop section {
-  max-width: 540px;
-  padding: 30px;
-  background: #252d35;
-  border: 1px solid #52606b;
-  border-radius: 10px;
-  box-shadow: 0 30px 90px #0008;
-}
-.modal-backdrop p {
-  color: #a8b7c3;
-  line-height: 1.8;
-}
-.modal-backdrop h2 {
-  color: #e6c19a;
-}
 p {
   line-height: 1.7;
 }
@@ -416,10 +355,6 @@ p {
   }
   footer {
     gap: 10px;
-  }
-  .drawing-input {
-    left: 16px;
-    transform: none;
   }
 }
 :root {
@@ -538,18 +473,6 @@ nav button[aria-pressed="true"] {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-.panel-heading {
-  width: 100%;
-  background: transparent;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 8px 0;
-  margin-bottom: 8px;
-}
-.panel-heading h2 {
-  margin: 0;
-}
 .tool-group {
   position: relative;
 }
@@ -575,21 +498,9 @@ nav button[aria-pressed="true"] {
   height: auto;
   padding: 10px;
 }
-.menu-dismiss {
-  position: fixed !important;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
-  background: transparent !important;
-  z-index: 7;
-  cursor: default;
-}
 
 .settings {
   position: relative;
-  margin: 0;
-}
-.settings summary {
   margin: 0;
 }
 .settings-content {
@@ -614,20 +525,8 @@ nav button[aria-pressed="true"] {
   width: 100%;
   margin-top: 6px;
 }
-.modal-backdrop section {
-  background: var(--panel);
-  border-color: var(--border);
-}
-.modal-backdrop p {
-  color: var(--text);
-}
 .objects button {
   color: var(--text);
-}
-.units-hint {
-  color: var(--muted);
-  font-size: 11px;
-  margin: 0 0 16px;
 }
 .inspector-hint {
   border-color: var(--border);
@@ -660,26 +559,6 @@ nav button[aria-pressed="true"] {
   text-overflow: ellipsis;
 }
 
-.settings summary {
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.settings summary::-webkit-details-marker {
-  display: none;
-}
-.settings summary::before {
-  content: "";
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 5px solid currentColor;
-}
-.settings[open] summary::before {
-  transform: rotate(180deg);
-}
 
 .object-rename {
   display: flex;
@@ -764,15 +643,6 @@ footer:has(.measurements-hidden-notice) .status-message {
   flex-shrink: 0;
   white-space: nowrap;
 }
-.settings summary::before {
-  border: 0;
-  border-left: 5px solid currentColor;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-}
-.settings[open] summary::before {
-  transform: rotate(-90deg);
-}
 
 .edge-tab {
   box-sizing: border-box;
@@ -787,6 +657,22 @@ footer:has(.measurements-hidden-notice) .status-message {
   width: 26px;
   height: 18px;
   transform: translateX(-50%);
+}
+/* SnapToggles in Print's status bar; global because the labels render in a child component. */
+.print-status label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Print draws its status bar over the canvas. */
+.edge-bottom.above-status {
+  bottom: 32px;
+}
+/* Compact-layout and touch affordances; src/responsive.css shows them on phones and touch screens. */
+.edge-icon,
+.header-more,
+.transform-toolbox.path-drawing-actions {
+  display: none;
 }
 .settings-content {
   max-width: calc(100vw - 24px);
@@ -854,15 +740,6 @@ footer:has(.measurements-hidden-notice) .status-message {
 }
 .settings-trigger.open::before {
   transform: rotate(-90deg);
-}
-.modal-backdrop [role="dialog"] {
-  max-width: 540px;
-  max-height: 90vh;
-  overflow: auto;
-  padding: 30px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
 }
 
 .transform-toolbox {

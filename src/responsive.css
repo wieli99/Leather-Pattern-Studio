@@ -1,0 +1,318 @@
+/*
+ * Phone and touch adaptations. Everything here sits inside media queries that desktop windows with
+ * a mouse never match, so the desktop layout stays exactly as style.css defines it.
+ *
+ * - Coarse pointers (touch screens of any size) get finger-sized targets.
+ * - The compact layout (phones; keep in sync with compactLayoutQuery in useCompactLayout.ts) drops
+ *   the desktop minimum width and overlays nothing over the canvas that the user did not open.
+ * - Narrow portrait windows additionally stack the workspace: canvas, sidebar sheet, tool bar.
+ */
+
+/* ---------- Touch screens: finger-sized targets ---------- */
+@media (pointer: coarse) {
+  :root {
+    --touch-target: 44px;
+  }
+  /* 16px text keeps mobile browsers from zooming the page while a field has focus. */
+  input:not([type="checkbox"], [type="radio"], [type="color"], [type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  .edge-tab {
+    width: 28px;
+    height: 44px;
+  }
+  .edge-bottom {
+    width: 44px;
+    height: 28px;
+  }
+  .object-context-menu [role="menuitem"],
+  .search-action-menu a,
+  .search-action-menu button,
+  .tool-menu button {
+    min-height: var(--touch-target);
+  }
+  .object-context-menu [role="menuitem"] {
+    display: flex;
+    align-items: center;
+  }
+  .objects .object-select,
+  .objects .group-select,
+  .objects .object-state {
+    min-height: 40px;
+  }
+  .objects .object-state {
+    width: 40px;
+    flex-basis: 40px;
+  }
+  footer label input[type="checkbox"],
+  .print-status label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+  }
+  /*
+   * Swipes scroll object lists and tab strips; press and hold, then drag, reorders (useReorderDrag).
+   * !important: the rows' own scoped rules disable panning for mouse-style dragging.
+   */
+  .objects .object-select,
+  .objects .group-select,
+  .print-object-name,
+  .print-tabs [data-print-tab] {
+    touch-action: pan-x pan-y !important;
+  }
+  /* Long presses open tool variants, not the browser's text selection or link callout. */
+  nav button {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  .popover-pin,
+  .bug-icon-button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  /* Paths finish with these buttons instead of right-click, Enter or Backspace. */
+  .transform-overlay .path-drawing-actions {
+    display: flex;
+    align-self: center;
+    max-width: 100%;
+  }
+  .path-drawing-actions button {
+    flex-shrink: 0;
+    padding: 0 12px;
+  }
+  .path-drawing-actions .primary {
+    background: var(--accent);
+    color: var(--panel);
+  }
+}
+
+/* ---------- Compact layout: phones in portrait and landscape ---------- */
+@media (width < 760px), (max-height: 500px) and (pointer: coarse) {
+  main {
+    min-width: 0;
+    height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
+
+  /* Header: icon, filename, Save and a More menu. */
+  header {
+    height: 48px;
+    gap: 8px;
+    padding: 0 8px;
+  }
+  .brand strong {
+    display: none;
+  }
+  .brand-icon {
+    width: 28px;
+    height: 28px;
+  }
+  .document-name {
+    flex: 1;
+    min-width: 0;
+  }
+  .filename-input {
+    width: 100%;
+  }
+  .header-actions {
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .header-actions > :not(.header-save, .header-more, dialog) {
+    display: none !important;
+  }
+  .header-more {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+  .header-menu {
+    min-width: 200px;
+  }
+
+  /* Print tabs scroll sideways instead of wrapping. */
+  .print-tabs {
+    scrollbar-width: none;
+  }
+
+  /* Sidebars float over nothing: they keep their column but take less room. */
+  .workspace > aside,
+  main .print-workspace > aside {
+    width: min(300px, 45vw);
+  }
+
+  /* Status bar: messages and the snap and settings controls; no cursor readout. */
+  footer {
+    height: auto;
+    min-height: 40px;
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    gap: 4px 10px;
+    flex-wrap: wrap;
+  }
+  /* !important: hidden controls must stay hidden over their components' own scoped display. */
+  footer .cursor-coordinates,
+  footer .cursor-coordinates + span,
+  footer .app-version,
+  footer .bug-icon-button,
+  .print-status .app-version {
+    display: none !important;
+  }
+  .status-message,
+  footer:has(.measurements-hidden-notice) .status-message {
+    max-width: none;
+    flex: 1 1 0;
+  }
+  .center-settings {
+    position: static;
+    transform: none;
+    order: 0;
+    width: auto;
+    max-width: 100%;
+    justify-content: flex-start;
+    gap: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .print-status {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .print-status .center-settings {
+    width: auto;
+  }
+
+  /* Tool settings: a full-width sheet above the bottom tool bar. */
+  .transform-overlay {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+  }
+  .transform-overlay > .transform-options,
+  .transform-options {
+    width: 100%;
+    max-height: 40dvh;
+  }
+  .transform-overlay .transform-toolbox {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .transform-toolbox button {
+    flex-shrink: 0;
+  }
+  .stitch-panel-anchor {
+    width: 100%;
+  }
+  main .print-canvas .print-transform {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    width: auto;
+  }
+
+  /* Popovers and dialogs stay inside the screen. */
+  .settings-content,
+  .variables-content {
+    max-width: calc(100vw - 16px);
+  }
+  .variables-content {
+    max-height: 60dvh;
+  }
+  /* Popovers close on outside taps; pinning one open would cover most of a phone screen. */
+  .popover-actions:has(> .popover-pin:only-child) {
+    display: none !important;
+  }
+}
+
+/* ---------- Portrait phones: canvas, then the sidebar sheet, then the tool bar ---------- */
+@media (width < 760px) {
+  .workspace,
+  main .print-workspace {
+    flex-direction: column;
+  }
+  .viewport,
+  .print-canvas {
+    flex: 1;
+    min-height: 0;
+    order: 1;
+  }
+
+  /* Status text gets its own line above the snap and settings controls. */
+  .status-message,
+  footer:has(.measurements-hidden-notice) .status-message {
+    flex-basis: 100%;
+  }
+
+  /* The tool rail becomes a horizontally scrolling bar under the canvas. */
+  .workspace > nav,
+  main .print-workspace > nav {
+    order: 3;
+    width: auto;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .workspace > nav > *,
+  main .print-workspace > nav > * {
+    flex-shrink: 0;
+  }
+  .workspace > nav button,
+  main .print-workspace > nav button {
+    width: 48px;
+    height: 46px;
+  }
+  .workspace > nav .rail-divider,
+  main .print-workspace > nav .rail-divider {
+    flex: 0 0 1px;
+    align-self: stretch;
+    min-height: 0;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+    margin: 6px 4px;
+  }
+
+  /* The sidebar opens as a sheet between the canvas and the tool bar. */
+  .workspace > aside,
+  main .print-workspace > aside {
+    order: 2;
+    width: auto;
+    max-height: 45dvh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Rail and status bar always show; the sidebar toggle is a canvas button with a panel icon. */
+  .edge-left,
+  .edge-bottom {
+    display: none;
+  }
+  .edge-right {
+    top: 8px;
+    right: 8px;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px #0004;
+  }
+  .edge-right .edge-glyph {
+    display: none;
+  }
+  .edge-right .edge-icon {
+    display: block;
+  }
+  /* Print's tool settings start at the top left; keep them clear of the sidebar toggle. */
+  main .print-canvas .print-transform {
+    right: 56px;
+  }
+}

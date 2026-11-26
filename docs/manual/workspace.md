@@ -40,6 +40,25 @@ Space+drag or middle-drag pans, preserving the selected objects and their select
 
 The footer shows the application version. Include it when [reporting a problem](#troubleshooting/report-a-bug). Save before accepting an application update; see [offline use](#files).
 
+## Phones and tablets
+
+The editor also runs in a phone's web browser. On a narrow screen the tools move to a scrolling bar below the canvas, and the header keeps **Save** with the other project actions in the **⋯** menu. The panel button at the top right of the canvas opens Model objects, Properties and Tool help in a sheet below the canvas; tap it again to close the sheet. Tool settings open full width above the tools. Turning a phone sideways keeps the tools at the left edge.
+
+![Phone layout with the object sheet open](/manual/images/phone-layout.png)
+
+On touch screens:
+
+| Gesture | Action |
+| --- | --- |
+| Tap | Select, place a point, or press a button |
+| Drag with one finger | Draw, move or marquee-select, as a mouse drag does |
+| Drag or pinch with two fingers | Pan and zoom the canvas or print sheet |
+| Double-tap | Edit text, switch a vertex between sharp and smooth, or close a path |
+| Press and hold a tool | Open its variants |
+| Press and hold a row, then drag | Reorder objects, print tabs or favorites; a quick swipe scrolls instead |
+
+While drawing a path or curve, **Remove last point**, **Close** and **Finish** appear above the tools; they replace Backspace, Enter, and right-click. Fingers get larger hit areas than the mouse, so editing tiny details is easier after zooming in. Keyboard shortcuts and features that need Shift, Alt or Ctrl, such as adding to a selection with Shift, constraining angles, temporarily disabling snapping and inserting anchors with Alt, are unavailable without a keyboard; turn snapping off with **Grid snap** and **Object snap** instead. Dragging model objects from the print source list onto a sheet needs a mouse.
+
 ## Search and favorites
 
 Press **F** or click Search in the bottom toolbar to find editing tools by name or related words. Select a result to open it. Tools that require a selection remain unavailable until compatible objects are selected.
