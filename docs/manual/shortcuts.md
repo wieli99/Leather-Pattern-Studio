@@ -154,6 +154,10 @@ See [numeric formulas](#measurements/calculate-values-in-numeric-fields), [varia
 
 Press **L**, or open **Align and distribute** through **F** tool search. Choose up to one Horizontal and one Vertical arrangement, then press Enter on the canvas or right-click to apply; Escape discards. Clicking an arrangement returns focus to the canvas; buttons activated with Enter or Space keep focus. See [align and distribute](#transforms/align-and-distribute).
 
+## Calibrate image
+
+Open **Calibrate image** through **F** tool search with one image selected. Click two points on the image; **Shift** keeps the second point at 45° steps and Escape steps back a point. Type the known distance, then press Enter or right-click to apply; Escape discards. See [calibrate an imported image](#files/calibrate-an-imported-image).
+
 ## Arrays
 
 Open Rectangular Array or Radial Array through **F** tool search. Choose endpoints or a center on the canvas,

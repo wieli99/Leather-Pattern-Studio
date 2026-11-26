@@ -55,6 +55,11 @@ withDefaults(defineProps<{ id: string; size?: number }>(), { size: 22 });
       <rect x="9" y="9" width="12" height="12" />
       <path d="M9 9h6v6H9Z" fill="currentColor" />
     </template>
+    <template v-else-if="id === 'calibrate-image'">
+      <rect x="3" y="3" width="18" height="13" rx="1" />
+      <path d="m3 14 5-5 4 4 3-3 6 6" stroke-width="1.3" />
+      <path d="M3 21h18M3 19v4M21 19v4" />
+    </template>
     <template v-else-if="id === 'trim'">
       <circle cx="6" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />

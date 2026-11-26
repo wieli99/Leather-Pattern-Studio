@@ -10,6 +10,7 @@ import LengthInput from "./LengthInput.vue";
 import StitchToolbox from "./StitchToolbox.vue";
 import StitchToolbar from "./StitchToolbar.vue";
 import AlignToolbox from "./AlignToolbox.vue";
+import CalibrationToolbox from "./CalibrationToolbox.vue";
 import ToolPopover from "./ToolPopover.vue";
 import TransformFields from "./TransformFields.vue";
 import { transformHeading, transformHelp } from "./transformText";
@@ -190,6 +191,7 @@ const squareSelection = computed(() => e.value.active.some(s => s.kind === "size
       <p v-if="e.transformError" role="alert">{{ e.transformError }}</p>
     </ToolPopover>
     <AlignToolbox v-if="e.alignActive" />
+    <CalibrationToolbox v-if="e.calibrationActive" />
     <ToolPopover v-if="e.offsetActive" heading="Offset" aria-label="Offset settings"
       :apply-disabled="!e.canApplyOffset" :apply="() => editor.applyOffset()" :cancel="cancel">
       <ToolObjectPicker /><hr>

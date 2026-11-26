@@ -32,6 +32,14 @@ const behavior = computed((): { disabled: boolean; pressed: boolean; activate: (
     case "path-copy": return { disabled: !ed.canCopyAlongPath, pressed: !!ed.pathCopy, activate: () => editor.activatePathCopy() };
     case "offset": return { disabled: !ed.canOffset, pressed: ed.offsetActive, activate: () => editor.activateOffset() };
     case "align": return { disabled: !ed.canAlign, pressed: ed.alignActive, activate: () => editor.activateAlign() };
+    case "calibrate-image": return {
+      disabled: !ed.canCalibrateImage,
+      pressed: ed.calibrationActive,
+      activate: () => editor.activateCalibration(),
+      title: ed.calibrationUnavailable
+        ? `Calibrate image: ${ed.calibrationUnavailable.charAt(0).toLowerCase()}${ed.calibrationUnavailable.slice(1)}`
+        : "Calibrate image: set the scale from two points and their known distance",
+    };
     case "trim": return { disabled: !ed.canTrim, pressed: ed.trimMode && !ed.mergeMode, activate: () => editor.activateTrim() };
     case "join": return {
       disabled: !ed.canJoin || ed.busy,

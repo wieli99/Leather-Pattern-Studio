@@ -4267,3 +4267,112 @@ test('one tool session blocks variable and object-state edits for every tool', a
   expect(e.toolSession).toBeNull();
   expect(e.document.shapes).toHaveLength(4);
 });
+
+describe("Calibrate image", () => {
+  const image = { id: "img", name: "Scan", kind: "image" as const, image: "data:image/png;base64,AAAA",
+    points: [{ x: 0, y: 0 }, { x: 100, y: 50 }], radius: 0, rotation: 0 };
+  async function calibrating() {
+    const e = editor();
+    e.pan = { x: 0, y: 0 };
+    e.zoom = 1;
+    await e.commit({ ...emptyDocument(), shapes: [image] });
+    e.selected = [image.id];
+    e.activateCalibration();
+    return e;
+  }
+  const corners = (shape: Parameters<typeof worldPoints>[0]) =>
+    worldPoints(shape).map(p => [+p.x.toFixed(9), +p.y.toFixed(9)]);
+  const click = (e: Controller, x: number, y: number, button = 0, shift = false) =>
+    e.pointerDown({ x, y }, button, shift, false);
+  test("is only offered for one visible, unlocked image without size links", async () => {
+    const e = editor();
+    const rect = { id: "r", name: "R", kind: "rectangle" as const, points: [{ x: 0, y: 0 }, { x: 5, y: 5 }], radius: 0, rotation: 0 };
+    await e.commit({ ...emptyDocument(), shapes: [image, rect] });
+    e.selected = ["r"];
+    expect(e.canCalibrateImage).toBe(false);
+    e.selected = ["img", "r"];
+    expect(e.canCalibrateImage).toBe(false);
+    e.selected = ["img"];
+    expect(e.canCalibrateImage).toBe(true);
+    e.document = { ...e.document, shapes: [{ ...image, bindings: [{ property: "width", expression: "w" } as never] }, rect] };
+    expect(e.calibrationUnavailable).toMatch(/Unlink/);
+    expect(e.canCalibrateImage).toBe(false);
+  });
+  test("picks two points, previews from the original and applies one undo step", async () => {
+    const e = await calibrating();
+    expect(e.toolSession).toBe("calibration");
+    click(e, 150, 20);
+    expect(e.calibration?.error).toBe("Pick a point on the image.");
+    expect(e.calibration?.stage).toBe("point1");
+    click(e, 10, 20);
+    expect(e.calibration?.stage).toBe("point2");
+    click(e, 10, 20);
+    expect(e.calibration?.stage).toBe("point2");
+    click(e, 60, 20);
+    expect(e.calibration?.stage).toBe("review");
+    expect(e.calibrationMeasured).toBeCloseTo(50);
+    expect(e.canApplyCalibration).toBe(false);
+    e.setCalibrationDistance(200);
+    expect(e.calibrationFactor).toBeCloseTo(4);
+    e.setCalibrationDistance(100);
+    expect(e.calibrationFactor).toBeCloseTo(2);
+    expect(e.document.shapes[0]).toEqual(image);
+    const scaled = e.preview!.shapes[0];
+    expect(corners(scaled)).toEqual([[-10, -20], [190, 80]]);
+    click(e, 0, 0, 2);
+    await vi.waitFor(() => expect(e.calibrationActive).toBe(false));
+    await vi.waitFor(() => expect(e.busy).toBe(false));
+    expect(corners(e.document.shapes[0])).toEqual([[-10, -20], [190, 80]]);
+    expect(e.selected).toEqual(["img"]);
+    await e.transact("undo");
+    expect(e.document.shapes[0]).toEqual(image);
+    // The only earlier step is the setup commit.
+    await e.transact("undo");
+    expect(e.document.shapes).toEqual([]);
+  });
+  test("Escape steps back through the picked points and Cancel keeps the document", async () => {
+    const e = await calibrating();
+    // With nothing to step back to, the caller cancels (and refocuses the canvas).
+    expect(e.backToolSession()).toBe(false);
+    expect(e.calibrationActive).toBe(true);
+    click(e, 10, 10);
+    expect(e.backToolSession()).toBe(true);
+    expect(e.calibration?.stage).toBe("point1");
+    click(e, 10, 10);
+    click(e, 30, 10);
+    // Re-picking point 1 measures from the pointer to point 2.
+    e.pickCalibrationPoint("point1");
+    e.pointerMove({ x: 20, y: 10 }, false);
+    expect(e.calibrationMeasured).toBeCloseTo(10);
+    expect(e.backToolSession()).toBe(true);
+    expect(e.calibrationMeasured).toBeCloseTo(20);
+    e.setCalibrationDistance(40);
+    e.pickCalibrationPoint("point2");
+    expect(e.preview).toBeNull();
+    e.pointerMove({ x: 50, y: 30 }, false, false, true);
+    // Shift keeps 45° steps from point 1: (40, 20) away rounds to the diagonal.
+    const c = e.calibration!.candidate!;
+    expect(c.x - 10).toBeCloseTo(c.y - 10, 9);
+    expect(e.backToolSession()).toBe(true);
+    expect(e.calibration?.stage).toBe("review");
+    expect(e.calibration?.p2).toEqual({ x: 30, y: 10 });
+    expect(e.calibrationFactor).toBeCloseTo(2);
+    e.cancel();
+    expect(e.calibrationActive).toBe(false);
+    expect(e.document.shapes[0]).toEqual(image);
+    expect(e.canUndo).toBe(true);
+    expect(e.revision).toBe(1);
+  });
+  test("an invalid distance blocks Apply and undo ends the session", async () => {
+    const e = await calibrating();
+    click(e, 10, 10);
+    click(e, 30, 10);
+    e.setCalibrationDistance(NaN);
+    expect(e.calibration?.error).toMatch(/greater than zero/);
+    expect(e.canApplyCalibration).toBe(false);
+    await e.applyToolSession();
+    expect(e.document.shapes[0]).toEqual(image);
+    await e.transact("undo");
+    expect(e.calibrationActive).toBe(false);
+  });
+});

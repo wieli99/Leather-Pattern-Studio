@@ -40,6 +40,16 @@ An SVG imported as an image remains sharp when resized and is selected as a sing
 
 ![SVG imported as an image object](/manual/images/svg-import.png)
 
+## Calibrate an imported image
+
+An imported scan or photo starts at an arbitrary size. To trace it at real scale, select the image and open **Calibrate image** through **F** tool search. Click two points on the image whose real distance you know, such as the ends of a ruler in the photo. Points beside the image are refused, and Shift keeps the second point at a multiple of 45° from the first. Escape while picking the second point returns to the first.
+
+Enter the real distance in **Known distance**; the field receives focus once both points are picked. The preview scales the image uniformly about the first point, so whatever is lined up there stays in place. **Measured** shows the distance on the image before scaling, and **Scale** shows the resulting change. Use **Pick point 1** or **Pick point 2** to place a point again; Escape returns to the previous point. Press Enter or right-click to apply as one undo step, or choose **Cancel** (Escape) to leave the image unchanged.
+
+Calibration needs one visible, unlocked image. If the image's position or size is linked to a variable, unlink it first. For a precise scale, zoom in before picking and choose points far apart.
+
+![Calibrating an image from two points and a known distance](/manual/images/image-calibration.png)
+
 Print layouts and their links are included in saved projects and recovery. The Model tab is the source of geometry; exporting a print layout does not save the project. PDF, SVG, and PNG export work offline after the production cache has finished installing.
 
 ## Editable SVG import
