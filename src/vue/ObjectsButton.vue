@@ -1,14 +1,14 @@
 <script setup lang="ts">
+import ObjectPickButton from "./ObjectPickButton.vue";
 import SelectionHint from "./SelectionHint.vue";
 withDefaults(defineProps<{ count: number; choosing: boolean; error?: string; multiple?: boolean }>(), {multiple:true});
 defineEmits<{ toggle: [] }>();
 </script>
 <template>
   <div @keydown.enter.stop @keydown.space.stop>
-    <button type="button" class="boolean-picker objects-confirm" :aria-pressed="choosing"
-      :disabled="choosing && !!error" :title="choosing ? 'Confirm selection' : 'Change selection'" @click="$emit('toggle')">
-      <span>{{ choosing ? "Confirm Selection" : "Select Objects" }}</span><span>{{ count ? `(${count})` : "Choose object" }}</span>
-    </button>
+    <ObjectPickButton class="objects-confirm" :pressed="choosing" :disabled="choosing && !!error"
+      :title="choosing ? 'Confirm selection' : 'Change selection'"
+      :label="choosing ? 'Confirm Selection' : 'Select Objects'" :value="count ? `(${count})` : 'Choose object'" @toggle="$emit('toggle')" />
     <SelectionHint :active="choosing" :multiple="multiple" />
     <small v-if="choosing && multiple">Right-click canvas to confirm.</small>
     <small v-if="error" aria-live="polite">{{ error }}</small>
@@ -16,5 +16,4 @@ defineEmits<{ toggle: [] }>();
 </template>
 <style scoped>
 .objects-confirm {width:100%;}
-.objects-confirm[aria-pressed="true"] {border-color:var(--accent);color:var(--accent);}
 </style>
