@@ -1,4 +1,5 @@
 import type { Doc, Point } from "../model/project";
+import type { ArraySettings } from "../model/array";
 import type { AlignAction, AlignUnit } from "../model/align";
 /**
  * Working state of an open tool. The controller holds at most one session per tool, creates
@@ -22,4 +23,14 @@ export interface AlignSession {
   units: AlignUnit[];
   /** Whether the units fit between the outer ones for equal gaps on each axis. */
   gapsFit: { x: boolean; y: boolean };
+}
+export interface ArraySession {
+  settings: ArraySettings;
+  /** The point being placed on the canvas, or review once all points are set. */
+  stage: "endpoint1" | "endpoint2" | "center" | "review";
+  /** Settings to return to when placing a point is cancelled; null before the first is placed. */
+  confirmed: ArraySettings | null;
+  centerCandidate: Point | null;
+  pointerPixel: Point | null;
+  invalidDistances: Set<"vector1" | "vector2">;
 }

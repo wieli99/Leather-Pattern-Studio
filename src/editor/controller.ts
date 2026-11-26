@@ -105,7 +105,7 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
-import type { AlignSession, OffsetSession } from "./toolSessions";
+import type { AlignSession, ArraySession, OffsetSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
@@ -2958,73 +2958,73 @@ export class Controller {
       ],
     };
   }
-  arrayCenterCandidate: Point | null = null;
-  private arrayPointerPixel: Point | null = null;
   private arrayModifiers = { alt: false, shift: false, ctrl: false };
   get arrayPreviewCenter() {
     return this.arrayStage === "center"
-      ? this.arrayCenterCandidate
+      ? this.arraySession!.centerCandidate
       : this.array
         ? { x: this.array.cx, y: this.array.cy }
         : null;
   }
   updateArrayModifiers(alt: boolean, ctrl: boolean, shift: boolean) {
     this.arrayModifiers = { alt, ctrl, shift };
+    const pixel = this.arraySession?.pointerPixel;
     if (
-      this.array &&
+      pixel &&
       this.arrayStage !== "review" &&
-      this.arrayPointerPixel &&
       this.pointerInside &&
       !this.objectPicker &&
       !this.gesture &&
       !this.space
     )
-      this.moveArray(this.arrayPointerPixel, alt, shift, ctrl);
+      this.moveArray(pixel, alt, shift, ctrl);
   }
   refreshArrayConstraint() {
     const m = this.arrayModifiers;
     this.updateArrayModifiers(m.alt, m.ctrl, m.shift);
   }
-  arrayStage: "endpoint1" | "endpoint2" | "center" | "review" = "review";
-  private arrayConfirmed: ArraySettings | null = null;
-  get arrayHasConfirmedPlacement() { return this.arrayConfirmed !== null; }
-  private arrayInvalidDistances = new Set<"vector1" | "vector2">();
+  get arrayStage() { return this.arraySession?.stage ?? "review"; }
+  get arrayHasConfirmedPlacement() { return !!this.arraySession?.confirmed; }
   pickArrayPoint(stage: "endpoint1" | "endpoint2" | "center") {
-    if (!this.array || this.objectPicker) return;
-    if (this.arrayStage === "review")
-      this.arrayConfirmed = structuredClone(this.array);
+    const run = this.arraySession;
+    if (!run || this.objectPicker) return;
+    if (run.stage === "review")
+      run.confirmed = structuredClone(run.settings);
     this.transformAxis = undefined;
-    if (stage === "endpoint2" && this.array.rows === 1) this.array.rows = 2;
-    this.arrayCenterCandidate = null;
-    this.arrayStage = stage;
+    if (stage === "endpoint2" && run.settings.rows === 1) run.settings.rows = 2;
+    run.centerCandidate = null;
+    run.stage = stage;
     this.refreshArray();
   }
   confirmArrayPoint() {
-    if (this.arrayStage === "review") return false;
-    if (this.array?.error && this.arrayStage !== "center") return true;
-    if (this.arrayStage === "center" && this.array) {
-      if (!this.arrayCenterCandidate) return true;
-      this.array.cx = this.arrayCenterCandidate.x;
-      this.array.cy = this.arrayCenterCandidate.y;
+    const run = this.arraySession;
+    if (!run || run.stage === "review") return false;
+    const state = run.settings;
+    if (state.error && run.stage !== "center") return true;
+    if (run.stage === "center") {
+      if (!run.centerCandidate) return true;
+      state.cx = run.centerCandidate.x;
+      state.cy = run.centerCandidate.y;
     }
-    this.arrayStage = "review";
-    this.arrayCenterCandidate = null;
+    run.stage = "review";
+    run.centerCandidate = null;
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
-    this.arrayConfirmed = this.array ? structuredClone(this.array) : null;
+    run.confirmed = structuredClone(state);
     this.refreshArray();
     return true;
   }
   cancelArrayPoint() {
-    if (this.arrayStage === "review") return false;
-    if (!this.arrayConfirmed) {
+    const run = this.arraySession;
+    if (!run || run.stage === "review") return false;
+    if (!run.confirmed) {
       this.cancel();
       return true;
     }
-    this.array = structuredClone(this.arrayConfirmed);
-    this.arrayStage = "review";
-    this.arrayCenterCandidate = null;
+    run.settings = structuredClone(run.confirmed);
+    run.stage = "review";
+    run.centerCandidate = null;
     this.smartGuides = [];
     this.snapTarget = null;
     this.snapKind = null;
@@ -3052,11 +3052,11 @@ export class Controller {
     const state = this.array;
     if (!state) return;
     if (!Number.isFinite(value) || value <= 0) {
-      this.arrayInvalidDistances.add(field);
+      this.arraySession!.invalidDistances.add(field);
       this.refreshArray();
       return;
     }
-    this.arrayInvalidDistances.delete(field);
+    this.arraySession!.invalidDistances.delete(field);
     const v = state[field],
       length = Math.hypot(v.x, v.y);
     state[field] = {
@@ -3108,10 +3108,10 @@ export class Controller {
     this.refreshArray();
   }
   private moveArray(pixel: Point, alt: boolean, shift: boolean, ctrl = false) {
-    const state = this.array;
-    if (!state || this.objectPicker || this.busy) return;
+    const run = this.arraySession, state = run?.settings;
+    if (!run || !state || this.objectPicker || this.busy) return;
     this.pointerInside = true;
-    this.arrayPointerPixel = { ...pixel };
+    run.pointerPixel = { ...pixel };
     if (this.arrayStage === "review") {
       this.cursor = this.world(pixel);
       this.notifyPointer();
@@ -3156,7 +3156,7 @@ export class Controller {
     }
     this.cursor = point;
     if (this.arrayCenterPicking) {
-      this.arrayCenterCandidate = point;
+      run.centerCandidate = point;
       this.refreshArray();
       return;
     }
@@ -3177,14 +3177,16 @@ export class Controller {
     }
     this.refreshArray();
   }
-  array: ArraySettings | null = null;
+  /** The open array tool: its settings and which point, if any, is being placed. */
+  private arraySession: ArraySession | null = null;
+  get array(): ArraySettings | null { return this.arraySession?.settings ?? null; }
   async activateArray(kind: ArrayKind) {
     if (this.unsettled) await this.settled();
     if (!this.canStartTransform("move")) return;
     this.cancel();
     this.beginToolSelection();
     const box = bounds(this.active);
-    this.array = {
+    const settings: ArraySettings = {
       kind,
       extent: true,
       vector1: { x: 10, y: 0 },
@@ -3201,31 +3203,28 @@ export class Controller {
     };
     this.tool = "select";
     this.mode = "select";
-    this.arrayConfirmed = null;
-    this.arrayStage = kind === "radial" ? "center" : "endpoint1";
+    this.arraySession = {
+      settings, stage: kind === "radial" ? "center" : "endpoint1",
+      confirmed: null, centerCandidate: null, pointerPixel: null, invalidDistances: new Set(),
+    };
     this.refreshArray();
   }
   refreshArray() {
     this.preview = null;
-    const state = this.array;
-    if (!state) return;
+    const run = this.arraySession;
+    if (!run) return;
+    const state = run.settings, center = run.stage === "center" ? run.centerCandidate : null;
     state.error = "";
-    if (this.arrayStage === "center" && !this.arrayCenterCandidate) {
+    if (run.stage === "center" && !center) {
       this.notify();
       return;
     }
     try {
       if (this.toolSelectionError) throw Error(this.toolSelectionError);
-      if (this.arrayInvalidDistances.size)
+      if (run.invalidDistances.size)
         throw Error("Enter positive, finite distances.");
       const matrices = arrayPlacements(
-        this.arrayStage === "center" && this.arrayCenterCandidate
-          ? {
-              ...state,
-              cx: this.arrayCenterCandidate.x,
-              cy: this.arrayCenterCandidate.y,
-            }
-          : state,
+        center ? { ...state, cx: center.x, cy: center.y } : state,
         bounds(this.active),
       );
       let next = this.document;
@@ -3530,12 +3529,7 @@ export class Controller {
     this.trimOwners.clear();
     if (this.pathCopy) this.selected = this.pathCopySelection;
     this.pathCopy = null;
-    this.array = null;
-    this.arrayCenterCandidate = null;
-    this.arrayPointerPixel = null;
-    this.arrayStage = "review";
-    this.arrayConfirmed = null;
-    this.arrayInvalidDistances.clear();
+    this.arraySession = null;
     this.offset = null;
     this.align = null;
     this.mirrorAxis = null;
@@ -4515,7 +4509,7 @@ export class Controller {
     this.notify();
   }
   pointerMove(pixel: Point, alt: boolean, ctrl = false, shift = false) {
-    if (this.array) this.arrayPointerPixel = { ...pixel };
+    if (this.arraySession) this.arraySession.pointerPixel = { ...pixel };
     if (this.array && !this.objectPicker && !this.space && !this.gesture) {
       this.moveArray(pixel, alt, shift, ctrl);
       return;
