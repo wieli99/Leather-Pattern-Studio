@@ -1,4 +1,4 @@
-import { computed, ref, type Ref, type WritableComputedRef } from "vue";
+import { computed, ref, watch, type Ref, type WritableComputedRef } from "vue";
 
 /**
  * Phones: narrow portrait windows, and short landscape windows on touch screens. Keep in sync with
@@ -45,4 +45,14 @@ export function usePanelVisibility(): Record<PanelName, WritableComputedRef<bool
       },
     });
   return { left: visibility("left"), panel: visibility("panel"), bottom: visibility("bottom") };
+}
+
+/**
+ * Phones show one bottom sheet at a time: when a tool's settings open, the object and property
+ * sheet closes so the canvas keeps room. It can be reopened while the tool stays open.
+ */
+export function closeSidebarForTools(panel: Ref<boolean>, toolOpen: () => boolean) {
+  watch(toolOpen, (open) => {
+    if (open && compact.value) panel.value = false;
+  });
 }

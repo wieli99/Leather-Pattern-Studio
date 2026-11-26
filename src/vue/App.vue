@@ -27,7 +27,7 @@ import RailHistoryButtons from "./RailHistoryButtons.vue";
 import EdgeTabs from "./EdgeTabs.vue";
 import SnapToggles from "./SnapToggles.vue";
 import HeaderActions from "./HeaderActions.vue";
-import { usePanelVisibility } from "./useCompactLayout";
+import { closeSidebarForTools, usePanelVisibility } from "./useCompactLayout";
 import ObjectPanel from "./ObjectPanel.vue";
 import Inspector from "./Inspector.vue";
 import PanelSection from "./PanelSection.vue";
@@ -129,6 +129,7 @@ watch(
   { flush: "post" },
 );
 const { panel, left, bottom } = usePanelVisibility();
+closeSidebarForTools(panel, () => !!e.value.toolSession);
 const update = ref<ServiceWorker | null>(null);
 const gridSnap = computed({
   get: () => e.value.grid,

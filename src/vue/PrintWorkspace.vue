@@ -30,6 +30,7 @@ import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import { drawAnnotation } from "../editor/annotationRenderer";
 import RailHistoryButtons from "./RailHistoryButtons.vue";
 import EdgeTabs from "./EdgeTabs.vue";
+import { closeSidebarForTools } from "./useCompactLayout";
 import SnapToggles from "./SnapToggles.vue";
 import {
   drawRotationGizmo,
@@ -191,6 +192,7 @@ const zoom = ref(2),
   snap = ref(true),
   objectSnap = ref(true),
   tool = ref<"select" | "move" | "rotate" | "mirror" | "align">("select");
+closeSidebarForTools(panel, () => tool.value !== "select");
 const views = new Map<
   string,
   { zoom: number; pan: Point; selection: string[] }

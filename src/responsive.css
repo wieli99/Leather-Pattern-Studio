@@ -184,8 +184,9 @@
     width: auto;
   }
 
-  /* Tool settings: a full-width sheet above the bottom tool bar. */
+  /* Tool settings: a full-width sheet above the bottom tool bar, kept inside the canvas. */
   .transform-overlay {
+    top: 8px;
     left: 8px;
     right: 8px;
     bottom: 8px;
@@ -194,6 +195,19 @@
   .transform-options {
     width: 100%;
     max-height: 40dvh;
+    min-height: 0;
+    flex-shrink: 1;
+  }
+  .transform-overlay > .transform-toolbox {
+    flex-shrink: 0;
+  }
+  /* The canvas edge toggles stay reachable above open tool settings. */
+  .edge-tab {
+    z-index: 11;
+  }
+  main .print-canvas .print-transform {
+    max-height: calc(100% - 16px);
+    overflow: auto;
   }
   .transform-overlay .transform-toolbox {
     max-width: 100%;
@@ -314,5 +328,9 @@
   /* Print's tool settings start at the top left; keep them clear of the sidebar toggle. */
   main .print-canvas .print-transform {
     right: 56px;
+  }
+  /* Model tool settings start below the sidebar toggle at the canvas's top right. */
+  .viewport > .transform-overlay {
+    top: 56px;
   }
 }

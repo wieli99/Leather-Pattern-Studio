@@ -112,6 +112,26 @@ test("taps draw and select, and tool settings stay reachable", async ({ page }) 
   await page.getByRole("button", { name: "Cancel", exact: true }).tap();
 });
 
+test("opening a tool closes the sidebar sheet, which can reopen without covering the tool", async ({ page }) => {
+  await page.getByRole("button", { name: "Rectangle (R)", exact: true }).tap();
+  await tapCanvas(page, 80, 120);
+  await tapCanvas(page, 240, 300);
+  await openSidebar(page);
+  await page.getByRole("button", { name: /^Move/ }).first().tap();
+  const sheet = page.getByRole("complementary", { name: "Model objects and properties" });
+  await expect(sheet).toHaveCount(0);
+  // Reopened, the sheet shrinks the canvas; tool settings stay inside it and the toggle stays usable.
+  await openSidebar(page);
+  const canvas = (await canvasOf(page).boundingBox())!;
+  const settings = (await page.locator(".transform-options").boundingBox())!;
+  expect(settings.y).toBeGreaterThanOrEqual(canvas.y);
+  expect(settings.y + settings.height).toBeLessThanOrEqual(canvas.y + canvas.height + 0.5);
+  await expect(page.getByRole("button", { name: "Apply", exact: true })).toBeInViewport();
+  await page.getByRole("button", { name: "Hide inspector" }).tap();
+  await expect(sheet).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel", exact: true }).tap();
+});
+
 test("two fingers pan and pinch-zoom without drawing", async ({ page }) => {
   const canvas = canvasOf(page);
   await page.getByRole("button", { name: "Rectangle (R)", exact: true }).tap();
