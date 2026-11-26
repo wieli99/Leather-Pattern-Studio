@@ -105,7 +105,7 @@ import {
   type Bounds,
 } from "../model/geometry";
 import { Core, type Snapshot } from "./core";
-import type { AlignSession, ArraySession, OffsetSession, TrimSession } from "./toolSessions";
+import type { AlignSession, ArraySession, OffsetSession, TransformSession, TransformTool, TrimSession } from "./toolSessions";
 import { ProjectFiles, recovery, type Recovery } from "./persistence";
 const fingerprint = (doc: Doc) => {
   const tree = reconcileObjectTree(doc.objectTree ?? objectTreeFromShapes(doc.shapes), doc.shapes);
@@ -255,8 +255,9 @@ export class Controller {
   busy = false;
   dirty = false;
   savedBaseline = fingerprint(emptyDocument());
-  transformTool: "move" | "rotate" | "scale" | "mirror" | "corner" | null = null;
-  transformOriginal: Doc | null = null;
+  /** The open Move, Rotate, Resize, Mirror or Corners tool. Pivot and values are shared with gestures. */
+  transform: TransformSession | null = null;
+  get transformTool() { return this.transform?.tool ?? null; }
   transformPivot: Point = { x: 0, y: 0 };
   placingPivot = false;
   transformOrientation: "world" | "local" = "local";
@@ -264,7 +265,7 @@ export class Controller {
   transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
   transformError = "";
   transformGeneration = 0;
-  transformDraft: Doc | null = null;
+
   offsetDistance = 3;
   offsetJoin: OffsetJoin = "sharp";
   /** The open Offset tool: its preview, the copies it adds and an outline being dragged. */
@@ -464,7 +465,7 @@ export class Controller {
     }
   }
   get transformAngle() {
-    const s = (this.transformOriginal?.shapes.filter((s) =>
+    const s = (this.transform?.original.shapes.filter((s) =>
       this.selected.includes(s.id),
     ) ?? this.active)[0];
     if (this.transformOrientation !== "local" || this.active.length !== 1)
@@ -514,7 +515,7 @@ export class Controller {
 
   get transformValid() {
     if (this.objectPicker || this.toolSelectionError) return false;
-    if (this.transformTool === "mirror" && !this.mirrorAxis) return false;
+    if (this.transform?.tool === "mirror" && !this.transform.mirror.axis) return false;
     if (!this.preview) return !this.transformError;
     try {
       parseProject(JSON.stringify(this.normalizeTree(this.preview)));
@@ -524,11 +525,12 @@ export class Controller {
     }
   }
   private captureNumericBasis() {
-    if (!this.transformTool || ["mirror", "corner"].includes(this.transformTool) || this.transformError) return;
+    const transform = this.transform;
+    if (!transform || ["mirror", "corner"].includes(transform.tool) || this.transformError) return;
     // Numeric inputs are absolute within this basis; the displayed automatic
     // pivot can follow preview bounds without changing the calculation pivot.
-    const document = this.transformDraft ?? this.preview ?? this.transformOriginal;
-    if (document) this.numericTransformBasis = {
+    const document = transform.draft ?? this.preview ?? transform.original;
+    transform.numericBasis = {
       document,
       values: {...this.transformValues},
       pivot: {...this.transformPivot},
@@ -536,9 +538,10 @@ export class Controller {
     };
   }
   rebaseTransform() {
-    this.numericTransformBasis = null;
-    if (this.transformTool && this.preview && !this.transformError)
-      this.transformOriginal = this.preview;
+    if (this.transform) {
+      this.transform.numericBasis = null;
+      if (this.preview && !this.transformError) this.transform.original = this.preview;
+    }
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
     this.captureNumericBasis();
   }
@@ -647,7 +650,8 @@ export class Controller {
   }
 
   setTransformValues(values: Partial<typeof this.transformValues>) {
-    if (!this.transformOriginal) return;
+    const original = this.transform?.original;
+    if (!original) return;
     const previous = { ...this.transformValues };
     this.transformValues = { ...this.transformValues, ...values };
     if (this.transformTool === "mirror") { this.refreshMirror(); return; }
@@ -679,7 +683,7 @@ export class Controller {
         y: this.transformPivot.y + dx * Math.sin(t) + dy * Math.cos(t),
       };
     }
-    const basis = this.numericTransformBasis;
+    const basis = this.transform?.numericBasis;
     if (basis && this.transformTool !== "corner") {
       const old = basis.values;
       this.updateTransformPreview({
@@ -694,8 +698,8 @@ export class Controller {
       return;
     }
     const next = {
-      ...this.transformOriginal,
-      shapes: this.transformOriginal.shapes.map((s) =>
+      ...original,
+      shapes: original.shapes.map((s) =>
         !this.selected.includes(s.id)
           ? s
           : this.transformTool === "move"
@@ -712,11 +716,11 @@ export class Controller {
     this.updateTransformPreview(next);
   }
   updateTransformPreview(next: Doc) {
-    const baseline = this.transformOriginal ?? this.document;
+    const baseline = this.transform?.original ?? this.document;
     if (this.transformTool === "corner")
       next = { ...next, stitchGroups: baseline.stitchGroups };
     next = reconcileStitches(next, baseline);
-    this.transformDraft = next;
+    if (this.transform) this.transform.draft = next;
     try {
       parseProject(JSON.stringify(this.normalizeTree(next)));
       this.transformError = "";
@@ -1471,7 +1475,7 @@ export class Controller {
     this.notify();
   }
 
-  private numericTransformBasis: { document: Doc; values: { x: number; y: number; angle: number; sx: number; sy: number }; pivot: Point; angle: number } | null = null;
+
   pivotMode: PivotMode = "bounding-box";
   objectPicker = false;
   toggleObjectPicker() {
@@ -1519,8 +1523,8 @@ export class Controller {
   }
   setToolSelection(ids: string[], groups: string[] = []) {
     if (!this.objectPicker || this.busy) return;
-    const previous = this.transformDraft ?? this.trim?.draft ?? this.preview;
-    this.numericTransformBasis = null;
+    const previous = this.transform?.draft ?? this.trim?.draft ?? this.preview;
+    if (this.transform) this.transform.numericBasis = null;
     const oldIds = new Set(this.selected);
     this.selectedGroups = groups;
     this.selected = [...new Set(ids)];
@@ -1528,7 +1532,7 @@ export class Controller {
     this.queuedPreview = null;
     this.previewId++;
     this.preview = null;
-    this.transformDraft = null;
+    if (this.transform) this.transform.draft = null;
     if (this.trim) { this.trim.draft = null; this.trim.highlight = null; }
     this.transformError = "";
     this.selectedCorner = null;
@@ -1537,11 +1541,11 @@ export class Controller {
     if (this.array) { this.refreshArray(); }
     else if (this.offsetActive) this.refreshOffset();
     else if (this.alignActive) this.refreshAlign();
-    else if (this.transformTool && this.transformTool !== "corner") {
+    else if (this.transform && this.transform.tool !== "corner") {
       if (!oldIds.size) this.centerAutomaticPivot();
       const values = { ...this.transformValues };
       const pivot = { ...this.transformPivot };
-      this.transformOriginal = this.document;
+      this.transform.original = this.document;
       this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
       this.setTransformValues(values);
       this.transformPivot = pivot;
@@ -1556,12 +1560,12 @@ export class Controller {
       const next = reconcileStitches({...this.document, shapes: this.document.shapes.flatMap(shape =>
         ids.has(shape.id) && oldIds.has(shape.id) ? previous.shapes.filter(part => part.id === shape.id || this.trim?.owners.get(part.id) === shape.id) : [shape])}, this.document);
       if (this.trim) this.trim.draft = next;
-      else this.transformDraft = next;
+      else if (this.transform) this.transform.draft = next;
       this.preview = next;
     }
     this.centerAutomaticPivot();
-    if (this.preview && this.transformTool && !["mirror","corner"].includes(this.transformTool))
-      this.numericTransformBasis = { document: this.preview, values: {...this.transformValues}, pivot: {...this.transformPivot}, angle: this.transformAngle };
+    if (this.preview && this.transform && !["mirror","corner"].includes(this.transform.tool))
+      this.transform.numericBasis = { document: this.preview, values: {...this.transformValues}, pivot: {...this.transformPivot}, angle: this.transformAngle };
     this.notify();
   }
   get selectionToolsAvailable() {
@@ -2760,13 +2764,10 @@ export class Controller {
   get canEditCorners() {
     return this.active.some((s) => cornerPoints(s).length > 0);
   }
-  mirrorAxis: string | null = null;
-  mirrorHover: { axis: string; line: [Point, Point] } | null = null;
-  mirrorLine: [Point, Point] | null = null;
   mirrorTargetAt(point: Point) {
     const pivot = this.transformPivot;
     const candidates: { axis: string; line: [Point, Point]; distance: number }[] = [];
-    for (const shape of [...(this.transformOriginal?.shapes ?? [])].filter(s => !this.isHidden(s.id)).reverse()) {
+    for (const shape of [...(this.transform?.original.shapes ?? [])].filter(s => !this.isHidden(s.id)).reverse()) {
       for (const line of boundary(shape).lines) {
         if (distance(...line) > 1e-9)
           candidates.push({ axis: "edge", line, distance: distanceToSegment(point, ...line) });
@@ -2783,45 +2784,46 @@ export class Controller {
     return candidates.filter(c => c.distance <= 8 / this.zoom).sort((a,b) => a.distance-b.distance)[0] ?? null;
   }
   setMirrorAxis(axis: string) {
-    this.mirrorAxis = axis;
-    this.mirrorLine = null;
+    if (!this.transform) return;
+    this.transform.mirror.axis = axis;
+    this.transform.mirror.line = null;
     this.refreshMirror();
   }
   refreshMirror() {
-    if (!this.transformOriginal || !this.mirrorAxis) return;
-    if (this.mirrorAxis === "edge" && !this.mirrorLine) {
+    const transform = this.transform, axis = transform?.mirror.axis;
+    if (!transform || !axis) return;
+    if (axis === "edge" && !transform.mirror.line) {
       this.preview = null;
-      this.transformDraft = null;
+      transform.draft = null;
       this.transformError = "Choose a straight edge.";
       this.notify();
       return;
     }
-    const line = this.mirrorLine;
+    const line = transform.mirror.line;
     const angle = line
       ? Math.atan2(line[1].y - line[0].y, line[1].x - line[0].x) * 180 / Math.PI
-      : this.transformAngle + ({ x: 0, y: 90, positive: 45, negative: -45 }[this.mirrorAxis] ?? 0);
+      : this.transformAngle + ({ x: 0, y: 90, positive: 45, negative: -45 }[axis] ?? 0);
     const pivot = line ? line[0] : this.transformPivot;
     this.updateTransformPreview({
-      ...this.transformOriginal,
-      shapes: this.transformOriginal.shapes.map(s => this.selected.includes(s.id)
+      ...transform.original,
+      shapes: transform.original.shapes.map(s => this.selected.includes(s.id)
         ? stretchShape(s, 1, -1, pivot, angle) : s),
     });
   }
-  canStartTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+  canStartTransform(tool: TransformTool) {
     return !this.segmentTransform && this.ready && this.toolIdle && !this.printLayoutActive && !!this.selected.length &&
       !this.selectionLocked && this.selected.every(id=>!this.isHidden(id)) &&
       (tool !== "corner" || this.active.every(shape=>cornerPoints(shape).length > 0));
   }
-  async activateTransform(tool: "move" | "rotate" | "scale" | "mirror" | "corner") {
+  async activateTransform(tool: TransformTool) {
     if (this.unsettled) await this.settled();
     if (!this.canStartTransform(tool)) return;
     this.beginToolSession();
-    this.transformTool = tool;
-    this.transformOriginal = this.document;
+    this.transform = { tool, original: this.document, draft: null, numericBasis: null, mirror: { axis: null, line: null, hover: null } };
     this.transformValues = { x: 0, y: 0, angle: 0, sx: 1, sy: 1 };
     if (tool !== "corner") this.resetPivot();
     else { this.selectedCorner = null; this.cornerStyleOverride = null; this.bulkCornerStyleOverride = null; }
-    if (tool === "mirror") { this.mirrorAxis = null; this.mirrorLine = null; this.mirrorHover = null; }
+
     this.notify();
   }
   get canApplyTransform() {
@@ -2829,12 +2831,12 @@ export class Controller {
   }
   async applyTransform() {
     if (!this.canApplyTransform) return;
-    const next = this.transformDraft ?? this.preview;
+    const next = this.transform?.draft ?? this.preview;
     if (this.segmentTransform) {
       const v = this.transformValues;
       // An identity transform leaves the segments attached.
       const identity = this.transformTool === "mirror"
-        ? !this.mirrorAxis
+        ? !this.transform?.mirror.axis
         : v.x === 0 && v.y === 0 && v.angle === 0 && v.sx === 1 && v.sy === 1;
       if (identity) { this.cancel(); return; }
       const ids = [...this.selected];
@@ -3529,16 +3531,14 @@ export class Controller {
     this.objectPicker = false;
     this.pivotMode = "bounding-box";
     this.pivotPlacement = null;
-    this.numericTransformBasis = null;
+
 
     if (this.pathCopy) this.selected = this.pathCopySelection;
     this.pathCopy = null;
     this.arraySession = null;
     this.offset = null;
     this.align = null;
-    this.mirrorAxis = null;
-    this.mirrorLine = null;
-    this.mirrorHover = null;
+
     if (this.boolean) this.selected = this.boolean.selection;
     this.trim = null;
     if (this.stitchOriginal) {
@@ -3562,13 +3562,11 @@ export class Controller {
     this.measurementFormulas = {};
     this.constructionFormulas = [];
     this.transformGeneration++;
-    this.transformDraft = null;
     this.transformError = "";
     this.placingPivot = false;
     this.transformAxis = undefined;
     this.hoverHandle = "";
-    this.transformTool = null;
-    this.transformOriginal = null;
+    this.transform = null;
     this.drawingDown = null;
     this.arcSweep = 0;
     this.arcRawSweep = 0;
@@ -3697,7 +3695,7 @@ export class Controller {
     this.segmentTransform = refs;
     // The segment tool stays active; only the detached shapes are transformed.
     this.mode = "segment-select";
-    this.transformOriginal = document;
+    this.transform!.original = document;
     this.preview = document;
     this.resetPivot();
     this.notify();
@@ -4372,11 +4370,11 @@ export class Controller {
       this.setPivot(this.snap(raw, alt));
       return;
     }
-    if (this.transformTool === "mirror") {
+    if (this.transform?.tool === "mirror") {
       const target = this.mirrorTargetAt(raw);
       if (target) {
-        this.mirrorAxis = target.axis;
-        this.mirrorLine = target.axis === "edge" ? target.line : null;
+        this.transform.mirror.axis = target.axis;
+        this.transform.mirror.line = target.axis === "edge" ? target.line : null;
         this.refreshMirror();
       }
       return;
@@ -4523,11 +4521,11 @@ export class Controller {
     }
     if(!this.stitchTransferPlacement)this.updateStitchTransferHighlight(this.world(pixel));
     this.clipboardPixel = { ...pixel };
-    this.mirrorHover = null;
-    if (this.transformTool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
+    if (this.transform) this.transform.mirror.hover = null;
+    if (this.transform?.tool === "mirror" && !this.space && !this.placingPivot && !this.gesture) {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
-      this.mirrorHover = this.mirrorTargetAt(this.anchorPointer);
+      this.transform.mirror.hover = this.mirrorTargetAt(this.anchorPointer);
       this.notify();
       return;
     }

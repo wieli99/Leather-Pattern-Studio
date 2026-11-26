@@ -42,6 +42,7 @@ vi.mock("./persistence", () => ({
   recovery: vi.fn(async () => undefined),
 }));
 import { Controller } from "./controller";
+import type { TransformTool } from "./toolSessions";
 import { worldPoints } from "../model/geometry";
 function editor() {
   const e = new Controller();
@@ -49,6 +50,10 @@ function editor() {
   e.grid = false;
   e.objects = false;
   return e;
+}
+/** Open a transform session directly, without the selection checks of activateTransform. */
+function openTransform(e: Controller, tool: TransformTool) {
+  e.transform = { tool, original: e.document, draft: null, numericBasis: null, mirror: { axis: null, line: null, hover: null } };
 }
 afterEach(() => vi.useRealTimers());
 test("a competing commit cancels Offset and preserves the property edit", async () => {
@@ -1187,7 +1192,7 @@ test("corner drag previews independently, survives Ctrl release and cancels", ()
   };
   e.selected = ["r"];
   expect(e.cornerHandles()).toHaveLength(0);
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0];
   e.pointerDown(e.screen(h.point), 0, false, false, true);
   expect(e.gesture?.kind).toBe("corner");
@@ -1232,7 +1237,7 @@ test("selecting a corner preserves a fractional radius without dragging", () => 
     ],
   };
   e.selected = ["r"];
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0];
   e.pointerDown(e.screen(h.point), 0, false, false, true);
   e.updateCornerModifiers(false, false, false);
@@ -1295,7 +1300,7 @@ test("corner tool uses Ctrl over Shift and combines Alt with coarse steps", () =
     ],
   };
   e.selected = ["r"];
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0],
     p = e.screen({ x: h.point.x + 2, y: h.point.y + 2 });
   e.pointerDown(e.screen(h.point), 0, false, false);
@@ -1715,7 +1720,7 @@ test("mirror activation waits for a target and cancellation clears the preview",
   expect(JSON.stringify(e.document)).toBe(original);
   e.cancel();
   expect(e.preview).toBeNull();
-  expect(e.mirrorAxis).toBeNull();
+  expect(e.transform).toBeNull();
   expect(JSON.stringify(e.document)).toBe(original);
 });
 
@@ -2085,9 +2090,11 @@ test("hidden group outlines are excluded from mirror references", async () => {
   await e.commit({ version: 13, shapes: [{ id: "r", name: "Rectangle", kind: "rectangle", points: [{x: 20,y: 20}, {x: 100,y: 70}], radius: 0, rotation: 0 }] });
   e.selected = ["r"];
   const group = await e.newGroup(true);
-  e.transformOriginal = e.document;
+  openTransform(e, "mirror");
   expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).toBe("edge");
+  e.cancel();
   await e.toggleGroupState(group!, "hidden");
+  openTransform(e, "mirror");
   expect(e.mirrorTargetAt({x: 20,y: 40})?.axis).not.toBe("edge");
 });
 
@@ -2095,7 +2102,7 @@ test("outline tools reject text without cancelling; Trim requires compatible tar
   const e = editor();
   e.document.shapes = [{ ...shape, id: "text", kind: "text", text: "Label" }, shape];
   e.selected = ["text"];
-  e.transformTool = "move";
+  openTransform(e, "move");
   expect(e.canTrim).toBe(false);
   expect(e.canStitch).toBe(false);
   e.activateTrim();
@@ -3380,7 +3387,7 @@ test("outward corner dragging crosses rounding through zero into chamfer and can
   const e = editor();
   e.document = {version:23, shapes:[{id:"r",name:"Rectangle",kind:"rectangle",points:[{x:0,y:0},{x:40,y:20}],radius:3,rotation:0}]};
   e.selected = ["r"];
-  e.transformTool = "corner";
+  openTransform(e, "corner");
   const h = e.cornerHandles()[0];
   e.pointerDown(e.screen(h.point),0,false,false,false);
   e.pointerMove(e.screen({x:h.point.x-8,y:h.point.y-8}),false,false,false);

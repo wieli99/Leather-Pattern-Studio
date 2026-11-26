@@ -55,3 +55,18 @@ export interface BooleanSession {
   selection: string[];
   cache: { key: string; result: Shape | null } | null;
 }
+export type TransformTool = "move" | "rotate" | "scale" | "mirror" | "corner";
+export interface TransformSession {
+  tool: TransformTool;
+  /** Document the preview is computed from; rebased when the pivot or orientation changes. */
+  original: Doc;
+  draft: Doc | null;
+  /** Numeric inputs are absolute within this basis. */
+  numericBasis: { document: Doc; values: { x: number; y: number; angle: number; sx: number; sy: number }; pivot: Point; angle: number } | null;
+  mirror: {
+    /** Chosen axis, or "edge" for a picked straight edge in `line`. */
+    axis: string | null;
+    line: [Point, Point] | null;
+    hover: { axis: string; line: [Point, Point] } | null;
+  };
+}

@@ -473,11 +473,12 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
       }
       ctx.restore();
     }
-    if (editor.transformTool === "mirror" && editor.active.length && !editor.objectPicker) {
-      const line = editor.mirrorLine;
+    const mirror = editor.transform?.tool === "mirror" ? editor.transform.mirror : null;
+    if (mirror && editor.active.length && !editor.objectPicker) {
+      const line = mirror.line;
       const p = line ? line[0] : editor.transformPivot;
       const angle = line ? Math.atan2(line[1].y-p.y, line[1].x-p.x)
-        : (editor.transformAngle + ({x:0,y:90,positive:45,negative:-45}[editor.mirrorAxis ?? ""] ?? 0))*Math.PI/180;
+        : (editor.transformAngle + ({x:0,y:90,positive:45,negative:-45}[mirror.axis ?? ""] ?? 0))*Math.PI/180;
       ctx.save();
       ctx.strokeStyle = "#94a3b8";
       ctx.lineWidth = 1 / z;
@@ -490,7 +491,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.lineTo(origin.x+Math.cos(a)*10000,origin.y+Math.sin(a)*10000);
         ctx.stroke();
       }
-      if (editor.mirrorAxis) {
+      if (mirror.axis) {
         ctx.beginPath();
         ctx.moveTo(p.x-Math.cos(angle)*10000,p.y-Math.sin(angle)*10000);
         ctx.lineTo(p.x+Math.cos(angle)*10000,p.y+Math.sin(angle)*10000);
@@ -499,7 +500,7 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.setLineDash([6/z,4/z]);
         ctx.stroke();
       }
-      const hover = editor.pointerInside && !editor.space && !editor.placingPivot ? editor.mirrorHover : null;
+      const hover = editor.pointerInside && !editor.space && !editor.placingPivot ? mirror.hover : null;
       if (hover) {
         const [a,b] = hover.line;
         const scale = hover.axis === "edge" ? 1 : 10000;
