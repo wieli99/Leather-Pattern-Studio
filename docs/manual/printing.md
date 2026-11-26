@@ -21,9 +21,9 @@ Drag print tabs left or right to reorder them. An empty dashed outline reserves 
 
 ## Draw directly on a print tab
 
-The left tool sidebar uses the same button layout, selection styling, and shortcut captions as Model. Print keeps its own existing tool set: Select, Move, Rotate, Mirror, Text, Measurements, Drawing tools, Import image, Undo, Redo, and Fit.
+The left tool sidebar uses the same button layout, selection styling, and shortcut captions as Model. Print keeps its own existing tool set: Select, Move, Rotate, Mirror, Align and distribute, Text, Measurements, Drawing tools, Import image, Undo, Redo, and Fit.
 
-Choose **Text (T)**, **Measurements (D)**, **Drawing tools (A)**, or **Import image** below Mirror in the print toolbar. Measurements contains Measurement, Square size guide, and Ruler size guide; D and Shift+D cycle these variants. Drawing tools contains Arrow, Bodyless arrow, and Crosshair; A and Shift+A cycle these variants. Placement, numeric construction fields (Tab enters them, Enter confirms and returns to the canvas), Shift constraints, Alt snapping bypass, and cancellation work as on Model. Measurements use this layout’s units.
+Choose **Text (T)**, **Measurements (D)**, **Drawing tools (A)**, or **Import image** below Align and distribute in the print toolbar. Measurements contains Measurement, Square size guide, and Ruler size guide; D and Shift+D cycle these variants. Drawing tools contains Arrow, Bodyless arrow, and Crosshair; A and Shift+A cycle these variants. Placement, numeric construction fields (Tab enters them, Enter confirms and returns to the canvas), Shift constraints, Alt snapping bypass, and cancellation work as on Model. Measurements use this layout’s units.
 
 New objects belong only to the active print tab. They are never linked or synced to Model or another print tab. Select an independent object to edit its Properties below Pages in the right sidebar. Double-click text on paper to edit it; Ctrl/⌘+Enter applies and Escape cancels. Image import uses the same formats and initial viewport-relative size as Model. Each completed creation or edit is one undo step; switching tabs cancels unfinished placement.
 
@@ -87,6 +87,12 @@ Return to Model to edit source geometry, resize pattern pieces, or paste styling
 ![Select-mode rotation ring](/manual/images/print-gizmo.png)
 
 ![Rotation preview with degree readout](/manual/images/print-rotation-readout.png)
+
+## Align and distribute print objects
+
+Select placements or groups and choose **Align and distribute (L)** in the print toolbar. The panel matches [Align and distribute](#transforms/align-and-distribute) on Model: choose up to one Horizontal and one Vertical arrangement, a **Relative to** reference, and Equal or Exact **Gaps**. A selected group moves as one object. Positions use the layout's units and each placement's outer bounds; attached stitching does not widen its piece.
+
+While the panel is open, canvas drags do not move artwork and there is no pivot. Apply, Enter, or right-click moves the placements in one undo step; Escape or Cancel discards the preview, and V returns to Select. Relative to and Gaps are shared with Model.
 
 ## Pages and assembly
 

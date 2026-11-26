@@ -129,8 +129,6 @@ nav {
 }
 nav button {
   height: 46px;
-  /* A rail taller than the window scrolls rather than squashing its buttons. */
-  flex-shrink: 0;
   position: relative;
   background: transparent;
 }
