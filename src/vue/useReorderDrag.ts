@@ -9,7 +9,16 @@ export interface ReorderDragState {
   valid: boolean;
   image?: string;
 }
-/** Shared pointer lifecycle. Preview movement never writes document state. */
+/** A finger must rest this long on a row before dragging reorders instead of scrolling the list. */
+export const TOUCH_DRAG_HOLD_MS = 350;
+/** A resting finger may drift this far, in CSS pixels, before the press counts as a scroll. */
+const TOUCH_HOLD_SLOP = 8;
+/**
+ * Shared pointer lifecycle. Preview movement never writes document state.
+ *
+ * Mouse and pen drag at once. Touch drags after a press and hold, so a swipe still scrolls the
+ * list; rows let the browser pan (touch-action) and the hold blocks that pan once armed.
+ */
 export function useReorderDrag(options: {
   activate: () => void;
   move: (event: PointerEvent) => boolean;
@@ -26,7 +35,17 @@ export function useReorderDrag(options: {
   let metadata: Omit<ReorderDragState, "x" | "y" | "valid">;
   let previousCursor = "",
     previousSelect = "";
+  /** Touch only: undefined while the hold is pending, true once the finger may drag. */
+  let armed: boolean | undefined,
+    holdTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Once armed, keeps the browser from scrolling the list under the dragged row. */
+  function blockScroll(event: TouchEvent) {
+    if (armed && event.cancelable) event.preventDefault();
+  }
   function cancel() {
+    clearTimeout(holdTimer);
+    holdTimer = undefined;
+    armed = undefined;
     const active = !!state.value,
       hadSession = !!startEvent;
     startEvent = last = undefined;
@@ -37,6 +56,8 @@ export function useReorderDrag(options: {
     window.removeEventListener("pointercancel", cancel);
     window.removeEventListener("blur", cancel);
     window.removeEventListener("keydown", key);
+    window.removeEventListener("touchmove", blockScroll);
+    window.removeEventListener("contextmenu", cancel);
     if (active) {
       delete document.documentElement.dataset.reorderDrag;
       document.body.style.cursor = previousCursor;
@@ -87,6 +108,12 @@ export function useReorderDrag(options: {
       return;
     }
     last = event;
+    if (armed === false) {
+      // The finger moved before the hold elapsed: this is a scroll, not a drag.
+      if (Math.hypot(event.clientX - startEvent.clientX, event.clientY - startEvent.clientY) > TOUCH_HOLD_SLOP)
+        cancel();
+      return;
+    }
     if (!state.value) {
       if (
         Math.hypot(
@@ -145,6 +172,13 @@ export function useReorderDrag(options: {
     window.addEventListener("pointercancel", cancel);
     window.addEventListener("blur", cancel);
     window.addEventListener("keydown", key);
+    if (event.pointerType === "touch") {
+      armed = false;
+      holdTimer = setTimeout(() => (armed = true), TOUCH_DRAG_HOLD_MS);
+      window.addEventListener("touchmove", blockScroll, { passive: false });
+      // A long press that opens the browser's or a row's context menu is not a drag.
+      window.addEventListener("contextmenu", cancel);
+    }
     frame = requestAnimationFrame(tick);
   }
   onBeforeUnmount(cancel);

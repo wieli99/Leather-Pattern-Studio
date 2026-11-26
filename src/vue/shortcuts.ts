@@ -250,9 +250,7 @@ export function handleShortcut(e: KeyboardEvent, openHelp: () => void) {
   if (e.key === "Enter") editor.finish();
   if (e.key === "Backspace" && editor.pending.length) {
     e.preventDefault();
-    editor.pending = editor.pending.slice(0, -1);
-    editor.pendingHandles = editor.pendingHandles.slice(0, -1);
-    editor.notify();
+    editor.removeLastPendingPoint();
   } else if (["Delete", "Backspace"].includes(e.key)) {
     e.preventDefault();
     if (editor.stitchMode && editor.stitchSelected.length)

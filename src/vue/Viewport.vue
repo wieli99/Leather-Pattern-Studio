@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { createId } from "../model/id";
+import { TouchGestureRouter } from "../editor/touchGestures";
 import { measureText, textFamily } from "../model/text";
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import { editor as defaultEditor } from "../editor/instance";
@@ -135,6 +136,16 @@ function outside(event: PointerEvent) {
   void saveText();
 }
 function doubleClick(event: MouseEvent) {
+  // Touch double taps arrive through `tap`; mobile browsers' own dblclick is unreliable.
+  if (pointerType === "touch") return;
+  doubleClickAt(event);
+}
+function tap(event: MouseEvent) {
+  const count = pointerType === "touch" ? touch.tapCount : event.detail;
+  editor.polylineClick(count);
+  if (pointerType === "touch" && count === 2) doubleClickAt(event);
+}
+function doubleClickAt(event: MouseEvent) {
   if (
     editor.tool === "select" &&
     !editor.gesture &&
@@ -196,16 +207,32 @@ const pixel = (event: MouseEvent) => {
   const r = canvas.value!.getBoundingClientRect();
   return { x: event.clientX - r.left, y: event.clientY - r.top };
 };
+// Fingers: one finger draws and selects as the mouse does; two fingers pan and pinch-zoom.
+const touch = new TouchGestureRouter<PointerEvent>({
+  begin: (event) => begin(event),
+  cancel: () => editor.pauseGesture(),
+  panZoom: (center, factor, delta) => editor.pinchZoom(center, factor, delta),
+});
+let pointerType = "mouse";
 function down(event: PointerEvent) {
+  pointerType = event.pointerType;
+  editor.setPointerType(event.pointerType);
   editor.setMeasurementModifier(event.ctrlKey);
   if (draft.value) return;
+  if (!touch.down(event, pixel(event))) begin(event);
+}
+function begin(event: PointerEvent) {
   if (editor.tool === "text") {
     event.preventDefault();
     editText(event);
     if (draft.value) return;
   }
   canvas.value!.focus();
-  canvas.value!.setPointerCapture(event.pointerId);
+  // A deferred touch can begin from its pointerup, after the pointer is no longer active.
+  try { canvas.value!.setPointerCapture(event.pointerId); } catch { /* already released */ }
+  // A finger has no hover before it lands; move there first so snapping and previews start at it.
+  if (event.pointerType === "touch")
+    editor.pointerMove(pixel(event), event.altKey, event.ctrlKey, event.shiftKey);
   editor.pointerDown(
     pixel(event),
     event.button,
@@ -269,6 +296,7 @@ onUnmounted(() => {
   window.removeEventListener("keydown", updateModifiers);
   window.removeEventListener("keyup", updateModifiers);
   window.removeEventListener("blur", clearModifiers);
+  touch.reset();
   editor.editingTextId = undefined;
   editor.onTextRequested = undefined;
   detach?.();
@@ -286,8 +314,9 @@ defineExpose({ beginText, cancelText });
     @pointerdown="down"
     @dblclick="doubleClick"
     @pointermove="
+      editor.setPointerType($event.pointerType);
       editor.setMeasurementModifier($event.ctrlKey);
-      editor.pointerMove(
+      !touch.move($event, pixel($event)) && editor.pointerMove(
         pixel($event),
         $event.altKey,
         $event.ctrlKey,
@@ -295,17 +324,17 @@ defineExpose({ beginText, cancelText });
       );
     "
     @pointerup="
-      editor.pointerUp(
+      !touch.up($event, pixel($event)) && editor.pointerUp(
         pixel($event),
         $event.altKey,
         $event.shiftKey,
         $event.ctrlKey,
       )
     "
-    @click="editor.polylineClick($event.detail)"
+    @click="tap"
     @pointerleave="editor.leavePointer()"
-    @pointercancel="editor.pauseGesture()"
-    @lostpointercapture="(editor.gesture || editor.offset?.drag) && editor.pauseGesture()"
+    @pointercancel="!touch.cancel($event) && editor.pauseGesture()"
+    @lostpointercapture="!touch.navigating && (editor.gesture || editor.offset?.drag) && editor.pauseGesture()"
     @contextmenu.prevent
   />
   <div

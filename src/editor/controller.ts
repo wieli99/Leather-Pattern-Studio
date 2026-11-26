@@ -14,6 +14,7 @@ import { stitchTools, type StitchTool } from "./stitchTools";
 import { copyTransferPlacements, shareReceivingGeometry, hitStitchHole, detachTransfer, makeTransfer, pieceFrame, stitchPiece, materialContains, copyStitchData, resolvedStitchGroups, receivingStitches, holeAppearance, holeMark, holeTouchesEdge } from "../model/stitchLayers";
 import type { StitchTransfer } from "../generated/StitchTransfer";
 import { hitsTransformShaft } from "./transformUi";
+import { pinchView, pointerScaleFor } from "./touchGestures";
 import {snapRigidMove,snapRotation} from "./rigidTransform";
 import { reconcilePrintLayouts } from "../model/printLayout";
 import { formatLength, unitSymbol, type UnitMode } from "../model/units";
@@ -277,7 +278,7 @@ export class Controller {
     const originals = this.document.shapes.filter(s => this.selected.includes(s.id));
     const index = (this.offset?.ids ?? []).findIndex(id => {
       const shape = this.offset?.draft?.shapes.find(s => s.id === id);
-      return shape && hitTest(shape, raw, 8 / this.zoom, this.units);
+      return shape && hitTest(shape, raw, this.pick(8), this.units);
     });
     const source = originals[index];
     if (!source) return null;
@@ -957,6 +958,15 @@ export class Controller {
   rulers = false;
   theme = "dark";
   zoom = defaultGridView.zoom;
+  /** Enlarges screen-space hit areas for the current pointer: 1 for mouse and pen, larger for touch. */
+  pointerScale = 1;
+  /** A hit or snap tolerance of `pixels` screen pixels, in world units, for the current pointer. */
+  pick(pixels: number) {
+    return (pixels * this.pointerScale) / this.zoom;
+  }
+  setPointerType(type: string) {
+    this.pointerScale = pointerScaleFor(type);
+  }
   pan = { ...defaultGridView.pan };
   width = 900;
   height = 700;
@@ -1110,10 +1120,10 @@ export class Controller {
     const raw = this.anchorPointer;
     const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
       .reverse()
-      .find((s) => isOutlineKind(s.kind) && hitTest(s, raw, 8 / this.zoom, this.units));
+      .find((s) => isOutlineKind(s.kind) && hitTest(s, raw, this.pick(8), this.units));
     let point: Point | null = null;
     if (hit)
-      insertAnchor(hit, raw, 8 / this.zoom, (p) => {
+      insertAnchor(hit, raw, this.pick(8), (p) => {
         point = p;
       });
     return point;
@@ -1410,7 +1420,7 @@ export class Controller {
       if(!ids.has(group.id))continue;
       const shape=this.document.shapes.find(s=>s.id===group.shapeId);
       if(!shape || this.isHidden(shape.id))continue;
-      try {const holes=this.stitchGeometry(shape,group).holes,p=holes[Math.floor(holes.length/2)]?.point;if(p && distance(raw,{x:p.x+10/this.zoom,y:p.y+12/this.zoom})<10/this.zoom)this.stitchTransferHighlight=group.id;}catch{continue;}
+      try {const holes=this.stitchGeometry(shape,group).holes,p=holes[Math.floor(holes.length/2)]?.point;if(p && distance(raw,{x:p.x+10/this.zoom,y:p.y+12/this.zoom})<this.pick(10))this.stitchTransferHighlight=group.id;}catch{continue;}
     }
   }
   get selectedStitchLines() { return resolvedStitchGroups(this.document).filter(g=>this.stitchSelected.includes(g.id)); }
@@ -1455,7 +1465,7 @@ export class Controller {
     this.smartGuides=[];this.snapTarget=null;
     if (!alt) {
       const ghosts=this.stitchTransferGhosts;
-      const result=snapRigidMove([...this.document.shapes.filter(s=>!this.selectedTransferSources.some(source=>source.id===s.id) && !s.stitchParentId && !this.isHidden(s.id)),...ghosts],ghosts.map(s=>s.id),{x:0,y:0},{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:this.document.guides});
+      const result=snapRigidMove([...this.document.shapes.filter(s=>!this.selectedTransferSources.some(source=>source.id===s.id) && !s.stitchParentId && !this.isHidden(s.id)),...ghosts],ghosts.map(s=>s.id),{x:0,y:0},{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:this.pick(8),guides:this.document.guides});
       placement.center={x:placement.center.x+result.delta.x,y:placement.center.y+result.delta.y};
       this.smartGuides=result.guides;
       if ("target" in result) this.snapTarget=result.target!;
@@ -1664,7 +1674,7 @@ export class Controller {
   }
   /** Topmost visible object at a point, on its outline or, with `inside`, within it. */
   private visibleObjectAt(raw: Point, inside: boolean) {
-    return [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s, raw, 8 / this.zoom, this.units) || inside && contains(s, raw)));
+    return [...this.document.shapes].reverse().find(s => !this.isHidden(s.id) && (hitTest(s, raw, this.pick(8), this.units) || inside && contains(s, raw)));
   }
   /** Objects a tool preview adds, without their stitching shapes. */
   private addedObjectIds(next: Doc) {
@@ -1765,7 +1775,7 @@ export class Controller {
     return this.document.stitchGroups ?? [];
   }
   stitchLineAt(raw: Point): StitchGroup | null {
-    let closest = 8 / this.zoom,
+    let closest = this.pick(8),
       target: StitchGroup | null = null;
     for (const group of resolvedStitchGroups(this.document)) {
       const shape = this.document.shapes.find((s) => s.id === group.shapeId);
@@ -1775,7 +1785,7 @@ export class Controller {
         const pick = group;
         for (const [index,hole] of geometry.holes.entries()) {
           const d=distance(raw,hole.point);
-          if(hitStitchHole(group,index,hole,raw,8/this.zoom) && d<closest+Math.max(holeMark(holeAppearance(group,index)).width,holeMark(holeAppearance(group,index)).height)/2){target=pick;closest=Math.min(closest,d);}
+          if(hitStitchHole(group,index,hole,raw,this.pick(8)) && d<closest+Math.max(holeMark(holeAppearance(group,index)).width,holeMark(holeAppearance(group,index)).height)/2){target=pick;closest=Math.min(closest,d);}
         }
         for (let i = 1; i < points.length; i++) {
           const d = distanceToSegment(raw, points[i - 1], points[i]);
@@ -1794,7 +1804,7 @@ export class Controller {
     const line = this.stitchLineAt(raw);
     if (line && !this.stitch.addingRun) return line;
     const freeSection=this.stitch.tool==="line";
-    let best = 24 / this.zoom,
+    let best = this.pick(24),
       target: StitchGroup | null = null;
     for (const s of this.document.shapes.filter((s) =>
       !this.isHidden(s.id) && !this.isLocked(s.id),
@@ -1811,7 +1821,7 @@ export class Controller {
           );
           let occupied: StitchGroup | undefined;
           if(freeSection && !this.stitch.addingRun)occupied=this.stitchGroups.filter(g=>g.shapeId===s.id && g.edges.includes(edge.key)).find(g=>{
-            try {const points=this.stitchGeometry(s,g).points;return points.slice(1).some((b,index)=>{const a=points[index],dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy,t=((raw.x-a.x)*dx+(raw.y-a.y)*dy)/(length || 1);return length>1e-12 && t>=0 && t<=1 && distanceToSegment(raw,a,b)<=24/this.zoom;});}catch{return true;}
+            try {const points=this.stitchGeometry(s,g).points;return points.slice(1).some((b,index)=>{const a=points[index],dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy,t=((raw.x-a.x)*dx+(raw.y-a.y)*dy)/(length || 1);return length>1e-12 && t>=0 && t<=1 && distanceToSegment(raw,a,b)<=this.pick(24);});}catch{return true;}
           });
           target = occupied ?? (this.stitch.addingRun || freeSection ? undefined : existing) ?? {
             id: "preview",
@@ -1943,7 +1953,7 @@ export class Controller {
     if (this.stitch.draft) { this.stitch.error="Apply or cancel invalid settings before changing selection.";this.notify();return; }
     if (alt) {
       const hit=this.stitchLineAt(raw);
-      const piece=hit ? (this.document.stitchTransfers?.find(t=>t.id===hit.id) ? this.document.shapes.find(s=>s.id===hit.shapeId) : stitchPiece(this.document,hit)) : [...this.document.shapes].reverse().find(s=>!s.stitchParentId && !this.isHidden(s.id) && !this.isLocked(s.id) && (hitTest(s,raw,8/this.zoom,this.units) || (stitchClosed(s) && materialContains(s,raw))));
+      const piece=hit ? (this.document.stitchTransfers?.find(t=>t.id===hit.id) ? this.document.shapes.find(s=>s.id===hit.shapeId) : stitchPiece(this.document,hit)) : [...this.document.shapes].reverse().find(s=>!s.stitchParentId && !this.isHidden(s.id) && !this.isLocked(s.id) && (hitTest(s,raw,this.pick(8),this.units) || (stitchClosed(s) && materialContains(s,raw))));
       if(piece) {
         const ids=resolvedStitchGroups(this.document).filter(g=>{
           const shape=this.document.shapes.find(s=>s.id===g.shapeId)!;
@@ -1960,7 +1970,7 @@ export class Controller {
 
         const shape=this.document.shapes.find(s=>s.id===group.shapeId)!;
         if(this.isHidden(shape.id)||this.isLocked(shape.id))continue;
-        try {this.stitchGeometry(shape,group).holes.forEach((hole,index)=>{const d=distance(raw,hole.point);if(hitStitchHole(group,index,hole,raw,10/this.zoom) && d<nearest){nearest=d;picked={groupId:group.id,number:index+1};}});}catch{continue;}
+        try {this.stitchGeometry(shape,group).holes.forEach((hole,index)=>{const d=distance(raw,hole.point);if(hitStitchHole(group,index,hole,raw,this.pick(10)) && d<nearest){nearest=d;picked={groupId:group.id,number:index+1};}});}catch{continue;}
       }
       if(picked && this.document.stitchTransfers?.some(t=>t.id===picked!.groupId)) {
         this.stitchSelected=[picked.groupId];this.stitch.editingHoles=false;this.stitch.holeSelection=[];this.message="This transferred hole follows its source. Detach to edit it independently.";
@@ -2549,6 +2559,16 @@ export class Controller {
       this.closePolyline();
     }
   }
+  /** True while a path or curve has placed anchors that Finish, Close or Remove last point act on. */
+  get pathInProgress() {
+    return this.pending.length > 0 && (this.mode === "polyline" || isCurveMode(this.mode));
+  }
+  removeLastPendingPoint() {
+    if (!this.pending.length) return;
+    this.pending = this.pending.slice(0, -1);
+    this.pendingHandles = this.pendingHandles.slice(0, -1);
+    this.notify();
+  }
   closePolyline() {
     if (this.pending.length < 3) {
       this.message = "Place at least three anchors before closing a path";
@@ -2773,7 +2793,7 @@ export class Controller {
     else if (this.mode === "polyline") {
       if (
         this.pending.length >= 3 &&
-        distance(p, this.pending[0]) < 8 / this.zoom
+        distance(p, this.pending[0]) < this.pick(8)
       )
         this.finish([...this.pending, this.pending[0]]);
       else this.pending = [...this.pending, p];
@@ -2933,7 +2953,7 @@ export class Controller {
           candidates.push({ axis: "edge", line, distance: distanceToSegment(point, ...line) });
       }
     }
-    if (distance(point, pivot) > 8 / this.zoom) {
+    if (distance(point, pivot) > this.pick(8)) {
       for (const [axis, degrees] of [["x", 0], ["y", 90], ["positive", 45], ["negative", -45]] as const) {
         const angle = (degrees + this.transformAngle) * Math.PI / 180;
         const dx = Math.cos(angle), dy = Math.sin(angle);
@@ -2941,7 +2961,7 @@ export class Controller {
           distance: Math.abs((point.x-pivot.x)*dy-(point.y-pivot.y)*dx) });
       }
     }
-    return candidates.filter(c => c.distance <= 8 / this.zoom).sort((a,b) => a.distance-b.distance)[0] ?? null;
+    return candidates.filter(c => c.distance <= this.pick(8)).sort((a,b) => a.distance-b.distance)[0] ?? null;
   }
   setMirrorAxis(axis: string) {
     if (!this.transform) return;
@@ -3758,7 +3778,7 @@ export class Controller {
   }
   private segmentEditable = (s: Shape) => !this.isLocked(s.id);
   segmentAtPoint(point: Point) {
-    return segmentAt(this.segmentTargets(), point, 8 / this.zoom, this.segmentEditable);
+    return segmentAt(this.segmentTargets(), point, this.pick(8), this.segmentEditable);
   }
   selectAllSegments() {
     if (!this.segmentMode || this.busy) return;
@@ -3871,7 +3891,7 @@ export class Controller {
     this.snapTarget = null;
     this.snapKind = null;
     if (disabled) return p;
-    const tolerance = 8 / this.zoom;
+    const tolerance = this.pick(8);
     if (this.objects) {
       let best = tolerance;
       for (const s of this.document.shapes.filter(s => !this.isHidden(s.id))) {
@@ -4233,19 +4253,19 @@ export class Controller {
     if (this.active.some(s => this.isLocked(s.id) || this.isHidden(s.id))) return;
     if (
       this.transformTool === "rotate" &&
-      Math.abs(distance(raw, this.transformPivot) * this.zoom - 60) < 9
+      Math.abs(distance(raw, this.transformPivot) * this.zoom - 60) < 9 * this.pointerScale
     )
       return this.handles()[0];
     const handles = this.handles();
     const direct =
       handles.find(
-        (h) => !h.handleSide && distance(h.point, raw) < 10 / this.zoom,
-      ) ?? handles.find((h) => distance(h.point, raw) < 10 / this.zoom);
+        (h) => !h.handleSide && distance(h.point, raw) < this.pick(10),
+      ) ?? handles.find((h) => distance(h.point, raw) < this.pick(10));
     if (direct) return direct;
     return handles.find(
       (h) =>
         h.axis &&
-        hitsTransformShaft(raw, this.transformPivot, h.point, this.zoom),
+        hitsTransformShaft(raw, this.transformPivot, h.point, this.zoom / this.pointerScale),
     );
   }
   private textEditingId?: string;
@@ -4286,7 +4306,7 @@ export class Controller {
     this.snapKind = null;
     let coordinate = raw[axis];
     if (!alt) {
-      const tolerance = 8 / this.zoom;
+      const tolerance = this.pick(8);
       const candidates = this.objects
         ? this.document.shapes.flatMap((shape) =>
             (this.isHidden(shape.id) ? [] : snapCandidates(shape)).map((candidate) => ({
@@ -4428,7 +4448,7 @@ export class Controller {
     if (trim && !trim.boolean && button === 0 && !this.space) {
       const baseline = trim.draft ?? this.document;
       const visible = baseline.shapes.filter(s => !this.isHidden(s.id));
-      const trimmed = trimAt(visible, raw, 8 / this.zoom, undefined, s => this.trimmable(trim, s));
+      const trimmed = trimAt(visible, raw, this.pick(8), undefined, s => this.trimmable(trim, s));
       const shapes = trimmed ? [...trimmed, ...baseline.shapes.filter(s => this.isHidden(s.id))] : null;
       trim.highlight = null;
       if (shapes) {
@@ -4489,7 +4509,7 @@ export class Controller {
       const existing =
         !axis && this.tool === "select" && !this.handleAt(raw)
           ? (this.document.guides ?? []).find(
-              (g) => Math.abs(raw[g.axis] - g.coordinate) * this.zoom < 5,
+              (g) => Math.abs(raw[g.axis] - g.coordinate) * this.zoom < 5 * this.pointerScale,
             )
           : undefined;
       if (axis || existing) {
@@ -4559,8 +4579,8 @@ export class Controller {
       if (alt) {
         // Alt-click inserts an anchor, as in object selection.
         const shape = this.segmentTargets().slice().reverse()
-          .find(s => this.segmentEditable(s) && isOutlineKind(s.kind) && hitTest(s, raw, 8 / this.zoom, this.units));
-        const next = shape && insertAnchor(shape, raw, 8 / this.zoom);
+          .find(s => this.segmentEditable(s) && isOutlineKind(s.kind) && hitTest(s, raw, this.pick(8), this.units));
+        const next = shape && insertAnchor(shape, raw, this.pick(8));
         if (shape && next)
           void this.commit({ ...base, shapes: base.shapes.map(s => s.id === shape.id ? next : s) });
         return;
@@ -4581,9 +4601,9 @@ export class Controller {
     if (alt && !this.transformTool && !handle) {
       const hit = [...this.document.shapes.filter(s => !this.isHidden(s.id))]
         .reverse()
-        .find((s) => isOutlineKind(s.kind) && hitTest(s, raw, 8 / this.zoom, this.units));
+        .find((s) => isOutlineKind(s.kind) && hitTest(s, raw, this.pick(8), this.units));
       if (hit) {
-        const shape = insertAnchor(hit, raw, 8 / this.zoom);
+        const shape = insertAnchor(hit, raw, this.pick(8));
         if (shape) {
           this.selected = [hit.id];
           void this.commit({
@@ -4625,7 +4645,7 @@ export class Controller {
     const hit = [...(this.preview ?? this.document).shapes]
       .reverse()
       .find(
-        (s) => hitTest(s, raw, 8 / this.zoom, this.units) || (ctrl && contains(s, raw)),
+        (s) => hitTest(s, raw, this.pick(8), this.units) || (ctrl && contains(s, raw)),
       );
     if (
       this.transformTool &&
@@ -4703,7 +4723,7 @@ export class Controller {
       this.pointerInside = true;
       this.anchorPointer = this.world(pixel);
       trim.highlight = null;
-      trimAt((trim.draft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, 8 / this.zoom,
+      trimAt((trim.draft ?? this.document).shapes.filter(s => !this.isHidden(s.id)), this.anchorPointer, this.pick(8),
         span => { trim.highlight = span; }, s => this.trimmable(trim, s));
       this.notify();
       return;
@@ -4769,7 +4789,7 @@ export class Controller {
     if (
       this.drawingDown?.initial &&
       (pointCount(this.mode) === 2 || this.mode === "polyline" || this.mode === "measurement") &&
-      distance(pixel, this.drawingDown.pixel) >= 4
+      distance(pixel, this.drawingDown.pixel) >= 4 * this.pointerScale
     ) {
       this.pending = [this.drawingDown.point];
     }
@@ -4792,7 +4812,7 @@ export class Controller {
       let document: Doc = g.original;
       if (g.kind === "move") {
         const movement={x:raw.x-g.start.x,y:raw.y-g.start.y};
-        const snapped=alt ? {delta:movement,guides:[] as SmartGuide[],target:undefined} : snapRigidMove(g.original.shapes.filter(s=>!this.isHidden(s.id)),g.selection,movement,{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:8/this.zoom,guides:g.original.guides,anchor:g.snapAnchor});
+        const snapped=alt ? {delta:movement,guides:[] as SmartGuide[],target:undefined} : snapRigidMove(g.original.shapes.filter(s=>!this.isHidden(s.id)),g.selection,movement,{grid:this.grid,objects:this.objects,gridSize:this.gridSize,tolerance:this.pick(8),guides:g.original.guides,anchor:g.snapAnchor});
         if(!g.snapAnchor && "anchor" in snapped)g.snapAnchor=snapped.anchor;
         let dx=snapped.delta.x,dy=snapped.delta.y;
         const target=snapped.target ?? null,targetGuides=snapped.guides,targetKind:SnapKind|null=target ? "alignment" : null;
@@ -5059,7 +5079,7 @@ export class Controller {
       this.hover =
         [...this.document.shapes.filter(s => !this.isHidden(s.id))]
           .reverse()
-          .find((s) => hitTest(s, raw, 8 / this.zoom, this.units))?.id ?? "";
+          .find((s) => hitTest(s, raw, this.pick(8), this.units))?.id ?? "";
     }
     this.notifyPointer();
   }
@@ -5095,7 +5115,7 @@ export class Controller {
     }
     if (this.drawingDown) {
       const d = this.drawingDown;
-      if (d.initial && pixel && distance(pixel,d.pixel) >= 4 && ["arrow","arrow-head","crosshair","size-ruler","measurement"].includes(this.mode)) this.pending=[d.point];
+      if (d.initial && pixel && distance(pixel,d.pixel) >= 4 * this.pointerScale && ["arrow","arrow-head","crosshair","size-ruler","measurement"].includes(this.mode)) this.pending=[d.point];
       this.drawingDown = null;
       const p = pixel
         ? this.drawingPoint(this.world(pixel), alt, shift)
@@ -5103,7 +5123,7 @@ export class Controller {
       if (
         d.initial &&
         pixel &&
-        distance(pixel, d.pixel) >= 4 &&
+        distance(pixel, d.pixel) >= 4 * this.pointerScale &&
         (pointCount(this.mode) === 2 || this.mode === "polyline")
       ) {
         this.pending = [];
@@ -5117,7 +5137,7 @@ export class Controller {
         this.addPoint(anchor);
         if (this.mode === "control-curve" && this.pending.length > count) {
           let v =
-            pixel && distance(pixel, d.pixel) >= 4
+            pixel && distance(pixel, d.pixel) >= 4 * this.pointerScale
               ? {
                   x: this.world(pixel).x - anchor.x,
                   y: this.world(pixel).y - anchor.y,
@@ -5707,6 +5727,13 @@ export class Controller {
       );
       this.pan = { x: pixel.x - p.x * this.zoom, y: pixel.y - p.y * this.zoom };
     } else this.pan = { x: this.pan.x - dx, y: this.pan.y - dy };
+    this.notify();
+  }
+  /** Two-finger touch navigation: pans by `delta` and zooms by `factor` about `center`. */
+  pinchZoom(center: Point, factor: number, delta: Point) {
+    const view = pinchView(this, center, factor, delta, { min: 0.01, max: 100 });
+    this.zoom = view.zoom;
+    this.pan = view.pan;
     this.notify();
   }
   async confirmReplacement() {

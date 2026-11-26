@@ -53,7 +53,10 @@ const group = computed(() =>
   );
 let timer: ReturnType<typeof setTimeout> | undefined,
   long = false;
-function down() {
+function down(event: PointerEvent) {
+  // Mouse presses must not move focus or select text. Touch keeps its default: WebKit drops the
+  // tap's click when a touch pointerdown is prevented, so tools could not be chosen on iPhones.
+  if (event.pointerType !== "touch") event.preventDefault();
   long = false;
   if (group.value)
     timer = setTimeout(() => {
@@ -89,12 +92,12 @@ onUnmounted(release);
           :aria-label="tool.key ? `${tool.label} (${tool.key})` : tool.label"
           :aria-pressed="active"
           :aria-keyshortcuts="tool.key.toLowerCase()"
-          @pointerdown.capture.prevent="down"
+          @pointerdown.capture="down"
           @pointerup="release"
           @pointerleave="release"
           @pointercancel="release"
           @click.capture.prevent="click"
-          @contextmenu.prevent="group && (open = !open)"
+          @contextmenu.prevent="group && !long && (open = !open)"
           @keydown.down.prevent="group && (open = true)"
         >
           <span class="tool-icon"><ModeIcon :mode="current" /></span>
