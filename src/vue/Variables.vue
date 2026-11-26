@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { createId } from "../model/id";
 import { computed, nextTick, ref } from "vue";
 import PinnablePopover from "./PinnablePopover.vue";
 import { editor } from "../editor/instance";
@@ -65,7 +66,7 @@ const valueInputs = new Map<string, HTMLInputElement>();
  * value; it keeps its id, so the inputs being typed in stay focused, and a new empty row
  * appears below.
  */
-const draftId = ref(crypto.randomUUID());
+const draftId = ref(createId());
 const rows = computed(() => [
   ...list.value.map((v) => ({ v, draft: false })),
   { v: { id: draftId.value, name: "", kind: "text", value: "" } as Variable, draft: true },
@@ -123,7 +124,7 @@ async function createDraft() {
     }));
     setError(id, message);
     if (message) return;
-    draftId.value = crypto.randomUUID();
+    draftId.value = createId();
   } finally {
     creating = false;
   }

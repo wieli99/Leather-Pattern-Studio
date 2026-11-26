@@ -1,3 +1,4 @@
+import { createId } from "./id";
 import type { ObjectNode } from "./objectTree";
 import { contourShape } from "./compound";
 import { cubicAt, cubicSegments } from "./curves";
@@ -181,7 +182,7 @@ function fitRun(marks: Mark[], closed: boolean, angular = false): DetectedStitch
     );
   if (marks.length === 3 && !straight) return;
   const shape: Shape = {
-    id: crypto.randomUUID(),
+    id: createId(),
     name: "Detected stitching",
     stitchOnly: true,
     radius: 0,
@@ -244,7 +245,7 @@ function fitRun(marks: Mark[], closed: boolean, angular = false): DetectedStitch
       )
         continue;
       const group: StitchGroup = {
-        id: crypto.randomUUID(),
+        id: createId(),
         shapeId: shape.id,
         edges: edges.map((edge) => edge.key),
         side: 1,

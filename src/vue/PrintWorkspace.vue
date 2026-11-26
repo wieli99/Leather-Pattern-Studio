@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import VisibilityIcon from "./VisibilityIcon.vue";
+import LockIcon from "./LockIcon.vue";
+import { createId } from "../model/id";
+import { pinchView, pointerScaleFor, TouchGestureRouter } from "../editor/touchGestures";
 import { reconcilePrintTargets } from "../model/printLayout";
 import ToolObjectPicker from "./ToolObjectPicker.vue";
 import ToolPopover from "./ToolPopover.vue";
@@ -24,7 +28,10 @@ import Viewport from "./Viewport.vue";
 import Inspector from "./Inspector.vue";
 import ConstructionMeasurements from "./ConstructionMeasurements.vue";
 import { drawAnnotation } from "../editor/annotationRenderer";
-import FitIcon from "./FitIcon.vue";
+import RailHistoryButtons from "./RailHistoryButtons.vue";
+import EdgeTabs from "./EdgeTabs.vue";
+import { closeSidebarForTools } from "./useCompactLayout";
+import SnapToggles from "./SnapToggles.vue";
 import {
   drawRotationGizmo,
   drawPivotPoint,
@@ -185,6 +192,7 @@ const zoom = ref(2),
   snap = ref(true),
   objectSnap = ref(true),
   tool = ref<"select" | "move" | "rotate" | "mirror" | "align">("select");
+closeSidebarForTools(panel, () => tool.value !== "select");
 const views = new Map<
   string,
   { zoom: number; pan: Point; selection: string[] }
@@ -390,18 +398,18 @@ function gizmoAt(p: Point) {
     dx = p.x - pivot.x,
     dy = p.y - pivot.y;
   if (tool.value === "mirror" || tool.value === "align") return;
-  if (tool.value !== "move" && Math.abs(Math.hypot(dx, dy) - 60) < 9)
+  if (tool.value !== "move" && Math.abs(Math.hypot(dx, dy) - 60) < 9 * pointerScale)
     return "rotate";
   if (tool.value === "move") {
     const a = gizmoAngle();
     const x = dx * Math.cos(a) + dy * Math.sin(a),
       y = -dx * Math.sin(a) + dy * Math.cos(a);
-    if (Math.hypot(x - 72, y) < 10) return "x";
-    if (Math.hypot(x, y + 72) < 10) return "y";
-    if (Math.hypot(x, y) < 10) return "move";
-    if (hitsTransformShaft({ x, y }, { x: 0, y: 0 }, { x: 72, y: 0 }))
+    if (Math.hypot(x - 72, y) < 10 * pointerScale) return "x";
+    if (Math.hypot(x, y + 72) < 10 * pointerScale) return "y";
+    if (Math.hypot(x, y) < 10 * pointerScale) return "move";
+    if (hitsTransformShaft({ x, y }, { x: 0, y: 0 }, { x: 72, y: 0 }, 1 / pointerScale))
       return "x";
-    if (hitsTransformShaft({ x, y }, { x: 0, y: 0 }, { x: 0, y: -72 }))
+    if (hitsTransformShaft({ x, y }, { x: 0, y: 0 }, { x: 0, y: -72 }, 1 / pointerScale))
       return "y";
   }
 }
@@ -845,7 +853,7 @@ async function create() {
       });
       if (error.value) return;
     } else {
-      const id = crypto.randomUUID(),
+      const id = createId(),
         base = format.value;
       let label = name.value.trim() || base;
       let count = 2;
@@ -894,7 +902,7 @@ async function openDefaultLayout() {
   if (!defaultTab.value || busy.value || editor.busy || !e.value.ready) return;
   error.value = "";
   const [width, height] = paperFormats.A4;
-  await addLayout(crypto.randomUUID(), "A4", width, height, 10, editor.units);
+  await addLayout(createId(), "A4", width, height, 10, editor.units);
 }
 async function deleteLayout(id = active.value) {
   const l = layouts.value.find((l) => l.id === id);
@@ -1373,7 +1381,7 @@ function duplicate() {
     instances = [...l.instances],
     newIds: string[] = [];
   function copy(node: PrintNode): PrintNode {
-    const id = crypto.randomUUID();
+    const id = createId();
     if (node.kind === "instance") {
       const old = l!.instances.find((i) => i.id === node.id)!;
       instances.push({ ...old, id, x: old.x + 10, y: old.y + 10 });
@@ -1405,7 +1413,7 @@ function newGroup() {
   const l = layout.value;
   if (!l) return;
   const ids = new Set(movableSelection());
-  const id = crypto.randomUUID();
+  const id = createId();
   let grouped = false;
   function group(nodes: PrintNode[]): PrintNode[] {
     const chosen = nodes.filter((n) => ids.has(n.id));
@@ -2296,7 +2304,7 @@ function mirrorTarget(
         candidates.push({ line, distance: distanceToSegment(p, ...line) });
     }
   }
-  if (Math.hypot(p.x - pivot.x, p.y - pivot.y) > 8 / zoom.value) {
+  if (Math.hypot(p.x - pivot.x, p.y - pivot.y) > pick(8)) {
     for (const offset of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
       const dx = Math.cos(angle + offset),
         dy = Math.sin(angle + offset);
@@ -2315,7 +2323,7 @@ function mirrorTarget(
     }
   }
   const best = candidates
-    .filter((c) => c.distance <= 8 / zoom.value)
+    .filter((c) => c.distance <= pick(8))
     .sort((a, b) => a.distance - b.distance)[0];
   hoverMirrorOffset = best?.offset;
   return best?.line;
@@ -2347,7 +2355,7 @@ function contextMenu(event: MouseEvent) {
     .find(
       (i) =>
         !i.hidden &&
-        (hitTest(i.shape, world, 5 / zoom.value, l.units) ||
+        (hitTest(i.shape, world, pick(5), l.units) ||
           contains(i.shape, world)),
     );
   if (!hit || hit.locked) return;
@@ -2373,7 +2381,7 @@ function pageCenterSnap(
   if (!shapes.length) return { dx, dy };
   const b = bounds(shapes, base.units),
     size = printableSize(base),
-    tolerance = 8 / zoom.value;
+    tolerance = pick(8);
   const center = { x: b.x + b.width / 2 + dx, y: b.y + b.height / 2 + dy };
   const page = base.pages
     .map((p) => ({
@@ -2419,16 +2427,72 @@ function pageCenterSnap(
     };
   return { dx, dy };
 }
+/** Enlarges screen-space hit areas for the current pointer: 1 for mouse and pen, larger for touch. */
+let pointerScale = 1;
+/** A hit or snap tolerance of `pixels` screen pixels in layout units for the current pointer. */
+function pick(pixels: number) {
+  return (pixels * pointerScale) / zoom.value;
+}
+// One finger edits as the mouse does; two fingers pan and pinch-zoom the sheet.
+const touch = new TouchGestureRouter<PointerEvent>({
+  begin: (event) => downNow(event),
+  cancel: interruptPointer,
+  panZoom(center, factor, delta) {
+    const view = pinchView({ zoom: zoom.value, pan: pan.value }, center, factor, delta, { min: 0.1, max: 20 });
+    zoom.value = view.zoom;
+    pan.value = view.pan;
+    void draw();
+  },
+});
+let pointerType = "mouse";
+/** The selection before the current press, restored if a pinch takes over that press. */
+let selectionBeforePress: string[] | undefined;
+/**
+ * Drops an in-progress canvas drag when a second finger starts navigating; the tool stays open and
+ * the selection returns to what it was before the finger landed.
+ */
+function interruptPointer() {
+  if (selectionBeforePress) selected.value = selectionBeforePress;
+  selectionBeforePress = undefined;
+  if (moveFrame) cancelAnimationFrame(moveFrame);
+  moveFrame = 0;
+  pendingMove = undefined;
+  drawing.pauseGesture();
+  rotationReadout.value = undefined;
+  snapOverlay.value = { guides: [] };
+  if (pageGesture) selectedPages.value = pageGesture.selection;
+  pageGesture = undefined;
+  pageDragState.value = undefined;
+  pageDestination.value = undefined;
+  if (drag) preview.value = undefined;
+  drag = undefined;
+  marqueePixel = undefined;
+  void draw();
+}
+function setPointerType(type: string) {
+  pointerType = type;
+  pointerScale = pointerScaleFor(type);
+  drawing.setPointerType(type);
+}
 function down(event: PointerEvent) {
+  setPointerType(event.pointerType);
+  // A touch begins after this event; prevent it now so the browser's follow-up mousedown cannot
+  // take focus back from the text editor that the tap opens.
+  if (event.pointerType === "touch" && drawing.mode === "text") event.preventDefault();
+  if (!touch.down(event, pixel(event))) downNow(event);
+}
+function downNow(event: PointerEvent) {
   if (busy.value || editor.busy) return;
+  selectionBeforePress = [...selected.value];
   if (event.button !== 0 && event.button !== 1) return;
   canvas.value!.focus();
-  canvas.value!.setPointerCapture(event.pointerId);
+  // A deferred touch can begin from its pointerup, after the pointer is no longer active.
+  try { canvas.value!.setPointerCapture(event.pointerId); } catch { /* already released */ }
   const p = pixel(event),
     world = worldFromPixel(p),
     l = preview.value ?? layout.value!;
   if (choosingObjects.value && event.button === 0 && !editor.space) {
-    const hit = [...resolvedPrintItems(editor.document,layout.value!)].reverse().find(item => !item.hidden && !item.locked && (hitTest(item.shape,world,5/zoom.value,layout.value!.units) || contains(item.shape.kind === "text" ? {...item.shape,kind:"rectangle",radius:0} : item.shape,world)));
+    const hit = [...resolvedPrintItems(editor.document,layout.value!)].reverse().find(item => !item.hidden && !item.locked && (hitTest(item.shape,world,pick(5),layout.value!.units) || contains(item.shape.kind === "text" ? {...item.shape,kind:"rectangle",radius:0} : item.shape,world)));
     updateToolSelection(objectSelection(selected.value,hit?.instance.id,event.shiftKey));
     if (!hit) drag={pixel:p,world,original:layout.value!,ids:[],pan:{...pan.value},rotate:false,marquee:true,pivot:selectionPivot(),numericStart:{x:0,y:0,angle:0}};
     return;
@@ -2442,6 +2506,8 @@ function down(event: PointerEvent) {
       event.preventDefault();
       if (editPrintText(event)) return;
     }
+    // A finger has no hover before it lands; move there first so snapping starts at it.
+    if (event.pointerType === "touch") drawing.pointerMove(p, event.altKey, event.ctrlKey, event.shiftKey);
     drawing.pointerDown(p, event.button, event.shiftKey, event.altKey, event.ctrlKey);
     return;
   }
@@ -2456,7 +2522,7 @@ function down(event: PointerEvent) {
             .flatMap(snapCandidates)
             .map((c) => c.point)
             .filter(
-              (q) => Math.hypot(q.x - world.x, q.y - world.y) <= 8 / zoom.value,
+              (q) => Math.hypot(q.x - world.x, q.y - world.y) <= pick(8),
             )
             .sort(
               (a, b) =>
@@ -2465,7 +2531,7 @@ function down(event: PointerEvent) {
             )
         : [];
       const aligned = objectSnap.value
-        ? smartSnap(world, shapes, 8 / zoom.value)
+        ? smartSnap(world, shapes, pick(8))
         : { point: world, guides: [] };
       pivot =
         candidates[0] ??
@@ -2527,7 +2593,7 @@ function down(event: PointerEvent) {
         isPrintablePixel(p, l) &&
         !i.hidden &&
         !i.locked &&
-        (hitTest(i.shape, world, 5 / zoom.value, l.units) ||
+        (hitTest(i.shape, world, pick(5), l.units) ||
           contains(
             i.shape.kind === "text"
               ? { ...i.shape, kind: "rectangle", radius: 0 }
@@ -2538,7 +2604,7 @@ function down(event: PointerEvent) {
   const front = resolvedPrintItems(editor.document, l).some(
     (i) =>
       !i.hidden &&
-      (hitTest(i.shape, world, 5 / zoom.value, l.units) ||
+      (hitTest(i.shape, world, pick(5), l.units) ||
         contains(
           i.shape.kind === "text"
             ? { ...i.shape, kind: "rectangle", radius: 0 }
@@ -2621,6 +2687,8 @@ function flushMove() {
   if (event) moveNow(event);
 }
 function move(event: PointerEvent) {
+  setPointerType(event.pointerType);
+  if (touch.move(event, pixel(event))) return;
   clipboardPixel = pixel(event);
   pendingMove = event;
   if (!moveFrame) moveFrame = requestAnimationFrame(flushMove);
@@ -2746,7 +2814,7 @@ function moveNow(event: PointerEvent) {
           grid: snap.value,
           objects: objectSnap.value,
           gridSize: editor.gridSize,
-          tolerance: 8 / zoom.value,
+          tolerance: pick(8),
           anchor: drag.snapAnchor,
         },
       );
@@ -3139,7 +3207,10 @@ watch(canvas, (el) => {
     void draw();
   }
 });
+const stopTouchReset = touch.resetOnFocusLoss();
 onUnmounted(() => {
+  stopTouchReset();
+  touch.reset();
   stopDrawing();
   tabEnd();
   printDrag.cancel();
@@ -3366,65 +3437,16 @@ defineExpose({
       <RailButton aria-label="Import image" title="Import image" :disabled="!e.ready || busy" @click="imagePicker?.click()"><span class="tool-icon"><ModeIcon mode="image" /></span></RailButton>
       <input ref="imagePicker" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" hidden @change="importLocalImage" />
       <div class="rail-divider" role="separator" />
-      <RailButton
-        title="Undo (Ctrl/⌘+Z)"
-        aria-label="Undo"
-        :disabled="!e.canUndo || busy"
-        @click="
-          cancel();
-          editor.transact('undo');
-        "
-      >
-        ↶
-      </RailButton>
-      <RailButton
-        title="Redo (Ctrl/⌘+Shift+Z)"
-        aria-label="Redo"
-        :disabled="!e.canRedo || busy"
-        @click="
-          cancel();
-          editor.transact('redo');
-        "
-      >
-        ↷
-      </RailButton>
-      <RailButton title="Fit (Ctrl/⌘+Shift+F)" aria-label="Fit" @click="fit">
-        <span class="tool-icon"><FitIcon /></span>
-      </RailButton>
+      <RailHistoryButtons :busy="busy" :before-history="cancel" :fit="fit" />
     </ToolRail>
     <div class="print-canvas">
-      <button
-        class="edge-tab edge-left"
-        :aria-label="left ? 'Hide tools' : 'Show tools'"
-        :aria-expanded="left"
-        @click="left = !left"
-      >
-        {{ left ? "‹" : "›" }}
-      </button>
-      <button
-        class="edge-tab edge-right"
-        :aria-label="panel ? 'Hide inspector' : 'Show inspector'"
-        :aria-expanded="panel"
-        @click="drawing.finishProperty(); panel = !panel"
-      >
-        {{ panel ? "›" : "‹" }}
-      </button>
-      <button
-        class="edge-tab edge-bottom"
-        :class="{ 'above-status': bottom }"
-        :aria-label="bottom ? 'Hide status bar' : 'Show status bar'"
-        :aria-expanded="bottom"
-        @click="bottom = !bottom"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-          <path
-            :d="bottom ? 'M3 4L6 7L9 4' : 'M3 8L6 5L9 8'"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-          />
-        </svg>
-      </button>
+      <EdgeTabs
+        v-model:left="left"
+        v-model:panel="panel"
+        v-model:bottom="bottom"
+        above-status
+        :before-panel-toggle="() => drawing.finishProperty()"
+      />
       <canvas ref="previewCanvas" class="drawing-preview" aria-hidden="true" />
       <Viewport ref="textViewport" :controller="drawing" text-only />
       <ConstructionMeasurements :controller="drawing" />
@@ -3446,12 +3468,13 @@ defineExpose({
               : 'not-allowed'
             : printCursor,
         }"
-        @dblclick="editPrintText"
+        @dblclick="pointerType !== 'touch' && editPrintText($event)"
+        @click="pointerType === 'touch' && touch.tapCount === 2 && editPrintText($event)"
         @pointerdown="down"
         @pointermove="move"
-        @pointerup="up"
-        @pointercancel="!sourceImport && cancel()"
-        @lostpointercapture="(drag || pageGesture) && cancel()"
+        @pointerup="!touch.up($event, pixel($event)) && up($event)"
+        @pointercancel="!touch.cancel($event) && !sourceImport && cancel()"
+        @lostpointercapture="!touch.navigating && (drag || pageGesture) && cancel()"
         @wheel.prevent="wheel"
         @contextmenu.prevent="contextMenu"
       />
@@ -3536,10 +3559,7 @@ defineExpose({
           {{ layout.pages.length }} pages</span
         >
         <div class="center-settings">
-          <label><input type="checkbox" v-model="snap" />Grid snap</label
-          ><label
-            ><input type="checkbox" v-model="objectSnap" />Object snap</label
-          >
+          <SnapToggles v-model:grid="snap" v-model:objects="objectSnap" />
         </div>
         <span style="margin-left: auto">{{ Math.round(zoom * 100) }}%</span>
         <span class="app-version" title="Application version">v{{ appVersion }}</span>
@@ -3695,49 +3715,13 @@ defineExpose({
                 :disabled="!canManageObjects"
                 @click="editState(row.node.id, 'hidden')"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  aria-hidden="true"
-                >
-                  <path d="M2 12Q12 0 22 12Q12 24 2 12Z" />
-                  <circle cx="12" cy="12" r="3" />
-                  <path v-if="row.hidden" d="M3 3L21 21" />
-                </svg></button
+                <VisibilityIcon :hidden="!!row.hidden" /></button
               ><button
                 :aria-label="`${row.locked ? 'Unlock' : 'Lock'} print ${nodeName(row.node)}`"
                 :disabled="!canManageObjects"
                 @click="editState(row.node.id, 'locked')"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  aria-hidden="true"
-                >
-                  <rect
-                    x="5"
-                    y="10"
-                    width="14"
-                    height="11"
-                    rx="2"
-                    :fill="row.locked ? 'currentColor' : 'none'"
-                  />
-                  <path
-                    :d="
-                      row.locked
-                        ? 'M8 10V6a4 4 0 018 0v4'
-                        : 'M8 10V6a4 4 0 018 0'
-                    "
-                  />
-                </svg>
+                <LockIcon :locked="!!row.locked" />
               </button>
               <span
                 v-if="row.node.kind === 'instance' || row.node.sourceId || row.node.unlinked"
@@ -4024,9 +4008,6 @@ h3 {
   flex-direction: column;
   gap: 4px;
 }
-.edge-bottom.above-status {
-  bottom: 32px;
-}
 .print-status {
   min-height: 32px;
   box-sizing: border-box;
@@ -4040,11 +4021,6 @@ h3 {
   padding: 6px 10px;
   background: var(--panel, #20252c);
   font-size: 11px;
-}
-.print-status label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 .print-help {
   font-size: 12px;

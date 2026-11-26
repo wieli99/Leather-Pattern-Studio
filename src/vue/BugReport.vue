@@ -20,6 +20,7 @@ function open() {
   } catch { error.value = "Project JSON is unavailable. You can still report the bug."; }
   dialog.value?.showModal();
 }
+defineExpose({ open });
 function openGitHub() {
   void openExternal(report.value.url);
 }

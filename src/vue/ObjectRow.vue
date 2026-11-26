@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import VisibilityIcon from "./VisibilityIcon.vue";
+import LockIcon from "./LockIcon.vue";
 import {
   ContextMenuRoot,
   ContextMenuTrigger,
@@ -166,18 +168,7 @@ function openMenu() {
       "
       @click="editor.toggleObjectState(shape.id, 'hidden', $event.altKey)"
     >
-      <svg
-        viewBox="0 0 24 24"
-        width="16"
-        height="16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <path d="M2 12 Q12 0 22 12 Q12 24 2 12Z" />
-        <circle cx="12" cy="12" r="3" />
-        <path v-if="shape.hidden" d="M3 3L21 21" />
-      </svg>
+      <VisibilityIcon :hidden="!!shape.hidden" />
     </button>
     <button
       class="object-state"
@@ -193,19 +184,7 @@ function openMenu() {
       "
       @click="editor.toggleObjectState(shape.id, 'locked')"
     >
-      <svg
-        viewBox="0 0 24 24"
-        width="16"
-        height="16"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <rect x="5" y="10" width="14" height="11" rx="2" :fill="shape.locked ? 'currentColor' : 'none'" />
-        <path
-          :d="shape.locked ? 'M8 10V6a4 4 0 018 0v4' : 'M8 10V6a4 4 0 018 0'"
-        />
-      </svg>
+      <LockIcon :locked="!!shape.locked" />
     </button>
   </div>
 </template>

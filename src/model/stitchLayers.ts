@@ -1,3 +1,4 @@
+import { createId } from "./id";
 import type { Doc, Point, Shape } from "./project";
 import type { StitchTransfer } from "../generated/StitchTransfer";
 import { applyMatrix, inverse, shapeMatrix, localCenter, multiply, identity, distance, distanceToSegment } from "./geometry";
@@ -132,7 +133,7 @@ export function transferMapping(doc: Doc,transfer: StitchTransfer) {
 }
 export function makeTransfer(doc: Doc,masterId: string,target: Shape,center: Point,rotation: number,placementId: string): StitchTransfer {
   const master=doc.stitchGroups!.find(g=>g.id===masterId)!,sf=pieceFrame(stitchPiece(doc,master)),tf=pieceFrame(target);
-  return {id:crypto.randomUUID(),placementId,number:doc.stitchTransfers?.find(t=>t.placementId===placementId)?.number,masterId,targetId:target.id,visible:true,pose:{offset:applyMatrix(inverse(tf.matrix),center),angle:rotation+ (sf.angle-tf.angle)*180/Math.PI},masterPoints:[],targetPoints:[]};
+  return {id:createId(),placementId,number:doc.stitchTransfers?.find(t=>t.placementId===placementId)?.number,masterId,targetId:target.id,visible:true,pose:{offset:applyMatrix(inverse(tf.matrix),center),angle:rotation+ (sf.angle-tf.angle)*180/Math.PI},masterPoints:[],targetPoints:[]};
 }
 function mappingMatrix(a: Point,b: Point,rotation: number) {
   const c=Math.cos(rotation),sn=Math.sin(rotation);
@@ -220,7 +221,7 @@ export function detachTransfer(doc: Doc,transfer: StitchTransfer) {
   if (!result.included) throw Error("This transfer has no included holes to detach.");
   const {master,source,target,a,b,rotation}=transferMapping(doc,transfer);
   const original=doc.shapes.find(s=>s.id===master.shapeId)!;
-  const guide: Shape={...original,id:crypto.randomUUID(),name:`${target.name} stitching`,stitchOnly:true,stitchParentId:target.id,hidden:false,locked:false,rotation:0,transform:multiply(mappingMatrix(a[0],b[0],rotation),shapeMatrix(original))};
+  const guide: Shape={...original,id:createId(),name:`${target.name} stitching`,stitchOnly:true,stitchParentId:target.id,hidden:false,locked:false,rotation:0,transform:multiply(mappingMatrix(a[0],b[0],rotation),shapeMatrix(original))};
   const ranges: number[][]=[];
   for (const index of result.keptIndices) {
     const last=ranges.at(-1);
@@ -229,7 +230,7 @@ export function detachTransfer(doc: Doc,transfer: StitchTransfer) {
   const groups: StitchGroup[]=ranges.map(indices=>{
     const holeOverrides: NonNullable<StitchGroup["holeOverrides"]>={};
     indices.forEach((index,i)=>{const appearance=master.holeOverrides?.[String(index+1)];if(appearance)holeOverrides[String(i+1)]={...appearance};});
-    return {...master,id:crypto.randomUUID(),shapeId:guide.id,closed:false,continuation:undefined,holes:undefined,holeOverrides,settings:{...master.settings,holeCount:indices.length,alignment:"start",startClearance:result.geometry.distances[indices[0]],endClearance:0}};
+    return {...master,id:createId(),shapeId:guide.id,closed:false,continuation:undefined,holes:undefined,holeOverrides,settings:{...master.settings,holeCount:indices.length,alignment:"start",startClearance:result.geometry.distances[indices[0]],endClearance:0}};
   });
   if (master.holes) {
     const points=result.group.holes!.map(h=>({point:applyMatrix(shapeMatrix(target),{x:h.point.x+localCenter(target).x,y:h.point.y+localCenter(target).y}),angle:h.angle+Math.atan2(shapeMatrix(target).b,shapeMatrix(target).a)}));
@@ -252,7 +253,7 @@ export function migrateDetachedGuides(shapes: Shape[],groups: StitchGroup[]) {
     const guidePoints=points.length>1 ? points : [
       {x:points[0].x-Math.cos(geometry.holes[0].angle)*spacing/2,y:points[0].y-Math.sin(geometry.holes[0].angle)*spacing/2},
       {x:points[0].x+Math.cos(geometry.holes[0].angle)*spacing/2,y:points[0].y+Math.sin(geometry.holes[0].angle)*spacing/2}];
-    const guide: Shape={id:crypto.randomUUID(),name:`${parent.name} stitching`,kind:"polyline",points:guidePoints,radius:0,rotation:0,stitchOnly:true,stitchParentId:parent.id};
+    const guide: Shape={id:createId(),name:`${parent.name} stitching`,kind:"polyline",points:guidePoints,radius:0,rotation:0,stitchOnly:true,stitchParentId:parent.id};
     const center=localCenter(guide);
     group.shapeId=guide.id;group.edges=stitchEdges(guide).map(e=>e.key);group.closed=false;group.continuation=undefined;
     group.settings={...group.settings,holeCount:undefined,inset:0,startClearance:0,endClearance:0,alignment:"start"};
@@ -316,5 +317,5 @@ export function numberStitchTransfers(transfers:StitchTransfer[]):StitchTransfer
 }
 export function copyTransferPlacements(existing:StitchTransfer[],copies:StitchTransfer[]):StitchTransfer[] {
  const placements=new Map<string,{id:string;number:number}>();let next=Math.max(0,...existing.map(t=>t.number ?? 0));
- return copies.map(t=>{const key=t.placementId ?? t.id;let placement=placements.get(key);if(!placement){placement={id:crypto.randomUUID(),number:++next};placements.set(key,placement);}return {...t,placementId:placement.id,number:placement.number};});
+ return copies.map(t=>{const key=t.placementId ?? t.id;let placement=placements.get(key);if(!placement){placement={id:createId(),number:++next};placements.set(key,placement);}return {...t,placementId:placement.id,number:placement.number};});
 }

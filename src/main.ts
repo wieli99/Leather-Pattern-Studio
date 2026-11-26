@@ -1,4 +1,5 @@
 import "./style.css";
+import "./responsive.css";
 import "./textFonts.css";
 import { prepareDevelopmentStartup } from "./developmentStartup";
 async function start() {

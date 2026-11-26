@@ -1,3 +1,4 @@
+import { createId } from "./id";
 import type { Cubic } from "./curves";
 import { contains } from "./geometry";
 import { contourShape } from "./compound";
@@ -132,7 +133,7 @@ export function stitchEdges(s: Shape): StitchEdge[] {
 export function extractStitchEdge(source: Shape, key: string): Shape {
   const edge = stitchEdges(source).find(e => e.key === key);
   if (!edge) throw Error("Choose an existing source edge.");
-  const base = { id: crypto.randomUUID(), name: `${source.name} stitching`, radius: 0, rotation: 0, stitchOnly: true };
+  const base = { id: createId(), name: `${source.name} stitching`, radius: 0, rotation: 0, stitchOnly: true };
   if (stitchEdges(source).length === 1) return { ...source, ...base, radius: source.radius, rotation: source.rotation };
   const index = Number(key.split(":").at(-1));
   if (isCurve(source) || source.kind === "compound") {
@@ -777,7 +778,7 @@ export function reconcileStitches(doc: Doc, previous?: Doc): Doc {
     runs.forEach((edges, i) =>
       stitchGroups.push({
         ...g,
-        id: i ? crypto.randomUUID() : g.id,
+        id: i ? createId() : g.id,
         edges,
         closed: g.closed && stitchRunClosed(s,edges),
       }),

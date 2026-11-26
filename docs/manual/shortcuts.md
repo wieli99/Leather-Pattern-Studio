@@ -31,6 +31,7 @@ Copy/paste works between Model and print tabs and across browser tabs. Pasted ob
 | Ctrl/⌘+Shift+F / Fit button | Fit Model objects or print pages |
 | Shift+F | Fit Model selection |
 | Shift+M | Hide or show all Model measurements (view only; see [persistent measurements](#measurements/persistent-measurements)) |
+| Two-finger drag / pinch | Pan and zoom on touch screens (see [phones and tablets](#workspace/phones-and-tablets)) |
 
 ## Drawing and exact dimensions
 

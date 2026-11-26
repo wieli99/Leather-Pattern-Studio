@@ -23,7 +23,11 @@ import { useEditor } from "./useEditor";
 import Viewport from "./Viewport.vue";
 import ModeIcon from "./ModeIcon.vue";
 import ToolButton from "./ToolButton.vue";
-import FitIcon from "./FitIcon.vue";
+import RailHistoryButtons from "./RailHistoryButtons.vue";
+import EdgeTabs from "./EdgeTabs.vue";
+import SnapToggles from "./SnapToggles.vue";
+import HeaderActions from "./HeaderActions.vue";
+import { closeSidebarForTools, usePanelVisibility } from "./useCompactLayout";
 import ObjectPanel from "./ObjectPanel.vue";
 import Inspector from "./Inspector.vue";
 import PanelSection from "./PanelSection.vue";
@@ -124,14 +128,16 @@ watch(
   },
   { flush: "post" },
 );
-const panel = ref(localStorage.getItem("panel-right") !== "false"),
-  left = ref(localStorage.getItem("panel-left") !== "false"),
-  bottom = ref(localStorage.getItem("panel-bottom") !== "false"),
-  update = ref<ServiceWorker | null>(null);
-watch([panel, left, bottom], () => {
-  localStorage.setItem("panel-right", String(panel.value));
-  localStorage.setItem("panel-left", String(left.value));
-  localStorage.setItem("panel-bottom", String(bottom.value));
+const { panel, left, bottom } = usePanelVisibility();
+closeSidebarForTools(panel, () => !!e.value.toolSession);
+const update = ref<ServiceWorker | null>(null);
+const gridSnap = computed({
+  get: () => e.value.grid,
+  set: (value: boolean) => { editor.grid = value; editor.preferences(); },
+});
+const objectSnap = computed({
+  get: () => e.value.objects,
+  set: (value: boolean) => { editor.objects = value; editor.preferences(); },
 });
 watch(
   () => e.value.theme,
@@ -141,10 +147,6 @@ watch(
   },
   { immediate: true },
 );
-function toggleInspector() {
-  void editor.finishProperty();
-  panel.value = !panel.value;
-}
 function reload() {
   if (update.value && editor.confirmReplace()) {
     update.value.postMessage("activate");
@@ -286,34 +288,11 @@ onMounted(() => {
         />
         <span v-if="e.dirty"> •</span>
       </span>
-      <div class="header-actions" :title="nativeSaving ? undefined : 'Save downloads a copy; click the filename to rename it. Open reopens saved JSON files.'">
-        <button :disabled="!e.ready" @click="editor.newProject()">New</button>
-        <button :disabled="!e.ready" @click="editor.open()">Open</button>
-        <button
-          :disabled="!e.ready"
-          title="Save (Ctrl/⌘+S)"
-          @click="editor.save()"
-        >
-          Save
-        </button>
-        <button v-if="printActive" :disabled="!e.ready" @click="printWorkspace?.openExport()">Export</button>
-        <BugReport :print-active="printActive" />
-        <a
-          class="feedback-link"
-          href="https://github.com/wieli99/Leather-Pattern-Studio/discussions"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Share feedback on GitHub (opens in a new tab)"
-        >Feedback</a>
-        <a
-          href="/manual/index.html"
-          target="_blank"
-          rel="noopener"
-          aria-label="Help"
-          title="User manual (? on canvas)"
-          >?</a
-        >
-      </div>
+      <HeaderActions
+        :print-active="printActive"
+        :native-saving="nativeSaving"
+        :export-print="() => printWorkspace?.openExport()"
+      />
     </header>
     <div v-if="isTauri() && desktopUpdates.url.value" class="notice" role="status">
       <span>{{ desktopUpdates.message.value }}</span>
@@ -343,65 +322,17 @@ onMounted(() => {
         </template>
         <ImageImport v-model:review-open="importReviewOpen" />
         <div class="rail-divider" />
-        <RailButton
-          title="Undo (Ctrl/⌘+Z)"
-          aria-label="Undo"
-          :disabled="!e.canUndo"
-          @click="editor.transact('undo')"
-        >
-          ↶
-        </RailButton>
-        <RailButton
-          title="Redo (Ctrl/⌘+Shift+Z)"
-          aria-label="Redo"
-          :disabled="!e.canRedo"
-          @click="editor.transact('redo')"
-        >
-          ↷
-        </RailButton>
-        <RailButton
-          title="Fit (Ctrl/⌘+Shift+F)"
-          aria-label="Fit"
-          :disabled="!e.ready"
-          @click="editor.fit()"
-        >
-          <span class="tool-icon"><FitIcon /></span>
-        </RailButton>
+        <RailHistoryButtons :fit="() => editor.fit()" :fit-disabled="!e.ready" />
       </ToolRail>
       <div :class="`viewport tool-${e.tool}`">
         <TransformToolbox />
         <ConstructionMeasurements />
-        <button
-          class="edge-tab edge-left"
-          :aria-label="left ? 'Hide tools' : 'Show tools'"
-          :aria-expanded="left"
-          @click="left = !left"
-        >
-          {{ left ? "‹" : "›" }}
-        </button>
-        <button
-          class="edge-tab edge-right"
-          :aria-label="panel ? 'Hide inspector' : 'Show inspector'"
-          :aria-expanded="panel"
-          @click="toggleInspector"
-        >
-          {{ panel ? "›" : "‹" }}
-        </button>
-        <button
-          class="edge-tab edge-bottom"
-          :aria-label="bottom ? 'Hide status bar' : 'Show status bar'"
-          :aria-expanded="bottom"
-          @click="bottom = !bottom"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              :d="bottom ? 'M3 4L6 7L9 4' : 'M3 8L6 5L9 8'"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-          </svg>
-        </button>
+        <EdgeTabs
+          v-model:left="left"
+          v-model:panel="panel"
+          v-model:bottom="bottom"
+          :before-panel-toggle="() => editor.finishProperty()"
+        />
         <Viewport />
         <div v-if="!e.ready" class="loading">{{ e.message }}</div>
       </div>
@@ -449,28 +380,7 @@ onMounted(() => {
         <button type="button" title="Show all measurements (Shift+M on the canvas toggles them)" aria-keyshortcuts="Shift+M" @click="editor.toggleMeasurementObjects()">Show (Shift+M)</button>
       </span>
       <div class="center-settings">
-        <label>
-          <input
-            type="checkbox"
-            :checked="e.grid"
-            @change="
-              editor.grid = ($event.target as HTMLInputElement).checked;
-              editor.preferences();
-            "
-          />
-          Grid snap
-        </label>
-        <label title="Snap to object points and align with object edges and centers">
-          <input
-            type="checkbox"
-            :checked="e.objects"
-            @change="
-              editor.objects = ($event.target as HTMLInputElement).checked;
-              editor.preferences();
-            "
-          />
-          Object snap
-        </label>
+        <SnapToggles v-model:grid="gridSnap" v-model:objects="objectSnap" />
         <Variables />
         <Settings />
       </div>
