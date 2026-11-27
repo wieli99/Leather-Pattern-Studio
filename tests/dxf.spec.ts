@@ -22,7 +22,7 @@ test("DXF exports closed millimetre outlines and rejects empty layouts", async (
     const pixels = ctx.getImageData(0, 0, 820, 420).data;
     let darkPixels = 0;
     for (let i = 0; i < pixels.length; i += 4) {
-      if (pixels[i] < 128 && pixels[i + 3] === 255) darkPixels++;
+      if (pixels[i + 1] < 128 && pixels[i + 3] === 255) darkPixels++;
     }
     let error = "";
     try { layoutDxf(doc as any, { ...layout, instances: [] } as any); } catch (e) { error = String(e); }
@@ -38,7 +38,9 @@ test("DXF exports closed millimetre outlines and rejects empty layouts", async (
   expect(result.text).toContain("70\r\n1");
   expect(result.width).toBeCloseTo(82);
   expect(result.height).toBeCloseTo(42);
-  expect(result.error).toContain("No outlines to export");
+  expect(result.error).toContain("Nothing to export on the selected layers");
+  expect(result.text).toContain("AcDbEntity\r\n8\r\nCUT\r\n");
+  expect(result.text).toMatch(/AcDbLayerTableRecord\r\n2\r\nCUT\r\n70\r\n0\r\n62\r\n1\r\n/);
 });
 
 test("unpainted SVG outlines do not affect import review or DXF cuts", async ({ page }) => {

@@ -3,7 +3,7 @@ import fontUrl from "../assets/fonts/PrintSans.ttf?url";
 import { orderedPrintPages, pageSvg } from "./printScene";
 import type { Doc } from "../model/project";
 import type { PrintLayout } from "../model/printLayout";
-import { layoutDxf } from "./printDxf";
+import { allDxfLayers, layoutDxf, type DxfLayer } from "./printDxf";
 const bundledFonts = import.meta.glob("../assets/fonts/Liberation*.ttf", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 async function fontData(url: string) {
   const response = await fetch(url);
@@ -94,17 +94,19 @@ export type PrintArtifact = {
   pdf?: Uint8Array;
   previewWidth?: number;
   previewHeight?: number;
+  warnings?: string[];
 };
 export async function generatePrint(
   doc: Doc,
   layout: PrintLayout,
   format: PrintFormat,
+  dxfLayers: readonly DxfLayer[] = allDxfLayers,
 ): Promise<PrintArtifact> {
   if (format === "dxf") {
-    const result = layoutDxf(doc, layout);
+    const result = layoutDxf(doc, layout, dxfLayers);
     return { blob: new Blob([result.text], { type: "application/dxf" }),
       filename: `${layout.name.replace(/[^a-zA-Z0-9_.-]/g, "_") || "print"}.dxf`,
-      pages: [{ svg: result.svg }], previewWidth: result.width, previewHeight: result.height };
+      pages: [{ svg: result.svg }], previewWidth: result.width, previewHeight: result.height, warnings: result.warnings };
   }
   const pages = await Promise.all(
     orderedPrintPages(layout).map(async (page) => ({

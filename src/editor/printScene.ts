@@ -1,7 +1,7 @@
 import { displayTemplate } from "../model/variables";
 import { textFamily, measureText } from "../model/text";
 import { flattenContours } from "../model/flattenOutline";
-import { holeAppearance, holeMark } from "../model/stitchLayers";
+import { holeOutline } from "../model/stitchLayers";
 import { shapePath, traceRoundRect } from "./renderer";
 import { bounds, shapeMatrix } from "../model/geometry";
 import { isClosedShape } from "../model/closedShape";
@@ -9,7 +9,6 @@ import { measurementSegments, measurementGeometry } from "../model/measurement";
 import { indicatorGeometry, isIndicator } from "../model/indicators";
 import { outlineDash } from "../model/outlineStyle";
 import { stitchGeometry } from "../model/stitchGeometry";
-import { stitchMarks } from "../model/stitch";
 import {
   printableSize,
   printStitchGroups,
@@ -221,24 +220,13 @@ export function printShapeSvg(
       outline = dash.length ? `${style} stroke-dasharray="${dash.map(n).join(" ")}"` : style;
     result = `<g transform="${matrix}">${fill}${shape.stitchOnly ? "" : `<path d="${path}" ${outline}/>`}</g>`;
   }
-  for (const group of printStitchGroups(doc, layout, sourceId)) {
-    const geometry = stitchGeometry(shape, group),
-      base = stitchMarks[group.settings.style];
-    const scale =
-      group.settings.style === "flat"
-        ? (group.settings.flatLength ?? base.width) / base.width
-        : 1;
-    const w =
-      group.settings.style === "round"
-        ? (group.settings.roundDiameter ?? base.width)
-        : base.width * scale;
-    const h = base.height * scale;
-    result += geometry.holes.map(({ point, angle }, index) => {
-      const appearance = holeAppearance(group,index), mark = holeMark(appearance);
-      const w = mark.width, h = mark.height;
-      return `<g transform="translate(${xy(point)}) rotate(${n(((angle + (group.settings.reversed ? -mark.angle : mark.angle)) * 180) / Math.PI)})" fill="#111111">${appearance.style === "round" ? `<circle r="${w / 2}"/>` : appearance.style === "japanese" ? `<path d="M${-w / 2} 0 L0 ${-h / 2} L${w / 2} 0 L0 ${h / 2}Z"/>` : `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}"/>`}</g>`;
+  for (const group of printStitchGroups(doc, layout, sourceId))
+    result += stitchGeometry(shape, group).holes.map((hole, index) => {
+      const hit = holeOutline(group, index, hole);
+      return hit.kind === "circle"
+        ? `<circle cx="${n(hit.center.x)}" cy="${n(hit.center.y)}" r="${n(hit.radius)}" fill="#111111"/>`
+        : `<path d="M${hit.points.map(xy).join(" L")}Z" fill="#111111"/>`;
     }).join("");
-  }
   return result;
 }
 export function orderedPrintPages(layout: PrintLayout) {

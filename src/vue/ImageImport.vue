@@ -245,8 +245,9 @@ async function insert() {
                 }}
               </p>
               <p v-if="detection?.runs.length">
-                DXF export skips converted stitching. Turn off Detect stitching
-                lines to keep the original marks as cut outlines.
+                DXF export puts converted stitching on the Stitch holes layer.
+                Turn off Detect stitching lines to keep the original marks as
+                cut outlines.
               </p>
               <svg
                 v-if="result.shapes.length"

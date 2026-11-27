@@ -33,6 +33,17 @@ export function holeMark(settings: StitchSettings) {
   return { width: settings.style === "round" ? (settings.roundDiameter ?? base.width) : base.width * scale, height: base.height * scale, angle: base.angle };
 }
 
+/** A hole's printed outline in world millimetres: a circle for round holes, otherwise a closed polygon. */
+export function holeOutline(group: StitchGroup, index: number, hole: { point: Point; angle: number }):
+  { kind: "circle"; center: Point; radius: number } | { kind: "polygon"; points: Point[] } {
+  const appearance = holeAppearance(group, index), mark = holeMark(appearance);
+  if (appearance.style === "round") return { kind: "circle", center: hole.point, radius: mark.width / 2 };
+  const angle = hole.angle + (group.settings.reversed ? -mark.angle : mark.angle), w = mark.width / 2, h = mark.height / 2;
+  const local = appearance.style === "japanese" ? [[-w, 0], [0, -h], [w, 0], [0, h]] : [[-w, -h], [w, -h], [w, h], [-w, h]];
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  return { kind: "polygon", points: local.map(([x, y]) => ({ x: hole.point.x + x * cos - y * sin, y: hole.point.y + x * sin + y * cos })) };
+}
+
 export function hitStitchHole(group: StitchGroup,index: number,hole: {point:Point;angle:number},point:Point,tolerance:number) {
   const appearance=holeAppearance(group,index),mark=holeMark(appearance),angle=hole.angle+(group.settings.reversed ? -mark.angle : mark.angle);
   const dx=point.x-hole.point.x,dy=point.y-hole.point.y,x=Math.cos(angle)*dx+Math.sin(angle)*dy,y=-Math.sin(angle)*dx+Math.cos(angle)*dy;
