@@ -761,14 +761,11 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
     }
     if (target) {
       const p = target;
-      ctx.strokeStyle = color("preview");
-      ctx.lineWidth = 1 / z;
       ctx.beginPath();
       if (drawingCursor && editor.tool === "text") {
         // Match the initial 5 mm text line (1.2 line height), centered on placement.
         ctx.moveTo(p.x, p.y - 3);
         ctx.lineTo(p.x, p.y + 3);
-        ctx.stroke();
       } else {
         ctx.moveTo(p.x - 6 / z, p.y);
         ctx.lineTo(p.x - 2 / z, p.y);
@@ -778,7 +775,19 @@ export function attachRenderer(canvas: HTMLCanvasElement, editor: Controller) {
         ctx.lineTo(p.x, p.y - 2 / z);
         ctx.moveTo(p.x, p.y + 2 / z);
         ctx.lineTo(p.x, p.y + 6 / z);
-        ctx.stroke();
+      }
+      // A canvas-colored halo keeps the cursor readable over previews in the
+      // same color, such as a measurement arrowhead at high zoom.
+      ctx.lineCap = "butt";
+      ctx.strokeStyle = color("canvas");
+      ctx.lineWidth = 3 / z;
+      ctx.stroke();
+      ctx.strokeStyle = color("preview");
+      ctx.lineWidth = 1 / z;
+      ctx.stroke();
+      if (!(drawingCursor && editor.tool === "text")) {
+        ctx.fillStyle = color("canvas");
+        ctx.fillRect(p.x - 1.5 / z, p.y - 1.5 / z, 3 / z, 3 / z);
         ctx.fillStyle = color("preview");
         ctx.fillRect(p.x - 0.5 / z, p.y - 0.5 / z, 1 / z, 1 / z);
       }
