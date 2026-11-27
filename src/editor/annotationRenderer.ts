@@ -36,6 +36,9 @@ export function drawAnnotation(ctx: CanvasRenderingContext2D, s: Shape, units: U
     }
     const g = measurementGeometry(s, units);
     ctx.lineWidth = s.strokeWidth ?? 0.35;
+    // Round ends join the separate arrowhead edges cleanly, matching print output.
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
     for (const [a, b] of g.lines) {
       ctx.moveTo(a.x, a.y);
