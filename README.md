@@ -14,7 +14,7 @@ It's free and open source. It runs in your browser without an account, also come
 
 ![A rounded pattern piece selected in the editor, with exact width and height controls](public/manual/images/workspace.png)
 
-## Exact dimensions, easy to change
+## Precise designs that adapt to your demands
 
 Type in the dimensions you want and the shape follows. Every field takes formulas. Define a variable such as a strap width or a card slot depth, and every piece that uses it updates when you change it. That makes it easy to scale a wallet design to a new card size or a belt to a new length.
 
