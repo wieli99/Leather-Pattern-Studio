@@ -119,7 +119,7 @@ The wheel pans vertically; horizontal trackpad scrolling pans horizontally. Ctrl
 ## Preview and export
 
 1. Activate the print tab and press **Export** in the header.
-2. Choose **PDF**, **SVG**, **PNG (300 DPI)**, or **DXF (outlines only)**.
+2. Choose **PDF**, **SVG**, **PNG (300 DPI)**, or **DXF (cutting layers)**.
 3. Inspect the generated, non-editable preview. Use Previous/Next page and Preview zoom.
 4. Press **Export** to download the generated artifact.
 
@@ -133,6 +133,14 @@ Export and PDF preview work offline after caching completes. See [Files, recover
 
 ### DXF for cutting software
 
-DXF downloads one continuous drawing of visible pattern outlines at actual size in millimetres. Complete outlines cross paper boundaries without clipping; paper margins, screen gutters and assembly marks are omitted. Placement, rotation, mirroring and repeated copies are preserved. Stitch holes, stitch-only objects, images, text, measurements, indicators and fills are omitted. The preview shows the exported outlines in black on a white background.
+DXF downloads one continuous drawing at actual size in millimetres, split into colour-coded layers that cutting software can assign to separate operations. Tick the layers to include beside the format:
+
+- **Cut outlines** (layer `CUT`, red): piece outlines and cutout areas.
+- **Stitch holes** (layer `STITCH_HOLES`, blue): every stitch hole at its printed size and angle. Round holes are circles; French, Japanese and flat holes are closed outlines.
+- **Markings** (layer `MARKINGS`, green): outlines of skiving and glueing areas, and dashed or dotted outlines such as fold lines, for scoring or engraving.
+
+![DXF export with cut, stitch-hole and marking layers](/manual/images/print-dxf-layers.png)
+
+The file lists markings first, then stitch holes, then cut outlines; within each layer, enclosed outlines such as cutouts come before the outline around them. Software that follows file order therefore finishes inner work before freeing a piece. Every file of a layout shares the same origin whichever layers you tick, so separate holes and cut files stay registered. Entities take their colour from their layer, so recolouring a layer in your cutting software recolours its contents. If a stitching run cannot be computed, the dialog names the piece and the export continues without that run. Complete outlines cross paper boundaries without clipping; paper margins, screen gutters and assembly marks are omitted. Placement, rotation, mirroring and repeated copies are preserved. Text, images, measurements, indicators and fill patterns are omitted. The preview shows each layer in its colour on a white background. If the chosen layers contain nothing, the dialog says so and Export stays disabled.
 
 Curves export as closely spaced straight segments. Closed outlines, including closed curves and full-circle arcs, stay closed; open paths stay open. Excessively complex outlines or layouts report an export error rather than reducing accuracy. Import using millimetres if your cutting software does not detect units. Check a known dimension after import. Arrange pieces and configure kerf, cutting order and machine settings in your cutting software. DXF export does not nest pieces or remove overlapping copies.

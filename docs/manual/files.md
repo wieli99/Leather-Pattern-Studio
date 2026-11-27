@@ -56,7 +56,7 @@ Print layouts and their links are included in saved projects and recovery. The M
 
 Choose **Import image** in the Model workspace and select an SVG. Leave **Convert to editable geometry** selected and review the geometry preview, artwork dimensions, SVG page dimensions and warnings. Choose **Import** to add a group named after the file at the view centre at actual size, or **Cancel** (Escape) to leave the project unchanged. One Undo removes the entire import. Existing objects remain in the project.
 
-**Detect stitching lines** starts checked for each SVG. Highlighted marks become standalone editable stitching. DXF export skips native stitching. Turn detection off to keep the original marks as DXF cut outlines. Stitch detection matches within each source group and leaves uncertain marks available for editing.
+**Detect stitching lines** starts checked for each SVG. Highlighted marks become standalone editable stitching. DXF export places native stitching on the Stitch holes layer. Turn detection off to keep the original marks as DXF cut outlines. Stitch detection matches within each source group and leaves uncertain marks available for editing.
 
 ![Editable SVG import review](/manual/images/editable-svg-import.png)
 

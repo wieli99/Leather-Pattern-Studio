@@ -327,6 +327,46 @@ test("exports actual PDF, SVG and PNG previews with physical page sizes", { tag:
   expect(chunk).toBeGreaterThan(0);
   expect(bytes.readUInt32BE(chunk + 4)).toBe(11811);
 });
+test("DXF export chooses cutting layers and reports empty selections", { tag: "@manual" }, async ({ page }) => {
+  test.setTimeout(60000);
+  await load(page, [
+    { id: "skive", name: "Skive", kind: "rectangle", points: [{ x: 10, y: 10 }, { x: 30, y: 30 }], radius: 0, rotation: 0, fillMode: "skiving" },
+    { id: "slot", name: "Slot", kind: "rectangle", points: [{ x: 45, y: 12 }, { x: 70, y: 18 }], radius: 2, rotation: 0, fillMode: "cutout" },
+  ], [{ id: "stitches", shapeId: "piece", edges: ["rectangle:2:edge:0"], side: 1,
+    settings: { style: "french", spacing: 4, inset: 3, alignment: "center" }, closed: false }]);
+  await create(page);
+  await page.getByRole("button", { name: "Import Pattern", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Export print layout" });
+  const exportButton = dialog.getByRole("button", { name: "Export", exact: true });
+  await expect(exportButton).toBeEnabled({ timeout: 40000 });
+  await dialog.getByLabel("Format", { exact: true }).selectOption("dxf");
+  const layers = dialog.getByRole("group", { name: "DXF layers" });
+  const names = ["Cut outlines", "Stitch holes", "Markings"];
+  for (const name of names)
+    await expect(layers.getByRole("checkbox", { name, exact: true })).toBeChecked();
+  await expect(exportButton).toBeEnabled();
+  await manualScreenshot(page, "print-dxf-layers.png");
+  let pending = page.waitForEvent("download");
+  await exportButton.click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe("A4.dxf");
+  const chunks: Buffer[] = [];
+  for await (const chunk of (await download.createReadStream())!) chunks.push(chunk);
+  const text = Buffer.concat(chunks).toString();
+  for (const layer of ["CUT", "STITCH_HOLES", "MARKINGS"])
+    expect(text).toContain(`AcDbEntity\r\n8\r\n${layer}\r\n`);
+  expect(text).toMatch(/AcDbLayerTableRecord\r\n2\r\nCUT\r\n70\r\n0\r\n62\r\n1\r\n/);
+  for (const name of names)
+    await layers.getByRole("checkbox", { name, exact: true }).uncheck();
+  await expect(dialog.getByRole("alert")).toContainText("Choose at least one layer to export");
+  await expect(exportButton).toBeDisabled();
+  await layers.getByRole("checkbox", { name: "Cut outlines", exact: true }).check();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(exportButton).toBeEnabled();
+  await dialog.getByLabel("Format", { exact: true }).selectOption("pdf");
+  await expect(layers).toHaveCount(0);
+});
 test("custom paper units, settings, page additions, and cancellation", async ({
   page,
 }) => {

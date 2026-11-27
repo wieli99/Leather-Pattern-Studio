@@ -16,6 +16,7 @@ import {
   type PrintArtifact,
   type PrintFormat,
 } from "../editor/printExport";
+import { allDxfLayers, dxfLayers, type DxfLayer } from "../editor/printDxf";
 import type { Doc } from "../model/project";
 import type { PrintLayout } from "../model/printLayout";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -32,6 +33,7 @@ const format = ref<PrintFormat>("pdf"),
   artifact = ref<PrintArtifact>(),
   page = ref(0),
   zoom = ref(0),
+  layers = ref<DxfLayer[]>([...allDxfLayers]),
   canvas = ref<HTMLCanvasElement>();
 let generation = 0,
   renderGeneration = 0;
@@ -55,6 +57,7 @@ async function build() {
       structuredClone(props.document),
       structuredClone(props.layout),
       format.value,
+      [...layers.value],
     );
     if (token !== generation || !props.open) return;
     if (result.pdf) {
@@ -134,7 +137,7 @@ async function paint() {
   }
 }
 watch(
-  () => [props.open, props.revision, props.layout.id, format.value],
+  () => [props.open, props.revision, props.layout.id, format.value, layers.value.join()],
   () => {
     if (props.open) void build();
     else {
@@ -173,7 +176,7 @@ onUnmounted(() => {
             <select v-model="format" aria-label="Format">
               <option value="pdf">PDF</option>
               <option value="svg">SVG</option>
-              <option value="dxf">DXF (outlines only)</option>
+              <option value="dxf">DXF (cutting layers)</option>
               <option value="png">PNG (300 DPI)</option>
             </select></label
           ><button
@@ -183,9 +186,19 @@ onUnmounted(() => {
             Export</button
           ><DialogClose>Close</DialogClose>
         </div>
-        <p v-if="format === 'dxf'">Complete outlines in one continuous layout, in millimetres. Stitch holes, annotations, images and paper decorations are omitted.</p>
+        <p v-if="format === 'dxf'">One continuous layout in millimetres, with a separate layer for each kind of work. Text, annotations, images and paper decorations are omitted.</p>
+        <div v-if="format === 'dxf'" class="export-controls dxf-layers" role="group" aria-label="DXF layers">
+          <label v-for="layer in [...dxfLayers].reverse()" :key="layer.id"
+            ><input v-model="layers" type="checkbox" :value="layer.id" /><span
+              class="layer-swatch"
+              :style="{ background: layer.preview }"
+              aria-hidden="true"
+            />{{ layer.label }}</label
+          >
+        </div>
         <p v-if="busy" role="status">Generating preview…</p>
         <p v-if="error" role="alert">{{ error }}</p>
+        <p v-for="warning in artifact?.warnings ?? []" :key="warning" role="status">{{ warning }}</p>
         <div class="export-controls">
           <button v-if="format !== 'dxf'" :disabled="page === 0 || busy" @click="page--">
             Previous page</button
@@ -219,9 +232,27 @@ onUnmounted(() => {
 }
 .export-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 10px 0;
+}
+.dxf-layers {
+  padding-top: 0;
+}
+.dxf-layers label {
+  display: inline-flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+.dxf-layers input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.layer-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
 }
 .generated-preview {
   flex: 1;

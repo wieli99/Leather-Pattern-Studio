@@ -126,11 +126,11 @@ test(
     await expect(detect).toBeChecked();
     await expect(highlights).toHaveCount(5);
     await expect(dialog).toContainText("41 holes");
-    await expect(dialog.getByText("DXF export skips converted stitching", { exact: false })).toBeVisible();
+    await expect(dialog.getByText("DXF export puts converted stitching on the Stitch holes layer", { exact: false })).toBeVisible();
     await manualScreenshot(dialog, "editable-svg-import.png");
     await dialog.screenshot({ path: info.outputPath("detected-stitch-preview.png") });
     await detect.uncheck();
-    await expect(dialog.getByText("DXF export skips converted stitching", { exact: false })).toHaveCount(0);
+    await expect(dialog.getByText("DXF export puts converted stitching on the Stitch holes layer", { exact: false })).toHaveCount(0);
     await expect(highlights).toHaveCount(0);
     await insert.click();
     await expect(page.locator(".object-select")).toHaveCount(43);
