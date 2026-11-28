@@ -100,7 +100,9 @@ CI uploads and downloads the production artifact and compares its contents befor
 
 ## Domains and verification
 
-Use the Worker's workers.dev URL while DNS activation is pending. Once wieli.at is active in Cloudflare, attach leather.wieli.at under Worker Settings / Domains & Routes / Add / Custom Domain. This requires no workflow change. Do not add a routes list to Wrangler unless you intend to manage domain bindings in source control.
+The editor is served at `studio.leather-pattern.at`, attached to the leather-pattern-studio Worker under Worker Settings / Domains & Routes / Add / Custom Domain. This requires no workflow change. Do not add a routes list to Wrangler unless you intend to manage domain bindings in source control. The project website on the apex `leather-pattern.at` is a separate Worker deployed from the [Leather-Pattern-Studio-Website](https://github.com/wieli99/Leather-Pattern-Studio-Website) repository.
+
+The editor was previously served at `leather.wieli.at`. Retire that address with a permanent redirect: remove its custom domain from the Worker, add a proxied `AAAA leather 100::` placeholder record in the wieli.at zone, and add a Redirect Rule there: hostname equals `leather.wieli.at`, dynamic destination `concat("https://studio.leather-pattern.at", http.request.uri.path)`, status 301, query string preserved. Browser storage (recovery draft, interface settings and local editor data) does not move with the redirect, and returning visitors whose browser installed the offline service worker keep opening the cached old version until that worker is replaced: the browser treats the redirected worker script as a failed update.
 
 After deployment verify editor startup and Wasm loading, the bundled manual, project save/open, offline use after cache installation, and the update prompt across two releases. Save projects before accepting an update. Browser storage is hostname-specific: export projects on the temporary address and open them on the final address. Browser CI results do not establish physical device compatibility.
 

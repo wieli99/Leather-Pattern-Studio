@@ -33,3 +33,20 @@ test("worker failure replaces startup message", async ({ page }) => {
     "Starting geometry engine",
   );
 });
+test("startup failure shows the error and where it happened", async ({ page }) => {
+  const logged: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") logged.push(message.text());
+  });
+  await page.addInitScript(() => {
+    function failStartup(): never {
+      throw new Error("Simulated startup failure");
+    }
+    document.fonts.load = () => Promise.resolve().then(failStartup);
+  });
+  await page.goto("/");
+  const alert = page.locator("#root[role=alert]");
+  await expect(alert).toContainText("Simulated startup failure");
+  await expect(alert.locator(".startup-error-stack")).toContainText("failStartup");
+  expect(logged.some((text) => text.includes("Editor startup failed"))).toBe(true);
+});
