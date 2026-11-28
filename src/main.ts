@@ -18,9 +18,17 @@ async function start() {
   app.mount("#root");
 }
 void start().catch((error) => {
+  console.error("Editor startup failed", error);
   const root = document.getElementById("root");
   if (root) {
     root.setAttribute("role", "alert");
     root.textContent = error instanceof Error ? error.message : String(error);
+    // Show where it failed so bug reports and test snapshots capture the cause.
+    if (error instanceof Error && error.stack) {
+      const stack = document.createElement("pre");
+      stack.className = "startup-error-stack";
+      stack.textContent = error.stack;
+      root.append(stack);
+    }
   }
 });

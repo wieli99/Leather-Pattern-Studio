@@ -1120,3 +1120,9 @@ label:has(> select) { display:flex; align-items:center; column-gap:8px !importan
 .variable-hints li { padding: 4px 8px; cursor: pointer; color: var(--text); white-space: nowrap; }
 .variable-hints li:hover,
 .variable-hints li[aria-selected="true"] { background: var(--accent); color: var(--panel); }
+.startup-error-stack {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  font-size: 11px;
+  opacity: 0.8;
+}
