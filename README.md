@@ -10,7 +10,7 @@ General drawing apps don't know what a stitching iron is, and CAD tools take a w
 
 It's free and open source. It runs in your browser without an account, also comes as a desktop app, and works offline.
 
-**[Open Leather Pattern Studio](https://leather.wieli.at)** · [User manual](https://leather.wieli.at/manual/index.html) · [Desktop downloads](https://github.com/wieli99/Leather-Pattern-Studio/releases)
+**[Open Leather Pattern Studio](https://studio.leather-pattern.at)** · [Website](https://leather-pattern.at) · [User manual](https://studio.leather-pattern.at/manual/index.html) · [Desktop downloads](https://github.com/wieli99/Leather-Pattern-Studio/releases)
 
 ![A rounded pattern piece selected in the editor, with exact width and height controls](public/manual/images/workspace.png)
 
@@ -40,7 +40,7 @@ Lay your pieces out on print tabs as linked copies. When you change the pattern,
 
 ## Get started
 
-[Open the app](https://leather.wieli.at) and follow [Your first pattern](https://leather.wieli.at/manual/index.html#getting-started). In a few minutes you go from a blank canvas to a rounded, stitched piece ready to print. The full manual is one click away on the **?** button, offline included.
+[Open the app](https://studio.leather-pattern.at) and follow [Your first pattern](https://studio.leather-pattern.at/manual/index.html#getting-started). In a few minutes you go from a blank canvas to a rounded, stitched piece ready to print. The full manual is one click away on the **?** button, offline included.
 
 Projects are saved as `.leather` files on your own computer. Nothing is uploaded and you don't need an account.
 
