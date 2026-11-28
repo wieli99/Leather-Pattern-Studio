@@ -22,7 +22,7 @@ Rounded and chamfered corners, offsets, joins, cutouts, mirroring, arrays and al
 
 ## Stitching that keeps up with your edits
 
-Choose French, Japanese, round or flat holes and set the spacing and edge distance to match your irons. When you reshape a piece, its stitching follows the new outline. Merge stitch lines to keep the spacing even around corners. Link mating pieces, such as a gusset and its panel, and the editor tells you as soon as their hole counts drift apart.
+Choose French, Japanese, round or flat holes and set the spacing and edge distance to match your irons. When you reshape a piece, its stitching follows the new outline. Merge stitch lines to keep the spacing even around corners. Link mating pieces, such as a gusset and its panel, and the editor tells you as soon as the stitching doesn't line up.
 
 ![Stitch-line settings and hole placement on a rounded rectangle](public/manual/images/stitch-lines.png)
 
@@ -32,7 +32,7 @@ Skiving, glueing and cutout areas get their own markings, so the pattern carries
 
 Open an existing SVG pattern as editable outlines, with its stitch lines detected automatically. Got a photo or scan of an old pattern instead? Drop it in, mark two points a known distance apart, and trace over it at true scale.
 
-## Print and cut
+## Your print files keep up
 
 Lay your pieces out on print tabs as linked copies. When you change the pattern, the printout updates and your page layout stays as it is. Big pieces split across several sheets with assembly marks, and a size guide lets you confirm the scale at a glance. Export to PDF, SVG or PNG for printing, or to DXF for laser and plotter cutting.
 

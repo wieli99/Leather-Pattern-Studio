@@ -76,6 +76,7 @@ Maintainers prepare one version bump per release; ordinary contribution PRs do n
 5. Open a `dev` → `main` release PR with the target version, resulting behavior, breaking changes if any, and validation results.
 6. Merge after checks pass. Every push to `main` runs checks again, then deploys the tested `dist/` artifact to the production Worker. A failed check prevents deployment.
 7. Verify the production workflow and smoke-test the deployed app. Merge `main` back into `dev` through a PR to keep the branch histories synchronized; merge any emergency fixes back as well.
+8. Once the project website is live, update it for the release. It lives in the separate [Leather-Pattern-Studio-Website](https://github.com/wieli99/Leather-Pattern-Studio-Website) repository. Recapture its screenshots against the released editor with `tools/screenshots/capture.cjs` (see that repository's README), so the version shown in the status bar and the UI match the release. Review the page text against the release's behavior, then push the website's `main` branch to publish it. Download buttons follow the latest published GitHub Release automatically, so publish the desktop draft before checking them.
 
 The build reads `package.json` to display the application version. Version selection and bumping are manual: CI does not enforce a new version, create tags, or publish GitHub Release entries. Never reuse an already published version for changed application contents. Production deployments are serialized and stale main commits are skipped.
 
